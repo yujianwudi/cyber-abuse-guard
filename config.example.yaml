@@ -1,0 +1,69 @@
+plugins:
+  enabled: true
+  dir: plugins
+  configs:
+    cyber-abuse-guard:
+      enabled: true
+      priority: 300
+      mode: balanced
+
+      max_scan_bytes: 262144
+      max_json_depth: 32
+      max_text_parts: 512
+
+      thresholds:
+        audit: 35
+        balanced_block: 60
+        hard_block: 80
+
+      allow_context:
+        ctf: true
+        lab: true
+        authorized_testing: true
+        defensive_analysis: true
+        remediation: true
+        malware_static_analysis: true
+
+      hard_block_even_if_authorized:
+        credential_theft: true
+        phishing_deployment: true
+        ransomware_deployment: true
+        data_exfiltration: true
+
+      subject_control:
+        enabled: true
+        window_minutes: 60
+        cooldown_score: 150
+        manual_block_score: 250
+        cooldown_minutes: 30
+
+      audit:
+        enabled: true
+        # Empty uses ~/.cli-proxy-api/plugins/cyber-abuse-guard.
+        data_dir: ""
+        retention_days: 30
+        max_db_mb: 256
+        log_request_hash: true
+        log_subject_hash: true
+        log_rule_ids: true
+        log_category: true
+        # The plugin rejects true; original request text is never persisted.
+        log_original_text: false
+
+      trusted_proxy:
+        # CPA v7.2.67 ModelRouter lacks a trustworthy direct-peer address;
+        # v0.1.0 therefore rejects enabled: true instead of trusting spoofable headers.
+        enabled: false
+        header: X-Forwarded-For
+        cidrs: []
+
+      # Reserved for a future local-only classifier; v0.1.0 rejects enabled: true.
+      classifier:
+        enabled: false
+        endpoint: ""
+        timeout_ms: 300
+        fail_mode: rules_only
+
+    # Disable after Cyber Abuse Guard is installed and verified.
+    antigravity-coding-filter:
+      enabled: false

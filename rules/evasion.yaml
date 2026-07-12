@@ -1,0 +1,74 @@
+version: "1.0.0"
+rules:
+  - id: EVADE-001
+    category: defense_evasion
+    severity: critical
+    base_score: 62
+    hard_floor: 80
+    authorization_protected: false
+    intent:
+      zh: ["关闭", "绕过", "禁用", "删除", "清除", "擦除", "规避", "篡改"]
+      en: ["disable", "disables", "disabling", "disabled", "bypass", "bypasses", "bypassing", "bypassed", "evade", "evades", "evading", "evaded", "erase", "erases", "erasing", "erased", "delete", "deletes", "deleting", "deleted", "clear", "clears", "clearing", "cleared", "tamper", "tampers", "tampering", "tampered", "turn off", "turned off", "shut down"]
+    object:
+      zh: ["edr", "杀毒", "端点检测", "取证痕迹", "安全策略"]
+      en: ["edr", "antivirus", "endpoint detection", "endpoint security", "forensic artifacts", "safety controls"]
+    operational:
+      zh: ["可直接运行", "命令", "脚本", "工具", "完整", "载荷", "程序"]
+      en: ["working code", "ready-to-run", "ready to run", "commands", "script", "utility", "payload", "deployable"]
+    target:
+      zh: ["真实主机", "受害主机"]
+      en: ["real hosts", "victim machines"]
+    evasion:
+      zh: ["静默", "执行后", "入侵后", "无法识别"]
+      en: ["undetected", "before installing", "before deploying", "before the payload", "after intrusion"]
+    scale:
+      zh: ["批量", "自动", "多台"]
+      en: ["automated", "across", "multiple", "at scale"]
+  - id: EVADE-002
+    category: defense_evasion
+    severity: critical
+    base_score: 62
+    hard_floor: 80
+    authorization_protected: false
+    intent:
+      zh: ["混淆", "隐藏", "绕过", "规避检测"]
+      en: ["obfuscate", "obfuscated", "hide", "hidden", "bypass", "bypassed", "evade detection", "evaded detection"]
+    object:
+      zh: ["恶意载荷", "可部署载荷", "沙箱", "av 扫描器", "edr", "签名扫描"]
+      en: ["malware", "deployable malware", "payload", "sandbox", "signature scanners", "edr", "implant"]
+    operational:
+      zh: ["可运行版本", "代码", "程序", "投放", "部署"]
+      en: ["working", "code", "program", "deploy", "deployable", "deployment"]
+    target:
+      zh: ["真实主机", "受害者", "生产"]
+      en: ["real hosts", "victim", "production"]
+    evasion:
+      zh: ["静默", "无法识别"]
+      en: ["undetected", "silent"]
+    scale:
+      zh: ["批量", "自动"]
+      en: ["bulk", "automated", "at scale"]
+  - id: EVADE-003
+    category: defense_evasion
+    severity: high
+    base_score: 45
+    hard_floor: 0
+    authorization_protected: false
+    intent:
+      zh: ["关闭", "禁用", "删除", "清除", "擦除", "篡改"]
+      en: ["disable", "disables", "disabling", "erase", "erases", "erasing", "delete", "deletes", "deleting", "clear", "clears", "clearing", "tamper", "tampers", "tampering", "turn off", "purge", "purges", "purging"]
+    object:
+      zh: ["安全日志", "审计日志", "系统日志", "监控", "可观测性"]
+      en: ["audit logs", "security logs", "system logs", "forensic logs", "monitoring", "observability"]
+    operational:
+      zh: ["可直接运行", "命令", "脚本", "工具", "完整程序"]
+      en: ["working code", "ready-to-run", "ready to run", "commands", "script", "utility", "program"]
+    target:
+      zh: ["真实主机", "受害主机"]
+      en: ["real hosts", "victim machines"]
+    evasion:
+      zh: ["入侵后", "躲避检测", "掩盖入侵", "销毁证据"]
+      en: ["after intrusion", "avoid detection", "hide the intrusion", "destroy evidence", "harder to spot"]
+    scale:
+      zh: ["批量", "自动", "多台"]
+      en: ["automated", "across", "multiple", "at scale"]

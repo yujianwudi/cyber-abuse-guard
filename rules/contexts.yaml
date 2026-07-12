@@ -1,0 +1,34 @@
+version: "1.0.0"
+contexts:
+  - kind: defensive
+    terms:
+      zh: ["防御", "检测", "防止", "安全检查", "加固", "告警", "识别迹象", "降低误报", "安全配置", "起草安全策略", "解释", "分析", "什么是", "yara 规则", "sigma 规则", "suricata 规则", "snort 规则", "ioc 提取", "入侵指标"]
+      en: ["defensive", "how to detect", "how to prevent", "detection guidance", "defensive controls", "secure settings", "security checklist", "warning signs", "alert for", "draft a system policy", "draft a safety policy", "explain", "analyze", "what is", "why attackers", "malware protection", "malware prevention", "ransomware insurance", "insurance options", "ransomware awareness", "ransomware-awareness", "phishing simulation", "campaign simulation", "phishing campaign tabletop exercise", "awareness training", "yara rule", "yara signature", "sigma rule", "suricata rule", "suricata signature", "snort rule", "snort signature", "ioc extraction", "indicators of compromise"]
+  - kind: remediation
+    terms:
+      zh: ["修复", "补丁", "缓解", "恢复", "加固清单", "安全版本", "轮换", "撤销会话", "回归测试", "过期日志", "日志保留", "旧日志"]
+      en: ["remediation", "remediate", "mitigation", "patch", "recovery checklist", "restore", "safe version", "rotate", "revoke", "regression test", "old logs", "expired logs", "log retention", "retention policy"]
+  - kind: ctf
+    terms:
+      zh: ["ctf", "虚构赛题", "赛题"]
+      en: ["ctf", "hack the box", "tryhackme", "capture-the-flag"]
+  - kind: lab
+    terms:
+      zh: ["本地靶场", "隔离环境", "教学网络", "虚构靶场"]
+      en: ["isolated lab", "offline lab", "lab server", "classroom sandbox", "toy service"]
+  - kind: authorized
+    terms:
+      zh: ["已获授权", "书面授权", "授权测试", "自有服务器", "自有代码", "自有网络", "授权范围", "所有者批准"]
+      en: ["i am authorized", "written authorization", "authorized engagement", "authorized assessment", "owner approval", "we own", "our own", "approved internal", "signed test plan"]
+  - kind: static_analysis
+    terms:
+      zh: ["静态分析", "静态审查", "离线取证", "不运行样本", "代码审计", "分析样本", "反编译报告", "yara 规则", "sigma 规则", "suricata 规则", "snort 规则", "ioc 提取", "入侵指标"]
+      en: ["static analysis", "statically review", "without executing", "code review", "decompiler report", "quarantined binary", "analyze a sample", "offline forensics", "yara rule", "yara signature", "sigma rule", "suricata rule", "suricata signature", "snort rule", "snort signature", "ioc extraction", "indicators of compromise"]
+  - kind: incident_response
+    terms:
+      zh: ["事件响应", "应急响应", "隔离主机", "保全证据", "证据链", "取证分析", "取证调查", "从备份恢复", "复盘"]
+      en: ["incident response", "incident responder", "containment", "containment actions", "preserve evidence", "forensic analysis", "forensic investigation", "triage", "from backups"]
+  - kind: high_level
+    terms:
+      zh: ["高层次", "概念性", "原理", "风险摘要", "面向管理层", "安全培训", "概念解释", "不涉及实现细节", "解释", "分析", "什么是"]
+      en: ["high-level", "high level", "conceptual", "overview", "broad terms", "training", "nontechnical audience", "without operational", "explain", "analyze", "what is", "why attackers", "malware protection", "malware prevention", "ransomware insurance", "insurance options", "ransomware awareness", "ransomware-awareness", "phishing simulation", "campaign simulation", "phishing campaign tabletop exercise", "awareness training"]

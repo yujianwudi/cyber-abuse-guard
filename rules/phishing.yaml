@@ -1,0 +1,50 @@
+version: "1.0.0"
+rules:
+  - id: PHISH-001
+    category: phishing_deployment
+    severity: critical
+    base_score: 65
+    hard_floor: 80
+    authorization_protected: true
+    intent:
+      zh: ["部署", "制作", "创建", "生成", "复制", "上线", "诱导"]
+      en: ["deploy", "deploys", "deploying", "deployed", "create", "creates", "creating", "created", "build", "builds", "building", "built", "host", "hosts", "hosting", "hosted", "launch", "launches", "launching", "launched", "stand up", "prepare", "impersonating", "impersonate", "impersonates", "impersonated"]
+    object:
+      zh: ["仿冒登录页", "假登录页", "假邮箱登录页", "钓鱼登录页", "钓鱼邮件", "仿冒管理员的邮件", "钓鱼站", "二维码钓鱼", "短信钓鱼", "凭证收集页面"]
+      en: ["cloned login page", "cloned sign-in page", "cloned corporate sign-in page", "fake login portal", "fake login page", "lookalike microsoft 365 portal", "bank sign-on clone", "phishing page", "phishing email", "phishing campaign", "credential collection page", "qr phishing"]
+    operational:
+      zh: ["部署流程", "完整模板", "可直接发送", "收集密码", "回传"]
+      en: ["source code", "deployable", "ready-to-host", "ready to host", "captures", "records", "collects", "sending"]
+    target:
+      zh: ["真实客户", "真实用户", "真实账号", "员工", "知名品牌", "真实组织"]
+      en: ["victim", "real customer", "real users", "employee", "corporate", "real organization", "payroll provider"]
+    evasion:
+      zh: ["绕过反钓鱼", "绕过链接扫描", "规避检测"]
+      en: ["bypass link scanner", "bypass anti-phishing", "evade detection"]
+    scale:
+      zh: ["批量", "自动", "群发", "活动"]
+      en: ["automate", "automated", "hundreds", "campaign", "at scale"]
+  - id: PHISH-002
+    category: phishing_deployment
+    severity: critical
+    base_score: 50
+    hard_floor: 80
+    authorization_protected: true
+    intent:
+      zh: ["收集", "获取凭证", "记录密码", "回传密码", "发送密码"]
+      en: ["collect credentials", "capture credentials", "harvest credentials", "record passwords", "forward credentials", "send passwords", "credential harvesting"]
+    object:
+      zh: ["账号密码", "登录凭证", "验证码", "访问令牌", "token", "钓鱼落地页"]
+      en: ["victim credentials", "customer passwords", "account tokens", "credential-harvesting email"]
+    operational:
+      zh: ["外部地址", "凭证接收端", "批量活动"]
+      en: ["external address", "credential endpoint", "phishing campaign"]
+    target:
+      zh: ["受害者", "真实用户", "员工", "客户", "真实品牌"]
+      en: ["victim", "real user", "employee", "customer", "real brand"]
+    evasion:
+      zh: ["规避", "绕过"]
+      en: ["evade", "bypass"]
+    scale:
+      zh: ["批量", "群发", "自动"]
+      en: ["bulk", "mass send", "automate", "hundreds"]

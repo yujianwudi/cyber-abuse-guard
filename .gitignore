@@ -1,0 +1,15 @@
+/dist/
+/build/
+/*.db
+/*.db-shm
+/*.db-wal
+/coverage.out
+/integration/.work/
+*.h
+/.cyber-abuse-guard-hmac
+/plugin-data/
+*.key
+*.pem
+.env
+.env.*
+!.env.example

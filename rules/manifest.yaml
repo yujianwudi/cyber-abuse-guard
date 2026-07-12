@@ -1,0 +1,11 @@
+version: "1.0.0"
+context_file: contexts.yaml
+rule_files:
+  - credentials.yaml
+  - phishing.yaml
+  - malware.yaml
+  - ransomware.yaml
+  - exploitation.yaml
+  - disruption.yaml
+  - exfiltration.yaml
+  - evasion.yaml

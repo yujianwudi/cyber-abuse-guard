@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-amd64:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version: '1.26.0'
+          cache: true
+      - run: sudo apt-get update && sudo apt-get install -y build-essential file zip unzip
+      - run: make test vet race fuzz-smoke benchmark
+      - run: make integration-test
+      - run: make release verify-release
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cyber-abuse-guard-linux-amd64
+          path: |
+            dist/cyber-abuse-guard-v0.1.0.so
+            dist/cyber-abuse-guard-v0.1.0.so.sha256
+            dist/cyber-abuse-guard_0.1.0_linux_amd64.zip
+            dist/checksums.txt
+          if-no-files-found: error
+
+  fuzz-long:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version: '1.26.0'
+      - run: |
+          go test ./internal/extract -run='^$' -fuzz=FuzzExtractText -fuzztime=30s
+          go test ./internal/classifier -run='^$' -fuzz=FuzzClassifier -fuzztime=30s
+          go test ./internal/config -run='^$' -fuzz=FuzzConfigParser -fuzztime=30s

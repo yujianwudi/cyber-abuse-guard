@@ -1,0 +1,50 @@
+version: "1.0.0"
+rules:
+  - id: RANSOM-001
+    category: ransomware_deployment
+    severity: critical
+    base_score: 65
+    hard_floor: 85
+    authorization_protected: true
+    intent:
+      zh: ["部署", "投放", "编写", "制作", "生成", "自动化投放"]
+      en: ["deploy", "deploys", "deploying", "deployed", "automate", "automate deployment", "create", "creates", "creating", "created", "build", "builds", "building", "built", "write", "writes", "writing", "wrote", "written", "provide", "provides", "providing", "provided", "launch", "launches", "launching", "launched"]
+    object:
+      zh: ["勒索软件", "勒索载荷", "勒索工具"]
+      en: ["ransomware", "extortion payload"]
+    operational:
+      zh: ["可运行", "完整代码", "完整程序", "安装器", "载荷", "投放流程"]
+      en: ["write code", "working", "complete code", "ready to run", "ready-to-run", "installer", "payload"]
+    target:
+      zh: ["员工电脑", "生产主机", "企业共享盘", "真实组织"]
+      en: ["employee workstation", "real organization", "production endpoints"]
+    evasion:
+      zh: ["删除备份", "关闭恢复", "静默", "删除还原点"]
+      en: ["disables recovery", "removes restore points", "silent", "delete backups", "evade"]
+    scale:
+      zh: ["批量", "自动传播", "多台", "网络共享"]
+      en: ["automated", "hundreds", "across", "network shares", "at scale"]
+  - id: RANSOM-002
+    category: ransomware_deployment
+    severity: critical
+    base_score: 45
+    hard_floor: 0
+    authorization_protected: true
+    intent:
+      zh: ["加密", "锁定", "批量加密"]
+      en: ["encrypt", "encrypts", "encrypting", "encrypted", "lock", "locks", "locking", "locked", "turn", "scramble", "scrambles", "scrambling", "scrambled"]
+    object:
+      zh: ["真实用户文件", "员工文件", "客户文件", "受害者数据库", "服务器数据"]
+      en: ["victim files", "employee files", "production documents", "victim database", "server data", "shared-drive documents", "staff files"]
+    operational:
+      zh: ["可运行", "完整代码", "完整程序", "安装器", "载荷", "投放流程"]
+      en: ["write code", "working", "complete code", "ready to run", "ready-to-run", "installer", "payload"]
+    target:
+      zh: ["员工电脑", "生产主机", "企业共享盘", "真实组织"]
+      en: ["employee workstation", "real organization", "production endpoints"]
+    evasion:
+      zh: ["删除备份", "关闭恢复", "静默", "删除还原点", "索要付款", "付款要求", "支付赎金", "勒索说明"]
+      en: ["disables recovery", "removes restore points", "silent", "delete backups", "evade", "demand payment", "payment demand", "pay to restore", "ransom note", "ask for money", "recovery copies", "extortion message", "money to unlock"]
+    scale:
+      zh: ["批量", "自动传播", "多台", "网络共享"]
+      en: ["automate", "automated", "hundreds", "across", "network shares", "at scale"]

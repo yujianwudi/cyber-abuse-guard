@@ -1,0 +1,546 @@
+// Package config owns the validated YAML configuration model for the guard.
+// It is intentionally independent from the CPA plugin lifecycle so parsing can
+// happen before a live configuration is replaced.
+package config
+
+import (
+	"bytes"
+	"errors"
+	"fmt"
+	"io"
+	"net/netip"
+	"net/url"
+	"strings"
+	"unicode/utf8"
+
+	"gopkg.in/yaml.v3"
+)
+
+const (
+	MaxConfigBytes       = 64 << 10
+	MaxAllowedScanBytes  = 4 << 20
+	MaxAllowedJSONDepth  = 128
+	MaxAllowedTextParts  = 4096
+	maxYAMLLines         = 1024
+	maxYAMLLineBytes     = 8 << 10
+	maxYAMLIndent        = 64
+	maxYAMLFlowDepth     = 32
+	maxPriority          = 100000
+	maxSubjectMinutes    = 30 * 24 * 60
+	maxSubjectScore      = 1000000
+	maxAuditRetentionDay = 3650
+	maxAuditDBMB         = 10240
+	maxClassifierTimeout = 10000
+	maxDataDirBytes      = 4096
+)
+
+var (
+	ErrInvalidConfig  = errors.New("config: invalid configuration")
+	ErrConfigTooLarge = errors.New("config: YAML exceeds size limit")
+)
+
+// Mode determines enforcement behavior.
+type Mode string
+
+const (
+	ModeOff      Mode = "off"
+	ModeObserve  Mode = "observe"
+	ModeAudit    Mode = "audit"
+	ModeBalanced Mode = "balanced"
+	ModeStrict   Mode = "strict"
+)
+
+// ClassifierFailMode controls the local fallback if the optional classifier is
+// unavailable. v0.1 reserves only the safe deterministic-rules fallback.
+type ClassifierFailMode string
+
+const ClassifierFailRulesOnly ClassifierFailMode = "rules_only"
+
+// Config is the direct YAML object under plugins.configs.cyber-abuse-guard.
+type Config struct {
+	Enabled                   bool                      `yaml:"enabled"`
+	Priority                  int                       `yaml:"priority"`
+	Mode                      Mode                      `yaml:"mode"`
+	MaxScanBytes              int                       `yaml:"max_scan_bytes"`
+	MaxJSONDepth              int                       `yaml:"max_json_depth"`
+	MaxTextParts              int                       `yaml:"max_text_parts"`
+	Thresholds                Thresholds                `yaml:"thresholds"`
+	AllowContext              AllowContext              `yaml:"allow_context"`
+	HardBlockEvenIfAuthorized HardBlockEvenIfAuthorized `yaml:"hard_block_even_if_authorized"`
+	SubjectControl            SubjectControl            `yaml:"subject_control"`
+	Audit                     Audit                     `yaml:"audit"`
+	TrustedProxy              TrustedProxy              `yaml:"trusted_proxy"`
+	Classifier                Classifier                `yaml:"classifier"`
+}
+
+type Thresholds struct {
+	Audit         int `yaml:"audit"`
+	BalancedBlock int `yaml:"balanced_block"`
+	HardBlock     int `yaml:"hard_block"`
+}
+
+type AllowContext struct {
+	CTF                   bool `yaml:"ctf"`
+	Lab                   bool `yaml:"lab"`
+	AuthorizedTesting     bool `yaml:"authorized_testing"`
+	DefensiveAnalysis     bool `yaml:"defensive_analysis"`
+	Remediation           bool `yaml:"remediation"`
+	MalwareStaticAnalysis bool `yaml:"malware_static_analysis"`
+}
+
+type HardBlockEvenIfAuthorized struct {
+	CredentialTheft      bool `yaml:"credential_theft"`
+	PhishingDeployment   bool `yaml:"phishing_deployment"`
+	RansomwareDeployment bool `yaml:"ransomware_deployment"`
+	DataExfiltration     bool `yaml:"data_exfiltration"`
+}
+
+type SubjectControl struct {
+	Enabled          bool `yaml:"enabled"`
+	WindowMinutes    int  `yaml:"window_minutes"`
+	CooldownScore    int  `yaml:"cooldown_score"`
+	ManualBlockScore int  `yaml:"manual_block_score"`
+	CooldownMinutes  int  `yaml:"cooldown_minutes"`
+}
+
+type Audit struct {
+	Enabled         bool   `yaml:"enabled"`
+	DataDir         string `yaml:"data_dir"`
+	RetentionDays   int    `yaml:"retention_days"`
+	MaxDBMB         int    `yaml:"max_db_mb"`
+	LogRequestHash  bool   `yaml:"log_request_hash"`
+	LogSubjectHash  bool   `yaml:"log_subject_hash"`
+	LogRuleIDs      bool   `yaml:"log_rule_ids"`
+	LogCategory     bool   `yaml:"log_category"`
+	LogOriginalText bool   `yaml:"log_original_text"`
+}
+
+type TrustedProxy struct {
+	Enabled bool     `yaml:"enabled"`
+	Header  string   `yaml:"header"`
+	CIDRs   []string `yaml:"cidrs"`
+}
+
+// Classifier is a reserved v0.1 interface configuration. This package does not
+// implement the classifier transport; it only prevents unsafe endpoints from
+// entering a valid configuration.
+type Classifier struct {
+	Enabled   bool               `yaml:"enabled"`
+	Endpoint  string             `yaml:"endpoint"`
+	TimeoutMS int                `yaml:"timeout_ms"`
+	FailMode  ClassifierFailMode `yaml:"fail_mode"`
+}
+
+// Default returns the secure production defaults from the task book.
+func Default() Config {
+	return Config{
+		Enabled:      true,
+		Priority:     300,
+		Mode:         ModeBalanced,
+		MaxScanBytes: 262144,
+		MaxJSONDepth: 32,
+		MaxTextParts: 512,
+		Thresholds: Thresholds{
+			Audit:         35,
+			BalancedBlock: 60,
+			HardBlock:     80,
+		},
+		AllowContext: AllowContext{
+			CTF:                   true,
+			Lab:                   true,
+			AuthorizedTesting:     true,
+			DefensiveAnalysis:     true,
+			Remediation:           true,
+			MalwareStaticAnalysis: true,
+		},
+		HardBlockEvenIfAuthorized: HardBlockEvenIfAuthorized{
+			CredentialTheft:      true,
+			PhishingDeployment:   true,
+			RansomwareDeployment: true,
+			DataExfiltration:     true,
+		},
+		SubjectControl: SubjectControl{
+			Enabled:          true,
+			WindowMinutes:    60,
+			CooldownScore:    150,
+			ManualBlockScore: 250,
+			CooldownMinutes:  30,
+		},
+		Audit: Audit{
+			Enabled:         true,
+			DataDir:         "",
+			RetentionDays:   30,
+			MaxDBMB:         256,
+			LogRequestHash:  true,
+			LogSubjectHash:  true,
+			LogRuleIDs:      true,
+			LogCategory:     true,
+			LogOriginalText: false,
+		},
+		TrustedProxy: TrustedProxy{
+			Enabled: false,
+			Header:  "X-Forwarded-For",
+			CIDRs:   []string{},
+		},
+		Classifier: Classifier{
+			Enabled:   false,
+			Endpoint:  "",
+			TimeoutMS: 300,
+			FailMode:  ClassifierFailRulesOnly,
+		},
+	}
+}
+
+// Parse strictly decodes one YAML document on top of Default and validates the
+// result. Unknown fields, duplicate keys, additional documents, oversized
+// input, and unsafe values are rejected before callers can swap live config.
+func Parse(data []byte) (Config, error) {
+	if len(data) > MaxConfigBytes {
+		return Config{}, fmt.Errorf("%w: got %d bytes, limit is %d", ErrConfigTooLarge, len(data), MaxConfigBytes)
+	}
+	cfg := Default()
+	if len(bytes.TrimSpace(data)) == 0 {
+		return cfg, nil
+	}
+	if err := preflightYAML(data); err != nil {
+		return Config{}, err
+	}
+
+	decoder := yaml.NewDecoder(bytes.NewReader(data))
+	decoder.KnownFields(true)
+	if err := decoder.Decode(&cfg); err != nil {
+		if errors.Is(err, io.EOF) {
+			return cfg, nil
+		}
+		return Config{}, invalidf("decode YAML: %v", err)
+	}
+	var extra any
+	if err := decoder.Decode(&extra); err == nil {
+		return Config{}, invalidf("multiple YAML documents are not allowed")
+	} else if !errors.Is(err, io.EOF) {
+		return Config{}, invalidf("decode trailing YAML: %v", err)
+	}
+	if err := Validate(cfg); err != nil {
+		return Config{}, err
+	}
+	return cfg, nil
+}
+
+// Validate checks a complete configuration without mutating it.
+func Validate(cfg Config) error {
+	if !cfg.Mode.valid() {
+		return invalidf("mode must be one of off, observe, audit, balanced, strict")
+	}
+	if cfg.Priority < 0 || cfg.Priority > maxPriority {
+		return invalidf("priority must be between 0 and %d", maxPriority)
+	}
+	if cfg.MaxScanBytes < 1 || cfg.MaxScanBytes > MaxAllowedScanBytes {
+		return invalidf("max_scan_bytes must be between 1 and %d", MaxAllowedScanBytes)
+	}
+	if cfg.MaxJSONDepth < 1 || cfg.MaxJSONDepth > MaxAllowedJSONDepth {
+		return invalidf("max_json_depth must be between 1 and %d", MaxAllowedJSONDepth)
+	}
+	if cfg.MaxTextParts < 1 || cfg.MaxTextParts > MaxAllowedTextParts {
+		return invalidf("max_text_parts must be between 1 and %d", MaxAllowedTextParts)
+	}
+
+	if err := validateThresholds(cfg.Thresholds); err != nil {
+		return err
+	}
+	if err := validateSubjectControl(cfg.SubjectControl); err != nil {
+		return err
+	}
+	if err := validateAudit(cfg.Audit); err != nil {
+		return err
+	}
+	if err := validateTrustedProxy(cfg.TrustedProxy); err != nil {
+		return err
+	}
+	if err := validateClassifier(cfg.Classifier); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Validate provides method syntax for callers holding a Config value.
+func (cfg Config) Validate() error {
+	return Validate(cfg)
+}
+
+func (m Mode) valid() bool {
+	switch m {
+	case ModeOff, ModeObserve, ModeAudit, ModeBalanced, ModeStrict:
+		return true
+	default:
+		return false
+	}
+}
+
+func validateThresholds(t Thresholds) error {
+	for name, value := range map[string]int{
+		"audit": t.Audit, "balanced_block": t.BalancedBlock, "hard_block": t.HardBlock,
+	} {
+		if value < 0 || value > 100 {
+			return invalidf("thresholds.%s must be between 0 and 100", name)
+		}
+	}
+	if !(t.Audit < t.BalancedBlock && t.BalancedBlock < t.HardBlock) {
+		return invalidf("thresholds must satisfy audit < balanced_block < hard_block")
+	}
+	return nil
+}
+
+func validateSubjectControl(s SubjectControl) error {
+	if s.WindowMinutes < 1 || s.WindowMinutes > maxSubjectMinutes {
+		return invalidf("subject_control.window_minutes must be between 1 and %d", maxSubjectMinutes)
+	}
+	if s.CooldownMinutes < 1 || s.CooldownMinutes > maxSubjectMinutes {
+		return invalidf("subject_control.cooldown_minutes must be between 1 and %d", maxSubjectMinutes)
+	}
+	if s.CooldownScore < 1 || s.CooldownScore > maxSubjectScore {
+		return invalidf("subject_control.cooldown_score must be between 1 and %d", maxSubjectScore)
+	}
+	if s.ManualBlockScore < 1 || s.ManualBlockScore > maxSubjectScore {
+		return invalidf("subject_control.manual_block_score must be between 1 and %d", maxSubjectScore)
+	}
+	if s.ManualBlockScore <= s.CooldownScore {
+		return invalidf("subject_control.manual_block_score must exceed cooldown_score")
+	}
+	return nil
+}
+
+func validateAudit(a Audit) error {
+	if a.RetentionDays < 1 || a.RetentionDays > maxAuditRetentionDay {
+		return invalidf("audit.retention_days must be between 1 and %d", maxAuditRetentionDay)
+	}
+	if a.MaxDBMB < 1 || a.MaxDBMB > maxAuditDBMB {
+		return invalidf("audit.max_db_mb must be between 1 and %d", maxAuditDBMB)
+	}
+	if err := validateDataDir(a.DataDir); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateDataDir(path string) error {
+	if path == "" {
+		return nil
+	}
+	if len(path) > maxDataDirBytes {
+		return invalidf("audit.data_dir exceeds %d bytes", maxDataDirBytes)
+	}
+	if strings.ContainsRune(path, 0) || strings.ContainsAny(path, "\r\n") {
+		return invalidf("audit.data_dir contains control characters")
+	}
+	if strings.Contains(path, "://") {
+		return invalidf("audit.data_dir must be a filesystem path, not a URL")
+	}
+	for _, segment := range strings.FieldsFunc(path, func(r rune) bool { return r == '/' || r == '\\' }) {
+		if segment == ".." {
+			return invalidf("audit.data_dir must not contain parent traversal")
+		}
+	}
+	return nil
+}
+
+func validateTrustedProxy(p TrustedProxy) error {
+	if p.Enabled {
+		// CPA v7.2.67 does not expose the direct peer address to ModelRouter.
+		// Without that value the plugin cannot prove that a forwarded header was
+		// supplied by one of the configured proxies, so enabling it would make the
+		// subject bucket attacker-controlled.
+		return invalidf("trusted_proxy.enabled is unsupported with CPA v7.2.67 because ModelRouter has no trusted peer address")
+	}
+	if p.Header != "" && !isHTTPToken(p.Header) {
+		return invalidf("trusted_proxy.header must be a valid HTTP field name")
+	}
+
+	for _, raw := range p.CIDRs {
+		if raw == "" || raw != strings.TrimSpace(raw) {
+			return invalidf("trusted_proxy.cidrs contains an empty or whitespace-padded entry")
+		}
+		prefix, err := netip.ParsePrefix(raw)
+		if err != nil {
+			return invalidf("trusted_proxy.cidrs contains invalid CIDR %q", raw)
+		}
+		if prefix != prefix.Masked() || prefix.Bits() == 0 || prefix.Addr().IsUnspecified() || prefix.Addr().IsMulticast() {
+			return invalidf("trusted_proxy CIDR %q is non-canonical or overly broad", raw)
+		}
+		minimumBits := 32
+		if prefix.Addr().Is4() {
+			minimumBits = 8
+		}
+		if prefix.Bits() < minimumBits {
+			return invalidf("trusted_proxy CIDR %q is broader than the minimum allowed prefix", raw)
+		}
+	}
+	return nil
+}
+
+func validateClassifier(c Classifier) error {
+	if c.TimeoutMS < 1 || c.TimeoutMS > maxClassifierTimeout {
+		return invalidf("classifier.timeout_ms must be between 1 and %d", maxClassifierTimeout)
+	}
+	if c.FailMode != ClassifierFailRulesOnly {
+		return invalidf("classifier.fail_mode must be %q", ClassifierFailRulesOnly)
+	}
+	if c.Enabled {
+		return invalidf("classifier.enabled is reserved but unsupported in v0.1.0")
+	}
+	if c.Endpoint == "" {
+		return nil
+	}
+
+	u, err := url.Parse(c.Endpoint)
+	if err != nil || !u.IsAbs() || u.Host == "" || u.Opaque != "" {
+		return invalidf("classifier.endpoint must be an absolute HTTP(S) URL")
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return invalidf("classifier.endpoint scheme must be http or https")
+	}
+	if u.User != nil {
+		return invalidf("classifier.endpoint must not contain user information")
+	}
+	if u.Fragment != "" {
+		return invalidf("classifier.endpoint must not contain a fragment")
+	}
+	// Calling Port forces validation of malformed bracket/port combinations on
+	// supported net/url versions even though the transport is not implemented.
+	_ = u.Port()
+	host := strings.ToLower(strings.TrimSuffix(u.Hostname(), "."))
+	if host == "localhost" {
+		return nil
+	}
+	addr, err := netip.ParseAddr(host)
+	if err != nil || addr.Zone() != "" {
+		return invalidf("classifier.endpoint host must be localhost or a literal loopback/private IP")
+	}
+	addr = addr.Unmap()
+	if !addr.IsLoopback() && !addr.IsPrivate() {
+		return invalidf("classifier.endpoint must not target a public or link-local address")
+	}
+	return nil
+}
+
+// preflightYAML recognizes only security-relevant lexical structure. It is a
+// linear pass that rejects parser-expansion features and pathological nesting
+// before yaml.v3 sees attacker-controlled configuration bytes. Anchors,
+// aliases, and custom tags are unnecessary for this small static schema.
+func preflightYAML(data []byte) error {
+	if !utf8.Valid(data) {
+		return invalidf("YAML must be valid UTF-8")
+	}
+
+	lines := 1
+	lineBytes := 0
+	indent := 0
+	flowDepth := 0
+	atLineStart := true
+	inComment := false
+	var quote byte
+	escaped := false
+
+	for _, b := range data {
+		lineBytes++
+		if lineBytes > maxYAMLLineBytes {
+			return invalidf("YAML line exceeds %d bytes", maxYAMLLineBytes)
+		}
+		if b == '\n' {
+			if quote != 0 {
+				return invalidf("multiline quoted YAML scalars are not allowed")
+			}
+			lines++
+			if lines > maxYAMLLines {
+				return invalidf("YAML exceeds %d lines", maxYAMLLines)
+			}
+			lineBytes = 0
+			indent = 0
+			atLineStart = true
+			inComment = false
+			continue
+		}
+		if b == '\r' {
+			continue
+		}
+		if b == 0 || (b < 0x20 && b != '\t') || b == 0x7f {
+			return invalidf("YAML contains control characters")
+		}
+		if inComment {
+			continue
+		}
+		if atLineStart {
+			switch b {
+			case ' ':
+				indent++
+				if indent > maxYAMLIndent {
+					return invalidf("YAML indentation exceeds %d spaces", maxYAMLIndent)
+				}
+				continue
+			case '\t':
+				return invalidf("tabs are not allowed for YAML indentation")
+			default:
+				atLineStart = false
+			}
+		}
+
+		if quote != 0 {
+			if quote == '"' && escaped {
+				escaped = false
+				continue
+			}
+			if quote == '"' && b == '\\' {
+				escaped = true
+				continue
+			}
+			if b == quote {
+				quote = 0
+			}
+			continue
+		}
+
+		switch b {
+		case '#':
+			inComment = true
+		case '\'', '"':
+			quote = b
+		case '&', '*', '!':
+			return invalidf("YAML anchors, aliases, and tags are not allowed")
+		case '[', '{':
+			flowDepth++
+			if flowDepth > maxYAMLFlowDepth {
+				return invalidf("YAML flow nesting exceeds %d", maxYAMLFlowDepth)
+			}
+		case ']', '}':
+			if flowDepth > 0 {
+				flowDepth--
+			}
+		}
+	}
+	if quote != 0 {
+		return invalidf("unterminated quoted YAML scalar")
+	}
+	return nil
+}
+
+func isHTTPToken(value string) bool {
+	if value == "" {
+		return false
+	}
+	for i := 0; i < len(value); i++ {
+		c := value[i]
+		if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') {
+			continue
+		}
+		switch c {
+		case '!', '#', '$', '%', '&', '\'', '*', '+', '-', '.', '^', '_', '`', '|', '~':
+			continue
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func invalidf(format string, args ...any) error {
+	return fmt.Errorf("%w: %s", ErrInvalidConfig, fmt.Sprintf(format, args...))
+}

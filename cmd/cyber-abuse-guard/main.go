@@ -1,0 +1,229 @@
+package main
+
+/*
+#include <stdint.h>
+#include <stdlib.h>
+
+typedef struct {
+	void* ptr;
+	size_t len;
+} cliproxy_buffer;
+
+typedef int (*cliproxy_host_call_fn)(void*, const char*, const uint8_t*, size_t, cliproxy_buffer*);
+typedef void (*cliproxy_host_free_fn)(void*, size_t);
+
+typedef struct {
+	uint32_t abi_version;
+	void* host_ctx;
+	cliproxy_host_call_fn call;
+	cliproxy_host_free_fn free_buffer;
+} cliproxy_host_api;
+
+typedef int (*cliproxy_plugin_call_fn)(char*, uint8_t*, size_t, cliproxy_buffer*);
+typedef void (*cliproxy_plugin_free_fn)(void*, size_t);
+typedef void (*cliproxy_plugin_shutdown_fn)(void);
+
+typedef struct {
+	uint32_t abi_version;
+	cliproxy_plugin_call_fn call;
+	cliproxy_plugin_free_fn free_buffer;
+	cliproxy_plugin_shutdown_fn shutdown;
+} cliproxy_plugin_api;
+
+extern int cliproxyPluginCall(char*, uint8_t*, size_t, cliproxy_buffer*);
+extern void cliproxyPluginFree(void*, size_t);
+extern void cliproxyPluginShutdown(void);
+
+static size_t cliproxy_bounded_strlen(const char* value, size_t maximum) {
+	if (value == NULL) {
+		return 0;
+	}
+	for (size_t index = 0; index < maximum; index++) {
+		if (value[index] == '\0') {
+			return index;
+		}
+	}
+	return maximum;
+}
+
+static const cliproxy_host_api* stored_host_api;
+
+static void cliproxy_store_host_api(const cliproxy_host_api* host) {
+	stored_host_api = host;
+}
+
+static void cliproxy_clear_host_api(void) {
+	stored_host_api = NULL;
+}
+
+static int cliproxy_call_host(const char* method, const uint8_t* request, size_t request_len, cliproxy_buffer* response) {
+	if (stored_host_api == NULL || stored_host_api->call == NULL) {
+		return 1;
+	}
+	return stored_host_api->call(stored_host_api->host_ctx, method, request, request_len, response);
+}
+
+static void cliproxy_free_host_buffer(void* ptr, size_t len) {
+	if (stored_host_api != NULL && stored_host_api->free_buffer != NULL && ptr != NULL) {
+		stored_host_api->free_buffer(ptr, len);
+	}
+}
+*/
+import "C"
+
+import (
+	"encoding/json"
+	"unsafe"
+
+	guardplugin "cyber-abuse-guard/internal/plugin"
+	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginabi"
+)
+
+const (
+	abiVersion            = pluginabi.ABIVersion
+	maxNativeMethodBytes  = 256
+	maxNativeRequestBytes = 8 << 20
+)
+
+var activePlugin = guardplugin.New()
+
+func main() {}
+
+//export cliproxy_plugin_init
+func cliproxy_plugin_init(host *C.cliproxy_host_api, output *C.cliproxy_plugin_api) C.int {
+	if output == nil {
+		return 1
+	}
+	if host != nil && uint32(host.abi_version) != abiVersion {
+		return 1
+	}
+	C.cliproxy_store_host_api(host)
+	if host == nil {
+		activePlugin.SetLogger(nil)
+	} else {
+		activePlugin.SetLogger(hostLogger)
+	}
+	output.abi_version = C.uint32_t(abiVersion)
+	output.call = C.cliproxy_plugin_call_fn(C.cliproxyPluginCall)
+	output.free_buffer = C.cliproxy_plugin_free_fn(C.cliproxyPluginFree)
+	output.shutdown = C.cliproxy_plugin_shutdown_fn(C.cliproxyPluginShutdown)
+	return 0
+}
+
+//export cliproxyPluginCall
+func cliproxyPluginCall(method *C.char, request *C.uint8_t, requestLen C.size_t, response *C.cliproxy_buffer) (returnCode C.int) {
+	if response != nil {
+		response.ptr = nil
+		response.len = 0
+	}
+	defer func() {
+		if recover() != nil {
+			raw := []byte(`{"ok":false,"error":{"code":"panic_recovered","message":"native plugin callback failed safely"}}`)
+			_ = writeNativeResponse(response, raw)
+			returnCode = 1
+		}
+	}()
+	if response == nil {
+		return 1
+	}
+	if method == nil {
+		raw, _ := handlePluginCall("", nil)
+		if !writeNativeResponse(response, raw) {
+			return 1
+		}
+		return 0
+	}
+	methodLen := int(C.cliproxy_bounded_strlen(method, C.size_t(maxNativeMethodBytes)))
+	if methodLen >= maxNativeMethodBytes {
+		raw := []byte(`{"ok":false,"error":{"code":"invalid_method","message":"method exceeds the size limit"}}`)
+		if !writeNativeResponse(response, raw) {
+			return 1
+		}
+		return 0
+	}
+	if uint64(requestLen) > maxNativeRequestBytes {
+		raw := []byte(`{"ok":false,"error":{"code":"request_too_large","message":"plugin RPC request exceeds the size limit"}}`)
+		if !writeNativeResponse(response, raw) {
+			return 1
+		}
+		return 0
+	}
+	if requestLen > 0 && request == nil {
+		raw := []byte(`{"ok":false,"error":{"code":"invalid_request","message":"request pointer is required"}}`)
+		if !writeNativeResponse(response, raw) {
+			return 1
+		}
+		return 0
+	}
+
+	methodString := C.GoStringN(method, C.int(methodLen))
+	var requestBytes []byte
+	if requestLen > 0 {
+		requestBytes = C.GoBytes(unsafe.Pointer(request), C.int(requestLen))
+	}
+	raw, code := handlePluginCall(methodString, requestBytes)
+	if !writeNativeResponse(response, raw) {
+		return 1
+	}
+	return C.int(code)
+}
+
+//export cliproxyPluginFree
+func cliproxyPluginFree(pointer unsafe.Pointer, length C.size_t) {
+	if pointer != nil {
+		C.free(pointer)
+	}
+	_ = length
+}
+
+//export cliproxyPluginShutdown
+func cliproxyPluginShutdown() {
+	activePlugin.Shutdown()
+	activePlugin.SetLogger(nil)
+	C.cliproxy_clear_host_api()
+}
+
+func handlePluginCall(method string, request []byte) ([]byte, int) {
+	return activePlugin.Call(method, request)
+}
+
+func hostLogger(level, message string, fields map[string]any) {
+	payload, err := json.Marshal(struct {
+		Level   string         `json:"level"`
+		Message string         `json:"message"`
+		Fields  map[string]any `json:"fields,omitempty"`
+	}{Level: level, Message: message, Fields: fields})
+	if err != nil {
+		return
+	}
+	method := C.CString(pluginabi.MethodHostLog)
+	defer C.free(unsafe.Pointer(method))
+	var request *C.uint8_t
+	if len(payload) != 0 {
+		request = (*C.uint8_t)(C.CBytes(payload))
+		if request == nil {
+			return
+		}
+		defer C.free(unsafe.Pointer(request))
+	}
+	var response C.cliproxy_buffer
+	if C.cliproxy_call_host(method, request, C.size_t(len(payload)), &response) == 0 && response.ptr != nil {
+		C.cliproxy_free_host_buffer(response.ptr, response.len)
+	}
+}
+
+func writeNativeResponse(response *C.cliproxy_buffer, raw []byte) bool {
+	if response == nil {
+		return false
+	}
+	if len(raw) == 0 {
+		return true
+	}
+	pointer := C.CBytes(raw)
+	if pointer == nil {
+		return false
+	}
+	response.ptr = pointer
+	response.len = C.size_t(len(raw))
+	return true
+}
