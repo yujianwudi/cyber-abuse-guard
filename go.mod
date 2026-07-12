@@ -1,4 +1,4 @@
-module cyber-abuse-guard
+module github.com/yujianwudi/cyber-abuse-guard
 
 go 1.26.0
 

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"unicode"
 
-	"cyber-abuse-guard/internal/rules"
+	"github.com/yujianwudi/cyber-abuse-guard/internal/rules"
 )
 
 const (
@@ -270,13 +270,12 @@ func (c *Classifier) ClassifyWithPolicy(parts []string, mode Mode, thresholds Th
 	}
 	thresholds = validThresholdsOrDefault(thresholds)
 	signals := make([]bool, c.signalCount)
-	partCapacity := len(parts)
-	if partCapacity > maxClassifierParts {
-		partCapacity = maxClassifierParts
-	}
-	allPartSignals := make([][]bool, 0, partCapacity)
-	partFollowUpEligible := make([]bool, 0, partCapacity)
-	var currentRunes []rune
+	coLocatedCores := make([]bool, len(c.rules))
+	var previousSignals, currentSignals, scratchSignals []bool
+	var previousRunes, currentRunes, scratchRunes []rune
+	var normalizerScratch normalizationScratch
+	var compactScratch []bool
+	partCount := 0
 	remainingBytes := maxClassifierInputBytes
 	truncated := false
 	for partIndex, part := range parts {
@@ -291,41 +290,44 @@ func (c *Classifier) ClassifyWithPolicy(parts []string, mode Mode, thresholds Th
 			truncated = true
 		}
 		remainingBytes -= consumedBytes
-		views := normalizeParts([]string{part})
+		views := normalizePartsInto([]string{part}, scratchRunes, &normalizerScratch)
 		truncated = truncated || views.truncated
 		if len(views.standardRunes) == 0 {
+			scratchRunes = views.standardRunes
 			continue
 		}
-		current := make([]bool, c.signalCount)
-		c.standardMatcher.match(views.standardRunes, current)
-		c.compactMatcher.matchCompact(views.standardRunes, current)
-		allPartSignals = append(allPartSignals, current)
-		partFollowUpEligible = append(partFollowUpEligible, followUpEligible(views.standardRunes))
-		currentRunes = views.standardRunes
-	}
-	var contextSignals []bool
-	partSignals := make([][]bool, 0, len(allPartSignals))
-	for index, current := range allPartSignals {
-		isCurrentPart := index == len(allPartSignals)-1
-		if isCurrentPart {
-			contextSignals = current
+		if scratchSignals == nil {
+			scratchSignals = make([]bool, c.signalCount)
+		} else {
+			clear(scratchSignals)
 		}
-		partSignals = append(partSignals, current)
-		for signalID, matched := range current {
+		if compactScratch == nil && c.compactMatcher != nil {
+			compactScratch = make([]bool, c.compactMatcher.maxPatternLength)
+		}
+		c.standardMatcher.match(views.standardRunes, scratchSignals)
+		c.compactMatcher.matchCompactWithScratch(views.standardRunes, scratchSignals, compactScratch)
+		for signalID, matched := range scratchSignals {
 			if matched {
 				signals[signalID] = true
 			}
 		}
+		for ruleIndex, rule := range c.rules {
+			coLocatedCores[ruleIndex] = coLocatedCores[ruleIndex] || (scratchSignals[rule.intent] && scratchSignals[rule.object])
+		}
+
+		previousSignals, currentSignals, scratchSignals = currentSignals, scratchSignals, previousSignals
+		previousRunes, currentRunes, scratchRunes = currentRunes, views.standardRunes, previousRunes
+		partCount++
 	}
-	if contextSignals == nil {
-		contextSignals = make([]bool, c.signalCount)
+	currentContext := ContextFlags{}
+	if partCount > 0 {
+		currentContext = c.matchContextsWithPolicy(currentSignals, policy.Allow)
 	}
-	currentContext := c.matchContextsWithPolicy(contextSignals, policy.Allow)
 	context := currentContext
 	carriedCTFOrLab := false
 	carriedAuthorized := false
-	if len(partSignals) > 1 {
-		prior := c.matchContextsWithPolicy(partSignals[len(partSignals)-2], policy.Allow)
+	if partCount > 1 {
+		prior := c.matchContextsWithPolicy(previousSignals, policy.Allow)
 		carriedCTFOrLab = prior.CTFOrLab
 		carriedAuthorized = prior.Authorized
 		context.CTFOrLab = context.CTFOrLab || prior.CTFOrLab
@@ -337,7 +339,7 @@ func (c *Classifier) ClassifyWithPolicy(parts []string, mode Mode, thresholds Th
 		Context:        context,
 		Truncated:      truncated,
 	}
-	if len(partSignals) == 0 {
+	if partCount == 0 {
 		result.Action = actionFor(mode, 0, thresholds)
 		return result
 	}
@@ -349,20 +351,29 @@ func (c *Classifier) ClassifyWithPolicy(parts []string, mode Mode, thresholds Th
 		evidence []Evidence
 	}
 	candidates := make([]candidate, 0, 4)
-	for _, rule := range c.rules {
+	previousFollowUpEligible := partCount > 1 && followUpEligible(previousRunes)
+	var currentDirectives analyzedDirectives
+	directivesReady := false
+	for ruleIndex, rule := range c.rules {
 		intent := signals[rule.intent]
 		object := signals[rule.object]
 		if !intent || !object {
 			continue
 		}
-		current := partSignals[len(partSignals)-1]
-		currentCore := current[rule.intent] && current[rule.object] && !c.ruleCoreIsOnlyNegated(currentRunes, rule)
+		current := currentSignals
+		currentCore := current[rule.intent] && current[rule.object]
+		if currentCore {
+			if !directivesReady {
+				currentDirectives = c.analyzeDirectives(currentRunes)
+				directivesReady = true
+			}
+			currentCore = !currentDirectives.ruleCoreIsOnlyNegated(rule)
+		}
 		priorStrongCore := false
 		var priorCoreSignals []bool
-		if len(partSignals) > 1 {
-			index := len(partSignals) - 2
-			prior := partSignals[index]
-			if partFollowUpEligible[index] && prior[rule.intent] && prior[rule.object] && (rule.baseScore >= BalancedThreshold || prior[rule.target] || prior[rule.evasion] || prior[rule.scale]) {
+		if partCount > 1 {
+			prior := previousSignals
+			if previousFollowUpEligible && prior[rule.intent] && prior[rule.object] && (rule.baseScore >= BalancedThreshold || prior[rule.target] || prior[rule.evasion] || prior[rule.scale]) {
 				priorStrongCore = true
 				priorCoreSignals = prior
 			}
@@ -371,13 +382,7 @@ func (c *Classifier) ClassifyWithPolicy(parts []string, mode Mode, thresholds Th
 		if !currentCore && !implementationFollowUp {
 			continue
 		}
-		coreCoLocated := false
-		for _, current := range partSignals {
-			if current[rule.intent] && current[rule.object] {
-				coreCoLocated = true
-				break
-			}
-		}
+		coreCoLocated := coLocatedCores[ruleIndex]
 		evidence := []Evidence{
 			{ID: rule.id + ":intent", Kind: "intent"},
 			{ID: rule.id + ":object", Kind: "object"},
@@ -432,7 +437,14 @@ func (c *Classifier) ClassifyWithPolicy(parts []string, mode Mode, thresholds Th
 			}
 		}
 		authorizationProtected := rule.authorizationProtected && policy.HardBlockEvenIfAuthorized.protects(rule.category)
-		contradictoryDirective := context != (ContextFlags{}) && c.hasRuleContradictoryDirective(currentRunes, rule, policy.Allow)
+		contradictoryDirective := false
+		if context != (ContextFlags{}) {
+			if !directivesReady {
+				currentDirectives = c.analyzeDirectives(currentRunes)
+				directivesReady = true
+			}
+			contradictoryDirective = c.hasRuleContradictoryDirective(currentDirectives, rule, policy.Allow)
+		}
 		if contradictoryDirective {
 			// Scoped authorization and named lab boundaries are affirmative scope
 			// signals, not generic safety labels. Preserve them for categories where
@@ -515,29 +527,71 @@ func categoryPriority(category rules.Category) int {
 	}
 }
 
-func (c *Classifier) ruleCoreIsOnlyNegated(text []rune, rule compiledRule) bool {
-	signals := make([]bool, c.signalCount)
-	foundCore := false
-	foundUnnegatedCore := false
+const maxAnalyzedDirectiveClauses = 64
+
+type analyzedDirectiveClause struct {
+	runes   []rune
+	text    string
+	signals []bool
+}
+
+type analyzedDirectives struct {
+	clauses  []analyzedDirectiveClause
+	overflow bool
+}
+
+// analyzeDirectives scans the current part once and shares the result across
+// all candidate rules. The previous implementation reran both literal
+// automata for every candidate, making adversarial candidate-rich input scale
+// with rules times input size.
+func (c *Classifier) analyzeDirectives(text []rune) analyzedDirectives {
+	analysis := analyzedDirectives{clauses: make([]analyzedDirectiveClause, 0, 4)}
 	walkDirectiveClauses(text, func(clause []rune) bool {
-		clear(signals)
-		c.standardMatcher.match(clause, signals)
-		c.compactMatcher.matchCompact(clause, signals)
-		clauseText := string(clause)
-		if !signals[rule.intent] || !signals[rule.object] {
-			if foundCore && signals[rule.intent] && !clauseNegatesRuleIntent(clauseText, rule.intentStarts) && startsWithRuleIntent(clauseText, rule.intentStarts) {
-				foundUnnegatedCore = true
-				return false
-			}
-			return true
-		}
-		foundCore = true
-		if !clauseNegatesRuleIntent(clauseText, rule.intentStarts) {
-			foundUnnegatedCore = true
+		if len(analysis.clauses) >= maxAnalyzedDirectiveClauses {
+			analysis.overflow = true
 			return false
 		}
+		analysis.clauses = append(analysis.clauses, analyzedDirectiveClause{runes: clause})
 		return true
 	})
+	if len(analysis.clauses) == 0 {
+		return analysis
+	}
+	allSignals := make([]bool, len(analysis.clauses)*c.signalCount)
+	compactScratch := make([]bool, c.compactMatcher.maxPatternLength)
+	for index := range analysis.clauses {
+		clause := &analysis.clauses[index]
+		clause.text = string(clause.runes)
+		clause.signals = allSignals[index*c.signalCount : (index+1)*c.signalCount]
+		c.standardMatcher.match(clause.runes, clause.signals)
+		c.compactMatcher.matchCompactWithScratch(clause.runes, clause.signals, compactScratch)
+	}
+	return analysis
+}
+
+func (analysis analyzedDirectives) ruleCoreIsOnlyNegated(rule compiledRule) bool {
+	// Extreme clause counts are ambiguous and must not turn a matched abuse core
+	// into an allow decision merely because analysis was bounded.
+	if analysis.overflow {
+		return false
+	}
+	foundCore := false
+	foundUnnegatedCore := false
+	for _, clause := range analysis.clauses {
+		signals := clause.signals
+		if !signals[rule.intent] || !signals[rule.object] {
+			if foundCore && signals[rule.intent] && !clauseNegatesRuleIntent(clause.text, rule.intentStarts) && startsWithRuleIntent(clause.text, rule.intentStarts) {
+				foundUnnegatedCore = true
+				break
+			}
+			continue
+		}
+		foundCore = true
+		if !clauseNegatesRuleIntent(clause.text, rule.intentStarts) {
+			foundUnnegatedCore = true
+			break
+		}
+	}
 	return foundCore && !foundUnnegatedCore
 }
 
@@ -582,7 +636,29 @@ func clauseNegatesRuleIntent(clause string, intents []string) bool {
 			return false
 		}
 	}
+	if negationScopeInterrupted(between) {
+		return false
+	}
 	return true
+}
+
+// negationScopeInterrupted recognizes a second coordinated directive between a
+// prohibition and the risky intent. In "do not add comments and deploy
+// ransomware", the prohibition applies to adding comments; carrying it across
+// the conjunction would let an unrelated harmless clause suppress the abuse.
+func negationScopeInterrupted(between string) bool {
+	between = strings.TrimSpace(between)
+	for _, marker := range []string{" and ", " then ", "并且", "然后"} {
+		if index := strings.LastIndex(between, marker); index > 0 {
+			return true
+		}
+	}
+	for _, suffix := range []string{" and", " then", "并", "并且", "然后"} {
+		if strings.HasSuffix(between, suffix) && strings.TrimSpace(strings.TrimSuffix(between, suffix)) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func earliestRuleIntentIndex(text string, intents []string) int {
@@ -606,68 +682,54 @@ func earliestRuleIntentIndex(text string, intents []string) int {
 	return earliest
 }
 
-func (c *Classifier) hasRuleContradictoryDirective(text []rune, rule compiledRule, allow ContextPolicy) bool {
-	signals := make([]bool, c.signalCount)
-	clausesSeen := 0
-	contradictory := false
-	walkDirectiveClauses(text, func(clause []rune) bool {
-		clausesSeen++
-		if clausesSeen > 64 {
-			// A context-bearing request with an extreme clause count is ambiguous;
-			// fail closed without unbounded rescanning or allocation.
-			contradictory = true
-			return false
-		}
-		clear(signals)
-		c.standardMatcher.match(clause, signals)
-		c.compactMatcher.matchCompact(clause, signals)
+func (c *Classifier) hasRuleContradictoryDirective(analysis analyzedDirectives, rule compiledRule, allow ContextPolicy) bool {
+	if analysis.overflow {
+		// A context-bearing request with an extreme clause count is ambiguous;
+		// fail closed without unbounded rescanning or allocation.
+		return true
+	}
+	for _, clause := range analysis.clauses {
+		signals := clause.signals
 		if !signals[rule.intent] || !signals[rule.object] {
-			return true
+			continue
 		}
-		clauseText := string(clause)
+		clauseText := clause.text
 		clauseContext := c.matchContextsWithPolicy(signals, allow)
 		if isSafetyDeliverableClause(clauseText) {
 			if c.safetyMarkerHasPriorRuleCore(clauseText, rule) || safetyDeliverableTurnsOperational(clauseText, rule.intentStarts) {
-				contradictory = true
-				return false
+				return true
 			}
-			return true
+			continue
 		}
 		if containsDetectionArtifact(clauseText) {
 			if !isSafeDetectionArtifactClause(clauseText) || explanatoryFramingTurnsOperational(clauseText, rule.intentStarts) {
-				contradictory = true
-				return false
+				return true
 			}
-			return true
+			continue
 		}
 		if clauseContext.Remediation && isScopedRetentionMaintenance(clauseText) {
-			return true
+			continue
 		}
 		if signals[rule.operational] && hasOperationalDeliverableFraming(clauseText) {
-			contradictory = true
-			return false
+			return true
 		}
 		if startsWithRuleIntent(clauseText, rule.intentStarts) {
 			if !isSafeDetectionArtifactClause(clauseText) {
-				contradictory = true
-				return false
+				return true
 			}
-			return true
+			continue
 		}
 		if hasExplanatoryFraming(clauseText) {
 			if explanatoryFramingTurnsOperational(clauseText, rule.intentStarts) {
-				contradictory = true
-				return false
+				return true
 			}
-			return true
+			continue
 		}
 		if clauseContext == (ContextFlags{}) {
-			contradictory = true
-			return false
+			return true
 		}
-		return true
-	})
-	return contradictory
+	}
+	return false
 }
 
 func hasOperationalDeliverableFraming(clause string) bool {

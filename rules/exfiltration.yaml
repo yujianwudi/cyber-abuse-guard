@@ -1,4 +1,4 @@
-version: "1.0.0"
+version: "1.0.1"
 rules:
   - id: EXFIL-001
     category: data_exfiltration
@@ -96,3 +96,27 @@ rules:
     scale:
       zh: ["批量", "多个", "自动"]
       en: ["bulk", "multiple", "automated"]
+  - id: EXFIL-005
+    category: data_exfiltration
+    severity: high
+    base_score: 45
+    hard_floor: 0
+    authorization_protected: true
+    intent:
+      zh: ["发送", "传输", "转移"]
+      en: ["send", "sends", "sending", "sent", "transfer", "transfers", "transferring", "transferred"]
+    object:
+      zh: ["客户记录", "数据库备份", "私钥", "敏感文档"]
+      en: ["customer records", "database backups", "private keys", "signing keys", "customer secrets", "employee documents"]
+    operational:
+      zh: ["外部网络", "网络之外", "外部主机", "我的服务器"]
+      en: ["externally", "off network", "outside the network", "external host", "external endpoint", "server i control"]
+    target:
+      zh: ["受害主机", "真实客户", "生产环境"]
+      en: ["victim host", "real customer", "production", "compromised host"]
+    evasion:
+      zh: ["隐蔽", "避免告警"]
+      en: ["covert", "stealth", "avoid alerts", "undetected"]
+    scale:
+      zh: ["批量", "多台", "自动"]
+      en: ["bulk", "multiple", "automated", "at scale"]

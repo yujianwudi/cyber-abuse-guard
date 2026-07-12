@@ -25,16 +25,21 @@ trusted with request text.
 | Keyword-only false positive blocks legitimate security work | Multi-evidence rules, explicit defensive/lab/remediation contexts, bilingual benign corpus, balanced threshold. |
 | Caller hides intent with casing, spaces, punctuation, zero-width characters, or light leetspeak | Bounded Unicode normalization and compact matching; no claim of resistance to arbitrary adversarial encoding. |
 | JSON/depth/base64 resource exhaustion | Token walk, depth/part/byte budgets, binary/data-URL skipping, truncation markers, fuzz tests. |
+| Artificial scan boundary inside a JSON escape or UTF-8 sequence becomes a router-error bypass | Boundary decode errors are classified as truncation rather than malformed complete JSON; enforcing modes fail closed, with escape and multibyte regression tests. |
+| Base64-expanded plugin RPC exceeds the native copy cap before extraction | The native boundary recognizes oversized model-route/executor methods without copying the payload; Balanced/Strict self-route to a local scan-limit 403, and the real CPA test proves zero auth selection/upstream usage for a raw request above 6 MiB. |
+| Tool input hides abuse under a metadata-named key or reordered Anthropic block | Transport metadata remains excluded, but all textual fields inside tool payloads, including order-independent `tool_use.input` and `name`/`url`/`type`/`model`, are scanned under the shared budget. |
+| Appended history or forged role labels hide earlier abuse | Standard role segments are each classified independently plus adjacent user follow-ups; role-less shapes use a conservative part fallback, unsupported roles fail closed, and history-cap truncation is never silent. |
 | Regex denial of service | Default rules use normalized literal terms; validation rejects unsupported/oversized rule constructs. |
 | Prompt or secret leakage through audit | Fixed minimal event schema; SHA-256/HMAC correlation; tests search the DB for canary prompt/key values. |
-| Subject hash reversal/correlation | HMAC-SHA256 with environment or mode-0600 secret; no plaintext subjects. |
-| Forged `X-Forwarded-For` | CPA v7.2.67 exposes no trusted peer address to ModelRouter, so v0.1.0 rejects trusted-proxy activation and never accepts the header as identity. |
-| Audit DB lock/corruption takes CPA down | Busy timeout, bounded queue, fail-open audit path, rate-limited diagnostics. |
-| Invalid hot reload weakens policy | Parse/compile/validate full state before atomic swap; last valid state retained. |
+| Subject hash reversal/correlation or secret-file path swap | HMAC-SHA256 with environment or mode-0600 regular-file secret; Linux uses `O_NOFOLLOW` and validates/reads the same descriptor; no plaintext subjects. |
+| Forged `X-Forwarded-For` | CPA v7.2.67 exposes no trusted peer address to ModelRouter, so v0.1.1 rejects trusted-proxy activation and never accepts the header as identity. |
+| High-cardinality subject IDs exhaust memory or displace manual blocks | `max_subjects` defaults to 10,000; least-recent-risk non-manual entries are evicted, manual blocks are protected, and new risky subjects fail closed if no entry is evictable. |
+| Audit DB lock/corruption takes CPA down or path swap changes another file | Busy timeout, bounded queue, fail-open audit path, deadline-bounded close, rate-limited diagnostics, rejection of writable/final-symlink directories and DB/WAL/SHM symlinks, and visible runtime permission degradation. |
+| Invalid hot reload weakens policy or erases enforcement history | Parse/compile/validate full state before atomic swap; last valid state is retained; compatible enabled-to-enabled changes preserve subject risk, cooldown, and manual blocks; unsafe capacity shrink is rejected. |
 | Plugin panic crashes CPA | ABI entrypoint recovers; CPA Plugin Host also fuses panicking plugins. |
-| Router error silently weakens enforcement | Status and logs expose the error; CPA v7.2.67 itself fails open on router errors/panics, so monitoring is required and this residual host limitation is documented. |
+| Router error silently weakens enforcement | The known scan-boundary and oversized-RPC paths return successful self-routes instead of errors. Other router errors are exposed through status/logs; CPA v7.2.67 itself fails open on errors/panics, so monitoring remains required. |
 | Management test/unblock exposed to normal API keys | Routes registered exclusively through CPA Management API; no public resource routes. |
-| SSRF or prompt exfiltration via classifier | v0.1.0 has no network classifier implementation and makes no outbound calls. |
+| SSRF or prompt exfiltration via classifier | v0.1.1 has no network classifier implementation and makes no outbound calls. |
 | Identity spoofing to evade upstream policy | Plugin never changes model, system prompt, client name, headers that claim identity, or upstream safety declarations. |
 
 ## Abuse cases intentionally still blocked

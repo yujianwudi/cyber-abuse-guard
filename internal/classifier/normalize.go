@@ -21,7 +21,19 @@ type normalizedViews struct {
 	truncated     bool
 }
 
+type normalizationScratch struct {
+	iterator norm.Iter
+}
+
 func normalizeParts(parts []string) normalizedViews {
+	var scratch normalizationScratch
+	return normalizePartsInto(parts, nil, &scratch)
+}
+
+// normalizePartsInto is normalizeParts with caller-owned rune storage. The
+// classifier rotates a small number of buffers while processing multipart
+// requests, avoiding one proportional allocation per part.
+func normalizePartsInto(parts []string, destination []rune, scratch *normalizationScratch) normalizedViews {
 	estimated := 0
 	for _, part := range parts {
 		if len(part) >= maxClassifierNormalizedRunes-estimated {
@@ -30,7 +42,12 @@ func normalizeParts(parts []string) normalizedViews {
 		}
 		estimated += len(part)
 	}
-	runes := make([]rune, 0, estimated)
+	var runes []rune
+	if cap(destination) >= estimated {
+		runes = destination[:0]
+	} else {
+		runes = make([]rune, 0, estimated)
+	}
 	remainingBytes := maxClassifierInputBytes
 	truncated := false
 	for partIndex, part := range parts {
@@ -51,10 +68,9 @@ func normalizeParts(parts []string) normalizedViews {
 		}
 		remainingBytes -= consumedBytes
 
-		var iterator norm.Iter
-		iterator.InitString(norm.NFKC, part)
-		for !iterator.Done() && len(runes) < maxClassifierNormalizedRunes {
-			segment := iterator.Next()
+		scratch.iterator.InitString(norm.NFKC, part)
+		for !scratch.iterator.Done() && len(runes) < maxClassifierNormalizedRunes {
+			segment := scratch.iterator.Next()
 			for len(segment) > 0 && len(runes) < maxClassifierNormalizedRunes {
 				r, size := utf8.DecodeRune(segment)
 				segment = segment[size:]
@@ -68,7 +84,7 @@ func normalizeParts(parts []string) normalizedViews {
 				runes = append(runes, r)
 			}
 		}
-		if !iterator.Done() {
+		if !scratch.iterator.Done() {
 			truncated = true
 			break
 		}

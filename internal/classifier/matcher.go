@@ -6,7 +6,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"cyber-abuse-guard/internal/rules"
+	"github.com/yujianwudi/cyber-abuse-guard/internal/rules"
 )
 
 type patternSpec struct {
@@ -196,10 +196,20 @@ func (m *literalMatcher) match(text []rune, signals []bool) {
 }
 
 func (m *literalMatcher) matchCompact(text []rune, signals []bool) {
+	m.matchCompactWithScratch(text, signals, nil)
+}
+
+// matchCompactWithScratch permits hot callers to reuse the word-boundary
+// ring. A nil or undersized ring retains the allocation-safe public behavior.
+func (m *literalMatcher) matchCompactWithScratch(text []rune, signals []bool, beforeRing []bool) {
 	if m == nil || len(text) == 0 || m.maxPatternLength == 0 {
 		return
 	}
-	beforeRing := make([]bool, m.maxPatternLength)
+	if len(beforeRing) < m.maxPatternLength {
+		beforeRing = make([]bool, m.maxPatternLength)
+	} else {
+		beforeRing = beforeRing[:m.maxPatternLength]
+	}
 	state := 0
 	compactIndex := 0
 	for index, r := range text {

@@ -12,10 +12,10 @@ import (
 	"strings"
 	"time"
 
-	"cyber-abuse-guard/internal/audit"
-	"cyber-abuse-guard/internal/classifier"
-	"cyber-abuse-guard/internal/config"
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
+	"github.com/yujianwudi/cyber-abuse-guard/internal/audit"
+	"github.com/yujianwudi/cyber-abuse-guard/internal/classifier"
+	"github.com/yujianwudi/cyber-abuse-guard/internal/config"
 )
 
 const (
@@ -104,6 +104,7 @@ func (p *Plugin) managementStatus(state *runtimeState) []byte {
 	if p.identifier != nil {
 		identifierStatus = p.identifier.Status()
 	}
+	subjectStatus := state.subject.Stats()
 	body := map[string]any{
 		"id":                 ID,
 		"name":               metadata.Name,
@@ -114,11 +115,13 @@ func (p *Plugin) managementStatus(state *runtimeState) []byte {
 		"priority":           state.config.Priority,
 		"ruleset_version":    state.rulesVersion,
 		"started_at":         state.startedAt,
+		"configured_at":      state.configuredAt,
 		"last_config_error":  p.lastConfigErrorMessage(),
 		"counters":           p.counters.snapshot(),
 		"audit":              auditStatus,
 		"subject_identifier": identifierStatus,
-		"subjects":           state.subject.Count(),
+		"subjects":           subjectStatus.Subjects,
+		"subject_control":    subjectStatus,
 		"classifier": map[string]any{
 			"kind":    "deterministic_local_rules",
 			"enabled": state.config.Enabled,

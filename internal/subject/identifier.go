@@ -188,12 +188,18 @@ func bearerToken(values []string) string {
 }
 
 func readSecretFile(path string) ([]byte, error) {
-	info, err := os.Lstat(path)
+	file, err := openSecretFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("subject: inspect HMAC secret file: %w", err)
+		return nil, err
 	}
-	if info.Mode()&os.ModeSymlink != 0 {
-		return nil, errors.New("subject: HMAC secret file must not be a symbolic link")
+	defer file.Close()
+
+	// Stat and read through the already-open descriptor. In particular, do not
+	// re-open path after validation: an attacker able to rename entries in the
+	// parent directory must not be able to swap in a different file.
+	info, err := file.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("subject: inspect opened HMAC secret file: %w", err)
 	}
 	if !info.Mode().IsRegular() {
 		return nil, errors.New("subject: HMAC secret file must be a regular file")
@@ -204,9 +210,14 @@ func readSecretFile(path string) ([]byte, error) {
 	if info.Size() > maximumSecretBytes {
 		return nil, fmt.Errorf("subject: HMAC secret file exceeds %d bytes", maximumSecretBytes)
 	}
-	data, err := os.ReadFile(path)
+	// The fstat size is an early rejection, not the read bound: a writable file
+	// can grow after fstat, so read at most one byte beyond the configured limit.
+	data, err := io.ReadAll(io.LimitReader(file, maximumSecretBytes+1))
 	if err != nil {
 		return nil, fmt.Errorf("subject: read HMAC secret file: %w", err)
+	}
+	if len(data) > maximumSecretBytes {
+		return nil, fmt.Errorf("subject: HMAC secret file exceeds %d bytes", maximumSecretBytes)
 	}
 	data = bytes.TrimRight(data, "\r\n")
 	if err := validateKey(data); err != nil {

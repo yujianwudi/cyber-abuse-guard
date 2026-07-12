@@ -28,6 +28,7 @@ const (
 	maxPriority          = 100000
 	maxSubjectMinutes    = 30 * 24 * 60
 	maxSubjectScore      = 1000000
+	maxSubjectEntries    = 1000000
 	maxAuditRetentionDay = 3650
 	maxAuditDBMB         = 10240
 	maxClassifierTimeout = 10000
@@ -97,6 +98,7 @@ type HardBlockEvenIfAuthorized struct {
 
 type SubjectControl struct {
 	Enabled          bool `yaml:"enabled"`
+	MaxSubjects      int  `yaml:"max_subjects"`
 	WindowMinutes    int  `yaml:"window_minutes"`
 	CooldownScore    int  `yaml:"cooldown_score"`
 	ManualBlockScore int  `yaml:"manual_block_score"`
@@ -161,6 +163,7 @@ func Default() Config {
 		},
 		SubjectControl: SubjectControl{
 			Enabled:          true,
+			MaxSubjects:      10000,
 			WindowMinutes:    60,
 			CooldownScore:    150,
 			ManualBlockScore: 250,
@@ -291,6 +294,9 @@ func validateThresholds(t Thresholds) error {
 }
 
 func validateSubjectControl(s SubjectControl) error {
+	if s.MaxSubjects < 1 || s.MaxSubjects > maxSubjectEntries {
+		return invalidf("subject_control.max_subjects must be between 1 and %d", maxSubjectEntries)
+	}
 	if s.WindowMinutes < 1 || s.WindowMinutes > maxSubjectMinutes {
 		return invalidf("subject_control.window_minutes must be between 1 and %d", maxSubjectMinutes)
 	}
@@ -385,7 +391,7 @@ func validateClassifier(c Classifier) error {
 		return invalidf("classifier.fail_mode must be %q", ClassifierFailRulesOnly)
 	}
 	if c.Enabled {
-		return invalidf("classifier.enabled is reserved but unsupported in v0.1.0")
+		return invalidf("classifier.enabled is reserved but unsupported in v0.1.1")
 	}
 	if c.Endpoint == "" {
 		return nil

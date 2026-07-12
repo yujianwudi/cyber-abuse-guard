@@ -1,7 +1,7 @@
 SHELL := /bin/bash
 
 GO ?= go
-VERSION ?= 0.1.0
+VERSION ?= 0.1.1
 PLUGIN_ID := cyber-abuse-guard
 DIST_DIR := $(CURDIR)/dist
 SO := $(DIST_DIR)/$(PLUGIN_ID)-v$(VERSION).so
@@ -34,7 +34,7 @@ build-linux-amd64:
 integration-test: build-linux-amd64
 	CYBER_ABUSE_GUARD_PLUGIN=$(SO) CGO_ENABLED=1 $(GO) test -tags=integration,sqlite_omit_load_extension -v -count=1 ./integration
 
-release: test vet race build-linux-amd64
+release: test vet race integration-test
 	VERSION=$(VERSION) ./scripts/package-release.sh
 
 verify-release:

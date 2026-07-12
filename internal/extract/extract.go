@@ -48,6 +48,8 @@ type Limits struct {
 // can audit failures without retaining prompts.
 type Result struct {
 	Parts        []string
+	Segments     []Segment
+	RoleAware    bool
 	BytesScanned int
 	Truncated    bool
 	ParseError   string
@@ -78,6 +80,17 @@ func ExtractText(body []byte, limits Limits) (Result, error) {
 		wrapped := fmt.Errorf("%w: %v", ErrInvalidJSON, err)
 		result.ParseError = wrapped.Error()
 		return result, wrapped
+	}
+	// Role indexing is attempted only for a complete JSON body. When the scan
+	// boundary cuts the request, enforcing modes already fail closed on the
+	// legacy truncation marker and partial role attribution would be misleading.
+	if scanBytes == len(body) {
+		segments, roleAware, roleTruncated := extractRoleSegments(body, limits)
+		result.Truncated = result.Truncated || roleTruncated
+		if roleAware {
+			result.Segments = segments
+			result.RoleAware = true
+		}
 	}
 	return result, nil
 }
@@ -110,6 +123,7 @@ const (
 	contextNone contextKind = iota
 	contextText
 	contextTool
+	contextToolPayload
 )
 
 type jsonFrame struct {
@@ -145,7 +159,7 @@ func (x *extractor) walkJSON(data []byte, initial contextKind, baseDepth int, bo
 				switch {
 				case rootDone:
 					return nil
-				case boundaryTruncated && rootSeen:
+				case boundaryTruncated:
 					return nil
 				case !rootSeen:
 					return errors.New("empty JSON input")
@@ -153,7 +167,13 @@ func (x *extractor) walkJSON(data []byte, initial contextKind, baseDepth int, bo
 					return io.ErrUnexpectedEOF
 				}
 			}
-			if boundaryTruncated && parseErrorAtBoundary(err) {
+			// The decoder validates a synthetic prefix when MaxScanBytes cuts a
+			// larger request. EOF inside an escape or UTF-8 sequence can surface as
+			// a syntax error other than unexpected EOF even though the complete
+			// request is valid. Preserve the already-set truncation marker and let
+			// enforcing modes fail closed instead of misclassifying that artificial
+			// boundary as a parse error (which CPA routers handle fail-open).
+			if boundaryTruncated {
 				return nil
 			}
 			return err
@@ -254,12 +274,18 @@ func (x *extractor) valueContext(stack []jsonFrame, initial contextKind) (contex
 
 func childContext(parent contextKind, key string) contextKind {
 	canonical := canonicalKey(key)
-	if isToolKeyCanonical(canonical) {
+	if parent == contextToolPayload {
+		return contextToolPayload
+	}
+	if isToolArgumentCanonical(canonical) || (canonical == "input" && (parent == contextTool || parent == contextText)) {
+		return contextToolPayload
+	}
+	if isToolWrapperKeyCanonical(canonical) {
 		return contextTool
 	}
 	if canonical == "data" {
-		if parent == contextTool {
-			return contextTool
+		if parent == contextTool || parent == contextToolPayload {
+			return contextToolPayload
 		}
 		return contextText
 	}
@@ -312,7 +338,7 @@ func (x *extractor) processString(text, key string, ctx contextKind, media bool,
 			if json.Valid([]byte(trimmed)) {
 				// json.Valid above makes this transactional: malformed nested
 				// arguments cannot leak partial parts before falling back to text.
-				_ = x.walkJSON([]byte(trimmed), contextTool, semanticDepth, false)
+				_ = x.walkJSON([]byte(trimmed), contextToolPayload, semanticDepth, false)
 				return
 			}
 		}
@@ -320,7 +346,7 @@ func (x *extractor) processString(text, key string, ctx contextKind, media bool,
 		return
 	}
 
-	if ctx == contextNone || isMetadataKeyCanonical(canonical) {
+	if ctx == contextNone || (ctx != contextToolPayload && isMetadataKeyCanonical(canonical)) {
 		return
 	}
 	x.addText(text, key)
@@ -395,9 +421,9 @@ func isTextContainerCanonical(key string) bool {
 	}
 }
 
-func isToolKeyCanonical(key string) bool {
+func isToolWrapperKeyCanonical(key string) bool {
 	switch key {
-	case "toolcalls", "toolcall", "tooluse", "function", "functioncall", "arguments", "args", "parameters":
+	case "toolcalls", "toolcall", "tooluse", "function", "functioncall":
 		return true
 	default:
 		return false
@@ -551,14 +577,6 @@ func looksLikeBase64(value string) bool {
 	}
 	_, err := io.Copy(io.Discard, base64.NewDecoder(encoding, strings.NewReader(encoded)))
 	return err == nil
-}
-
-func parseErrorAtBoundary(err error) bool {
-	message := strings.ToLower(err.Error())
-	if errors.Is(err, io.ErrUnexpectedEOF) || strings.Contains(message, "unexpected eof") || strings.Contains(message, "unexpected end of json") {
-		return true
-	}
-	return false
 }
 
 func minInt(a, b int) int {

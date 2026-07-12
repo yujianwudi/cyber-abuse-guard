@@ -1,5 +1,10 @@
 * text=auto
 
+.gitattributes text eol=lf
+.gitignore text eol=lf
+.dockerignore text eol=lf
+go.mod text eol=lf
+go.sum text eol=lf
 *.sh text eol=lf
 Makefile text eol=lf
 Dockerfile* text eol=lf

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-version="${VERSION:-0.1.0}"
+version="${VERSION:-0.1.1}"
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 dist="$root/dist"
 so="cyber-abuse-guard-v${version}.so"

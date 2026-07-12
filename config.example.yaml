@@ -32,6 +32,7 @@ plugins:
 
       subject_control:
         enabled: true
+        max_subjects: 10000
         window_minutes: 60
         cooldown_score: 150
         manual_block_score: 250
@@ -52,12 +53,12 @@ plugins:
 
       trusted_proxy:
         # CPA v7.2.67 ModelRouter lacks a trustworthy direct-peer address;
-        # v0.1.0 therefore rejects enabled: true instead of trusting spoofable headers.
+        # v0.1.1 therefore rejects enabled: true instead of trusting spoofable headers.
         enabled: false
         header: X-Forwarded-For
         cidrs: []
 
-      # Reserved for a future local-only classifier; v0.1.0 rejects enabled: true.
+      # Reserved for a future local-only classifier; v0.1.1 rejects enabled: true.
       classifier:
         enabled: false
         endpoint: ""

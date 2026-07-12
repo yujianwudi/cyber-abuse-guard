@@ -4,18 +4,24 @@
 
 - CPA must be `v7.2.67` and built with `CGO_ENABLED=1`. Assets labeled
   `_no-plugin` cannot load native plugins.
-- The container architecture must be Linux amd64.
+- The container architecture must be Linux amd64 with glibc 2.34 or newer. The
+  published binary is compatible with the official Debian Bookworm CPA image;
+  musl/Alpine containers are not supported.
 - The deployment host needs `curl`, `unzip`, `sha256sum`, and `openssl`.
 - Back up the active CPA configuration before changing it.
+
+The release verifier rejects an artifact that imports a glibc symbol version
+newer than `GLIBC_2.34`, and `make release` runs the pinned real-CPA integration
+suite before creating an archive.
 
 ## Install
 
 ```bash
 set -eu
-VERSION=0.1.0
+VERSION=0.1.1
 ARCHIVE="cyber-abuse-guard_${VERSION}_linux_amd64.zip"
 # Override this for a fork or an internal release mirror.
-RELEASE_BASE="${CYBER_ABUSE_GUARD_RELEASE_BASE:-https://github.com/cyber-abuse-guard/cyber-abuse-guard/releases/download/v${VERSION}}"
+RELEASE_BASE="${CYBER_ABUSE_GUARD_RELEASE_BASE:-https://github.com/yujianwudi/cyber-abuse-guard/releases/download/v${VERSION}}"
 
 curl -fLO "${RELEASE_BASE}/${ARCHIVE}"
 curl -fLO "${RELEASE_BASE}/checksums.txt"
@@ -34,6 +40,13 @@ install -m 0755 "$release_dir/plugins/linux/amd64/cyber-abuse-guard-v${VERSION}.
 chmod 0700 plugin-data/cyber-abuse-guard
 ```
 
+Use a dedicated audit data directory. The plugin creates missing directories
+with mode 0700 but deliberately does not change permissions on an existing
+operator-owned directory. An existing directory must not be group/world
+writable; the final directory and DB/WAL/SHM paths must not be symlinks. Keep
+the entire ancestor chain outside attacker-controlled or same-user-mutated
+locations.
+
 The default URL matches the plugin metadata. If the artifact is delivered from
 an internal mirror, set `CYBER_ABUSE_GUARD_RELEASE_BASE` to the directory URL
 that contains the ZIP and `checksums.txt`; do not disable checksum validation.
@@ -50,7 +63,9 @@ export CYBER_ABUSE_GUARD_SECRET_FILE="$secret_dir/hmac"
 ```
 
 Reference it from the Compose environment or secret manager. Do not place the
-secret in this repository, Docker build context, or a release ZIP.
+secret in this repository, Docker build context, or a release ZIP. The target
+must be a regular mode-0600 file, not a symlink. On Linux the plugin opens it
+with `O_NOFOLLOW`, then validates and reads through the same file descriptor.
 
 Mount:
 
@@ -67,7 +82,22 @@ services:
       CYBER_ABUSE_GUARD_HMAC_KEY_FILE: /run/secrets/cyber_abuse_guard_hmac
 ```
 
-Merge `config.example.yaml` into the real `plugins` section, then:
+Merge `config.example.yaml` into the real `plugins` section. For the first
+deployment, explicitly keep audit-first mode and the bounded subject default:
+
+```yaml
+plugins:
+  configs:
+    cyber-abuse-guard:
+      mode: audit
+      subject_control:
+        enabled: true
+        max_subjects: 10000
+      audit:
+        enabled: true
+```
+
+Then restart and inspect status:
 
 ```bash
 docker compose restart cli-proxy-api
@@ -76,8 +106,15 @@ curl -fsS -H "Authorization: Bearer $CPA_MANAGEMENT_KEY" \
   http://127.0.0.1:8317/v0/management/plugins/cyber-abuse-guard/status
 ```
 
-First deploy with `mode: audit`, run the local management test route, review
-events without prompt text, then switch to `balanced`.
+Confirm that status reports the expected `configured_at` and
+`subject_control.max_subjects`. On later compatible hot reloads, `started_at`
+must remain unchanged while `configured_at` advances; the `subject_control`
+snapshot also reports current entries, manual blocks, evictions, and capacity
+rejections.
+
+Keep `mode: audit` while running the local management test route and reviewing
+events without prompt text. Switch to `balanced` only after the observed
+decisions match the deployment's expected traffic.
 
 ## Functional verification
 
@@ -93,7 +130,7 @@ set -eu
 : "${NEXT_VERSION:?export NEXT_VERSION, for example 0.2.0}"
 : "${CPA_MANAGEMENT_KEY:?export CPA_MANAGEMENT_KEY}"
 NEXT_ARCHIVE="cyber-abuse-guard_${NEXT_VERSION}_linux_amd64.zip"
-NEXT_RELEASE_BASE="${CYBER_ABUSE_GUARD_RELEASE_BASE:-https://github.com/cyber-abuse-guard/cyber-abuse-guard/releases/download/v${NEXT_VERSION}}"
+NEXT_RELEASE_BASE="${CYBER_ABUSE_GUARD_RELEASE_BASE:-https://github.com/yujianwudi/cyber-abuse-guard/releases/download/v${NEXT_VERSION}}"
 upgrade_dir="$(mktemp -d)"
 trap 'rm -rf "$upgrade_dir"' EXIT
 
@@ -128,7 +165,7 @@ version and the backup path created during install/upgrade:
 
 ```bash
 set -eu
-: "${CURRENT_VERSION:?export CURRENT_VERSION, for example 0.1.0}"
+: "${CURRENT_VERSION:?export CURRENT_VERSION, for example 0.1.1}"
 : "${CONFIG_BACKUP:?export CONFIG_BACKUP with the config backup path}"
 : "${CPA_MANAGEMENT_KEY:?export CPA_MANAGEMENT_KEY}"
 CPA_BASE_URL="${CPA_BASE_URL:-http://127.0.0.1:8317}"

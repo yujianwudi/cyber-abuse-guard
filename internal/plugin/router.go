@@ -8,12 +8,12 @@ import (
 	"strings"
 	"time"
 
-	"cyber-abuse-guard/internal/audit"
-	"cyber-abuse-guard/internal/classifier"
-	"cyber-abuse-guard/internal/config"
-	"cyber-abuse-guard/internal/extract"
-	guardrules "cyber-abuse-guard/internal/rules"
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
+	"github.com/yujianwudi/cyber-abuse-guard/internal/audit"
+	"github.com/yujianwudi/cyber-abuse-guard/internal/classifier"
+	"github.com/yujianwudi/cyber-abuse-guard/internal/config"
+	"github.com/yujianwudi/cyber-abuse-guard/internal/extract"
+	guardrules "github.com/yujianwudi/cyber-abuse-guard/internal/rules"
 )
 
 func (p *Plugin) route(raw []byte) []byte {
@@ -48,11 +48,19 @@ func (p *Plugin) route(raw []byte) []byte {
 		return okEnvelope(pluginapi.ModelRouteResponse{Handled: false})
 	}
 
-	result := state.classifier.ClassifyWithPolicy(extracted.Parts, classifierMode(state.config.Mode), classifier.Thresholds{
+	mode := classifierMode(state.config.Mode)
+	thresholds := classifier.Thresholds{
 		Audit:         state.config.Thresholds.Audit,
 		BalancedBlock: state.config.Thresholds.BalancedBlock,
 		HardBlock:     state.config.Thresholds.HardBlock,
-	}, classifierPolicy(state.config))
+	}
+	policy := classifierPolicy(state.config)
+	var result classifier.Result
+	if extracted.RoleAware {
+		result = state.classifier.ClassifySegmentsWithPolicy(extracted.Segments, mode, thresholds, policy)
+	} else {
+		result = state.classifier.ClassifyUntrustedPartsWithPolicy(extracted.Parts, mode, thresholds, policy)
+	}
 	result.Truncated = result.Truncated || extracted.Truncated
 	if result.Truncated {
 		p.counters.truncated.Add(1)

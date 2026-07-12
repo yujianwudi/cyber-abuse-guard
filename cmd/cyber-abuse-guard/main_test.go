@@ -5,8 +5,9 @@ import (
 	"net/http"
 	"testing"
 
-	guardplugin "cyber-abuse-guard/internal/plugin"
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginabi"
+	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
+	guardplugin "github.com/yujianwudi/cyber-abuse-guard/internal/plugin"
 )
 
 func TestABIEnvelopeRegistrationAndFailClosedExecutor(t *testing.T) {
@@ -36,6 +37,20 @@ func TestABIEnvelopeRegistrationAndFailClosedExecutor(t *testing.T) {
 	}
 	if err := json.Unmarshal(raw, &registerEnvelope); err != nil || !registerEnvelope.OK || registerEnvelope.Result.SchemaVersion != 1 {
 		t.Fatalf("invalid registration envelope %s: %v", raw, err)
+	}
+
+	// This is the method-specific path used by the native C boundary before it
+	// attempts C.GoBytes on an RPC larger than maxNativeRequestBytes.
+	raw, code = handleOversizedPluginCall(pluginabi.MethodModelRoute)
+	if code != 0 {
+		t.Fatalf("oversized model.route code=%d envelope=%s", code, raw)
+	}
+	var oversizedEnvelope struct {
+		OK     bool                         `json:"ok"`
+		Result pluginapi.ModelRouteResponse `json:"result"`
+	}
+	if err := json.Unmarshal(raw, &oversizedEnvelope); err != nil || !oversizedEnvelope.OK || !oversizedEnvelope.Result.Handled || oversizedEnvelope.Result.Reason != "cyber_abuse_guard_scan_limit" {
+		t.Fatalf("oversized native route envelope=%s err=%v", raw, err)
 	}
 
 	raw, code = handlePluginCall(pluginabi.MethodExecutorExecuteStream, []byte(`{"OriginalRequest":"e30="}`))

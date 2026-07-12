@@ -75,8 +75,8 @@ import (
 	"encoding/json"
 	"unsafe"
 
-	guardplugin "cyber-abuse-guard/internal/plugin"
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginabi"
+	guardplugin "github.com/yujianwudi/cyber-abuse-guard/internal/plugin"
 )
 
 const (
@@ -141,12 +141,16 @@ func cliproxyPluginCall(method *C.char, request *C.uint8_t, requestLen C.size_t,
 		}
 		return 0
 	}
+	methodString := C.GoStringN(method, C.int(methodLen))
 	if uint64(requestLen) > maxNativeRequestBytes {
-		raw := []byte(`{"ok":false,"error":{"code":"request_too_large","message":"plugin RPC request exceeds the size limit"}}`)
+		// Do not C.GoBytes an unbounded request. Model-route oversize handling is
+		// mode-aware because returning an RPC error would make CPA continue to the
+		// provider path; enforcing modes instead self-route to a local refusal.
+		raw, code := handleOversizedPluginCall(methodString)
 		if !writeNativeResponse(response, raw) {
 			return 1
 		}
-		return 0
+		return C.int(code)
 	}
 	if requestLen > 0 && request == nil {
 		raw := []byte(`{"ok":false,"error":{"code":"invalid_request","message":"request pointer is required"}}`)
@@ -156,7 +160,6 @@ func cliproxyPluginCall(method *C.char, request *C.uint8_t, requestLen C.size_t,
 		return 0
 	}
 
-	methodString := C.GoStringN(method, C.int(methodLen))
 	var requestBytes []byte
 	if requestLen > 0 {
 		requestBytes = C.GoBytes(unsafe.Pointer(request), C.int(requestLen))
@@ -185,6 +188,10 @@ func cliproxyPluginShutdown() {
 
 func handlePluginCall(method string, request []byte) ([]byte, int) {
 	return activePlugin.Call(method, request)
+}
+
+func handleOversizedPluginCall(method string) ([]byte, int) {
+	return activePlugin.CallOversized(method)
 }
 
 func hostLogger(level, message string, fields map[string]any) {

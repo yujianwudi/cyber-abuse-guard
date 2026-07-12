@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-version="${VERSION:-0.1.0}"
+version="${VERSION:-0.1.1}"
 go_bin="${GO:-go}"
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 dist="$root/dist"
@@ -14,8 +14,8 @@ for required in "$go_bin" file sha256sum; do
   fi
 done
 
-if [[ "$version" != "0.1.0" ]]; then
-  echo "VERSION=$version does not match the compiled plugin metadata (0.1.0). Update the source version before building a new release." >&2
+if [[ "$version" != "0.1.1" ]]; then
+  echo "VERSION=$version does not match the compiled plugin metadata (0.1.1). Update the source version before building a new release." >&2
   exit 1
 fi
 

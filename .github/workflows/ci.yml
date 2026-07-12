@@ -7,12 +7,17 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   linux-amd64:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version: '1.26.0'
           cache: true
@@ -20,22 +25,23 @@ jobs:
       - run: make test vet race fuzz-smoke benchmark
       - run: make integration-test
       - run: make release verify-release
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: cyber-abuse-guard-linux-amd64
           path: |
-            dist/cyber-abuse-guard-v0.1.0.so
-            dist/cyber-abuse-guard-v0.1.0.so.sha256
-            dist/cyber-abuse-guard_0.1.0_linux_amd64.zip
+            dist/cyber-abuse-guard-v0.1.1.so
+            dist/cyber-abuse-guard-v0.1.1.so.sha256
+            dist/cyber-abuse-guard_0.1.1_linux_amd64.zip
             dist/checksums.txt
           if-no-files-found: error
 
   fuzz-long:
     if: github.event_name == 'push'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version: '1.26.0'
       - run: |

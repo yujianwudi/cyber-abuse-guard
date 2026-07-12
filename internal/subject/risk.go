@@ -1,6 +1,7 @@
 package subject
 
 import (
+	"container/list"
 	"errors"
 	"fmt"
 	"math"
@@ -19,6 +20,7 @@ const (
 	ReasonManualBlock Reason = "manual_block"
 	ReasonDisabled    Reason = "disabled"
 	ReasonInvalidHash Reason = "invalid_subject_hash"
+	ReasonCapacity    Reason = "subject_capacity"
 )
 
 // Config controls rolling in-memory subject risk.
@@ -31,7 +33,19 @@ type Config struct {
 	Cooldown         time.Duration
 	RepeatMultiplier float64
 	MaxMultiplier    float64
+	MaxSubjects      int
 	Now              func() time.Time
+}
+
+// Stats is a constant-time, management-safe capacity snapshot. Counters are
+// cumulative for the life of the Controller, including across Reconfigure.
+type Stats struct {
+	Enabled          bool   `json:"enabled"`
+	Subjects         int    `json:"subjects"`
+	MaxSubjects      int    `json:"max_subjects"`
+	ManualBlocked    int    `json:"manual_blocked"`
+	Evicted          uint64 `json:"evicted"`
+	RejectedCapacity uint64 `json:"rejected_capacity"`
 }
 
 // Decision describes the result for the current request. A Blocked result is
@@ -66,33 +80,74 @@ type entry struct {
 	hits          []hit
 	cooldownUntil time.Time
 	manualBlocked bool
+	element       *list.Element
 }
 
 // Controller owns concurrent in-memory risk state.
 type Controller struct {
-	mu          sync.Mutex
-	cfg         Config
-	entries     map[string]*entry
-	evaluations uint64
+	mu               sync.Mutex
+	cfg              Config
+	entries          map[string]*entry
+	evictable        list.List
+	manualSubjects   int
+	evicted          uint64
+	rejectedCapacity uint64
 }
 
 const (
 	maxHitsPerSubject = 1024
-	sweepEvery        = 256
+	maintenanceBatch  = 16
+	// DefaultMaxSubjects bounds pre-authentication header cardinality when an
+	// operator does not choose an explicit limit.
+	DefaultMaxSubjects = 10_000
 )
 
 // NewController validates risk-control thresholds before creating state. A
 // disabled controller accepts zero-valued thresholds and always allows.
 func NewController(cfg Config) (*Controller, error) {
-	if cfg.Now == nil {
-		cfg.Now = time.Now
+	normalized, err := normalizeConfig(cfg)
+	if err != nil {
+		return nil, err
 	}
-	if cfg.Enabled {
-		if err := validateConfig(cfg); err != nil {
-			return nil, err
+	return &Controller{cfg: normalized, entries: make(map[string]*entry)}, nil
+}
+
+// Reconfigure atomically updates control parameters. Existing entries are
+// preserved for enabled-to-enabled updates. Shrinking capacity evicts only the
+// oldest non-manual entries; a limit below the protected manual-block count is
+// rejected without partially changing either configuration or state. Disabling
+// clears process-local subject state.
+func (c *Controller) Reconfigure(cfg Config) error {
+	if c == nil {
+		return errors.New("subject: controller is unavailable")
+	}
+	normalized, err := normalizeConfig(cfg)
+	if err != nil {
+		return err
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !normalized.Enabled {
+		c.cfg = normalized
+		clear(c.entries)
+		c.evictable.Init()
+		c.manualSubjects = 0
+		return nil
+	}
+	if c.manualSubjects > normalized.MaxSubjects {
+		return fmt.Errorf("subject: max subjects %d is below %d protected manual blocks", normalized.MaxSubjects, c.manualSubjects)
+	}
+
+	c.cfg = normalized
+	now := c.cfg.Now().UTC()
+	c.cleanupOldestLocked(now, maintenanceBatch)
+	for len(c.entries) > c.cfg.MaxSubjects {
+		if !c.evictOldestLocked() {
+			return errors.New("subject: capacity shrink could not preserve protected manual blocks")
 		}
 	}
-	return &Controller{cfg: cfg, entries: make(map[string]*entry)}, nil
+	return nil
 }
 
 // Evaluate records and evaluates one classifier score. Scores below the audit
@@ -100,19 +155,19 @@ func NewController(cfg Config) (*Controller, error) {
 // manually blocked; this prevents ordinary traffic from being permanently
 // denied after a false positive.
 func (c *Controller) Evaluate(subjectHash string, riskScore int) Decision {
-	if c == nil || !c.cfg.Enabled {
+	if c == nil {
 		return Decision{SubjectHash: subjectHash, Reason: ReasonDisabled}
 	}
 	if !validSubjectHash(subjectHash) {
 		return Decision{Reason: ReasonInvalidHash}
 	}
-	now := c.cfg.Now().UTC()
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.evaluations++
-	if c.evaluations%sweepEvery == 0 {
-		c.sweep(now)
+	if !c.cfg.Enabled {
+		return Decision{SubjectHash: subjectHash, Reason: ReasonDisabled}
 	}
+	now := c.cfg.Now().UTC()
+	c.cleanupOldestLocked(now, maintenanceBatch)
 
 	current := c.entries[subjectHash]
 	if current != nil {
@@ -126,14 +181,19 @@ func (c *Controller) Evaluate(subjectHash string, riskScore int) Decision {
 		decision.Reason = ReasonSafe
 		decision.Blocked = false
 		if inactive(current, now) {
-			delete(c.entries, subjectHash)
+			c.removeEntryLocked(subjectHash, current)
 		}
 		return decision
 	}
 
 	if current == nil {
+		if len(c.entries) >= c.cfg.MaxSubjects && !c.evictOldestLocked() {
+			c.rejectedCapacity++
+			return Decision{SubjectHash: subjectHash, Blocked: true, Reason: ReasonCapacity}
+		}
 		current = &entry{}
 		c.entries[subjectHash] = current
+		current.element = c.evictable.PushBack(subjectHash)
 	}
 	repeatCount := len(current.hits) + 1
 	multiplier := math.Pow(c.cfg.RepeatMultiplier, float64(repeatCount-1))
@@ -150,12 +210,22 @@ func (c *Controller) Evaluate(subjectHash string, riskScore int) Decision {
 		current.hits = current.hits[:len(current.hits)-1]
 	}
 	current.hits = append(current.hits, hit{at: now, score: added})
+	if current.element != nil {
+		c.evictable.MoveToBack(current.element)
+	}
 	score := c.score(current, now)
 
 	reason := ReasonRisk
 	blocked := false
 	if current.manualBlocked || score >= c.cfg.ManualBlockScore {
-		current.manualBlocked = true
+		if !current.manualBlocked {
+			current.manualBlocked = true
+			c.manualSubjects++
+			if current.element != nil {
+				c.evictable.Remove(current.element)
+				current.element = nil
+			}
+		}
 		blocked = true
 		reason = ReasonManualBlock
 	} else if now.Before(current.cooldownUntil) || score >= c.cfg.CooldownScore {
@@ -181,19 +251,23 @@ func (c *Controller) Evaluate(subjectHash string, riskScore int) Decision {
 
 // Snapshot returns a decayed snapshot and removes expired inactive state.
 func (c *Controller) Snapshot(subjectHash string) (State, bool) {
-	if c == nil || !c.cfg.Enabled || !validSubjectHash(subjectHash) {
+	if c == nil || !validSubjectHash(subjectHash) {
+		return State{}, false
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.cfg.Enabled {
 		return State{}, false
 	}
 	now := c.cfg.Now().UTC()
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.cleanupOldestLocked(now, maintenanceBatch)
 	current, ok := c.entries[subjectHash]
 	if !ok {
 		return State{}, false
 	}
 	c.prune(current, now)
 	if inactive(current, now) {
-		delete(c.entries, subjectHash)
+		c.removeEntryLocked(subjectHash, current)
 		return State{}, false
 	}
 	return c.state(subjectHash, current, now), true
@@ -210,7 +284,7 @@ func (c *Controller) Unblock(subjectHash string) bool {
 	if _, ok := c.entries[subjectHash]; !ok {
 		return false
 	}
-	delete(c.entries, subjectHash)
+	c.removeEntryLocked(subjectHash, c.entries[subjectHash])
 	return true
 }
 
@@ -222,18 +296,103 @@ func (c *Controller) Count() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.cfg.Enabled {
-		c.sweep(c.cfg.Now().UTC())
+		c.cleanupOldestLocked(c.cfg.Now().UTC(), maintenanceBatch)
 	}
 	return len(c.entries)
 }
 
-func (c *Controller) sweep(now time.Time) {
-	for subjectHash, current := range c.entries {
+// Stats returns a bounded-maintenance capacity snapshot without scanning the
+// complete subject map.
+func (c *Controller) Stats() Stats {
+	if c == nil {
+		return Stats{}
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.cfg.Enabled {
+		c.cleanupOldestLocked(c.cfg.Now().UTC(), maintenanceBatch)
+	}
+	return Stats{
+		Enabled:          c.cfg.Enabled,
+		Subjects:         len(c.entries),
+		MaxSubjects:      c.cfg.MaxSubjects,
+		ManualBlocked:    c.manualSubjects,
+		Evicted:          c.evicted,
+		RejectedCapacity: c.rejectedCapacity,
+	}
+}
+
+// cleanupOldestLocked performs at most budget inspections. Non-manual entries
+// are kept in least-recent-risk order. A fixed prefix is inspected because an
+// older entry can still be active due to cooldown while a later entry has
+// expired. Manual blocks never enter this list.
+func (c *Controller) cleanupOldestLocked(now time.Time, budget int) {
+	for inspected, candidate := 0, c.evictable.Front(); inspected < budget && candidate != nil; inspected++ {
+		next := candidate.Next()
+		subjectHash, ok := candidate.Value.(string)
+		if !ok {
+			c.evictable.Remove(candidate)
+			candidate = next
+			continue
+		}
+		current, ok := c.entries[subjectHash]
+		if !ok || current.element != candidate || current.manualBlocked {
+			c.evictable.Remove(candidate)
+			if ok && current.element == candidate {
+				current.element = nil
+			}
+			candidate = next
+			continue
+		}
 		c.prune(current, now)
 		if inactive(current, now) {
-			delete(c.entries, subjectHash)
+			c.removeEntryLocked(subjectHash, current)
+		}
+		candidate = next
+	}
+}
+
+// evictOldestLocked evicts exactly one non-manual subject, if available.
+func (c *Controller) evictOldestLocked() bool {
+	for {
+		front := c.evictable.Front()
+		if front == nil {
+			return false
+		}
+		subjectHash, ok := front.Value.(string)
+		if !ok {
+			c.evictable.Remove(front)
+			continue
+		}
+		current, ok := c.entries[subjectHash]
+		if !ok || current.element != front || current.manualBlocked {
+			c.evictable.Remove(front)
+			if ok && current.element == front {
+				current.element = nil
+			}
+			continue
+		}
+		c.removeEntryLocked(subjectHash, current)
+		c.evicted++
+		return true
+	}
+}
+
+func (c *Controller) removeEntryLocked(subjectHash string, current *entry) {
+	if current == nil {
+		return
+	}
+	if current.element != nil {
+		c.evictable.Remove(current.element)
+		current.element = nil
+	}
+	if current.manualBlocked {
+		c.manualSubjects--
+		if c.manualSubjects < 0 {
+			c.manualSubjects = 0
 		}
 	}
+	delete(c.entries, subjectHash)
 }
 
 func (c *Controller) decision(subjectHash string, current *entry, now time.Time) Decision {
@@ -311,7 +470,28 @@ func validateConfig(cfg Config) error {
 	if math.IsNaN(cfg.MaxMultiplier) || math.IsInf(cfg.MaxMultiplier, 0) || cfg.MaxMultiplier < cfg.RepeatMultiplier {
 		return fmt.Errorf("subject: maximum multiplier must be finite and at least %.3g", cfg.RepeatMultiplier)
 	}
+	if cfg.MaxSubjects < 1 {
+		return errors.New("subject: maximum subjects must be positive")
+	}
 	return nil
+}
+
+func normalizeConfig(cfg Config) (Config, error) {
+	if cfg.Now == nil {
+		cfg.Now = time.Now
+	}
+	if cfg.MaxSubjects == 0 {
+		cfg.MaxSubjects = DefaultMaxSubjects
+	}
+	if cfg.MaxSubjects < 0 {
+		return Config{}, errors.New("subject: maximum subjects must not be negative")
+	}
+	if cfg.Enabled {
+		if err := validateConfig(cfg); err != nil {
+			return Config{}, err
+		}
+	}
+	return cfg, nil
 }
 
 func finitePositive(value float64) bool {

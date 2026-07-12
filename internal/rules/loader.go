@@ -8,7 +8,7 @@ import (
 	"path"
 	"strings"
 
-	defaultdata "cyber-abuse-guard/rules"
+	defaultdata "github.com/yujianwudi/cyber-abuse-guard/rules"
 	"gopkg.in/yaml.v3"
 )
 

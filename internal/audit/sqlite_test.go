@@ -47,7 +47,7 @@ func TestStoreRoundTripPrivacyAndSafeExports(t *testing.T) {
 	}
 
 	const rawPrompt = "PRIVACY_PROMPT_CANARY write malware and steal cookies"
-	const rawAPIKey = "sk-PRIVACY-API-KEY-CANARY-123456789"
+	const rawAPIKey = "privacy-api-key-canary-123456789"
 	requestHash := HashRequest([]byte(rawPrompt))
 	subjectHash := testSubjectHash(rawAPIKey)
 	event := Event{
@@ -280,6 +280,218 @@ func TestOpenFailureReturnsUsableDegradedStore(t *testing.T) {
 	}
 	if stats.Failed == 0 {
 		t.Fatalf("Stats() lost in-memory failure counters: %#v", stats)
+	}
+}
+
+func TestOpenNeverChangesExistingSharedDirectoryPermissions(t *testing.T) {
+	t.Parallel()
+
+	shared := filepath.Join(t.TempDir(), "shared")
+	if err := os.Mkdir(shared, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(shared, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	store, err := Open(Config{Path: filepath.Join(shared, "events.db")})
+	if store == nil {
+		t.Fatal("Open returned a nil store")
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	if err != nil {
+		t.Fatalf("Open(shared directory) error = %v", err)
+	}
+	info, statErr := os.Stat(shared)
+	if statErr != nil {
+		t.Fatal(statErr)
+	}
+	if got := info.Mode().Perm(); got != 0o755 {
+		t.Fatalf("shared directory permissions changed to %04o, want 0755", got)
+	}
+}
+
+func TestOpenRejectsSymlinkDatabaseDirectory(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	realDirectory := filepath.Join(root, "real")
+	if err := os.Mkdir(realDirectory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	linkedDirectory := filepath.Join(root, "linked")
+	if err := os.Symlink(realDirectory, linkedDirectory); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	store, err := Open(Config{Path: filepath.Join(linkedDirectory, "events.db")})
+	if store == nil {
+		t.Fatal("Open failure returned a nil degraded store")
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	if err == nil || !strings.Contains(err.Error(), "symlink") {
+		t.Fatalf("Open(symlink directory) error = %v, want symlink rejection", err)
+	}
+}
+
+func TestOpenRejectsWritableExistingDirectory(t *testing.T) {
+	t.Parallel()
+
+	directory := filepath.Join(t.TempDir(), "writable")
+	if err := os.Mkdir(directory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(directory, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	store, err := Open(Config{Path: filepath.Join(directory, "events.db")})
+	if store == nil {
+		t.Fatal("Open failure returned a nil degraded store")
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	if err == nil || !strings.Contains(err.Error(), "writable") {
+		t.Fatalf("Open(writable directory) error = %v, want writable-directory rejection", err)
+	}
+}
+
+func TestSecureSQLiteFilesRejectsSidecarSymlinkWithoutChangingTarget(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	databasePath := filepath.Join(root, "events.db")
+	targetPath := filepath.Join(root, "target")
+	if err := os.WriteFile(databasePath, []byte("db"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(targetPath, []byte("target"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(targetPath, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(targetPath, databasePath+"-wal"); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	if err := secureSQLiteFiles(databasePath); err == nil || !strings.Contains(err.Error(), "symlink") {
+		t.Fatalf("secureSQLiteFiles(sidecar symlink) error = %v, want symlink rejection", err)
+	}
+	info, err := os.Stat(targetPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0o644 {
+		t.Fatalf("sidecar symlink target mode changed to %04o, want 0644", got)
+	}
+}
+
+func TestRuntimeSidecarPermissionFailureDegradesStatus(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	databasePath := filepath.Join(root, "events.db")
+	store, err := Open(Config{Path: databasePath, CleanupInterval: time.Hour})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	targetPath := filepath.Join(root, "target")
+	if err := os.WriteFile(targetPath, []byte("target"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(targetPath, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_ = os.Remove(databasePath + "-wal")
+	if err := os.Symlink(targetPath, databasePath+"-wal"); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	if !store.Record(testEvent("sidecar-runtime", time.Now().UTC())) {
+		t.Fatal("Record() rejected test event")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := store.Flush(ctx); err != nil {
+		t.Fatal(err)
+	}
+	status := store.Status()
+	if !status.Degraded || status.Healthy || !strings.Contains(status.LastError, "symlink") {
+		t.Fatalf("runtime sidecar failure Status() = %#v", status)
+	}
+	info, err := os.Stat(targetPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0o644 {
+		t.Fatalf("runtime sidecar target mode changed to %04o, want 0644", got)
+	}
+}
+
+func TestCloseContextHonorsDeadlineAndFinishesAfterUnlock(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "events.db")
+	store, err := Open(Config{
+		Path:            path,
+		QueueSize:       4,
+		BusyTimeout:     500 * time.Millisecond,
+		CleanupInterval: time.Hour,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	locker, err := sql.Open("sqlite3", path+"?_busy_timeout=100")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer locker.Close()
+	connection, err := locker.Conn(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer connection.Close()
+	if _, err := connection.ExecContext(context.Background(), "BEGIN IMMEDIATE"); err != nil {
+		t.Fatal(err)
+	}
+	if !store.Record(testEvent("close-timeout", time.Now().UTC())) {
+		t.Fatal("Record() rejected test event")
+	}
+	time.Sleep(10 * time.Millisecond)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Millisecond)
+	defer cancel()
+	started := time.Now()
+	if err := store.CloseContext(ctx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("CloseContext() error = %v, want deadline exceeded", err)
+	}
+	if elapsed := time.Since(started); elapsed > 250*time.Millisecond {
+		t.Fatalf("CloseContext() exceeded its shutdown budget by too much: %v", elapsed)
+	}
+	if _, err := connection.ExecContext(context.Background(), "ROLLBACK"); err != nil {
+		t.Fatal(err)
+	}
+	finishCtx, finishCancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer finishCancel()
+	if err := store.CloseContext(finishCtx); err != nil {
+		t.Fatalf("CloseContext() after unlock = %v", err)
+	}
+}
+
+func TestErrorHandlerMayReenterStoreWithoutDeadlock(t *testing.T) {
+	t.Parallel()
+
+	store, err := Open(Config{Path: filepath.Join(t.TempDir(), "events.db")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	done := make(chan struct{})
+	store.SetErrorHandler(func(error) {
+		store.SetErrorHandler(nil)
+		close(done)
+	})
+	go store.report(errors.New("synthetic audit error"))
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("reentrant audit error handler deadlocked")
 	}
 }
 

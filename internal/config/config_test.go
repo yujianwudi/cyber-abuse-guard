@@ -34,7 +34,7 @@ func TestDefaultMatchesTaskBook(t *testing.T) {
 		t.Fatalf("hard-block defaults = %#v", got.HardBlockEvenIfAuthorized)
 	}
 	if got.SubjectControl != (SubjectControl{
-		Enabled: true, WindowMinutes: 60, CooldownScore: 150,
+		Enabled: true, MaxSubjects: 10000, WindowMinutes: 60, CooldownScore: 150,
 		ManualBlockScore: 250, CooldownMinutes: 30,
 	}) {
 		t.Fatalf("subject-control defaults = %#v", got.SubjectControl)
@@ -153,6 +153,7 @@ func TestValidateThresholdsAndRanges(t *testing.T) {
 		"parts too large":     func(c *Config) { c.MaxTextParts = MaxAllowedTextParts + 1 },
 		"threshold range":     func(c *Config) { c.Thresholds.HardBlock = 101 },
 		"threshold order":     func(c *Config) { c.Thresholds.BalancedBlock = c.Thresholds.Audit },
+		"subject capacity":    func(c *Config) { c.SubjectControl.MaxSubjects = maxSubjectEntries + 1 },
 		"subject score order": func(c *Config) { c.SubjectControl.ManualBlockScore = c.SubjectControl.CooldownScore },
 		"retention":           func(c *Config) { c.Audit.RetentionDays = -1 },
 	}
@@ -290,7 +291,7 @@ func TestValidateClassifierEndpoint(t *testing.T) {
 	cfg.Classifier.Enabled = true
 	cfg.Classifier.Endpoint = "http://127.0.0.1:8090/classify"
 	if err := Validate(cfg); err == nil {
-		t.Fatal("v0.1.0 must reject classifier.enabled instead of silently ignoring it")
+		t.Fatal("v0.1.1 must reject classifier.enabled instead of silently ignoring it")
 	}
 }
 

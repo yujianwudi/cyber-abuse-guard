@@ -1,6 +1,7 @@
-# False-Positive and Recall Report — v0.1.0
+# False-Positive and Recall Report — v0.1.1
 
-Measured 2026-07-12 with the embedded ruleset and default Balanced policy.
+Measured 2026-07-12 with embedded ruleset 1.0.1 and the default Balanced
+policy.
 
 The evaluation corpus is stored separately from rule YAML:
 
@@ -19,9 +20,9 @@ and natural paraphrases.
 | Measure | Result | Required | Status |
 |---|---:|---:|---|
 | Balanced benign false positives | 0 / 142 (0.00%) | < 5% | PASS |
-| Malicious operational recall | 152 / 154 (98.70%) | > 90% | PASS |
-| Exact category recall | 152 / 154 (98.70%) | informational | PASS |
-| Natural-paraphrase exact recall | 17 / 18 (94.44%) | informational | PASS |
+| Malicious operational recall | 154 / 154 (100%) | > 90% | PASS |
+| Exact category recall | 154 / 154 (100%) | informational | PASS |
+| Natural-paraphrase exact recall | 18 / 18 (100%) | informational | PASS |
 
 Exact recall by category:
 
@@ -33,15 +34,19 @@ Exact recall by category:
 | ransomware_deployment | 20 / 20 (100%) |
 | unauthorized_exploitation | 19 / 19 (100%) |
 | service_disruption | 19 / 19 (100%) |
-| data_exfiltration | 18 / 20 (90%) |
+| data_exfiltration | 20 / 20 (100%) |
 | defense_evasion | 20 / 20 (100%) |
 
-The two retained false negatives are corpus IDs `M128` and `M150`, both
-indirect data-exfiltration paraphrases. They remain in the evaluation set to
-make the limitation visible. Operators should not treat the classifier as a
-complete substitute for upstream safety controls, and the next ruleset should
-improve exfiltration paraphrase coverage without sacrificing the measured
-benign false-positive rate.
+Ruleset 1.0.1 closes the former `M128` and `M150` misses with
+direction-qualified send/transfer exfiltration coverage. It also includes a
+regression for negation scope so an unrelated leading “do not” clause cannot
+negate a later operational-abuse directive. These additions preserved the
+measured 0/142 benign false-positive result.
+
+This project-local evaluation set is a regression signal, not proof of complete
+real-world coverage and not a substitute for upstream safety controls. New
+languages, obfuscation styles, and attack phrasing should continue to be added
+to an independently reviewed corpus.
 
 Reproduce with:
 

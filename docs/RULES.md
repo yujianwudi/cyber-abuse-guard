@@ -1,6 +1,6 @@
 # Rule System
 
-Rule set version `1.0.0` is embedded into the shared object from the YAML
+Rule set version `1.0.1` is embedded into the shared object from the YAML
 files in `/rules`. Every rule has a unique stable ID, category, severity,
 weighted score, bilingual evidence groups, allow contexts, and optional hard
 authorization floor.
@@ -32,6 +32,16 @@ creation, static analysis, incident response, high-level education, CTF/lab,
 and explicit authorization. Authorization alone does not override deployment
 requests for credential theft, phishing collection, ransomware, or data
 exfiltration.
+
+Negation/prohibition markers apply only to nearby evidence in the same clause;
+an unrelated negative prefix cannot suppress a later operational instruction.
+Transport-level metadata is excluded from prompt evidence, but metadata-named
+fields such as `name`, `url`, `type`, and `model` are scanned when supplied
+inside a tool payload, including order-independent Anthropic `tool_use.input`.
+Standard role histories classify each segment independently and adjacent user
+turns together; role-less provider items use a conservative bounded fallback.
+Ruleset `1.0.1` also adds indirect data-exfiltration
+coverage for locked regression cases `M128` and `M150`.
 
 The classifier returns only stable evidence and rule IDs. It never returns or
 persists the matched prompt fragment.

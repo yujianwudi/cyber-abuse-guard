@@ -81,11 +81,13 @@ func TestIdentifierSecretFilePermissions(t *testing.T) {
 		t.Fatalf("file-backed hash = %q", got)
 	}
 
-	if err := os.Chmod(path, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := NewIdentifier(IdentifierConfig{SecretFile: path}); err == nil || !strings.Contains(err.Error(), "0600") {
-		t.Fatalf("NewIdentifier(0644 file) error = %v", err)
+	for _, mode := range []os.FileMode{0o640, 0o604, 0o644} {
+		if err := os.Chmod(path, mode); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := NewIdentifier(IdentifierConfig{SecretFile: path}); err == nil || !strings.Contains(err.Error(), "0600") {
+			t.Fatalf("NewIdentifier(%04o file) error = %v", mode, err)
+		}
 	}
 }
 
@@ -103,6 +105,42 @@ func TestIdentifierSecretFileEnvironment(t *testing.T) {
 	if got := identifier.Status(); !got.Stable || got.Source != KeySourceFile {
 		t.Fatalf("file environment Status() = %#v", got)
 	}
+}
+
+func TestIdentifierSecretFileRejectsUnsafeFiles(t *testing.T) {
+	t.Setenv(HMACKeyEnvironment, "")
+	t.Setenv(HMACKeyFileEnvironment, "")
+
+	t.Run("symbolic link", func(t *testing.T) {
+		dir := t.TempDir()
+		target := filepath.Join(dir, "target.key")
+		if err := os.WriteFile(target, []byte("0123456789abcdef0123456789abcdef"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		link := filepath.Join(dir, "link.key")
+		if err := os.Symlink(target, link); err != nil {
+			t.Skipf("symbolic links are unavailable: %v", err)
+		}
+		if _, err := NewIdentifier(IdentifierConfig{SecretFile: link}); err == nil || !strings.Contains(err.Error(), "symbolic link") {
+			t.Fatalf("NewIdentifier(symbolic link) error = %v", err)
+		}
+	})
+
+	t.Run("directory", func(t *testing.T) {
+		if _, err := NewIdentifier(IdentifierConfig{SecretFile: t.TempDir()}); err == nil || !strings.Contains(err.Error(), "regular file") {
+			t.Fatalf("NewIdentifier(directory) error = %v", err)
+		}
+	})
+
+	t.Run("too large", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "large.key")
+		if err := os.WriteFile(path, bytes.Repeat([]byte{'x'}, maximumSecretBytes+1), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := NewIdentifier(IdentifierConfig{SecretFile: path}); err == nil || !strings.Contains(err.Error(), "exceeds") {
+			t.Fatalf("NewIdentifier(oversized file) error = %v", err)
+		}
+	})
 }
 
 func TestIdentifierRandomFallbackIsExplicitlyDegraded(t *testing.T) {

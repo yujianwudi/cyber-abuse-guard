@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"cyber-abuse-guard/internal/audit"
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
+	"github.com/yujianwudi/cyber-abuse-guard/internal/audit"
 )
 
 // blockExecution is intentionally fail-closed and contains no host callback or

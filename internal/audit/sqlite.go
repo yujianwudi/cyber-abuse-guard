@@ -116,18 +116,24 @@ type workItem struct {
 // Store owns SQLite and a bounded nonblocking writer. Database failures affect
 // only audit counters; callers can continue classification and enforcement.
 type Store struct {
-	cfg   Config
-	db    *sql.DB
-	queue chan workItem
-	done  chan struct{}
-	wg    sync.WaitGroup
+	cfg        Config
+	db         *sql.DB
+	queue      chan workItem
+	done       chan struct{}
+	abort      chan struct{}
+	closedDone chan struct{}
+	workerCtx  context.Context
+	cancelWork context.CancelFunc
+	wg         sync.WaitGroup
 
 	sendMu    sync.RWMutex
 	closed    bool
 	closeOnce sync.Once
+	abortOnce sync.Once
 	closeErr  error
 
 	degraded atomic.Bool
+	aborted  atomic.Bool
 	lastErr  atomic.Value // string
 	enqueued atomic.Uint64
 	written  atomic.Uint64
@@ -145,10 +151,15 @@ type Store struct {
 // remains available and failures are still counted in memory.
 func Open(cfg Config) (*Store, error) {
 	cfg = withDefaults(cfg)
+	workerCtx, cancelWork := context.WithCancel(context.Background())
 	store := &Store{
-		cfg:   cfg,
-		queue: make(chan workItem, cfg.QueueSize),
-		done:  make(chan struct{}),
+		cfg:        cfg,
+		queue:      make(chan workItem, cfg.QueueSize),
+		done:       make(chan struct{}),
+		abort:      make(chan struct{}),
+		closedDone: make(chan struct{}),
+		workerCtx:  workerCtx,
+		cancelWork: cancelWork,
 	}
 	store.lastErr.Store("")
 
@@ -200,11 +211,8 @@ func openDatabase(cfg Config) (*sql.DB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("audit: resolve database path: %w", err)
 	}
-	if err := os.MkdirAll(filepath.Dir(absPath), 0o700); err != nil {
-		return nil, fmt.Errorf("audit: create database directory: %w", err)
-	}
-	if err := os.Chmod(filepath.Dir(absPath), 0o700); err != nil {
-		return nil, fmt.Errorf("audit: secure database directory: %w", err)
+	if err := prepareSQLitePath(absPath); err != nil {
+		return nil, err
 	}
 
 	parameters := url.Values{}
@@ -303,13 +311,16 @@ func (s *Store) run() {
 		case item := <-s.queue:
 			s.handle(item)
 		case <-ticker.C:
-			if err := s.cleanup(context.Background()); err != nil {
+			if err := s.cleanup(s.workerCtx); err != nil && !errors.Is(err, context.Canceled) {
 				s.degraded.Store(true)
 				s.report(err)
 			}
 		case <-s.done:
 			for {
 				select {
+				case <-s.abort:
+					s.dropQueued()
+					return
 				case item := <-s.queue:
 					s.handle(item)
 				default:
@@ -339,7 +350,7 @@ func (s *Store) handle(item workItem) {
 		if item.event.Stream {
 			stream = 1
 		}
-		_, err = s.db.Exec(insertEventSQL,
+		_, err = s.db.ExecContext(s.workerCtx, insertEventSQL,
 			item.event.ID, item.event.Timestamp.UnixNano(), item.event.Action,
 			item.event.Mode, item.event.Category, item.event.RiskScore, string(rules),
 			item.event.RequestHash, item.event.SubjectHash, item.event.Model,
@@ -355,9 +366,14 @@ func (s *Store) handle(item workItem) {
 		return
 	}
 	s.written.Add(1)
+	if err := secureSQLiteFiles(s.cfg.Path); err != nil {
+		s.degraded.Store(true)
+		s.lastErr.Store(err.Error())
+		s.report(err)
+		return
+	}
 	s.degraded.Store(false)
 	s.lastErr.Store("")
-	_ = secureSQLiteFiles(s.cfg.Path)
 }
 
 // Status returns a lock-free operational snapshot.
@@ -386,8 +402,23 @@ func (s *Store) Status() Status {
 	}
 }
 
-// Close drains the queue, checkpoints WAL best-effort, and is idempotent.
-func (s *Store) Close() error {
+// SetErrorHandler replaces the optional rate-limited diagnostic callback.
+// Runtime shutdown clears it before a potentially asynchronous close so no
+// new host callback is started by the closing store.
+func (s *Store) SetErrorHandler(handler func(error)) {
+	if s == nil {
+		return
+	}
+	s.reportMu.Lock()
+	s.cfg.OnError = handler
+	s.reportMu.Unlock()
+}
+
+// CloseContext starts an idempotent background drain and waits only until the
+// supplied context expires. A timed-out caller is never forced to wait for a
+// locked SQLite writer; the background finalizer still closes the database
+// after the bounded queue has drained.
+func (s *Store) CloseContext(ctx context.Context) error {
 	if s == nil {
 		return nil
 	}
@@ -396,13 +427,35 @@ func (s *Store) Close() error {
 		s.closed = true
 		close(s.done)
 		s.sendMu.Unlock()
-		s.wg.Wait()
-		if s.db != nil {
-			_, _ = s.db.Exec("PRAGMA wal_checkpoint(TRUNCATE)")
-			s.closeErr = s.db.Close()
-		}
+		go func() {
+			s.wg.Wait()
+			s.cancelWork()
+			if s.db != nil {
+				if !s.aborted.Load() {
+					_, _ = s.db.Exec("PRAGMA wal_checkpoint(TRUNCATE)")
+				}
+				s.closeErr = s.db.Close()
+			}
+			close(s.closedDone)
+		}()
 	})
-	return s.closeErr
+	select {
+	case <-s.closedDone:
+		return s.closeErr
+	case <-ctx.Done():
+		s.abortOnce.Do(func() {
+			s.aborted.Store(true)
+			close(s.abort)
+			s.cancelWork()
+		})
+		return ctx.Err()
+	}
+}
+
+// Close drains the queue without a deadline. Runtime owners that have a
+// shutdown budget should call CloseContext instead.
+func (s *Store) Close() error {
+	return s.CloseContext(context.Background())
 }
 
 func (s *Store) report(err error) {
@@ -410,18 +463,39 @@ func (s *Store) report(err error) {
 		return
 	}
 	s.lastErr.Store(err.Error())
-	if s.cfg.OnError == nil {
-		return
-	}
 	now := s.cfg.Now()
 	s.reportMu.Lock()
+	handler := s.cfg.OnError
+	if handler == nil {
+		s.reportMu.Unlock()
+		return
+	}
 	if !s.lastReport.IsZero() && now.Sub(s.lastReport) < time.Minute {
 		s.reportMu.Unlock()
 		return
 	}
 	s.lastReport = now
 	s.reportMu.Unlock()
-	s.cfg.OnError(err)
+	func() {
+		defer func() { _ = recover() }()
+		handler(err)
+	}()
+}
+
+func (s *Store) dropQueued() {
+	for {
+		select {
+		case item := <-s.queue:
+			if item.event != nil {
+				s.dropped.Add(1)
+			}
+			if item.barrier != nil {
+				close(item.barrier)
+			}
+		default:
+			return
+		}
+	}
 }
 
 func secureSQLiteFiles(path string) error {
@@ -430,9 +504,60 @@ func secureSQLiteFiles(path string) error {
 		return fmt.Errorf("audit: resolve SQLite permissions path: %w", err)
 	}
 	for _, candidate := range []string{absPath, absPath + "-wal", absPath + "-shm"} {
-		if err := os.Chmod(candidate, 0o600); err != nil && !errors.Is(err, os.ErrNotExist) {
+		info, err := os.Lstat(candidate)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return fmt.Errorf("audit: inspect SQLite file permissions: %w", err)
+		}
+		if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+			return errors.New("audit: SQLite files must be regular files, not symlinks or directories")
+		}
+		if err := os.Chmod(candidate, 0o600); errors.Is(err, os.ErrNotExist) {
+			continue
+		} else if err != nil {
 			return fmt.Errorf("audit: secure SQLite file: %w", err)
 		}
+	}
+	return nil
+}
+
+func prepareSQLitePath(absPath string) error {
+	directory := filepath.Dir(absPath)
+	info, err := os.Lstat(directory)
+	created := false
+	if errors.Is(err, os.ErrNotExist) {
+		if err := os.MkdirAll(directory, 0o700); err != nil {
+			return fmt.Errorf("audit: create database directory: %w", err)
+		}
+		created = true
+		info, err = os.Lstat(directory)
+	}
+	if err != nil {
+		return fmt.Errorf("audit: inspect database directory: %w", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+		return errors.New("audit: database directory must be a real directory, not a symlink")
+	}
+	if info.Mode().Perm()&0o022 != 0 {
+		return errors.New("audit: database directory must not be group- or world-writable")
+	}
+	if created {
+		if err := os.Chmod(directory, 0o700); err != nil {
+			return fmt.Errorf("audit: secure new database directory: %w", err)
+		}
+	}
+
+	databaseInfo, err := os.Lstat(absPath)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("audit: inspect database path: %w", err)
+	}
+	if databaseInfo.Mode()&os.ModeSymlink != 0 || !databaseInfo.Mode().IsRegular() {
+		return errors.New("audit: database path must be a regular file, not a symlink or directory")
 	}
 	return nil
 }

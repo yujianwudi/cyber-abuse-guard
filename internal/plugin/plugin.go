@@ -15,18 +15,18 @@ import (
 	"sync/atomic"
 	"time"
 
-	"cyber-abuse-guard/internal/audit"
-	"cyber-abuse-guard/internal/classifier"
-	"cyber-abuse-guard/internal/config"
-	"cyber-abuse-guard/internal/rules"
-	"cyber-abuse-guard/internal/subject"
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginabi"
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
+	"github.com/yujianwudi/cyber-abuse-guard/internal/audit"
+	"github.com/yujianwudi/cyber-abuse-guard/internal/classifier"
+	"github.com/yujianwudi/cyber-abuse-guard/internal/config"
+	"github.com/yujianwudi/cyber-abuse-guard/internal/rules"
+	"github.com/yujianwudi/cyber-abuse-guard/internal/subject"
 )
 
 const (
 	ID      = "cyber-abuse-guard"
-	Version = "0.1.0"
+	Version = "0.1.1"
 
 	maxRPCRequestBytes = 8 << 20
 
@@ -40,7 +40,7 @@ var metadata = pluginapi.Metadata{
 	Name:             "CPA Cyber Abuse Guard",
 	Version:          Version,
 	Author:           "Cyber Abuse Guard Contributors",
-	GitHubRepository: "https://github.com/cyber-abuse-guard/cyber-abuse-guard",
+	GitHubRepository: "https://github.com/yujianwudi/cyber-abuse-guard",
 	ConfigFields: []pluginapi.ConfigField{
 		{Name: "enabled", Type: pluginapi.ConfigFieldTypeBoolean, Description: "Enable local cyber-abuse classification."},
 		{Name: "mode", Type: pluginapi.ConfigFieldTypeEnum, EnumValues: []string{"off", "observe", "audit", "balanced", "strict"}, Description: "Select observation, auditing, or enforcement behavior."},
@@ -99,6 +99,7 @@ type runtimeState struct {
 	audit        *audit.Store
 	subject      *subject.Controller
 	startedAt    time.Time
+	configuredAt time.Time
 }
 
 func (state *runtimeState) close() {
@@ -107,8 +108,8 @@ func (state *runtimeState) close() {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	_ = state.audit.Flush(ctx)
-	_ = state.audit.Close()
+	state.audit.SetErrorHandler(nil)
+	_ = state.audit.CloseContext(ctx)
 }
 
 // Plugin is safe for concurrent CPA callbacks. A validated runtime is built
@@ -159,7 +160,7 @@ func (p *Plugin) Call(method string, request []byte) (response []byte, returnCod
 		return errorEnvelope("plugin_unavailable", "plugin is unavailable", 0, ""), 0
 	}
 	if len(request) > maxRPCRequestBytes {
-		return errorEnvelope("request_too_large", "plugin RPC request exceeds the size limit", 0, ""), 0
+		return p.CallOversized(method)
 	}
 	if method == "" {
 		return errorEnvelope("invalid_method", "method is required", 0, ""), 0
@@ -196,6 +197,74 @@ func (p *Plugin) Call(method string, request []byte) (response []byte, returnCod
 	}
 }
 
+// CallOversized handles an RPC that exceeded the boundary-copy budget without
+// parsing or copying its attacker-controlled payload. CPA treats ModelRouter
+// errors as a request to continue native routing, so enforcing modes must
+// return a successful self-route here rather than a fail-open RPC error.
+func (p *Plugin) CallOversized(method string) ([]byte, int) {
+	if p == nil {
+		return errorEnvelope("plugin_unavailable", "plugin is unavailable", 0, ""), 0
+	}
+	if p.shutdown.Load() {
+		return errorEnvelope("plugin_shutdown", "plugin has shut down", 0, ""), 0
+	}
+	switch method {
+	case pluginabi.MethodModelRoute:
+		return p.routeOversized(), 0
+	case pluginabi.MethodExecutorExecute, pluginabi.MethodExecutorExecuteStream:
+		return errorEnvelope(blockedErrorCode, refusalMessage, 403, "scan_limit"), 0
+	default:
+		return errorEnvelope("request_too_large", "plugin RPC request exceeds the size limit", 0, ""), 0
+	}
+}
+
+func (p *Plugin) routeOversized() []byte {
+	p.opMu.RLock()
+	defer p.opMu.RUnlock()
+	state, err := p.loadRuntime()
+	if err != nil {
+		return errorEnvelope("not_initialized", err.Error(), 0, "")
+	}
+	if !state.config.Enabled || state.config.Mode == config.ModeOff {
+		return okEnvelope(pluginapi.ModelRouteResponse{Handled: false})
+	}
+	p.counters.total.Add(1)
+	p.counters.truncated.Add(1)
+	if state.config.Mode != config.ModeBalanced && state.config.Mode != config.ModeStrict {
+		p.counters.allowed.Add(1)
+		p.recordOversizedRoute(state, false)
+		return okEnvelope(pluginapi.ModelRouteResponse{Handled: false})
+	}
+	p.counters.blocked.Add(1)
+	p.recordOversizedRoute(state, true)
+	return okEnvelope(pluginapi.ModelRouteResponse{
+		Handled:    true,
+		TargetKind: pluginapi.ModelRouteTargetSelf,
+		Reason:     "cyber_abuse_guard_scan_limit",
+	})
+}
+
+func (p *Plugin) recordOversizedRoute(state *runtimeState, blocked bool) {
+	if state == nil || state.audit == nil || !state.config.Audit.Enabled || state.config.Mode == config.ModeObserve || state.config.Mode == config.ModeOff {
+		return
+	}
+	action := "audit"
+	if blocked {
+		action = "block"
+	}
+	event := audit.Event{
+		ID:         newEventID(),
+		Timestamp:  time.Now().UTC(),
+		Action:     action,
+		Mode:       string(state.config.Mode),
+		Classifier: state.rulesVersion,
+	}
+	if state.config.Audit.LogCategory {
+		event.Category = "scan_limit"
+	}
+	state.audit.Record(event)
+}
+
 func (p *Plugin) configure(raw []byte, reconfigure bool) []byte {
 	var request lifecycleRequest
 	if err := json.Unmarshal(raw, &request); err != nil {
@@ -229,6 +298,23 @@ func (p *Plugin) configure(raw []byte, reconfigure bool) []byte {
 		p.opMu.Unlock()
 		state.close()
 		return errorEnvelope("plugin_shutdown", "plugin has shut down", 0, "")
+	}
+	current := p.runtime.Load()
+	if reconfigure && current != nil {
+		state.startedAt = current.startedAt
+	}
+	if reconfigure && current != nil && current.subject != nil && current.config.SubjectControl.Enabled && state.config.SubjectControl.Enabled {
+		if err := current.subject.Reconfigure(subjectRuntimeConfig(state.config)); err != nil {
+			p.opMu.Unlock()
+			state.close()
+			p.setLastConfigError(err)
+			p.log("warn", "cyber-abuse-guard rejected a reconfiguration that could not preserve subject state", map[string]any{
+				"plugin": ID,
+				"code":   "subject_state_migration_rejected",
+			})
+			return okEnvelope(currentRegistration())
+		}
+		state.subject = current.subject
 	}
 	previous := p.runtime.Swap(state)
 	p.pending.clear()
@@ -286,7 +372,51 @@ func (p *Plugin) buildRuntime(rawConfig []byte) (*runtimeState, error) {
 		return nil, fmt.Errorf("initialize subject identifier: %w", p.identifierErr)
 	}
 
-	controller, err := subject.NewController(subject.Config{
+	controller, err := subject.NewController(subjectRuntimeConfig(cfg))
+	if err != nil {
+		return nil, fmt.Errorf("initialize subject risk: %w", err)
+	}
+
+	now := time.Now().UTC()
+	state := &runtimeState{
+		config:       cfg,
+		classifier:   compiled,
+		rulesVersion: set.Version,
+		subject:      controller,
+		startedAt:    now,
+		configuredAt: now,
+	}
+	if cfg.Audit.Enabled {
+		path, pathErr := auditDatabasePath(cfg.Audit.DataDir)
+		if pathErr != nil {
+			p.log("error", "cyber-abuse-guard could not prepare its audit directory", map[string]any{
+				"plugin": ID,
+				"code":   "audit_directory_unavailable",
+			})
+		}
+		store, _ := audit.Open(audit.Config{
+			Path:            path,
+			Retention:       time.Duration(cfg.Audit.RetentionDays) * 24 * time.Hour,
+			MaxBytes:        int64(cfg.Audit.MaxDBMB) << 20,
+			QueueSize:       1024,
+			BusyTimeout:     2 * time.Second,
+			CleanupInterval: time.Hour,
+			OnError: func(error) {
+				p.log("error", "cyber-abuse-guard audit storage is degraded", map[string]any{
+					"plugin": ID,
+					"code":   "audit_storage_degraded",
+				})
+			},
+		})
+		// Open intentionally returns a usable degraded store on database
+		// failures, so enforcement remains available.
+		state.audit = store
+	}
+	return state, nil
+}
+
+func subjectRuntimeConfig(cfg config.Config) subject.Config {
+	return subject.Config{
 		Enabled:          cfg.SubjectControl.Enabled,
 		Window:           time.Duration(cfg.SubjectControl.WindowMinutes) * time.Minute,
 		AuditThreshold:   cfg.Thresholds.Audit,
@@ -295,33 +425,8 @@ func (p *Plugin) buildRuntime(rawConfig []byte) (*runtimeState, error) {
 		Cooldown:         time.Duration(cfg.SubjectControl.CooldownMinutes) * time.Minute,
 		RepeatMultiplier: 1.5,
 		MaxMultiplier:    3,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("initialize subject risk: %w", err)
+		MaxSubjects:      cfg.SubjectControl.MaxSubjects,
 	}
-
-	state := &runtimeState{
-		config:       cfg,
-		classifier:   compiled,
-		rulesVersion: set.Version,
-		subject:      controller,
-		startedAt:    time.Now().UTC(),
-	}
-	if cfg.Audit.Enabled {
-		path, _ := auditDatabasePath(cfg.Audit.DataDir)
-		store, _ := audit.Open(audit.Config{
-			Path:            path,
-			Retention:       time.Duration(cfg.Audit.RetentionDays) * 24 * time.Hour,
-			MaxBytes:        int64(cfg.Audit.MaxDBMB) << 20,
-			QueueSize:       1024,
-			BusyTimeout:     2 * time.Second,
-			CleanupInterval: time.Hour,
-		})
-		// Open intentionally returns a usable degraded store on database
-		// failures, so enforcement remains available.
-		state.audit = store
-	}
-	return state, nil
 }
 
 func auditDatabasePath(dataDir string) (string, error) {
@@ -332,10 +437,11 @@ func auditDatabasePath(dataDir string) (string, error) {
 		}
 		dataDir = filepath.Join(home, ".cli-proxy-api", "plugins", ID)
 	}
+	databasePath := filepath.Join(dataDir, "events.db")
 	if err := os.MkdirAll(dataDir, 0o700); err != nil {
-		return "", fmt.Errorf("create audit data directory: %w", err)
+		return databasePath, fmt.Errorf("create audit data directory: %w", err)
 	}
-	return filepath.Join(dataDir, "events.db"), nil
+	return databasePath, nil
 }
 
 func currentRegistration() registration {
