@@ -4,20 +4,22 @@ set -euo pipefail
 root="$(cd "${BASH_SOURCE[0]%/*}/.." && pwd -P)"
 # shellcheck source=release-common.sh
 source "$root/scripts/release-common.sh"
-release_require_commands install zip sha256sum mktemp find touch sort mkdir rm git sed awk cmp
+go_bin="${GO:-go}"
+release_require_commands "$go_bin" install zip sha256sum mktemp find touch sort mkdir rm git sed awk cmp
 release_init
 release_assert_tag
 
 dist="${DIST_DIR:-$root/dist}"
 so="cyber-abuse-guard-v${RELEASE_ARTIFACT_VERSION}.so"
-zip_name="cyber-abuse-guard_${RELEASE_ARTIFACT_VERSION}_linux_amd64.zip"
+store_zip="cyber-abuse-guard_${RELEASE_ARTIFACT_VERSION}_linux_amd64.zip"
+bundle_zip="cyber-abuse-guard-v${RELEASE_ARTIFACT_VERSION}-audit-bundle.zip"
 source_date_epoch="$RELEASE_SOURCE_DATE_EPOCH"
-stage=""
+bundle_stage=""
 export TZ=UTC
 
 cleanup() {
-  if [[ -n "$stage" && -d "$stage" ]]; then
-    rm -rf -- "$stage"
+  if [[ -n "$bundle_stage" && -d "$bundle_stage" ]]; then
+    rm -rf -- "$bundle_stage"
   fi
 }
 trap cleanup EXIT
@@ -56,6 +58,8 @@ for required_file in \
   "$root/docs/reports/EVALUATION_V8_REPORT.md" \
   "$root/docs/reports/EVALUATION_V9_REPORT.md" \
   "$root/docs/reports/EVALUATION_V10_REPORT.md" \
+  "$root/docs/reports/PHASE0_CPA_CONTRACT.md" \
+  "$root/docs/reports/PROMPT_INJECTION_REVIEW.md" \
   "$root/docs/reports/PRIVACY.md" \
   "$root/docs/reports/RELEASE_EVIDENCE.md" \
   "$root/scripts/check-production-health.sh" \
@@ -66,18 +70,18 @@ for required_file in \
 done
 (cd "$dist" && sha256sum -c "$so.sha256" && sha256sum -c ruleset.sha256)
 
-stage="$(mktemp -d)"
-mkdir -p "$stage/plugins/linux/amd64" "$stage/docs/reports" "$stage/scripts"
-find "$stage" -type d -exec chmod 0755 {} +
+bundle_stage="$(mktemp -d)"
+mkdir -p "$bundle_stage/plugins/linux/amd64" "$bundle_stage/docs/reports" "$bundle_stage/scripts"
+find "$bundle_stage" -type d -exec chmod 0755 {} +
 
-install -m 0755 "$dist/$so" "$stage/plugins/linux/amd64/$so"
-install -m 0644 "$dist/$so.sha256" "$stage/plugins/linux/amd64/$so.sha256"
+install -m 0755 "$dist/$so" "$bundle_stage/plugins/linux/amd64/$so"
+install -m 0644 "$dist/$so.sha256" "$bundle_stage/plugins/linux/amd64/$so.sha256"
 install -m 0644 "$root/README.md" "$root/README_CN.md" "$root/LICENSE" \
   "$root/CHANGELOG.md" "$root/THIRD_PARTY_NOTICES.md" \
-  "$root/config.example.yaml" "$stage/"
+  "$root/config.example.yaml" "$bundle_stage/"
 install -m 0644 "$root/docs/AUDIT_HANDOFF.md" "$root/docs/DESIGN.md" "$root/docs/THREAT_MODEL.md" \
   "$root/docs/INSTALL_DOCKER.md" "$root/docs/LIMITATIONS.md" \
-  "$root/docs/NEXT_VERSION.md" "$root/docs/RULES.md" "$stage/docs/"
+  "$root/docs/NEXT_VERSION.md" "$root/docs/RULES.md" "$bundle_stage/docs/"
 install -m 0644 "$root/docs/reports/TEST_REPORT.md" \
   "$root/docs/reports/PERFORMANCE.md" "$root/docs/reports/CORPUS_REPORT.md" \
   "$root/docs/reports/CPA_INTEGRATION.md" "$root/docs/reports/HOLDOUT_REPORT.md" \
@@ -87,20 +91,26 @@ install -m 0644 "$root/docs/reports/TEST_REPORT.md" \
   "$root/docs/reports/EVALUATION_V8_REPORT.md" \
   "$root/docs/reports/EVALUATION_V9_REPORT.md" \
   "$root/docs/reports/EVALUATION_V10_REPORT.md" \
+  "$root/docs/reports/PHASE0_CPA_CONTRACT.md" \
+  "$root/docs/reports/PROMPT_INJECTION_REVIEW.md" \
   "$root/docs/reports/PRIVACY.md" "$root/docs/reports/RELEASE_EVIDENCE.md" \
-  "$stage/docs/reports/"
+  "$bundle_stage/docs/reports/"
 install -m 0755 "$root/scripts/check-production-health.sh" \
-  "$root/scripts/generate-hmac-key.sh" "$stage/scripts/"
+  "$root/scripts/generate-hmac-key.sh" "$bundle_stage/scripts/"
 install -m 0644 "$dist/build-metadata.json" "$dist/ruleset-manifest.json" \
-  "$dist/ruleset.sha256" "$dist/sbom.cdx.json" "$stage/"
+  "$dist/ruleset.sha256" "$dist/sbom.cdx.json" "$bundle_stage/"
 
-find "$stage" -exec touch -h -d "@$source_date_epoch" {} +
-rm -f "$dist/$zip_name"
-(cd "$stage" && find . -mindepth 1 -printf '%P\n' | LC_ALL=C sort | zip -X -q "$dist/$zip_name" -@)
+find "$bundle_stage" -exec touch -h -d "@$source_date_epoch" {} +
+rm -f "$dist/$bundle_zip"
+(cd "$bundle_stage" && find . -mindepth 1 -printf '%P\n' | LC_ALL=C sort | zip -X -q "$dist/$bundle_zip" -@)
+PLUGIN_BINARY="$dist/$so" STORE_ARCHIVE="$dist/$store_zip" \
+  SOURCE_DATE_EPOCH="$source_date_epoch" "$root/scripts/create-store-archive.sh"
 
 (cd "$dist" && sha256sum \
-  "$so" "$so.sha256" "$zip_name" build-metadata.json ruleset-manifest.json \
+  "$so" "$so.sha256" "$store_zip" "$bundle_zip" build-metadata.json ruleset-manifest.json \
   ruleset.sha256 sbom.cdx.json \
   >checksums.txt)
 DIST_DIR="$dist" "$root/scripts/verify-release.sh"
+DIST_DIR="$dist" "$go_bin" -C "$root/integration/pluginstorecontract" test \
+  -run '^TestPublishedStoreArchive$' -count=1 -v
 release_assert_source_unchanged

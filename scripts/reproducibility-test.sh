@@ -85,7 +85,8 @@ for name in a b; do
 done
 
 so="cyber-abuse-guard-v${artifact_version}.so"
-zip_name="cyber-abuse-guard_${artifact_version}_linux_amd64.zip"
+store_zip="cyber-abuse-guard_${artifact_version}_linux_amd64.zip"
+bundle_zip="cyber-abuse-guard-v${artifact_version}-audit-bundle.zip"
 sbom="sbom.cdx.json"
 
 compare_artifact() {
@@ -100,15 +101,22 @@ compare_artifact() {
 }
 
 compare_artifact "clean-clone shared objects" "$clone_a/dist/$so" "$clone_b/dist/$so"
-compare_artifact "clean-clone release ZIP files" \
-  "$clone_a/dist/$zip_name" "$clone_b/dist/$zip_name"
+compare_artifact "clean-clone CPA store ZIP files" \
+  "$clone_a/dist/$store_zip" "$clone_b/dist/$store_zip"
+compare_artifact "clean-clone audit-bundle ZIP files" \
+  "$clone_a/dist/$bundle_zip" "$clone_b/dist/$bundle_zip"
 compare_artifact "clean-clone SBOM files" "$clone_a/dist/$sbom" "$clone_b/dist/$sbom"
 
 if [[ "$reproducibility_mode" == formal ]]; then
   root_dist="${DIST_DIR:-$root/dist}"
   [[ -d "$root_dist" && ! -L "$root_dist" ]] || \
     release_die "formal reproducibility requires an existing real root artifact directory: $root_dist"
-  root_artifacts=("$root_dist/$so" "$root_dist/$zip_name" "$root_dist/$sbom")
+  root_artifacts=(
+    "$root_dist/$so"
+    "$root_dist/$store_zip"
+    "$root_dist/$bundle_zip"
+    "$root_dist/$sbom"
+  )
   for artifact in "${root_artifacts[@]}"; do
     [[ -f "$artifact" && ! -L "$artifact" ]] || \
       release_die "formal reproducibility requires the published artifact: $artifact"
@@ -116,16 +124,20 @@ if [[ "$reproducibility_mode" == formal ]]; then
 
   compare_artifact "published and clean-clone shared objects" \
     "$root_dist/$so" "$clone_a/dist/$so"
-  compare_artifact "published and clean-clone release ZIP files" \
-    "$root_dist/$zip_name" "$clone_a/dist/$zip_name"
+  compare_artifact "published and clean-clone CPA store ZIP files" \
+    "$root_dist/$store_zip" "$clone_a/dist/$store_zip"
+  compare_artifact "published and clean-clone audit-bundle ZIP files" \
+    "$root_dist/$bundle_zip" "$clone_a/dist/$bundle_zip"
   compare_artifact "published and clean-clone SBOM files" \
     "$root_dist/$sbom" "$clone_a/dist/$sbom"
 fi
 
 printf 'reproducible .so: '
 sha256sum "$clone_a/dist/$so" | awk '{print $1}'
-printf 'reproducible ZIP: '
-sha256sum "$clone_a/dist/$zip_name" | awk '{print $1}'
+printf 'reproducible CPA store ZIP: '
+sha256sum "$clone_a/dist/$store_zip" | awk '{print $1}'
+printf 'reproducible audit-bundle ZIP: '
+sha256sum "$clone_a/dist/$bundle_zip" | awk '{print $1}'
 printf 'reproducible SBOM: '
 sha256sum "$clone_a/dist/$sbom" | awk '{print $1}'
 release_assert_source_unchanged

@@ -12,7 +12,8 @@ DIST_DIR := $(CURDIR)/dist
 DIRTY_SUFFIX := $(if $(filter 1,$(ALLOW_DIRTY_BUILD)),-dirty,)
 ARTIFACT_VERSION := $(VERSION)$(DIRTY_SUFFIX)
 SO := $(DIST_DIR)/$(PLUGIN_ID)-v$(ARTIFACT_VERSION).so
-ZIP := $(DIST_DIR)/$(PLUGIN_ID)_$(ARTIFACT_VERSION)_linux_amd64.zip
+STORE_ZIP := $(DIST_DIR)/$(PLUGIN_ID)_$(ARTIFACT_VERSION)_linux_amd64.zip
+AUDIT_BUNDLE := $(DIST_DIR)/$(PLUGIN_ID)-v$(ARTIFACT_VERSION)-audit-bundle.zip
 TEST_TAGS := sqlite_omit_load_extension
 
 .NOTPARALLEL: release
@@ -20,7 +21,7 @@ TEST_TAGS := sqlite_omit_load_extension
 .PHONY: all format-check git-diff-check module-verify test unit-test vet race \
 	fuzz-smoke script-test corpus-regression holdout-test benchmark build-linux-amd64 \
 	integration-test ruleset-manifest sbom vulncheck release-preflight \
-	package-release package-source-release release release-evidence formal-release release-doc-consistency release-doc-consistency-test verify-release verification-fault-test artifact-hash \
+	package-release package-source-release release release-evidence formal-release release-doc-consistency release-doc-consistency-test verify-release verification-fault-test cpa-store-contract artifact-hash \
 	reproducibility-test clean-tree-check tools clean
 
 all: test build-linux-amd64
@@ -43,6 +44,8 @@ git-diff-check:
 module-verify:
 	$(GO) mod verify
 	$(GO) mod tidy -diff
+	$(GO) -C integration/pluginstorecontract mod verify
+	$(GO) -C integration/pluginstorecontract mod tidy -diff
 
 test:
 	$(GO) test -tags=$(TEST_TAGS) ./...
@@ -62,6 +65,7 @@ fuzz-smoke:
 
 script-test:
 	./scripts/check-production-health-test.sh
+	GO=$(GO) ./scripts/create-store-archive-test.sh
 	./scripts/generate-hmac-key-test.sh
 	./scripts/release-doc-consistency-test.sh
 
@@ -125,11 +129,19 @@ formal-release:
 		./scripts/formal-release.sh
 
 release: release-preflight format-check git-diff-check module-verify test vet race \
-	fuzz-smoke script-test corpus-regression holdout-test benchmark integration-test vulncheck sbom package-release
+	fuzz-smoke script-test corpus-regression holdout-test benchmark integration-test vulncheck sbom package-release cpa-store-contract
 
 verify-release:
 	GO=$(GO) VERSION=$(VERSION) CYCLONEDX_GOMOD=$(CYCLONEDX_GOMOD) \
 		CYCLONEDX_GOMOD_VERSION=$(CYCLONEDX_GOMOD_VERSION) ./scripts/verify-release.sh
+
+cpa-store-contract:
+	@if [[ -f "$(SO)" && -f "$(STORE_ZIP)" && \
+		-f "$(DIST_DIR)/build-metadata.json" && -f "$(DIST_DIR)/checksums.txt" ]]; then \
+		DIST_DIR="$(DIST_DIR)" $(GO) -C integration/pluginstorecontract test -count=1 ./...; \
+	else \
+		env -u DIST_DIR $(GO) -C integration/pluginstorecontract test -count=1 ./...; \
+	fi
 
 verification-fault-test:
 	GO=$(GO) VERSION=$(VERSION) CYCLONEDX_GOMOD=$(CYCLONEDX_GOMOD) \

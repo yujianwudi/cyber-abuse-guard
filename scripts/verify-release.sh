@@ -29,10 +29,11 @@ release_assert_tag
 
 dist="${DIST_DIR:-$root/dist}"
 so="cyber-abuse-guard-v${RELEASE_ARTIFACT_VERSION}.so"
-zip_name="cyber-abuse-guard_${RELEASE_ARTIFACT_VERSION}_linux_amd64.zip"
+store_zip="cyber-abuse-guard_${RELEASE_ARTIFACT_VERSION}_linux_amd64.zip"
+bundle_zip="cyber-abuse-guard-v${RELEASE_ARTIFACT_VERSION}-audit-bundle.zip"
 
 cd "$dist"
-for required_file in "$so" "$so.sha256" "$zip_name" checksums.txt \
+for required_file in "$so" "$so.sha256" "$store_zip" "$bundle_zip" checksums.txt \
   build-metadata.json ruleset-manifest.json ruleset.sha256 sbom.cdx.json; do
   if [[ ! -f "$required_file" || -L "$required_file" ]]; then
     printf 'required release artifact must be a regular non-symlink file: %s\n' "$dist/$required_file" >&2
@@ -45,7 +46,7 @@ sha256sum -c ruleset.sha256
 sha256sum -c checksums.txt
 
 expected_checksum_files="$(printf '%s\n' \
-  "$so" "$so.sha256" "$zip_name" build-metadata.json ruleset-manifest.json \
+  "$so" "$so.sha256" "$store_zip" "$bundle_zip" build-metadata.json ruleset-manifest.json \
   ruleset.sha256 sbom.cdx.json | \
   LC_ALL=C sort)"
 actual_checksum_files="$(awk '{print $2}' checksums.txt | LC_ALL=C sort)"
@@ -115,9 +116,10 @@ for identity in "$RELEASE_ARTIFACT_VERSION" "$RELEASE_GIT_COMMIT" \
 done
 
 metadata_dir="$(mktemp -d)"
-verify_dir="$(mktemp -d)"
+store_verify_dir="$(mktemp -d)"
+bundle_verify_dir="$(mktemp -d)"
 cleanup() {
-  rm -rf -- "$metadata_dir" "$verify_dir"
+  rm -rf -- "$metadata_dir" "$store_verify_dir" "$bundle_verify_dir"
 }
 trap cleanup EXIT
 OUTPUT_DIR="$metadata_dir" GO="$go_bin" "$root/scripts/release-ruleset-manifest.sh" >/dev/null
@@ -148,12 +150,37 @@ grep -Fq '"bomFormat": "CycloneDX"' sbom.cdx.json
 grep -Fq '"specVersion": "1.6"' sbom.cdx.json
 grep -Fq "\"timestamp\": \"$fixed_timestamp\"" sbom.cdx.json
 
-listing="$(unzip -Z1 "$zip_name")"
-if unzip -Z -l "$zip_name" | awk '$1 ~ /^l/ { found = 1 } END { exit !found }'; then
-  echo "release ZIP contains a symbolic-link entry" >&2
+store_listing="$(unzip -Z1 "$store_zip")"
+if [[ "$store_listing" != "$so" ]]; then
+  printf 'CPA store ZIP must contain exactly one root dynamic library named %s; got:\n%s\n' \
+    "$so" "$store_listing" >&2
   exit 1
 fi
-expected_listing="$(cat <<EOF
+if unzip -Z -l "$store_zip" | awk '$1 ~ /^l/ { found = 1 } END { exit !found }'; then
+  echo "CPA store ZIP contains a symbolic-link entry" >&2
+  exit 1
+fi
+(umask 000; unzip -q "$store_zip" -d "$store_verify_dir")
+[[ -f "$store_verify_dir/$so" && ! -L "$store_verify_dir/$so" ]] || {
+  printf 'CPA store ZIP target must extract as a regular non-symlink file: %s\n' "$so" >&2
+  exit 1
+}
+cmp -s "$so" "$store_verify_dir/$so" || {
+  echo "CPA store ZIP dynamic library differs from the standalone artifact" >&2
+  exit 1
+}
+store_mode="$(stat -c '%a' "$store_verify_dir/$so")"
+if [[ "$store_mode" != 755 ]]; then
+  printf 'CPA store ZIP dynamic library mode mismatch: got %s, want 755\n' "$store_mode" >&2
+  exit 1
+fi
+
+bundle_listing="$(unzip -Z1 "$bundle_zip")"
+if unzip -Z -l "$bundle_zip" | awk '$1 ~ /^l/ { found = 1 } END { exit !found }'; then
+  echo "audit bundle contains a symbolic-link entry" >&2
+  exit 1
+fi
+expected_bundle_listing="$(cat <<EOF
 CHANGELOG.md
 LICENSE
 README.md
@@ -183,6 +210,8 @@ docs/reports/HOLDOUT_REPORT.md
 docs/reports/HOLDOUT_V2_REPORT.md
 docs/reports/HOLDOUT_V3_REPORT.md
 docs/reports/PERFORMANCE.md
+docs/reports/PHASE0_CPA_CONTRACT.md
+docs/reports/PROMPT_INJECTION_REVIEW.md
 docs/reports/PRIVACY.md
 docs/reports/RELEASE_EVIDENCE.md
 docs/reports/TEST_REPORT.md
@@ -200,31 +229,31 @@ scripts/generate-hmac-key.sh
 EOF
 )"
 
-duplicates="$(printf '%s\n' "$listing" | LC_ALL=C sort | uniq -d)"
+duplicates="$(printf '%s\n' "$bundle_listing" | LC_ALL=C sort | uniq -d)"
 if [[ -n "$duplicates" ]]; then
-  echo "release ZIP contains duplicate entries:" >&2
+  echo "audit bundle contains duplicate entries:" >&2
   printf '%s\n' "$duplicates" >&2
   exit 1
 fi
-actual_sorted="$(printf '%s\n' "$listing" | LC_ALL=C sort)"
-expected_sorted="$(printf '%s\n' "$expected_listing" | LC_ALL=C sort)"
+actual_sorted="$(printf '%s\n' "$bundle_listing" | LC_ALL=C sort)"
+expected_sorted="$(printf '%s\n' "$expected_bundle_listing" | LC_ALL=C sort)"
 if [[ "$actual_sorted" != "$expected_sorted" ]]; then
-  echo "release ZIP content differs from the strict allowlist" >&2
+  echo "audit bundle content differs from the strict allowlist" >&2
   diff -u <(printf '%s\n' "$expected_sorted") <(printf '%s\n' "$actual_sorted") >&2 || true
   exit 1
 fi
-forbidden_listing="$(grep -Fvx 'scripts/generate-hmac-key.sh' <<<"$listing")"
+forbidden_listing="$(grep -Fvx 'scripts/generate-hmac-key.sh' <<<"$bundle_listing")"
 if grep -Eiq '(^|/)(\.git|.*\.db($|[-.])|.*secret.*|.*hmac.*|.*\.key|.*\.pem|\.env.*|.*\.log)($|/)' <<<"$forbidden_listing"; then
-  echo "release ZIP contains a forbidden repository, database, or secret-like path" >&2
+  echo "audit bundle contains a forbidden repository, database, or secret-like path" >&2
   exit 1
 fi
 
-(umask 000; unzip -q "$zip_name" -d "$verify_dir")
-(cd "$verify_dir/plugins/linux/amd64" && sha256sum -c "$so.sha256")
-cmp -s "$so" "$verify_dir/plugins/linux/amd64/$so"
+(umask 000; unzip -q "$bundle_zip" -d "$bundle_verify_dir")
+(cd "$bundle_verify_dir/plugins/linux/amd64" && sha256sum -c "$so.sha256")
+cmp -s "$so" "$bundle_verify_dir/plugins/linux/amd64/$so"
 for release_file in build-metadata.json ruleset-manifest.json ruleset.sha256 sbom.cdx.json; do
-  cmp -s "$release_file" "$verify_dir/$release_file" || {
-    printf 'ZIP copy differs from standalone artifact: %s\n' "$release_file" >&2
+  cmp -s "$release_file" "$bundle_verify_dir/$release_file" || {
+    printf 'audit-bundle copy differs from standalone artifact: %s\n' "$release_file" >&2
     exit 1
   }
 done
@@ -242,48 +271,49 @@ source_derived_files=(
 )
 while IFS= read -r relative; do
   source_derived_files+=("docs/$relative")
-done < <(find "$verify_dir/docs" -type f -printf '%P\n' | LC_ALL=C sort)
+done < <(find "$bundle_verify_dir/docs" -type f -printf '%P\n' | LC_ALL=C sort)
 while IFS= read -r relative; do
   source_derived_files+=("scripts/$relative")
-done < <(find "$verify_dir/scripts" -type f -printf '%P\n' | LC_ALL=C sort)
+done < <(find "$bundle_verify_dir/scripts" -type f -printf '%P\n' | LC_ALL=C sort)
 
 for release_file in "${source_derived_files[@]}"; do
   source_file="$root/$release_file"
-  packaged_file="$verify_dir/$release_file"
+  packaged_file="$bundle_verify_dir/$release_file"
   [[ -f "$source_file" && ! -L "$source_file" ]] || {
     printf 'source-bound release input must be a regular non-symlink file: %s\n' \
       "$source_file" >&2
     exit 1
   }
   cmp -s "$source_file" "$packaged_file" || {
-    printf 'ZIP source-derived content differs from checked-out source: %s\n' \
+    printf 'audit-bundle source-derived content differs from checked-out source: %s\n' \
       "$release_file" >&2
     exit 1
   }
 done
 
 while IFS= read -r entry; do
-  if [[ -L "$verify_dir/$entry" ]]; then
-    printf 'release ZIP entry must not be a symbolic link: %s\n' "$entry" >&2
+  if [[ -L "$bundle_verify_dir/$entry" ]]; then
+    printf 'audit-bundle entry must not be a symbolic link: %s\n' "$entry" >&2
     exit 1
   fi
   if [[ "$entry" == */ ]]; then
     expected_mode=755
-    test -d "$verify_dir/$entry"
+    test -d "$bundle_verify_dir/$entry"
   elif [[ "$entry" == "plugins/linux/amd64/$so" || "$entry" == scripts/*.sh ]]; then
     expected_mode=755
-    test -f "$verify_dir/$entry"
+    test -f "$bundle_verify_dir/$entry"
   else
     expected_mode=644
-    test -f "$verify_dir/$entry"
+    test -f "$bundle_verify_dir/$entry"
   fi
-  actual_mode="$(stat -c '%a' "$verify_dir/$entry")"
+  actual_mode="$(stat -c '%a' "$bundle_verify_dir/$entry")"
   if [[ "$actual_mode" != "$expected_mode" ]]; then
-    printf 'release ZIP mode mismatch for %s: got %s, want %s\n' \
+    printf 'audit-bundle mode mismatch for %s: got %s, want %s\n' \
       "$entry" "$actual_mode" "$expected_mode" >&2
     exit 1
   fi
-done <<<"$listing"
+done <<<"$bundle_listing"
 
 release_assert_source_unchanged
-printf 'release verification passed: %s/%s\n' "$dist" "$zip_name"
+printf 'release verification passed: store=%s/%s audit_bundle=%s/%s\n' \
+  "$dist" "$store_zip" "$dist" "$bundle_zip"
