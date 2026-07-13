@@ -36,14 +36,15 @@ func TestSubjectPersistenceRestoresAcrossReconfigureAndRestart(t *testing.T) {
 
 	first := New()
 	register(t, first, persistenceYAML(dataDir, "balanced"))
-	for iteration := 0; iteration < 2; iteration++ {
-		if route := callRouteWithHeaders(t, first, maliciousRequest, headers); !route.Handled {
-			t.Fatalf("setup malicious route was not blocked: %+v", route)
-		}
+	if route := callRouteWithHeaders(t, first, maliciousRequest, headers); !route.Handled {
+		t.Fatalf("setup malicious route was not blocked: %+v", route)
+	}
+	if route := callRouteWithHeaders(t, first, maliciousRequest, headers); !route.Handled {
+		t.Fatalf("duplicate setup route was not blocked: %+v", route)
 	}
 	subjectHash := first.identifier.FromHeaders(headers).Hash
 	before, ok := first.runtime.Load().subject.Snapshot(subjectHash)
-	if !ok || before.HitCount != 2 {
+	if !ok || before.HitCount != 1 {
 		t.Fatalf("subject before persistence=%#v, %v", before, ok)
 	}
 	raw, code := first.Call(pluginabi.MethodPluginReconfigure, lifecyclePayload(t, persistenceYAML(dataDir, "audit")))
@@ -59,6 +60,12 @@ func TestSubjectPersistenceRestoresAcrossReconfigureAndRestart(t *testing.T) {
 	after, ok := second.runtime.Load().subject.Snapshot(subjectHash)
 	if !ok || after.HitCount != before.HitCount || after.Score <= 0 {
 		t.Fatalf("restored subject=%#v, %v; before=%#v", after, ok, before)
+	}
+	if route := callRouteWithHeaders(t, second, maliciousRequest, headers); !route.Handled {
+		t.Fatalf("restored duplicate route was not blocked: %+v", route)
+	}
+	if afterRetry, ok := second.runtime.Load().subject.Snapshot(subjectHash); !ok || afterRetry.HitCount != 1 {
+		t.Fatalf("restored duplicate request was re-accounted: %#v, %v", afterRetry, ok)
 	}
 	status := managementJSON(t, second, http.MethodGet, managementBasePath+"/status", nil)
 	persistence, ok := status["subject_persistence"].(map[string]any)

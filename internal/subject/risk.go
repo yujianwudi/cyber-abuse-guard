@@ -54,6 +54,7 @@ type Decision struct {
 	SubjectHash   string    `json:"subject_hash"`
 	Blocked       bool      `json:"blocked"`
 	Reason        Reason    `json:"reason"`
+	Duplicate     bool      `json:"duplicate,omitempty"`
 	Score         float64   `json:"score"`
 	AddedScore    float64   `json:"added_score"`
 	Multiplier    float64   `json:"multiplier"`
@@ -72,8 +73,9 @@ type State struct {
 }
 
 type hit struct {
-	at    time.Time
-	score float64
+	at          time.Time
+	score       float64
+	requestHash string
 }
 
 type entry struct {
@@ -155,6 +157,22 @@ func (c *Controller) Reconfigure(cfg Config) error {
 // manually blocked; this prevents ordinary traffic from being permanently
 // denied after a false positive.
 func (c *Controller) Evaluate(subjectHash string, riskScore int) Decision {
+	return c.evaluate(subjectHash, "", riskScore)
+}
+
+// EvaluateRequest records and evaluates one classifier score while making the
+// request accounting idempotent for the life of the corresponding rolling
+// risk hit. requestHash must be a domain-separated SHA-256 request digest.
+// Duplicate callbacks return the current subject disposition without adding a
+// second hit or advancing the repeat multiplier.
+func (c *Controller) EvaluateRequest(subjectHash, requestHash string, riskScore int) Decision {
+	if !validDigest(requestHash, "sha256:") {
+		return Decision{SubjectHash: subjectHash, Reason: ReasonInvalidHash}
+	}
+	return c.evaluate(subjectHash, requestHash, riskScore)
+}
+
+func (c *Controller) evaluate(subjectHash, requestHash string, riskScore int) Decision {
 	if c == nil {
 		return Decision{SubjectHash: subjectHash, Reason: ReasonDisabled}
 	}
@@ -172,6 +190,25 @@ func (c *Controller) Evaluate(subjectHash string, riskScore int) Decision {
 	current := c.entries[subjectHash]
 	if current != nil {
 		c.prune(current, now)
+	}
+	if requestHash != "" && current != nil && riskScore >= c.cfg.AuditThreshold {
+		for _, recorded := range current.hits {
+			if recorded.requestHash == requestHash {
+				decision := c.decision(subjectHash, current, now)
+				decision.Duplicate = true
+				switch {
+				case current.manualBlocked:
+					decision.Blocked = true
+					decision.Reason = ReasonManualBlock
+				case now.Before(current.cooldownUntil):
+					decision.Blocked = true
+					decision.Reason = ReasonCooldown
+				default:
+					decision.Reason = ReasonRisk
+				}
+				return decision
+			}
+		}
 	}
 	if riskScore < c.cfg.AuditThreshold {
 		if current == nil {
@@ -201,6 +238,15 @@ func (c *Controller) Evaluate(subjectHash string, riskScore int) Decision {
 		multiplier = c.cfg.MaxMultiplier
 	}
 	added := float64(riskScore) * multiplier
+	if requestHash != "" && len(current.hits) >= maxHitsPerSubject {
+		// Keep every idempotency receipt that is still inside the risk window.
+		// If the bounded history is full, fail closed for a new risky hash rather
+		// than evicting a receipt and allowing an old retry to add risk again.
+		decision := c.decision(subjectHash, current, now)
+		decision.Blocked = true
+		decision.Reason = ReasonCapacity
+		return decision
+	}
 	if len(current.hits) >= maxHitsPerSubject {
 		// Conservatively combine the two oldest hits at the later timestamp.
 		// This bounds adversarial memory use and can only decay more slowly than
@@ -209,7 +255,7 @@ func (c *Controller) Evaluate(subjectHash string, riskScore int) Decision {
 		copy(current.hits, current.hits[1:])
 		current.hits = current.hits[:len(current.hits)-1]
 	}
-	current.hits = append(current.hits, hit{at: now, score: added})
+	current.hits = append(current.hits, hit{at: now, score: added, requestHash: requestHash})
 	if current.element != nil {
 		c.evictable.MoveToBack(current.element)
 	}

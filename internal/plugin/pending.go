@@ -1,6 +1,7 @@
 package plugin
 
 import (
+	"container/list"
 	"sync"
 	"time"
 )
@@ -8,6 +9,7 @@ import (
 type pendingDecision struct {
 	category string
 	created  time.Time
+	element  *list.Element
 }
 
 // pendingCache carries only the coarse category across CPA's model.route ->
@@ -16,6 +18,7 @@ type pendingDecision struct {
 type pendingCache struct {
 	mu    sync.Mutex
 	items map[string]pendingDecision
+	order list.List
 	limit int
 	ttl   time.Duration
 	now   func() time.Time
@@ -41,18 +44,19 @@ func (cache *pendingCache) put(hash, category string) {
 	if cache.limit <= 0 {
 		return
 	}
-	if len(cache.items) >= cache.limit {
-		var oldestKey string
-		var oldest time.Time
-		for key, item := range cache.items {
-			if oldestKey == "" || item.created.Before(oldest) {
-				oldestKey = key
-				oldest = item.created
-			}
+	if existing, ok := cache.items[hash]; ok {
+		if existing.element != nil {
+			cache.order.Remove(existing.element)
 		}
-		delete(cache.items, oldestKey)
+		element := cache.order.PushBack(hash)
+		cache.items[hash] = pendingDecision{category: category, created: now, element: element}
+		return
 	}
-	cache.items[hash] = pendingDecision{category: category, created: now}
+	if len(cache.items) >= cache.limit {
+		cache.removeOldestLocked()
+	}
+	element := cache.order.PushBack(hash)
+	cache.items[hash] = pendingDecision{category: category, created: now, element: element}
 }
 
 func (cache *pendingCache) get(hash string) (pendingDecision, bool) {
@@ -66,7 +70,7 @@ func (cache *pendingCache) get(hash string) (pendingDecision, bool) {
 		return pendingDecision{}, false
 	}
 	if cache.ttl > 0 && cache.now().Sub(item.created) > cache.ttl {
-		delete(cache.items, hash)
+		cache.removeLocked(hash, item)
 		return pendingDecision{}, false
 	}
 	return item, true
@@ -78,6 +82,7 @@ func (cache *pendingCache) clear() {
 	}
 	cache.mu.Lock()
 	clear(cache.items)
+	cache.order.Init()
 	cache.mu.Unlock()
 }
 
@@ -85,9 +90,51 @@ func (cache *pendingCache) pruneExpiredLocked(now time.Time) {
 	if cache.ttl <= 0 {
 		return
 	}
-	for key, item := range cache.items {
-		if now.Sub(item.created) > cache.ttl {
-			delete(cache.items, key)
+	for element := cache.order.Front(); element != nil; element = cache.order.Front() {
+		key, ok := element.Value.(string)
+		if !ok {
+			cache.order.Remove(element)
+			continue
 		}
+		item, ok := cache.items[key]
+		if !ok || item.element != element {
+			cache.order.Remove(element)
+			continue
+		}
+		if now.Sub(item.created) <= cache.ttl {
+			return
+		}
+		cache.removeLocked(key, item)
 	}
+}
+
+func (cache *pendingCache) removeOldestLocked() {
+	for element := cache.order.Front(); element != nil; element = cache.order.Front() {
+		key, ok := element.Value.(string)
+		if !ok {
+			cache.order.Remove(element)
+			continue
+		}
+		item, ok := cache.items[key]
+		if !ok || item.element != element {
+			cache.order.Remove(element)
+			continue
+		}
+		cache.removeLocked(key, item)
+		return
+	}
+
+	// Preserve bounded behavior for white-box tests or older in-memory values
+	// that predate the order index.
+	for key, item := range cache.items {
+		cache.removeLocked(key, item)
+		return
+	}
+}
+
+func (cache *pendingCache) removeLocked(key string, item pendingDecision) {
+	if item.element != nil {
+		cache.order.Remove(item.element)
+	}
+	delete(cache.items, key)
 }

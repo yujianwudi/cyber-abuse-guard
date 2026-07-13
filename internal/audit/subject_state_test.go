@@ -27,8 +27,12 @@ func TestSubjectSnapshotRoundTripAndDelete(t *testing.T) {
 		HMACKeyID: keyID,
 		SavedAt:   fixedMigrationTime(),
 		Subjects: []subject.PersistentSubject{{
-			SubjectHash:   persistenceTestDigest("hmac-sha256:", "subject"),
-			Hits:          []subject.PersistentHit{{At: fixedMigrationTime().Add(-time.Minute), Score: 42}},
+			SubjectHash: persistenceTestDigest("hmac-sha256:", "subject"),
+			Hits: []subject.PersistentHit{{
+				At:          fixedMigrationTime().Add(-time.Minute),
+				Score:       42,
+				RequestHash: persistenceTestDigest("sha256:", "request"),
+			}},
 			CooldownUntil: fixedMigrationTime().Add(time.Minute),
 		}},
 	}
@@ -42,7 +46,7 @@ func TestSubjectSnapshotRoundTripAndDelete(t *testing.T) {
 	if loaded.Version != snapshot.Version || loaded.HMACKeyID != keyID || !loaded.SavedAt.Equal(snapshot.SavedAt) || len(loaded.Subjects) != 1 {
 		t.Fatalf("loaded snapshot = %#v", loaded)
 	}
-	if loaded.Subjects[0].SubjectHash != snapshot.Subjects[0].SubjectHash || len(loaded.Subjects[0].Hits) != 1 {
+	if loaded.Subjects[0].SubjectHash != snapshot.Subjects[0].SubjectHash || len(loaded.Subjects[0].Hits) != 1 || loaded.Subjects[0].Hits[0].RequestHash != snapshot.Subjects[0].Hits[0].RequestHash {
 		t.Fatalf("loaded subject = %#v", loaded.Subjects[0])
 	}
 	if err := store.DeleteSubjectSnapshot(ctx); err != nil {
@@ -112,6 +116,19 @@ func TestInvalidSubjectSnapshotCannotReplacePriorState(t *testing.T) {
 	plaintext.Subjects = []subject.PersistentSubject{{SubjectHash: "live-api-key-must-not-persist"}}
 	if err := store.SaveSubjectSnapshot(ctx, plaintext); err == nil {
 		t.Fatal("plaintext subject identifier was accepted")
+	}
+
+	requestHash := persistenceTestDigest("sha256:", "duplicate-request")
+	invalidRequestReceipts := original
+	invalidRequestReceipts.Subjects = []subject.PersistentSubject{{
+		SubjectHash: originalHash,
+		Hits: []subject.PersistentHit{
+			{At: fixedMigrationTime(), Score: 40, RequestHash: requestHash},
+			{At: fixedMigrationTime(), Score: 40, RequestHash: requestHash},
+		},
+	}}
+	if err := store.SaveSubjectSnapshot(ctx, invalidRequestReceipts); err == nil {
+		t.Fatal("duplicate request receipts were accepted")
 	}
 }
 

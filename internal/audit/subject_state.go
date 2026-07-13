@@ -42,6 +42,19 @@ func (s *Store) SaveSubjectSnapshot(ctx context.Context, snapshot subject.Persis
 			return errors.New("audit: subject persistence contains a duplicate subject hash")
 		}
 		seen[persisted.SubjectHash] = struct{}{}
+		seenRequests := make(map[string]struct{}, len(persisted.Hits))
+		for _, persistedHit := range persisted.Hits {
+			if persistedHit.RequestHash == "" {
+				continue
+			}
+			if !validPersistenceDigest(persistedHit.RequestHash, "sha256:") {
+				return errors.New("audit: subject persistence contains an invalid request hash")
+			}
+			if _, duplicate := seenRequests[persistedHit.RequestHash]; duplicate {
+				return errors.New("audit: subject persistence contains a duplicate request hash")
+			}
+			seenRequests[persistedHit.RequestHash] = struct{}{}
+		}
 	}
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
