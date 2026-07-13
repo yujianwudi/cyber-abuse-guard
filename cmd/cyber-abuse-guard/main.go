@@ -46,26 +46,37 @@ static size_t cliproxy_bounded_strlen(const char* value, size_t maximum) {
 	return maximum;
 }
 
-static const cliproxy_host_api* stored_host_api;
+// Keep a private value copy: the host-owned struct passed to init is not
+// required to outlive the call. Go serializes every access to this state and
+// waits for in-flight host callbacks before clearing it during shutdown.
+static cliproxy_host_api stored_host_api;
+static int stored_host_api_present;
 
 static void cliproxy_store_host_api(const cliproxy_host_api* host) {
-	stored_host_api = host;
+	if (host == NULL) {
+		stored_host_api = (cliproxy_host_api){0};
+		stored_host_api_present = 0;
+		return;
+	}
+	stored_host_api = *host;
+	stored_host_api_present = 1;
 }
 
 static void cliproxy_clear_host_api(void) {
-	stored_host_api = NULL;
+	stored_host_api = (cliproxy_host_api){0};
+	stored_host_api_present = 0;
 }
 
 static int cliproxy_call_host(const char* method, const uint8_t* request, size_t request_len, cliproxy_buffer* response) {
-	if (stored_host_api == NULL || stored_host_api->call == NULL) {
+	if (!stored_host_api_present || stored_host_api.call == NULL) {
 		return 1;
 	}
-	return stored_host_api->call(stored_host_api->host_ctx, method, request, request_len, response);
+	return stored_host_api.call(stored_host_api.host_ctx, method, request, request_len, response);
 }
 
 static void cliproxy_free_host_buffer(void* ptr, size_t len) {
-	if (stored_host_api != NULL && stored_host_api->free_buffer != NULL && ptr != NULL) {
-		stored_host_api->free_buffer(ptr, len);
+	if (stored_host_api_present && stored_host_api.free_buffer != NULL && ptr != NULL) {
+		stored_host_api.free_buffer(ptr, len);
 	}
 }
 */
@@ -73,6 +84,7 @@ import "C"
 
 import (
 	"encoding/json"
+	"sync"
 	"unsafe"
 
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginabi"
@@ -85,7 +97,15 @@ const (
 	maxNativeRequestBytes = 8 << 20
 )
 
-var activePlugin = guardplugin.New()
+var (
+	activePlugin = guardplugin.New()
+
+	// hostAPIMu is the native host-callback lifetime barrier. Readers keep it
+	// for the complete host call and response-buffer free. Init and shutdown
+	// take the write lock, so clearing the copied C API also waits for a logger
+	// that was captured by Plugin.log immediately before SetLogger(nil).
+	hostAPIMu sync.RWMutex
+)
 
 func main() {}
 
@@ -97,12 +117,14 @@ func cliproxy_plugin_init(host *C.cliproxy_host_api, output *C.cliproxy_plugin_a
 	if host != nil && uint32(host.abi_version) != abiVersion {
 		return 1
 	}
+	hostAPIMu.Lock()
 	C.cliproxy_store_host_api(host)
 	if host == nil {
 		activePlugin.SetLogger(nil)
 	} else {
 		activePlugin.SetLogger(hostLogger)
 	}
+	hostAPIMu.Unlock()
 	output.abi_version = C.uint32_t(abiVersion)
 	output.call = C.cliproxy_plugin_call_fn(C.cliproxyPluginCall)
 	output.free_buffer = C.cliproxy_plugin_free_fn(C.cliproxyPluginFree)
@@ -112,15 +134,19 @@ func cliproxy_plugin_init(host *C.cliproxy_host_api, output *C.cliproxy_plugin_a
 
 //export cliproxyPluginCall
 func cliproxyPluginCall(method *C.char, request *C.uint8_t, requestLen C.size_t, response *C.cliproxy_buffer) (returnCode C.int) {
+	methodString := ""
 	if response != nil {
 		response.ptr = nil
 		response.len = 0
 	}
 	defer func() {
-		if recover() != nil {
-			raw := []byte(`{"ok":false,"error":{"code":"panic_recovered","message":"native plugin callback failed safely"}}`)
-			_ = writeNativeResponse(response, raw)
-			returnCode = 1
+		if recovered := recover(); recovered != nil {
+			raw, code := activePlugin.RecoverNativeCallbackPanic(methodString)
+			if !writeNativeResponse(response, raw) {
+				returnCode = 1
+				return
+			}
+			returnCode = C.int(code)
 		}
 	}()
 	if response == nil {
@@ -141,7 +167,7 @@ func cliproxyPluginCall(method *C.char, request *C.uint8_t, requestLen C.size_t,
 		}
 		return 0
 	}
-	methodString := C.GoStringN(method, C.int(methodLen))
+	methodString = C.GoStringN(method, C.int(methodLen))
 	if uint64(requestLen) > maxNativeRequestBytes {
 		// Do not C.GoBytes an unbounded request. Model-route oversize handling is
 		// mode-aware because returning an RPC error would make CPA continue to the
@@ -181,8 +207,19 @@ func cliproxyPluginFree(pointer unsafe.Pointer, length C.size_t) {
 
 //export cliproxyPluginShutdown
 func cliproxyPluginShutdown() {
-	activePlugin.Shutdown()
+	// Stop new logger captures first. A goroutine that already copied the
+	// logger may still be entering hostLogger, so the write lock below is the
+	// in-flight barrier before the host API is cleared and may be released by
+	// CPA. Policy shutdown happens only after that external callback path is
+	// fully detached.
 	activePlugin.SetLogger(nil)
+	clearHostAPIAndWait()
+	activePlugin.Shutdown()
+}
+
+func clearHostAPIAndWait() {
+	hostAPIMu.Lock()
+	defer hostAPIMu.Unlock()
 	C.cliproxy_clear_host_api()
 }
 
@@ -203,20 +240,28 @@ func hostLogger(level, message string, fields map[string]any) {
 	if err != nil {
 		return
 	}
-	method := C.CString(pluginabi.MethodHostLog)
-	defer C.free(unsafe.Pointer(method))
-	var request *C.uint8_t
-	if len(payload) != 0 {
-		request = (*C.uint8_t)(C.CBytes(payload))
-		if request == nil {
-			return
+	withHostAPICallback(func() {
+		method := C.CString(pluginabi.MethodHostLog)
+		defer C.free(unsafe.Pointer(method))
+		var request *C.uint8_t
+		if len(payload) != 0 {
+			request = (*C.uint8_t)(C.CBytes(payload))
+			if request == nil {
+				return
+			}
+			defer C.free(unsafe.Pointer(request))
 		}
-		defer C.free(unsafe.Pointer(request))
-	}
-	var response C.cliproxy_buffer
-	if C.cliproxy_call_host(method, request, C.size_t(len(payload)), &response) == 0 && response.ptr != nil {
-		C.cliproxy_free_host_buffer(response.ptr, response.len)
-	}
+		var response C.cliproxy_buffer
+		if C.cliproxy_call_host(method, request, C.size_t(len(payload)), &response) == 0 && response.ptr != nil {
+			C.cliproxy_free_host_buffer(response.ptr, response.len)
+		}
+	})
+}
+
+func withHostAPICallback(callback func()) {
+	hostAPIMu.RLock()
+	defer hostAPIMu.RUnlock()
+	callback()
 }
 
 func writeNativeResponse(response *C.cliproxy_buffer, raw []byte) bool {

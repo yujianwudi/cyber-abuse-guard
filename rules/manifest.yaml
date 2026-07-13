@@ -1,5 +1,6 @@
-version: "1.0.1"
+version: "1.0.7"
 context_file: contexts.yaml
+semantic_file: semantics.yaml
 rule_files:
   - credentials.yaml
   - phishing.yaml

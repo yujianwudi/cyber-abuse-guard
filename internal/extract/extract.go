@@ -5,7 +5,6 @@ package extract
 
 import (
 	"bytes"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -52,8 +51,31 @@ type Result struct {
 	RoleAware    bool
 	BytesScanned int
 	Truncated    bool
-	ParseError   string
+	// OpaqueMedia reports media that was deliberately not fetched or decoded.
+	// It is separate from Truncated so routing policy can audit or allow
+	// legitimate multimodal requests without weakening fail-closed handling for
+	// genuinely incomplete text inspection.
+	OpaqueMedia      bool
+	OpaqueMediaKinds []OpaqueMediaKind
+	ParseError       string
 }
+
+// OpaqueMediaKind is a content-free, bounded classification of media that was
+// deliberately not fetched or decoded. It is safe for counters and health
+// telemetry because it cannot contain a URL, filename, MIME parameter, or
+// request fragment.
+type OpaqueMediaKind string
+
+const (
+	OpaqueMediaHTTPSImageURL OpaqueMediaKind = "https_image_url"
+	OpaqueMediaDataURL       OpaqueMediaKind = "data_url"
+	OpaqueMediaBase64Image   OpaqueMediaKind = "base64_image"
+	OpaqueMediaAudio         OpaqueMediaKind = "audio"
+	OpaqueMediaVideo         OpaqueMediaKind = "video"
+	OpaqueMediaDocument      OpaqueMediaKind = "document_attachment"
+	OpaqueMediaRemoteURL     OpaqueMediaKind = "remote_media_url"
+	OpaqueMediaOther         OpaqueMediaKind = "other"
+)
 
 // ExtractText extracts text from OpenAI Chat/Responses, Anthropic Messages,
 // Gemini, and common nested tool-call shapes. Invalid JSON returns
@@ -61,6 +83,20 @@ type Result struct {
 // MaxScanBytes returns all complete text tokens before the boundary and sets
 // Truncated instead of mislabelling the valid original request as malformed.
 func ExtractText(body []byte, limits Limits) (Result, error) {
+	return extractText(body, limits, contextNone, true)
+}
+
+// ExtractUntrustedText performs a conservative bounded walk for an unknown
+// provider shape. Every non-metadata string is treated as user-controlled
+// text, including values nested below field names the current provider-aware
+// extractor does not recognize. Role attribution is deliberately disabled:
+// an unknown schema cannot safely prove that a field is a trusted system or
+// assistant message.
+func ExtractUntrustedText(body []byte, limits Limits) (Result, error) {
+	return extractText(body, limits, contextText, false)
+}
+
+func extractText(body []byte, limits Limits, initial contextKind, roleIndex bool) (Result, error) {
 	limits, err := limits.normalized()
 	if err != nil {
 		return Result{}, err
@@ -76,7 +112,7 @@ func ExtractText(body []byte, limits Limits) (Result, error) {
 		Truncated:    len(body) > scanBytes,
 	}
 	x := extractor{limits: limits, result: &result}
-	if err := x.walkJSON(body[:scanBytes], contextNone, 0, len(body) > scanBytes); err != nil {
+	if err := x.walkJSON(body[:scanBytes], initial, 0, len(body) > scanBytes); err != nil {
 		wrapped := fmt.Errorf("%w: %v", ErrInvalidJSON, err)
 		result.ParseError = wrapped.Error()
 		return result, wrapped
@@ -84,7 +120,12 @@ func ExtractText(body []byte, limits Limits) (Result, error) {
 	// Role indexing is attempted only for a complete JSON body. When the scan
 	// boundary cuts the request, enforcing modes already fail closed on the
 	// legacy truncation marker and partial role attribution would be misleading.
-	if scanBytes == len(body) {
+	// A bounded first pass that already found an incomplete decode or exceeded
+	// semantic depth has established a fail-closed result. Do not feed the same
+	// attacker-controlled body into the RawMessage role indexer afterward: that
+	// would defeat the O(MaxJSONDepth) traversal guarantee with a second deep
+	// parse and cannot make the incomplete request safe.
+	if roleIndex && scanBytes == len(body) && !result.Truncated {
 		segments, roleAware, roleTruncated := extractRoleSegments(body, limits)
 		result.Truncated = result.Truncated || roleTruncated
 		if roleAware {
@@ -127,12 +168,27 @@ const (
 )
 
 type jsonFrame struct {
-	kind      json.Delim
-	context   contextKind
-	media     bool
-	expectKey bool
-	key       string
+	kind               json.Delim
+	context            contextKind
+	media              bool
+	mediaKind          mediaContextKind
+	pendingDirectMedia bool
+	pendingHTTPURL     bool
+	pendingHTTPSURL    bool
+	expectKey          bool
+	key                string
 }
+
+type mediaContextKind uint8
+
+const (
+	mediaContextNone mediaContextKind = iota
+	mediaContextImage
+	mediaContextAudio
+	mediaContextVideo
+	mediaContextDocument
+	mediaContextOther
+)
 
 type extractor struct {
 	limits Limits
@@ -192,6 +248,15 @@ func (x *extractor) walkJSON(data []byte, initial contextKind, baseDepth int, bo
 				return fmt.Errorf("mismatched closing delimiter %q", delim)
 			}
 			stack = stack[:len(stack)-1]
+			if len(stack) > 0 && !top.media {
+				parent := &stack[len(stack)-1]
+				parent.pendingDirectMedia = parent.pendingDirectMedia || top.pendingDirectMedia
+				parent.pendingHTTPURL = parent.pendingHTTPURL || top.pendingHTTPURL
+				parent.pendingHTTPSURL = parent.pendingHTTPSURL || top.pendingHTTPSURL
+				if parent.media {
+					x.markPendingOpaqueMedia(parent)
+				}
+			}
 			if len(stack) == 0 {
 				rootDone = true
 			}
@@ -211,7 +276,7 @@ func (x *extractor) walkJSON(data []byte, initial contextKind, baseDepth int, bo
 			}
 		}
 
-		ctx, media, key := x.valueContext(stack, initial)
+		ctx, media, mediaKind, key := x.valueContext(stack, initial)
 		if len(stack) > 0 && stack[len(stack)-1].kind == '{' {
 			top := &stack[len(stack)-1]
 			top.expectKey = true
@@ -229,25 +294,40 @@ func (x *extractor) walkJSON(data []byte, initial contextKind, baseDepth int, bo
 				// consume O(MaxJSONDepth), not O(attacker depth), memory.
 				return nil
 			}
+			canonical := canonicalKey(key)
+			if len(stack) > 0 && isOpaquePayloadKeyCanonical(canonical) {
+				parent := &stack[len(stack)-1]
+				parent.pendingDirectMedia = true
+				if parent.media {
+					x.markPendingOpaqueMedia(parent)
+				}
+			}
 			stack = append(stack, jsonFrame{
 				kind:      delim,
 				context:   ctx,
 				media:     media,
+				mediaKind: mediaKind,
 				expectKey: delim == '{',
 			})
-			canonical := canonicalKey(key)
 			if media && (isOpaquePayloadKeyCanonical(canonical) || (delim == '[' && isDirectMediaValueKeyCanonical(canonical))) {
-				x.result.Truncated = true
+				x.markOpaqueMedia(directOpaqueKind(mediaKind))
 			}
 			continue
 		}
 
 		if text, ok := token.(string); ok {
-			if len(stack) > 0 && marksMediaContext(key, text) {
-				stack[len(stack)-1].media = true
-				media = true
+			if len(stack) > 0 {
+				frame := &stack[len(stack)-1]
+				x.rememberOpaqueMediaCandidate(frame, key, text)
+				if marked, markedKind := marksMediaContext(key, text); marked {
+					frame.media = true
+					frame.mediaKind = markedKind
+					media = true
+					mediaKind = markedKind
+					x.markPendingOpaqueMedia(frame)
+				}
 			}
-			x.processString(text, key, ctx, media, baseDepth+len(stack))
+			x.processString(text, key, ctx, media, mediaKind, baseDepth+len(stack))
 			if x.stop {
 				return nil
 			}
@@ -258,18 +338,65 @@ func (x *extractor) walkJSON(data []byte, initial contextKind, baseDepth int, bo
 	}
 }
 
-func (x *extractor) valueContext(stack []jsonFrame, initial contextKind) (contextKind, bool, string) {
+// rememberOpaqueMediaCandidate retains constant-size evidence for values that
+// appeared before their sibling type/MIME marker. JSON object members are
+// unordered, so a later marker must classify earlier URL/data values exactly as
+// it would if the marker had appeared first.
+func (x *extractor) rememberOpaqueMediaCandidate(frame *jsonFrame, key, value string) {
+	if frame == nil {
+		return
+	}
+	if _, opaque := opaqueDataURLKind(value); opaque {
+		// processString records the exact data-URL kind independently of sibling
+		// metadata; retaining a generic direct-media candidate would double count.
+		return
+	}
+	if isHTTPURL(value) {
+		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(value)), "https://") {
+			frame.pendingHTTPSURL = true
+		} else {
+			frame.pendingHTTPURL = true
+		}
+	} else if isDirectMediaValueKeyCanonical(canonicalKey(key)) {
+		frame.pendingDirectMedia = true
+	}
+	if frame.media {
+		x.markPendingOpaqueMedia(frame)
+	}
+}
+
+func (x *extractor) markPendingOpaqueMedia(frame *jsonFrame) {
+	if frame == nil || !frame.media {
+		return
+	}
+	if frame.pendingDirectMedia {
+		x.markOpaqueMedia(directOpaqueKind(frame.mediaKind))
+	}
+	if frame.pendingHTTPURL {
+		x.markOpaqueMedia(remoteOpaqueKind(frame.mediaKind, "http://opaque.invalid"))
+	}
+	if frame.pendingHTTPSURL {
+		x.markOpaqueMedia(remoteOpaqueKind(frame.mediaKind, "https://opaque.invalid"))
+	}
+}
+
+func (x *extractor) valueContext(stack []jsonFrame, initial contextKind) (contextKind, bool, mediaContextKind, string) {
 	if len(stack) == 0 {
-		return initial, false, ""
+		return initial, false, mediaContextNone, ""
 	}
 	parent := stack[len(stack)-1]
 	if parent.kind == '[' {
-		return parent.context, parent.media, ""
+		return parent.context, parent.media, parent.mediaKind, ""
 	}
 
 	key := parent.key
-	media := parent.media || isMediaContainerKeyCanonical(canonicalKey(key))
-	return childContext(parent.context, key), media, key
+	keyKind := mediaContextForKey(canonicalKey(key))
+	media := parent.media || keyKind != mediaContextNone
+	mediaKind := parent.mediaKind
+	if keyKind != mediaContextNone {
+		mediaKind = keyKind
+	}
+	return childContext(parent.context, key), media, mediaKind, key
 }
 
 func childContext(parent contextKind, key string) contextKind {
@@ -298,19 +425,24 @@ func childContext(parent contextKind, key string) contextKind {
 	return parent
 }
 
-func (x *extractor) processString(text, key string, ctx contextKind, media bool, semanticDepth int) {
+func (x *extractor) processString(text, key string, ctx contextKind, media bool, mediaKind mediaContextKind, semanticDepth int) {
 	canonical := canonicalKey(key)
 	trimmed := strings.TrimSpace(text)
-	if isOpaqueDataURL(text) || containsBinaryControl(text) {
+	if kind, opaque := opaqueDataURLKind(text); opaque {
+		x.markOpaqueMedia(kind)
+		return
+	}
+	if containsBinaryControl(text) {
 		x.result.Truncated = true
 		return
 	}
 	if media {
 		if isHTTPURL(text) {
+			x.markOpaqueMedia(remoteOpaqueKind(mediaKind, text))
 			return
 		}
-		if isDirectMediaValueKeyCanonical(canonical) || looksLikeBase64(trimmed) {
-			x.result.Truncated = true
+		if isDirectMediaValueKeyCanonical(canonical) {
+			x.markOpaqueMedia(directOpaqueKind(mediaKind))
 			return
 		}
 		if isMediaMetadataKeyCanonical(canonical) {
@@ -320,36 +452,61 @@ func (x *extractor) processString(text, key string, ctx contextKind, media bool,
 			x.addText(text, key)
 			return
 		}
-	} else if looksLikeBase64(trimmed) {
-		// An unknown field may be ordinary no-whitespace text rather than media,
-		// so preserve it for deterministic inspection. It is still semantically
-		// opaque, however, and enforcement modes must not treat it as fully
-		// classified merely because it happens to decode as base64.
-		x.result.Truncated = true
 	}
 	if isToolArgumentCanonical(canonical) {
-		trimmed := strings.TrimSpace(text)
-		if len(trimmed) > 1 && (trimmed[0] == '{' || trimmed[0] == '[') {
-			if semanticDepth >= x.limits.MaxJSONDepth {
-				x.result.Truncated = true
-				x.stop = true
-				return
-			}
-			if json.Valid([]byte(trimmed)) {
-				// json.Valid above makes this transactional: malformed nested
-				// arguments cannot leak partial parts before falling back to text.
-				_ = x.walkJSON([]byte(trimmed), contextToolPayload, semanticDepth, false)
-				return
-			}
+		if x.processNestedToolJSON(trimmed, semanticDepth) {
+			return
 		}
-		x.addText(text, key)
-		return
 	}
 
 	if ctx == contextNone || (ctx != contextToolPayload && isMetadataKeyCanonical(canonical)) {
 		return
 	}
 	x.addText(text, key)
+	decoded, encoded, incomplete := decodeBoundedText(text)
+	if encoded && incomplete {
+		x.result.Truncated = true
+	}
+	for _, variant := range decoded {
+		if isToolArgumentCanonical(canonical) && x.processNestedToolJSON(strings.TrimSpace(variant), semanticDepth) {
+			if x.stop {
+				return
+			}
+			continue
+		}
+		x.addText(variant, key)
+		if x.stop {
+			return
+		}
+	}
+}
+
+func (x *extractor) markOpaqueMedia(kind OpaqueMediaKind) {
+	x.result.OpaqueMedia = true
+	if kind == "" {
+		kind = OpaqueMediaOther
+	}
+	for _, existing := range x.result.OpaqueMediaKinds {
+		if existing == kind {
+			return
+		}
+	}
+	x.result.OpaqueMediaKinds = append(x.result.OpaqueMediaKinds, kind)
+}
+
+func (x *extractor) processNestedToolJSON(trimmed string, semanticDepth int) bool {
+	if len(trimmed) <= 1 || (trimmed[0] != '{' && trimmed[0] != '[') || !json.Valid([]byte(trimmed)) {
+		return false
+	}
+	if semanticDepth >= x.limits.MaxJSONDepth {
+		x.result.Truncated = true
+		x.stop = true
+		return true
+	}
+	// json.Valid above makes this transactional: malformed nested arguments
+	// cannot leak partial parts before falling back to text.
+	_ = x.walkJSON([]byte(trimmed), contextToolPayload, semanticDepth, false)
+	return true
 }
 
 func (x *extractor) addText(text, key string) {
@@ -449,11 +606,23 @@ func isMetadataKeyCanonical(key string) bool {
 }
 
 func isMediaContainerKeyCanonical(key string) bool {
+	return mediaContextForKey(key) != mediaContextNone
+}
+
+func mediaContextForKey(key string) mediaContextKind {
 	switch key {
-	case "image", "imageurl", "imagedata", "inputimage", "outputimage", "audio", "inputaudio", "inlineaudio", "inlinedata", "filedata":
-		return true
+	case "image", "imageurl", "imagedata", "inputimage", "outputimage":
+		return mediaContextImage
+	case "audio", "inputaudio", "inlineaudio":
+		return mediaContextAudio
+	case "video", "inputvideo", "outputvideo":
+		return mediaContextVideo
+	case "file", "filedata", "document", "attachment":
+		return mediaContextDocument
+	case "inlinedata":
+		return mediaContextOther
 	default:
-		return false
+		return mediaContextNone
 	}
 }
 
@@ -482,47 +651,116 @@ func isMediaMetadataKeyCanonical(key string) bool {
 	}
 }
 
-func marksMediaContext(key, value string) bool {
+func marksMediaContext(key, value string) (bool, mediaContextKind) {
 	canonical := canonicalKey(key)
 	trimmed := strings.ToLower(strings.TrimSpace(value))
 	switch canonical {
 	case "type":
 		switch canonicalKey(trimmed) {
-		case "image", "imageurl", "inputimage", "outputimage", "audio", "inputaudio", "inlineaudio", "inlinedata":
-			return true
+		case "image", "imageurl", "inputimage", "outputimage":
+			return true, mediaContextImage
+		case "audio", "inputaudio", "inlineaudio":
+			return true, mediaContextAudio
+		case "video", "inputvideo", "outputvideo":
+			return true, mediaContextVideo
+		case "file", "document", "attachment":
+			return true, mediaContextDocument
+		case "inlinedata":
+			return true, mediaContextOther
 		}
 	case "mimetype", "mediatype":
-		return isOpaqueMediaMIME(trimmed)
+		kind := mediaContextForMIME(trimmed)
+		return kind != mediaContextNone, kind
 	}
-	return false
+	return false, mediaContextNone
 }
 
 func isOpaqueMediaMIME(value string) bool {
-	value = strings.ToLower(strings.TrimSpace(value))
-	for _, prefix := range []string{"image/", "audio/", "video/"} {
-		if strings.HasPrefix(value, prefix) {
-			return true
-		}
-	}
-	return value == "application/octet-stream" || value == "application/pdf"
+	return mediaContextForMIME(value) != mediaContextNone
 }
 
-func isOpaqueDataURL(value string) bool {
+func mediaContextForMIME(value string) mediaContextKind {
+	value = strings.ToLower(strings.TrimSpace(value))
+	switch {
+	case strings.HasPrefix(value, "image/"):
+		return mediaContextImage
+	case strings.HasPrefix(value, "audio/"):
+		return mediaContextAudio
+	case strings.HasPrefix(value, "video/"):
+		return mediaContextVideo
+	case value == "application/pdf", value == "application/octet-stream",
+		value == "application/msword", strings.HasPrefix(value, "application/vnd.openxmlformats-officedocument"):
+		return mediaContextDocument
+	default:
+		return mediaContextNone
+	}
+}
+
+func opaqueDataURLKind(value string) (OpaqueMediaKind, bool) {
 	trimmed := strings.TrimSpace(value)
 	lower := strings.ToLower(trimmed)
 	if !strings.HasPrefix(lower, "data:") {
-		return false
+		return "", false
 	}
 	comma := strings.IndexByte(lower, ',')
 	if comma < 0 {
-		return true
+		return OpaqueMediaDataURL, true
 	}
 	header := lower[len("data:"):comma]
 	mimeType := header
 	if semicolon := strings.IndexByte(mimeType, ';'); semicolon >= 0 {
 		mimeType = mimeType[:semicolon]
 	}
-	return strings.Contains(header, ";base64") || isOpaqueMediaMIME(mimeType)
+	contextKind := mediaContextForMIME(mimeType)
+	if contextKind == mediaContextNone {
+		return "", false
+	}
+	if contextKind == mediaContextImage && strings.Contains(header, ";base64") {
+		return OpaqueMediaBase64Image, true
+	}
+	switch contextKind {
+	case mediaContextAudio:
+		return OpaqueMediaAudio, true
+	case mediaContextVideo:
+		return OpaqueMediaVideo, true
+	case mediaContextDocument:
+		return OpaqueMediaDocument, true
+	default:
+		return OpaqueMediaDataURL, true
+	}
+}
+
+func remoteOpaqueKind(kind mediaContextKind, value string) OpaqueMediaKind {
+	switch kind {
+	case mediaContextImage:
+		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(value)), "https://") {
+			return OpaqueMediaHTTPSImageURL
+		}
+		return OpaqueMediaRemoteURL
+	case mediaContextAudio:
+		return OpaqueMediaAudio
+	case mediaContextVideo:
+		return OpaqueMediaVideo
+	case mediaContextDocument:
+		return OpaqueMediaDocument
+	default:
+		return OpaqueMediaRemoteURL
+	}
+}
+
+func directOpaqueKind(kind mediaContextKind) OpaqueMediaKind {
+	switch kind {
+	case mediaContextImage:
+		return OpaqueMediaBase64Image
+	case mediaContextAudio:
+		return OpaqueMediaAudio
+	case mediaContextVideo:
+		return OpaqueMediaVideo
+	case mediaContextDocument:
+		return OpaqueMediaDocument
+	default:
+		return OpaqueMediaOther
+	}
 }
 
 func isHTTPURL(value string) bool {
@@ -537,46 +775,6 @@ func containsBinaryControl(value string) bool {
 		}
 	}
 	return false
-}
-
-func looksLikeBase64(value string) bool {
-	if len(value) < 128 {
-		return false
-	}
-	var compact strings.Builder
-	compact.Grow(len(value))
-	urlAlphabet := false
-	for _, r := range value {
-		switch {
-		case r == '\r' || r == '\n':
-			continue
-		case r >= 'A' && r <= 'Z', r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '+', r == '/', r == '=':
-			compact.WriteRune(r)
-		case r == '-' || r == '_':
-			urlAlphabet = true
-			compact.WriteRune(r)
-		default:
-			return false
-		}
-	}
-	encoded := compact.String()
-	if len(encoded) < 128 || len(encoded)%4 == 1 {
-		return false
-	}
-
-	var encoding *base64.Encoding
-	switch {
-	case urlAlphabet && strings.HasSuffix(encoded, "="):
-		encoding = base64.URLEncoding
-	case urlAlphabet:
-		encoding = base64.RawURLEncoding
-	case strings.HasSuffix(encoded, "=") || len(encoded)%4 == 0:
-		encoding = base64.StdEncoding
-	default:
-		encoding = base64.RawStdEncoding
-	}
-	_, err := io.Copy(io.Discard, base64.NewDecoder(encoding, strings.NewReader(encoded)))
-	return err == nil
 }
 
 func minInt(a, b int) int {

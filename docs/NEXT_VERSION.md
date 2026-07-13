@@ -1,31 +1,45 @@
 # Next-Version Recommendations
 
+These items remain after the v0.1.2 candidate work. They are not claims about
+implemented behavior.
+
 1. Propose a CPA ABI-v2 block result carrying HTTP status, headers, and a
-   protocol-native body so cooldown responses can include `Retry-After` and a
-   blocked stream can have an explicit terminal event without forcing HTTP 200.
-2. Extend the v0.1.1 role-aware standard envelopes with provider-specific
-   quotation/provenance markers and a versioned compatibility corpus, without
-   weakening the conservative fallback or history-cap fail-closed behavior.
-3. Add signed, licensed external rule bundles restricted to the plugin data
-   directory, with checksum verification, atomic activation, rollback, and a
-   rule-development corpus separate from the locked acceptance set.
-4. If a local classifier is implemented, require an explicit endpoint
-   allowlist, pin resolved addresses, reject redirects, enforce loopback/private
-   transport on every connection, bound payload/response size, and retain
-   rules-only timeout behavior. Never enable public endpoints by default.
-5. Ask CPA to expose a verified direct-peer address and authenticated downstream
-   principal/key ID in `ModelRouteRequest`; only then enable trusted-proxy IP
-   subject buckets.
-6. Add dual-key HMAC rotation and optional encrypted persistence for subject
-   cooldown/manual-block state across restarts.
-7. Add an authenticated management UI mechanism. CPA v7.2.67 resource routes
-   are public and must not carry audit or subject data.
-8. Expand real-host coverage to safe/streaming Gemini variants and every
-   production plugin ordering combination. The current suite already includes
-   an observable auth-scheduler probe, usage-queue spy, role/tool regressions,
-   and a no-copy oversized-RPC case.
-9. Add a long-running nightly fuzz/leak job, signed SBOM/provenance, and
-   reproducible-build comparison across two clean Linux builders.
+   protocol-native body so cooldown responses can include `Retry-After`, a
+   blocked stream can have an explicit terminal event without HTTP 200, and the
+   host can offer a true fail-closed Router policy.
+2. Ask CPA to expose authenticated downstream principal/key-policy ID, verified
+   direct-peer address, loaded Router ordering, and active plugin binary
+   inventory. Only then enable trusted-proxy subjects and in-process conflict/
+   duplicate-version checks.
+3. Implement the documented dual-key HMAC rotation state machine: one active
+   and one previous read-only key, one-way fingerprints, bounded transition
+   state, finite overlap, active-key-only writes, and explicit finalization.
+4. Add an authenticated operator action for deliberately archiving/resetting a
+   key-mismatched subject snapshot. It must not expose raw subjects or silently
+   overwrite state.
+5. Establish an independent blind-Holdout generation and review pipeline outside
+   the rule-development loop. Each release should freeze new SHA-256 inputs,
+   emit aggregate-only results, and prevent row-level access before the gate.
+6. Extend role/provenance support with provider-versioned quotation and citation
+   markers while preserving conservative unsupported-role and history-cap
+   behavior.
+7. Add signed, licensed external rule bundles only if they are restricted to a
+   trusted plugin-data directory, permission checked, signature/hash verified,
+   atomically activated, offline by default, and backed by the embedded rules.
+   Never auto-download rules.
+8. If a local model classifier is added, require explicit loopback/private
+   endpoint allowlists, address pinning per connection, redirect rejection,
+   bounded request/response sizes, rules-only fallback, and privacy canaries.
+   Public endpoints must remain unsupported by default.
+9. Add an authenticated management UI mechanism only after CPA offers a safe
+   private resource route. CPA v7.2.67 public resource routes must never carry
+   audit or subject data.
 10. Replace whole-buffer rune normalization with a streaming/byte-oriented
-    matcher to reduce the current roughly 1.05 MB worst-case allocation without
-    regressing the benign corpus.
+    matcher to bring near-budget allocation below 1,000,000 bytes/op without
+    reducing scan, decode, history, or rule coverage.
+11. Add long-running nightly fuzz, soak, migration-fault, and memory-leak jobs,
+    signed provenance/attestation, and reproducibility comparison across two
+    independent Linux builders rather than two local clones only.
+12. Qualify newer CPA releases and architectures one at a time with the full
+    Mock Upstream/Auth Selector/Usage isolation suite. Do not infer compatibility
+    from ABI numbers alone.

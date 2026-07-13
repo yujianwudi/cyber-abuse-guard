@@ -1,4 +1,4 @@
-version: "1.0.1"
+version: "1.0.7"
 rules:
   - id: EVADE-001
     category: defense_evasion
@@ -7,20 +7,20 @@ rules:
     hard_floor: 80
     authorization_protected: false
     intent:
-      zh: ["关闭", "绕过", "禁用", "删除", "清除", "擦除", "规避", "篡改"]
-      en: ["disable", "disables", "disabling", "disabled", "bypass", "bypasses", "bypassing", "bypassed", "evade", "evades", "evading", "evaded", "erase", "erases", "erasing", "erased", "delete", "deletes", "deleting", "deleted", "clear", "clears", "clearing", "cleared", "tamper", "tampers", "tampering", "tampered", "turn off", "turned off", "shut down"]
+      zh: ["关闭", "停止", "停掉", "静音", "脱钩", "绕过", "禁用", "删除", "清除", "擦除", "规避", "篡改", "致盲", "解除防护", "压制遥测", "中止采集"]
+      en: ["disable", "disables", "disabling", "disabled", "stop", "stops", "stopping", "stopped", "silence", "silences", "silencing", "silenced", "mute", "mutes", "muting", "muted", "suspend", "suspends", "suspending", "suspended", "unhook", "unhooks", "unhooking", "unhooked", "suppress telemetry", "bypass", "bypasses", "bypassing", "bypassed", "evade", "evades", "evading", "evaded", "erase", "erases", "erasing", "erased", "delete", "deletes", "deleting", "deleted", "clear", "clears", "clearing", "cleared", "tamper", "tampers", "tampering", "tampered", "turn off", "turned off", "shut down", "blind", "neutralize"]
     object:
-      zh: ["edr", "杀毒", "端点检测", "取证痕迹", "安全策略"]
-      en: ["edr", "antivirus", "endpoint detection", "endpoint security", "forensic artifacts", "safety controls"]
+      zh: ["edr", "杀毒", "windows defender", "amsi", "etw", "sysmon", "auditd", "siem 代理", "入侵检测", "应用控制", "端点检测", "端点遥测", "安全遥测", "事件收集", "安全事件采集", "日志采集", "取证痕迹", "安全策略", "安全代理", "遥测代理"]
+      en: ["edr", "antivirus", "windows defender", "amsi", "etw", "sysmon", "auditd", "siem agent", "ids agent", "ips agent", "applocker", "endpoint detection", "endpoint security", "endpoint telemetry", "security telemetry", "event collection", "security event collection", "event logging", "telemetry collection", "endpoint sensor", "forensic artifacts", "safety controls", "security agent", "telemetry agent", "antivrus"]
     operational:
-      zh: ["可直接运行", "命令", "脚本", "工具", "完整", "载荷", "程序"]
-      en: ["working code", "ready-to-run", "ready to run", "commands", "script", "utility", "payload", "deployable"]
+      zh: ["可直接运行", "命令", "脚本", "工具", "完整", "载荷", "程序", "植入程序运行前", "载荷运行前"]
+      en: ["working code", "ready-to-run", "ready to run", "commands", "script", "utility", "payload", "deployable", "before the implant", "before malware runs"]
     target:
-      zh: ["真实主机", "受害主机"]
-      en: ["real hosts", "victim machines"]
+      zh: ["真实主机", "受害主机", "受害端点", "已失陷主机"]
+      en: ["real hosts", "victim machines", "victim endpoints", "compromised machines", "compromised hosts", "compromised endpoints"]
     evasion:
-      zh: ["静默", "执行后", "入侵后", "无法识别"]
-      en: ["undetected", "before installing", "before deploying", "before the payload", "after intrusion"]
+      zh: ["静默", "执行后", "入侵后", "无法识别", "不被看见", "隐藏活动"]
+      en: ["undetected", "not seen", "avoid being seen", "hide activity", "before installing", "before deploying", "before the payload", "after intrusion"]
     scale:
       zh: ["批量", "自动", "多台"]
       en: ["automated", "across", "multiple", "at scale"]

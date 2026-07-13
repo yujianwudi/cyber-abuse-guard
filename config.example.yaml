@@ -1,3 +1,6 @@
+# Production also requires a regular mode-0600 secret file mounted read-only:
+# CYBER_ABUSE_GUARD_HMAC_KEY_FILE=/run/secrets/cyber-abuse-guard-hmac.key
+# Never commit the secret or put it in this YAML.
 plugins:
   enabled: true
   dir: plugins
@@ -5,11 +8,18 @@ plugins:
     cyber-abuse-guard:
       enabled: true
       priority: 300
-      mode: balanced
+      # First production deployment: observe for 24-48h, then audit for
+      # 24-48h, then balanced after review. Do not start directly in strict.
+      mode: observe
 
       max_scan_bytes: 262144
       max_json_depth: 32
       max_text_parts: 512
+
+      # block|audit|allow. If omitted: off=allow,
+      # observe/audit/balanced=audit, strict=block. The plugin never fetches
+      # public media URLs and never decodes image/audio/video bytes.
+      opaque_media_policy: audit
 
       thresholds:
         audit: 35
@@ -32,6 +42,10 @@ plugins:
 
       subject_control:
         enabled: true
+        # false keeps risk/cooldown/manual-block state in memory only; restart
+        # clears it. true requires audit.enabled, max_subjects <= 10000, and a
+        # stable CYBER_ABUSE_GUARD_HMAC_KEY_FILE.
+        persistence: false
         max_subjects: 10000
         window_minutes: 60
         cooldown_score: 150
@@ -48,17 +62,22 @@ plugins:
         log_subject_hash: true
         log_rule_ids: true
         log_category: true
-        # The plugin rejects true; original request text is never persisted.
+        # Compatibility field: true is always rejected. There is no debug
+        # mode that persists original prompt/request text.
         log_original_text: false
+        # v0.1.1 databases are detected as schema v1. Migration to schema v2
+        # is atomic; optional VACUUM INTO backups are read-only and bounded.
+        backup_before_migration: true
+        max_migration_backups: 3
 
       trusted_proxy:
         # CPA v7.2.67 ModelRouter lacks a trustworthy direct-peer address;
-        # v0.1.1 therefore rejects enabled: true instead of trusting spoofable headers.
+        # v0.1.2 therefore rejects enabled: true instead of trusting spoofable headers.
         enabled: false
         header: X-Forwarded-For
         cidrs: []
 
-      # Reserved for a future local-only classifier; v0.1.1 rejects enabled: true.
+      # Reserved for a future local-only classifier; v0.1.2 rejects enabled: true.
       classifier:
         enabled: false
         endpoint: ""

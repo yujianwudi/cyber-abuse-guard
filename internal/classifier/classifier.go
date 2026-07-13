@@ -148,10 +148,25 @@ type compiledRule struct {
 	target                 int
 	evasion                int
 	scale                  int
+	independentOperational int
+	independentTarget      int
+	independentEvasion     int
+	independentScale       int
 	intentStarts           []string
 }
 
 type compiledContexts map[rules.ContextKind]int
+
+var classifierCategoryOrder = []rules.Category{
+	rules.CategoryCredentialTheft,
+	rules.CategoryPhishing,
+	rules.CategoryMalware,
+	rules.CategoryRansomware,
+	rules.CategoryExploitation,
+	rules.CategoryDisruption,
+	rules.CategoryExfiltration,
+	rules.CategoryEvasion,
+}
 
 // Classifier is immutable after construction and safe for concurrent use.
 type Classifier struct {
@@ -160,8 +175,11 @@ type Classifier struct {
 	contexts              compiledContexts
 	standardMatcher       *literalMatcher
 	compactMatcher        *literalMatcher
+	categoryRules         map[rules.Category][]int
 	signalCount           int
 	implementationRequest int
+	outcomeRequest        int
+	semanticProfiles      []compiledSemanticProfile
 }
 
 // New validates and precompiles a private matcher snapshot.
@@ -170,9 +188,10 @@ func New(set *rules.RuleSet) (*Classifier, error) {
 		return nil, fmt.Errorf("compile classifier: %w", err)
 	}
 	c := &Classifier{
-		version:  set.Version,
-		rules:    make([]compiledRule, 0, len(set.Rules)),
-		contexts: make(compiledContexts, len(set.Contexts)),
+		version:       set.Version,
+		rules:         make([]compiledRule, 0, len(set.Rules)),
+		contexts:      make(compiledContexts, len(set.Contexts)),
+		categoryRules: make(map[rules.Category][]int, len(classifierCategoryOrder)),
 	}
 	standardBuilder := newMatcherBuilder()
 	compactBuilder := newMatcherBuilder()
@@ -184,6 +203,12 @@ func New(set *rules.RuleSet) (*Classifier, error) {
 			return 0, fmt.Errorf("compile classifier %s: %w", label, err)
 		}
 		return signalID, nil
+	}
+	compileOptionalGroup := func(terms rules.Terms, label string) (int, error) {
+		if len(terms.ZH) == 0 && len(terms.EN) == 0 {
+			return -1, nil
+		}
+		return compileGroup(terms, label)
 	}
 	for _, source := range set.Rules {
 		compiled := compiledRule{
@@ -213,7 +238,28 @@ func New(set *rules.RuleSet) (*Classifier, error) {
 			}
 			*group.target = signalID
 		}
+		independentGroups := []struct {
+			source rules.Terms
+			target *int
+			name   string
+		}{
+			{source.Operational, &compiled.independentOperational, "independent operational"},
+			{source.Target, &compiled.independentTarget, "independent target"},
+			{source.Evasion, &compiled.independentEvasion, "independent evasion"},
+			{source.Scale, &compiled.independentScale, "independent scale"},
+		}
+		coveredGroups := []rules.Terms{source.Intent, source.Object}
+		for _, group := range independentGroups {
+			terms := independentQualifierTerms(group.source, coveredGroups...)
+			signalID, err := compileOptionalGroup(terms, "rule "+source.ID+" "+group.name)
+			if err != nil {
+				return nil, err
+			}
+			*group.target = signalID
+			coveredGroups = append(coveredGroups, group.source)
+		}
 		c.rules = append(c.rules, compiled)
+		c.categoryRules[compiled.category] = append(c.categoryRules[compiled.category], len(c.rules)-1)
 	}
 	contextOrder := []rules.ContextKind{
 		rules.ContextDefensive,
@@ -234,14 +280,55 @@ func New(set *rules.RuleSet) (*Classifier, error) {
 		c.contexts[kind] = signalID
 	}
 	implementationTerms := rules.Terms{
-		ZH: []string{"现在给出代码", "现在写代码", "把它实现出来", "继续给完整步骤", "给我代码", "实现上述内容", "实现上面的方案", "按上面方案开始写", "按上述方案开始写", "给出源码", "展示源码", "开始实现", "用 python", "用 powershell", "用 bash", "用 go", "加入错误处理", "逐步给出命令", "把命令列出来"},
-		EN: []string{"now give working code", "now write the code", "give me the code", "implement it", "implement the above", "implement the plan above", "now provide steps", "turn that into code", "now give code", "show me the source", "show the source", "provide the source", "start implementing", "write the implementation", "use python", "in python", "use powershell", "in powershell", "use bash", "in bash", "use go", "in go", "include error handling", "show the commands", "step by step"},
+		ZH: []string{"现在给出代码", "现在写代码", "把它实现出来", "继续给完整步骤", "给我代码", "实现上述内容", "实现上面的方案", "按上面方案开始写", "按上述方案开始写", "给出源码", "展示源码", "开始实现", "用 python", "用 powershell", "用 bash", "用 go", "加入错误处理", "逐步给出命令", "把命令列出来", "给出实际步骤", "给出执行流程", "给出可操作方案", "制定执行计划", "制定投放计划", "具体怎么做", "实施步骤"},
+		EN: []string{"now give working code", "now write the code", "give me the code", "implement it", "implement the above", "implement the plan above", "now provide steps", "turn that into code", "now give code", "show me the source", "show the source", "provide the source", "start implementing", "write the implementation", "use python", "in python", "use powershell", "in powershell", "use bash", "in bash", "use go", "in go", "include error handling", "show the commands", "step by step", "practical steps", "actionable steps", "practical workflow", "operational workflow", "execution plan", "deployment plan", "rollout plan", "implementation plan", "lay out how to"},
 	}
 	implementationSignal, err := compileGroup(implementationTerms, "implementation request")
 	if err != nil {
 		return nil, err
 	}
 	c.implementationRequest = implementationSignal
+	outcomeTerms := rules.Terms{
+		ZH: []string{"最终结果", "最终要", "最终应", "最终状态", "最终需要", "目标结果", "目标是", "成功标准", "完成后", "交付后", "结果应", "结果要", "期望结果", "预期结果", "所需终态", "要求的终态"},
+		EN: []string{"desired outcome", "desired result", "required outcome", "required result", "specific outcome", "target outcome", "end result", "end state", "end-state", "required end state", "final outcome", "final state", "success means", "success is", "success criteria", "at completion", "when finished", "by the end", "once complete", "once finished"},
+	}
+	outcomeSignal, err := compileGroup(outcomeTerms, "outcome request")
+	if err != nil {
+		return nil, err
+	}
+	c.outcomeRequest = outcomeSignal
+	for _, category := range classifierCategoryOrder {
+		profile, ok := set.Semantics[category]
+		if !ok {
+			continue
+		}
+		compiled := compiledSemanticProfile{
+			category:     category,
+			intentStarts: append(normalizedTermValues(profile.Harm), normalizedTermValues(profile.Action)...),
+		}
+		categorySources := make([]rules.Rule, 0, len(c.categoryRules[category]))
+		for _, ruleIndex := range c.categoryRules[category] {
+			compiled.intentStarts = append(compiled.intentStarts, c.rules[ruleIndex].intentStarts...)
+			categorySources = append(categorySources, set.Rules[ruleIndex])
+		}
+		compiled.intentStarts = uniqueSorted(compiled.intentStarts)
+		evidenceTerms := buildSemanticEvidenceTerms(profile, categorySources, implementationTerms, outcomeTerms)
+		compiled.evidence = make([]compiledSemanticEvidence, len(evidenceTerms))
+		for index, evidenceTerm := range evidenceTerms {
+			signalID, compileErr := compileGroup(evidenceTerm.terms, "semantic "+string(category)+" evidence")
+			if compileErr != nil {
+				return nil, compileErr
+			}
+			compiled.evidence[index] = compiledSemanticEvidence{
+				id: uint16(index), signalID: signalID, dimensionMask: evidenceTerm.dimensionMask,
+			}
+		}
+		linkLongerSemanticEvidence(&compiled, evidenceTerms)
+		for dimension, kind := range semanticDimensionKinds {
+			compiled.result[dimension] = Evidence{ID: compiled.id() + ":" + kind, Kind: kind}
+		}
+		c.semanticProfiles = append(c.semanticProfiles, compiled)
+	}
 	c.standardMatcher = standardBuilder.build()
 	c.compactMatcher = compactBuilder.build()
 	c.signalCount = nextSignal
@@ -262,6 +349,13 @@ func (c *Classifier) Classify(parts []string, mode Mode, thresholds Thresholds) 
 // authorization behavior. Callers should start from DefaultPolicy and override
 // only fields exposed by their validated configuration.
 func (c *Classifier) ClassifyWithPolicy(parts []string, mode Mode, thresholds Thresholds, policy Policy) Result {
+	return c.classifyWithPolicy(parts, mode, thresholds, policy, false)
+}
+
+// classifyWithPolicy keeps role provenance out of the public API while
+// allowing a provider-native structured tool payload to retain one whole-part
+// semantic window. Ordinary user text never receives that exception.
+func (c *Classifier) classifyWithPolicy(parts []string, mode Mode, thresholds Thresholds, policy Policy, structuredToolPayload bool) Result {
 	if c == nil {
 		return Result{Action: ActionAllow}
 	}
@@ -273,6 +367,12 @@ func (c *Classifier) ClassifyWithPolicy(parts []string, mode Mode, thresholds Th
 	coLocatedCores := make([]bool, len(c.rules))
 	var previousSignals, currentSignals, scratchSignals []bool
 	var previousRunes, currentRunes, scratchRunes []rune
+	var previousRunesUsed, currentRunesUsed, scratchRunesUsed int
+	defer func() {
+		putNormalizedRuneBuffer(previousRunes, previousRunesUsed)
+		putNormalizedRuneBuffer(currentRunes, currentRunesUsed)
+		putNormalizedRuneBuffer(scratchRunes, scratchRunesUsed)
+	}()
 	var normalizerScratch normalizationScratch
 	var compactScratch []bool
 	partCount := 0
@@ -290,10 +390,18 @@ func (c *Classifier) ClassifyWithPolicy(parts []string, mode Mode, thresholds Th
 			truncated = true
 		}
 		remainingBytes -= consumedBytes
+		if scratchRunes == nil {
+			scratchRunes = takeNormalizedRuneBuffer()
+		}
 		views := normalizePartsInto([]string{part}, scratchRunes, &normalizerScratch)
+		bufferUsed := views.storageUsed
+		if scratchRunesUsed > bufferUsed {
+			bufferUsed = scratchRunesUsed
+		}
 		truncated = truncated || views.truncated
 		if len(views.standardRunes) == 0 {
 			scratchRunes = views.standardRunes
+			scratchRunesUsed = bufferUsed
 			continue
 		}
 		if scratchSignals == nil {
@@ -317,6 +425,7 @@ func (c *Classifier) ClassifyWithPolicy(parts []string, mode Mode, thresholds Th
 
 		previousSignals, currentSignals, scratchSignals = currentSignals, scratchSignals, previousSignals
 		previousRunes, currentRunes, scratchRunes = currentRunes, views.standardRunes, previousRunes
+		previousRunesUsed, currentRunesUsed, scratchRunesUsed = currentRunesUsed, bufferUsed, previousRunesUsed
 		partCount++
 	}
 	currentContext := ContextFlags{}
@@ -348,19 +457,26 @@ func (c *Classifier) ClassifyWithPolicy(parts []string, mode Mode, thresholds Th
 		score    int
 		category rules.Category
 		ruleID   string
+		ruleIDs  []string
 		evidence []Evidence
 	}
-	candidates := make([]candidate, 0, 4)
+	candidates := make([]candidate, 0, 8)
+	var categoryHasCandidate [8]bool
 	previousFollowUpEligible := partCount > 1 && followUpEligible(previousRunes)
 	var currentDirectives analyzedDirectives
 	directivesReady := false
+	currentText := string(currentRunes)
+	previousHarmConflict := false
+	previousHarmConflictReady := false
 	for ruleIndex, rule := range c.rules {
 		intent := signals[rule.intent]
 		object := signals[rule.object]
-		if !intent || !object {
+		current := currentSignals
+		objectQualifiedFallback := isCredentialObjectQualifiedFallback(rule, current) &&
+			!isLegitimateCategoryWorkflow(rule.category, currentText)
+		if (!intent || !object) && !objectQualifiedFallback {
 			continue
 		}
-		current := currentSignals
 		currentCore := current[rule.intent] && current[rule.object]
 		if currentCore {
 			if !directivesReady {
@@ -368,6 +484,9 @@ func (c *Classifier) ClassifyWithPolicy(parts []string, mode Mode, thresholds Th
 				directivesReady = true
 			}
 			currentCore = !currentDirectives.ruleCoreIsOnlyNegated(rule)
+			if currentCore && isLegitimateCategoryWorkflow(rule.category, currentText) {
+				currentCore = false
+			}
 		}
 		priorStrongCore := false
 		var priorCoreSignals []bool
@@ -379,27 +498,37 @@ func (c *Classifier) ClassifyWithPolicy(parts []string, mode Mode, thresholds Th
 			}
 		}
 		implementationFollowUp := current[c.implementationRequest] && priorStrongCore
-		if !currentCore && !implementationFollowUp {
+		if !currentCore && !implementationFollowUp && !objectQualifiedFallback {
 			continue
 		}
 		coreCoLocated := coLocatedCores[ruleIndex]
-		evidence := []Evidence{
-			{ID: rule.id + ":intent", Kind: "intent"},
-			{ID: rule.id + ":object", Kind: "object"},
-		}
 		score := rule.baseScore
-		if !coreCoLocated {
+		evidence := []Evidence{{ID: rule.id + ":object", Kind: "object"}}
+		if objectQualifiedFallback {
+			// Credential artifacts combined with operational, real-target, and
+			// evasion evidence form four independent signals even when an
+			// unfamiliar theft verb is used. A missing intent still receives a
+			// conservative penalty and a bare credential keyword never blocks.
+			score -= 25
+		} else {
+			evidence = append(evidence, Evidence{ID: rule.id + ":intent", Kind: "intent"})
+		}
+		if !objectQualifiedFallback && !coreCoLocated {
 			score -= 20
 		}
 		qualifiers := 0
-		operational := current[rule.operational] || implementationFollowUp
-		target := current[rule.target]
-		evasion := current[rule.evasion]
-		scale := current[rule.scale]
+		// A same-turn request for code, commands, an execution plan, or a
+		// practical workflow is operational evidence too. Previously this signal
+		// was used only for a later follow-up, which let explicit abuse phrased as
+		// "give me a plan to ..." remain below the balanced threshold.
+		operational := signalMatched(current, rule.independentOperational) || current[c.implementationRequest] || implementationFollowUp
+		target := signalMatched(current, rule.independentTarget)
+		evasion := signalMatched(current, rule.independentEvasion)
+		scale := signalMatched(current, rule.independentScale)
 		if implementationFollowUp && priorCoreSignals != nil {
-			target = target || priorCoreSignals[rule.target]
-			evasion = evasion || priorCoreSignals[rule.evasion]
-			scale = scale || priorCoreSignals[rule.scale]
+			target = target || signalMatched(priorCoreSignals, rule.independentTarget)
+			evasion = evasion || signalMatched(priorCoreSignals, rule.independentEvasion)
+			scale = scale || signalMatched(priorCoreSignals, rule.independentScale)
 		}
 		if operational {
 			score += 20
@@ -428,13 +557,26 @@ func (c *Classifier) ClassifyWithPolicy(parts []string, mode Mode, thresholds Th
 			score = rule.hardFloor
 		}
 		effectiveContext := context
-		if current[rule.target] {
+		priorTargetConflict := implementationFollowUp && priorCoreSignals != nil && signalMatched(priorCoreSignals, rule.target)
+		if current[rule.target] || priorTargetConflict {
 			if carriedCTFOrLab && !currentContext.CTFOrLab {
 				effectiveContext.CTFOrLab = false
 			}
 			if carriedAuthorized && !currentContext.Authorized {
 				effectiveContext.Authorized = false
 			}
+		}
+		priorHarmConflict := false
+		if implementationFollowUp {
+			if !previousHarmConflictReady {
+				previousHarmConflict = hasExplicitHarmConflict(string(previousRunes))
+				previousHarmConflictReady = true
+			}
+			priorHarmConflict = previousHarmConflict
+		}
+		if hasExplicitHarmConflict(currentText) || priorHarmConflict {
+			effectiveContext.Authorized = false
+			effectiveContext.CTFOrLab = false
 		}
 		authorizationProtected := rule.authorizationProtected && policy.HardBlockEvenIfAuthorized.protects(rule.category)
 		contradictoryDirective := false
@@ -470,6 +612,289 @@ func (c *Classifier) ClassifyWithPolicy(parts []string, mode Mode, thresholds Th
 			score = rule.hardFloor
 		}
 		candidates = append(candidates, candidate{score: score, category: rule.category, ruleID: rule.id, evidence: evidence})
+		categoryHasCandidate[categoryPriority(rule.category)] = true
+	}
+
+	// A requested end state can describe clear abuse without using a familiar
+	// action verb. Compose this semantic intent only inside one category and
+	// require a harmful object plus two independent qualifier dimensions. This
+	// lets related rules contribute complementary target/destination/scale
+	// vocabulary while retaining the same multi-evidence floor as ordinary
+	// rule candidates.
+	if signalMatched(currentSignals, c.outcomeRequest) && !hasAffirmativeSafetyPurpose(currentText) {
+		for _, category := range classifierCategoryOrder {
+			if categoryHasCandidate[categoryPriority(category)] || isLegitimateCategoryWorkflow(category, currentText) {
+				continue
+			}
+			if !directivesReady {
+				currentDirectives = c.analyzeDirectives(currentRunes)
+				directivesReady = true
+			}
+			if c.categoryMatchedIntentsAreOnlyNegated(category, currentSignals, currentDirectives) {
+				continue
+			}
+			providers := c.categoryOutcomeProviders(category, currentSignals)
+			if providers.object < 0 || providers.qualifierCount() < 2 {
+				continue
+			}
+			objectRule := c.rules[providers.object]
+			score := 45
+			evidence := []Evidence{
+				{ID: objectRule.id + ":object", Kind: "object"},
+				{ID: objectRule.id + ":outcome", Kind: "intent"},
+			}
+			ruleIDs := []string{objectRule.id}
+			appendQualifier := func(provider int, present bool, points int, kind string) {
+				if !present {
+					return
+				}
+				score += points
+				qualifierRule := objectRule
+				if provider >= 0 {
+					qualifierRule = c.rules[provider]
+					ruleIDs = append(ruleIDs, qualifierRule.id)
+				}
+				evidence = append(evidence, Evidence{ID: qualifierRule.id + ":" + kind, Kind: kind})
+			}
+			appendQualifier(providers.operational, providers.hasOperational, 20, "operational")
+			appendQualifier(providers.target, providers.target >= 0, 18, "target")
+			appendQualifier(providers.evasion, providers.evasion >= 0, 16, "evasion")
+			appendQualifier(providers.scale, providers.scale >= 0, 16, "scale")
+			if providers.qualifierCount() >= 2 {
+				score += 5
+			}
+
+			effectiveContext := context
+			if hasExplicitHarmConflict(currentText) {
+				effectiveContext.Authorized = false
+				effectiveContext.CTFOrLab = false
+			}
+			authorizationProtected := objectRule.authorizationProtected && policy.HardBlockEvenIfAuthorized.protects(category)
+			score = applyContextDeductions(score, effectiveContext, authorizationProtected)
+			genuineSafetyContext := effectiveContext.Defensive || effectiveContext.Remediation || effectiveContext.StaticAnalysis || effectiveContext.IncidentResponse || effectiveContext.HighLevel
+			if authorizationProtected && !genuineSafetyContext && score < HardThreshold {
+				score = HardThreshold
+			}
+			candidates = append(candidates, candidate{
+				score:    clampScore(score),
+				category: category,
+				ruleIDs:  uniqueSorted(ruleIDs),
+				evidence: evidence,
+			})
+			categoryHasCandidate[categoryPriority(category)] = true
+		}
+	}
+
+	// Category-level semantic profiles compose grammar-independent evidence
+	// dimensions inside a bounded related window. They complement, rather than
+	// weaken, rule-local intent/object candidates: an object, an agency/outcome
+	// signal, a target or destination, and an additional consequence dimension
+	// are all mandatory, and negative/legitimate workflow scope still wins.
+	if len(c.semanticProfiles) != 0 {
+		semanticSignals := [][]bool{currentSignals}
+		previousText := ""
+		partsLinked := false
+		if partCount > 1 {
+			previousText = string(previousRunes)
+			partsLinked = semanticPartsLinked(previousText, currentText)
+			if partsLinked {
+				semanticSignals = append(semanticSignals, previousSignals)
+			}
+		}
+		semanticPotential := false
+		for _, profile := range c.semanticProfiles {
+			if semanticDimensionsPotential(c.semanticDimensions(profile, semanticSignals)) {
+				semanticPotential = true
+				break
+			}
+		}
+		if semanticPotential {
+			if !directivesReady {
+				currentDirectives = c.analyzeDirectives(currentRunes)
+				directivesReady = true
+			}
+			windows := semanticDirectiveWindows(currentDirectives)
+			if len(windows) == 0 || (structuredToolPayload && structuredSemanticFragment(currentText)) {
+				windows = append(windows, semanticSignalWindow{signals: [][]bool{currentSignals}, text: currentText})
+			}
+			if partsLinked {
+				windows = append(windows, semanticSignalWindow{
+					signals: [][]bool{previousSignals, currentSignals},
+					text:    strings.TrimSpace(previousText + "\n" + currentText),
+				})
+			}
+			for _, profile := range c.semanticProfiles {
+				bestSemantic := semanticAssessment{}
+				for _, window := range windows {
+					assessment := c.assessSemanticWindow(profile, window, policy)
+					if assessment.score > bestSemantic.score {
+						bestSemantic = assessment
+					}
+				}
+				if bestSemantic.score < AuditThreshold {
+					continue
+				}
+				candidates = append(candidates, candidate{
+					score:    bestSemantic.score,
+					category: profile.category,
+					ruleID:   profile.id(),
+					evidence: bestSemantic.evidence,
+				})
+			}
+		}
+	}
+
+	// Compose a core only within one category and one current directive clause,
+	// and only when no ordinary rule candidate exists for that category. Both
+	// the intent and object provider must carry an additional qualifier, and the
+	// pair must jointly include operational evidence plus two of
+	// target/evasion/scale. This closes vocabulary seams between related rules
+	// without turning a loose bag of security words, separate clauses, or
+	// evidence from different categories into a core.
+	for _, category := range classifierCategoryOrder {
+		if categoryHasCandidate[categoryPriority(category)] {
+			continue
+		}
+		ruleIndexes := c.categoryRules[category]
+		if len(ruleIndexes) < 2 {
+			continue
+		}
+		hasQualifiedIntent := false
+		hasQualifiedObject := false
+		for _, ruleIndex := range ruleIndexes {
+			rule := c.rules[ruleIndex]
+			hasQualifiedIntent = hasQualifiedIntent || (currentSignals[rule.intent] && ruleHasMatchedQualifier(rule, currentSignals))
+			hasQualifiedObject = hasQualifiedObject || (currentSignals[rule.object] && ruleHasMatchedQualifier(rule, currentSignals))
+		}
+		if !hasQualifiedIntent || !hasQualifiedObject {
+			continue
+		}
+		if isLegitimateCategoryWorkflow(category, currentText) {
+			continue
+		}
+		if !directivesReady {
+			currentDirectives = c.analyzeDirectives(currentRunes)
+			directivesReady = true
+		}
+
+		intentProvider := -1
+		objectProvider := -1
+		operationalProvider := -1
+		targetProvider := -1
+		evasionProvider := -1
+		scaleProvider := -1
+		for _, clause := range currentDirectives.clauses {
+			clauseSignals := clause.signals
+			for _, intentIndex := range ruleIndexes {
+				intentRule := c.rules[intentIndex]
+				if !clauseSignals[intentRule.intent] || clauseNegatesRuleIntent(clause.text, intentRule.intentStarts) || !ruleHasMatchedQualifier(intentRule, clauseSignals) {
+					continue
+				}
+				for _, objectIndex := range ruleIndexes {
+					if objectIndex == intentIndex {
+						continue
+					}
+					objectRule := c.rules[objectIndex]
+					if !clauseSignals[objectRule.object] || !ruleHasMatchedQualifier(objectRule, clauseSignals) {
+						continue
+					}
+					operational := firstPairSignalProvider(clauseSignals, intentIndex, objectIndex, intentRule.independentOperational, objectRule.independentOperational)
+					target := firstPairSignalProvider(clauseSignals, intentIndex, objectIndex, intentRule.independentTarget, objectRule.independentTarget)
+					evasion := firstPairSignalProvider(clauseSignals, intentIndex, objectIndex, intentRule.independentEvasion, objectRule.independentEvasion)
+					scale := firstPairSignalProvider(clauseSignals, intentIndex, objectIndex, intentRule.independentScale, objectRule.independentScale)
+					riskQualifiers := 0
+					for _, provider := range []int{target, evasion, scale} {
+						if provider >= 0 {
+							riskQualifiers++
+						}
+					}
+					if operational < 0 || riskQualifiers < 2 {
+						continue
+					}
+					intentProvider = intentIndex
+					objectProvider = objectIndex
+					operationalProvider = operational
+					targetProvider = target
+					evasionProvider = evasion
+					scaleProvider = scale
+					break
+				}
+				if intentProvider >= 0 {
+					break
+				}
+			}
+			if intentProvider >= 0 {
+				break
+			}
+		}
+		if intentProvider < 0 {
+			continue
+		}
+
+		intentRule := c.rules[intentProvider]
+		objectRule := c.rules[objectProvider]
+		score := 45
+		qualifiers := 0
+		evidence := []Evidence{
+			{ID: intentRule.id + ":intent", Kind: "intent"},
+			{ID: objectRule.id + ":object", Kind: "object"},
+		}
+		appendQualifier := func(provider int, points int, kind string) {
+			if provider < 0 {
+				return
+			}
+			score += points
+			qualifiers++
+			evidence = append(evidence, Evidence{ID: c.rules[provider].id + ":" + kind, Kind: kind})
+		}
+		appendQualifier(operationalProvider, 20, "operational")
+		appendQualifier(targetProvider, 18, "target")
+		appendQualifier(evasionProvider, 16, "evasion")
+		appendQualifier(scaleProvider, 16, "scale")
+		if qualifiers >= 2 {
+			score += 5
+		}
+		score = clampScore(score)
+
+		effectiveContext := context
+		if targetProvider >= 0 {
+			if carriedCTFOrLab && !currentContext.CTFOrLab {
+				effectiveContext.CTFOrLab = false
+			}
+			if carriedAuthorized && !currentContext.Authorized {
+				effectiveContext.Authorized = false
+			}
+		}
+		if hasExplicitHarmConflict(currentText) {
+			effectiveContext.Authorized = false
+			effectiveContext.CTFOrLab = false
+		}
+		composedRule := compiledRule{
+			category:               category,
+			authorizationProtected: intentRule.authorizationProtected || objectRule.authorizationProtected,
+			intent:                 intentRule.intent,
+			object:                 objectRule.object,
+			operational:            c.rules[operationalProvider].operational,
+			intentStarts:           intentRule.intentStarts,
+		}
+		if context != (ContextFlags{}) && c.hasRuleContradictoryDirective(currentDirectives, composedRule, policy.Allow) {
+			effectiveContext = ContextFlags{
+				CTFOrLab:   effectiveContext.CTFOrLab,
+				Authorized: effectiveContext.Authorized,
+			}
+		}
+		authorizationProtected := composedRule.authorizationProtected && policy.HardBlockEvenIfAuthorized.protects(category)
+		score = applyContextDeductions(score, effectiveContext, authorizationProtected)
+		genuineSafetyContext := effectiveContext.Defensive || effectiveContext.Remediation || effectiveContext.StaticAnalysis || effectiveContext.IncidentResponse || effectiveContext.HighLevel
+		if authorizationProtected && !genuineSafetyContext && score < HardThreshold {
+			score = HardThreshold
+		}
+		candidates = append(candidates, candidate{
+			score:    score,
+			category: category,
+			ruleIDs:  []string{intentRule.id, objectRule.id},
+			evidence: evidence,
+		})
 	}
 	if len(candidates) == 0 {
 		result.Action = actionFor(mode, 0, thresholds)
@@ -483,18 +908,18 @@ func (c *Classifier) ClassifyWithPolicy(parts []string, mode Mode, thresholds Th
 		if candidates[i].category != candidates[j].category {
 			return categoryPriority(candidates[i].category) < categoryPriority(candidates[j].category)
 		}
-		return candidates[i].ruleID < candidates[j].ruleID
+		return candidateSortID(candidates[i].ruleID, candidates[i].ruleIDs) < candidateSortID(candidates[j].ruleID, candidates[j].ruleIDs)
 	})
 	best := candidates[0]
 	result.Score = clampScore(best.score)
 	result.Category = best.category
-	result.RuleIDs = []string{best.ruleID}
+	result.RuleIDs = appendCandidateRuleIDs(result.RuleIDs, best.ruleID, best.ruleIDs)
 	result.Evidence = append(result.Evidence, best.evidence...)
 	for _, other := range candidates[1:] {
 		if other.category != best.category || other.score != best.score {
 			continue
 		}
-		result.RuleIDs = append(result.RuleIDs, other.ruleID)
+		result.RuleIDs = appendCandidateRuleIDs(result.RuleIDs, other.ruleID, other.ruleIDs)
 		result.Evidence = append(result.Evidence, other.evidence...)
 	}
 	result.Evidence = append(result.Evidence, contextEvidence(context)...)
@@ -504,11 +929,263 @@ func (c *Classifier) ClassifyWithPolicy(parts []string, mode Mode, thresholds Th
 	return result
 }
 
+func ruleHasMatchedQualifier(rule compiledRule, signals []bool) bool {
+	return signalMatched(signals, rule.independentOperational) ||
+		signalMatched(signals, rule.independentTarget) ||
+		signalMatched(signals, rule.independentEvasion) ||
+		signalMatched(signals, rule.independentScale)
+}
+
+func firstPairSignalProvider(signals []bool, first, second, firstSignal, secondSignal int) int {
+	if signalMatched(signals, firstSignal) {
+		return first
+	}
+	if signalMatched(signals, secondSignal) {
+		return second
+	}
+	return -1
+}
+
+func signalMatched(signals []bool, signalID int) bool {
+	return signalID >= 0 && signalID < len(signals) && signals[signalID]
+}
+
+func candidateSortID(ruleID string, ruleIDs []string) string {
+	if ruleID != "" {
+		return ruleID
+	}
+	if len(ruleIDs) == 0 {
+		return ""
+	}
+	return ruleIDs[0]
+}
+
+func appendCandidateRuleIDs(destination []string, ruleID string, ruleIDs []string) []string {
+	if ruleID != "" {
+		return append(destination, ruleID)
+	}
+	return append(destination, ruleIDs...)
+}
+
+func isCredentialObjectQualifiedFallback(rule compiledRule, signals []bool) bool {
+	return len(signals) > 0 && rule.category == rules.CategoryCredentialTheft &&
+		!signals[rule.intent] && signals[rule.object] &&
+		signalMatched(signals, rule.independentOperational) &&
+		signalMatched(signals, rule.independentTarget) &&
+		signalMatched(signals, rule.independentEvasion)
+}
+
+type outcomeProviders struct {
+	object         int
+	operational    int
+	target         int
+	evasion        int
+	scale          int
+	hasOperational bool
+}
+
+func (providers outcomeProviders) qualifierCount() int {
+	count := 0
+	if providers.hasOperational {
+		count++
+	}
+	if providers.target >= 0 {
+		count++
+	}
+	if providers.evasion >= 0 {
+		count++
+	}
+	if providers.scale >= 0 {
+		count++
+	}
+	return count
+}
+
+func (c *Classifier) categoryOutcomeProviders(category rules.Category, signals []bool) outcomeProviders {
+	providers := outcomeProviders{object: -1, operational: -1, target: -1, evasion: -1, scale: -1}
+	providers.hasOperational = signalMatched(signals, c.implementationRequest)
+	for _, ruleIndex := range c.categoryRules[category] {
+		rule := c.rules[ruleIndex]
+		if providers.object < 0 && signalMatched(signals, rule.object) {
+			providers.object = ruleIndex
+		}
+		if providers.operational < 0 && signalMatched(signals, rule.independentOperational) {
+			providers.operational = ruleIndex
+			providers.hasOperational = true
+		}
+		if providers.target < 0 && signalMatched(signals, rule.independentTarget) {
+			providers.target = ruleIndex
+		}
+		if providers.evasion < 0 && signalMatched(signals, rule.independentEvasion) {
+			providers.evasion = ruleIndex
+		}
+		if providers.scale < 0 && signalMatched(signals, rule.independentScale) {
+			providers.scale = ruleIndex
+		}
+	}
+	return providers
+}
+
+func (c *Classifier) categoryMatchedIntentsAreOnlyNegated(category rules.Category, signals []bool, analysis analyzedDirectives) bool {
+	found := false
+	for _, ruleIndex := range c.categoryRules[category] {
+		rule := c.rules[ruleIndex]
+		if !signalMatched(signals, rule.intent) {
+			continue
+		}
+		found = true
+		if !analysis.ruleIntentIsOnlyNegated(rule) {
+			return false
+		}
+	}
+	return found
+}
+
+// hasExplicitHarmConflict identifies target scope that contradicts a generic
+// authorization or lab claim. Ownership language may mitigate a genuinely
+// scoped assessment, but it cannot authorize harm to a victim or third party.
+func hasExplicitHarmConflict(text string) bool {
+	return containsAnyLiteral(text,
+		"victim", "third-party", "third party", "someone else's", "other people's",
+		"without consent", "without permission", "unauthorized", "named company",
+		"do not own", "don't own", "not ours", "compromised host", "compromised machine", "compromised workstation",
+		"competitor", "real customer", "real user", "real account",
+		"attacker-controlled", "server i control", "personal storage account", "personal cloud", "my receiver",
+		"受害者", "受害主机", "第三方", "他人", "未经同意", "未经许可", "未授权",
+		"指定公司", "竞争对手", "真实客户", "真实用户", "真实账号", "攻击者控制",
+		"不属于我们", "非自有", "已失陷主机", "个人云盘", "私人网盘", "个人存储账号",
+	)
+}
+
+// isLegitimateCategoryWorkflow recognizes a narrow set of ordinary identity
+// and encryption workflows that necessarily share verbs and objects with
+// abuse. It is deliberately category-scoped and hostile markers always win,
+// so generic safety labels cannot wash out a victim-targeted directive.
+func isLegitimateCategoryWorkflow(category rules.Category, text string) bool {
+	if hasExplicitHarmConflict(text) {
+		return false
+	}
+	if category == rules.CategoryCredentialTheft &&
+		containsAnyLiteral(text, "offline forensics", "memory image", "forensic image", "离线取证", "内存镜像", "取证镜像") &&
+		containsAnyLiteral(text, "do not extract real passwords", "without extracting real passwords", "不提取真实密码", "不导出真实密码") &&
+		!containsAnyLiteral(text,
+			"victim", "someone else's", "other people's", "steal", "siphon", "exfiltrate", "bypass", "undetected",
+			" but ", " instead ", " however ", " then ", " actually ", "do not refuse", "ignore the policy",
+			"受害者", "他人", "窃取", "盗取", "外传", "回传", "绕过", "但是", "然后", "改为", "实际",
+		) {
+		return true
+	}
+	switch category {
+	case rules.CategoryCredentialTheft, rules.CategoryPhishing:
+		if !containsAnyLiteral(text,
+			"oauth response", "oauth callback", "token exchange response",
+			"our login form", "our sign-in form", "our login page", "our sign-in page",
+			"our login portal", "our sign-in portal", "our sso", "our authentication server",
+			"users can log in", "users can sign in", "customers can log in", "customers can sign in",
+			"normal authentication endpoint", "authenticate the user", "authenticate them",
+			"credential migration", "credential rotation", "password manager export",
+			"secrets manager", "account recovery",
+			"我们的登录表单", "我们的登录页面", "我们的登录门户", "我们的认证服务器",
+			"用户可以登录", "客户可以登录", "正常认证接口",
+			"认证用户", "凭证轮换", "凭证迁移", "密码管理器导出", "密钥管理器", "账号恢复",
+		) {
+			return false
+		}
+		return !containsAnyLiteral(text,
+			"victim", "someone else's", "other people's", "without consent", "unauthorized",
+			"steal", "credential stealer", "phishing", "fake login", "cloned login",
+			"real brand", "lookalike", "external server", "collection server", "webhook",
+			"bypass", "undetected", "silently",
+			"受害者", "他人", "未经同意", "未授权", "窃取", "钓鱼", "假登录", "仿冒登录",
+			"真实品牌", "外部服务器", "回传服务器", "绕过", "静默",
+		)
+	case rules.CategoryRansomware:
+		if containsAnyLiteral(text, "fictional game", "game prop", "fictional story", "虚构游戏", "游戏道具", "虚构故事") &&
+			containsAnyLiteral(text, "ransom note", "extortion note", "勒索信", "勒索便笺") &&
+			!containsAnyLiteral(text,
+				"deploy", "execute", "encrypt files", "delete backups", "remove restore", "demand payment",
+				"部署", "执行", "加密文件", "删除备份", "删除还原点", "索要付款") {
+			return true
+		}
+		// Recovery exercises often need to name a contained extortion sample.
+		// Treat the workflow as legitimate only when the text independently
+		// states both a recovery purpose and a non-execution/rollback control;
+		// victim or third-party scope has already been rejected above.
+		if hasAffirmativeSafetyPurpose(text) &&
+			containsAnyLiteral(text,
+				"recovery drill", "restoration exercise", "restoration sequence", "synthetic documents", "lab workstations",
+				"恢复演练", "还原演练", "合成文档", "实验室工作站") &&
+			containsAnyLiteral(text,
+				"without running", "without executing", "preserves rollback", "preserve rollback", "immutable backups",
+				"不运行", "不执行", "保留回滚", "不可变备份") {
+			return true
+		}
+		if !containsAnyLiteral(text,
+			"secure backup", "off-site backup", "offsite backup", "backup encryption",
+			"encryption at rest", "disk encryption", "full-disk encryption", "protect files",
+			"protect data", "data protection", "key management", "our files", "my files",
+			"test fixture", "backup archive",
+			"安全备份", "异地备份", "备份加密", "静态加密", "磁盘加密", "全盘加密",
+			"保护文件", "保护数据", "数据保护", "密钥管理", "我们的文件", "我的文件", "测试样本",
+		) {
+			return false
+		}
+		return !containsAnyLiteral(text,
+			"victim", "ransom", "extortion", "demand payment", "pay to restore", "bitcoin",
+			"delete backups", "remove restore", "disable recovery", "spread", "propagate",
+			"employee files", "production files", "target network", "undetected",
+			"受害者", "勒索", "索要付款", "支付赎金", "比特币", "删除备份", "删除还原点",
+			"关闭恢复", "传播", "员工文件", "生产文件", "目标网络", "静默",
+		)
+	case rules.CategoryExfiltration:
+		// An investigation can quote a prohibited transfer while describing an
+		// abnormal-export finding, trace preservation, and containment. Require
+		// all four defensive facets so a generic safety label cannot suppress an
+		// otherwise operational transfer request.
+		if containsAnyLiteral(text,
+			"abnormal export", "suspicious export", "unauthorized export", "异常导出", "可疑导出", "未授权导出") &&
+			containsAnyLiteral(text,
+				"correlate logs", "retain logs", "audit logs", "access logs", "关联日志", "访问日志", "审计日志", "保留日志") &&
+			containsAnyLiteral(text,
+				"block egress", "disable egress", "cut off egress", "封禁外送", "阻断外送", "切断外送") &&
+			containsAnyLiteral(text,
+				"do not execute", "must not execute", "without executing", "不得执行", "不要执行", "禁止执行") {
+			return true
+		}
+		if !containsAnyLiteral(text,
+			"approved backup", "backup policy", "disaster recovery", "recovery vault",
+			"backup team", "working copy",
+			"organization-owned", "company-owned", "approved migration", "data migration",
+			"ediscovery", "external counsel", "legal hold", "retention archive", "authorized export",
+			"批准的备份", "备份策略", "灾难恢复", "恢复保管库", "备份团队", "工作副本", "组织自有", "公司自有",
+			"批准迁移", "数据迁移", "电子取证", "外部律师", "法律保全", "留存归档", "授权导出",
+		) {
+			return false
+		}
+		return !containsAnyLiteral(text,
+			"attacker-controlled", "server i control", "personal storage", "personal cloud", "private drive",
+			"covert", "without raising an alert", "avoid alert", "undetected", "compromised host", "victim",
+			"攻击者控制", "我的服务器", "个人存储", "个人云盘", "私人网盘", "隐蔽", "避开告警", "受害",
+		)
+	default:
+		return false
+	}
+}
+
+func containsAnyLiteral(text string, values ...string) bool {
+	for _, value := range values {
+		if strings.Contains(text, value) {
+			return true
+		}
+	}
+	return false
+}
+
 func categoryPriority(category rules.Category) int {
 	switch category {
-	case rules.CategoryCredentialTheft:
-		return 0
 	case rules.CategoryPhishing:
+		return 0
+	case rules.CategoryCredentialTheft:
 		return 1
 	case rules.CategoryRansomware:
 		return 2
@@ -530,9 +1207,10 @@ func categoryPriority(category rules.Category) int {
 const maxAnalyzedDirectiveClauses = 64
 
 type analyzedDirectiveClause struct {
-	runes   []rune
-	text    string
-	signals []bool
+	runes          []rune
+	text           string
+	signals        []bool
+	boundaryBefore directiveBoundaryKind
 }
 
 type analyzedDirectives struct {
@@ -546,12 +1224,12 @@ type analyzedDirectives struct {
 // with rules times input size.
 func (c *Classifier) analyzeDirectives(text []rune) analyzedDirectives {
 	analysis := analyzedDirectives{clauses: make([]analyzedDirectiveClause, 0, 4)}
-	walkDirectiveClauses(text, func(clause []rune) bool {
+	walkDirectiveClausesWithBoundary(text, func(clause []rune, boundaryBefore directiveBoundaryKind) bool {
 		if len(analysis.clauses) >= maxAnalyzedDirectiveClauses {
 			analysis.overflow = true
 			return false
 		}
-		analysis.clauses = append(analysis.clauses, analyzedDirectiveClause{runes: clause})
+		analysis.clauses = append(analysis.clauses, analyzedDirectiveClause{runes: clause, boundaryBefore: boundaryBefore})
 		return true
 	})
 	if len(analysis.clauses) == 0 {
@@ -580,7 +1258,8 @@ func (analysis analyzedDirectives) ruleCoreIsOnlyNegated(rule compiledRule) bool
 	for _, clause := range analysis.clauses {
 		signals := clause.signals
 		if !signals[rule.intent] || !signals[rule.object] {
-			if foundCore && signals[rule.intent] && !clauseNegatesRuleIntent(clause.text, rule.intentStarts) && startsWithRuleIntent(clause.text, rule.intentStarts) {
+			if foundCore && signals[rule.intent] && !clauseNegatesRuleIntent(clause.text, rule.intentStarts) &&
+				continuesPriorRiskDirective(clause.text) {
 				foundUnnegatedCore = true
 				break
 			}
@@ -593,6 +1272,70 @@ func (analysis analyzedDirectives) ruleCoreIsOnlyNegated(rule compiledRule) bool
 		}
 	}
 	return foundCore && !foundUnnegatedCore
+}
+
+// continuesPriorRiskDirective is deliberately narrower than a bare second
+// intent verb. A prohibition such as "never deploy ransomware; provide a
+// recovery checklist" must not lend its object to the safe deliverable. The
+// object is carried only when the later clause explicitly refers back to it or
+// asks for a concrete implementation artifact.
+func continuesPriorRiskDirective(clause string) bool {
+	clause = strings.TrimSpace(clause)
+	if isSafetyDeliverableClause(clause) || hasExplanatoryFraming(clause) || hasAffirmativeSafetyPurpose(clause) {
+		return false
+	}
+	return containsAnyLiteral(clause,
+		" it", " that", " them", " the above", " above request", " same payload", " same tool",
+		"working code", "complete code", "source code", "ready-to-run", "ready to run",
+		"commands", "script", "payload", "executable", "implementation",
+		"它", "该内容", "上述", "上面", "同一载荷", "同一工具", "完整代码", "可运行代码",
+		"源码", "命令", "脚本", "载荷", "可执行文件", "实现出来",
+	)
+}
+
+func hasAffirmativeSafetyPurpose(text string) bool {
+	if containsAnyLiteral(text,
+		"no ransomware remains", "ransomware is absent", "ransomware-free", "prevent ransomware infection", "block ransomware execution",
+		"no malware remains", "malware is absent", "malware-free", "prevent malware infection", "block malware execution",
+		"no backdoor remains", "remove the backdoor", "eradicate the backdoor",
+		"不再存在勒索软件", "无勒索软件感染", "防止勒索软件感染", "阻止勒索软件执行",
+		"不再存在恶意软件", "无恶意软件感染", "防止恶意软件感染", "阻止恶意软件执行",
+		"不再存在后门", "移除后门", "清除后门",
+	) {
+		return true
+	}
+	if containsAnyLiteral(text, "detection rule", "alert rule", "检测规则", "告警规则") &&
+		containsAnyLiteral(text, "alert when", "alerts when", "detect when", "detects when", "当出现时告警", "当检测到") {
+		return true
+	}
+	if containsAnyLiteral(text, "verify", "verifies", "verified", "validate", "validates", "validated", "test", "tests", "testing", "验证", "校验", "测试") &&
+		containsAnyLiteral(text, "recovery", "restoration", "restore", "backup", "fix", "patch", "恢复", "还原", "备份", "修复", "补丁") {
+		return true
+	}
+	return containsAnyLiteral(text,
+		"verify recovery", "verify restoration", "verify backups", "restore collection", "restore telemetry",
+		"restore from", "recover files", "protect files", "prevent abuse", "investigate the outage",
+		"investigate why", "apply the patch", "test the patch", "validate the fix",
+		"验证恢复", "验证备份", "恢复采集", "恢复遥测", "从备份恢复", "恢复文件", "保护文件",
+		"防止滥用", "调查故障", "调查停止原因", "应用补丁", "验证修复",
+	)
+}
+
+func (analysis analyzedDirectives) ruleIntentIsOnlyNegated(rule compiledRule) bool {
+	if analysis.overflow {
+		return false
+	}
+	foundIntent := false
+	for _, clause := range analysis.clauses {
+		if !clause.signals[rule.intent] {
+			continue
+		}
+		foundIntent = true
+		if !clauseNegatesRuleIntent(clause.text, rule.intentStarts) {
+			return false
+		}
+	}
+	return foundIntent
 }
 
 func clauseNegatesRuleIntent(clause string, intents []string) bool {
@@ -614,10 +1357,14 @@ func clauseNegatesRuleIntent(clause string, intents []string) bool {
 	closestEnd := -1
 	for _, marker := range []string{
 		"must never", "must not", "should never", "should not", "do not", "don't", "cannot", "can't",
-		"will not", "never", "not to", "forbids", "forbid", "forbidden to", "prohibits", "prohibit", "refuse to",
-		"严禁", "禁止", "不得", "不要", "不能", "不会", "拒绝",
+		"will not", "never", "not to", "without", "forbids", "forbid", "forbidden to", "prohibits", "prohibit", "refuse to",
+		"严禁", "禁止", "不得", "不要", "不需要", "无需", "不能", "不会", "拒绝", "不",
 	} {
-		if index := strings.LastIndex(prefix, marker); index >= 0 && index >= closest {
+		index := strings.LastIndex(prefix, marker)
+		if marker == "不" && index >= 0 && !isBareChineseNegationBridge(strings.TrimSpace(prefix[index+len(marker):])) {
+			continue
+		}
+		if index >= 0 && index >= closest {
 			closest = index
 			closestEnd = index + len(marker)
 		}
@@ -631,7 +1378,7 @@ func clauseNegatesRuleIntent(clause string, intents []string) bool {
 		}
 	}
 	between := strings.TrimSpace(prefix[closestEnd:])
-	for _, doubleNegative := range []string{"refuse", "hesitate", "avoid", "decline", "拒绝", "犹豫", "避免"} {
+	for _, doubleNegative := range []string{"refuse", "hesitate", "hesitation", "avoid", "decline", "拒绝", "犹豫", "避免"} {
 		if strings.Contains(between, doubleNegative) {
 			return false
 		}
@@ -640,6 +1387,15 @@ func clauseNegatesRuleIntent(clause string, intents []string) bool {
 		return false
 	}
 	return true
+}
+
+func isBareChineseNegationBridge(value string) bool {
+	switch value {
+	case "", "再", "会", "要", "得", "可", "能", "应", "应该", "允许", "需要", "准", "打算", "计划", "会再", "要再", "应该再":
+		return true
+	default:
+		return false
+	}
 }
 
 // negationScopeInterrupted recognizes a second coordinated directive between a
@@ -694,6 +1450,9 @@ func (c *Classifier) hasRuleContradictoryDirective(analysis analyzedDirectives, 
 			continue
 		}
 		clauseText := clause.text
+		if clauseNegatesRuleIntent(clauseText, rule.intentStarts) {
+			continue
+		}
 		clauseContext := c.matchContextsWithPolicy(signals, allow)
 		if isSafetyDeliverableClause(clauseText) {
 			if c.safetyMarkerHasPriorRuleCore(clauseText, rule) || safetyDeliverableTurnsOperational(clauseText, rule.intentStarts) {
@@ -763,6 +1522,9 @@ func hasOperationalDeliverableFraming(clause string) bool {
 }
 
 func isScopedRetentionMaintenance(clause string) bool {
+	if hasExplicitHarmConflict(clause) {
+		return false
+	}
 	scope := false
 	for _, marker := range []string{
 		"maintenance", "retention policy", "retention procedure", "expired logs", "old logs", "decommissioned", "end-of-life",
@@ -791,7 +1553,8 @@ var safetyDeliverableMarkers = []string{
 	"recovery checklist", "remediation plan", "mitigation plan", "patch guidance", "restore from backups",
 	"detection rule", "security checklist", "incident response plan", "malware protection", "ransomware insurance",
 	"malware prevention", "insurance options", "ransomware awareness", "ransomware-awareness", "phishing simulation", "campaign simulation", "phishing campaign tabletop exercise", "awareness training",
-	"恢复清单", "修复方案", "缓解方案", "补丁指南", "检测规则", "安全清单", "应急响应方案",
+	"employee quiz", "tabletop exercise", "mock phishing", "recognizing suspicious", "reporting suspicious",
+	"恢复清单", "修复方案", "缓解方案", "补丁指南", "检测规则", "安全清单", "应急响应方案", "员工测验", "桌面演练", "模拟钓鱼",
 }
 
 func isSafetyDeliverableClause(clause string) bool {
@@ -824,10 +1587,28 @@ func (c *Classifier) safetyMarkerHasPriorRuleCore(clause string, rule compiledRu
 func safetyDeliverableTurnsOperational(clause string, intents []string) bool {
 	for _, marker := range safetyDeliverableMarkers {
 		if index := strings.Index(clause, marker); index >= 0 {
-			return containsRuleIntent(clause[index+len(marker):], intents)
+			tail := clause[index+len(marker):]
+			// Detection artifacts necessarily describe the behavior they match.
+			// "alert when an implant silences telemetry" is a defensive condition,
+			// not an instruction to silence telemetry. A coordinated second action
+			// ("detect and then disable EDR") is still operational and is caught by
+			// explanatoryFramingTurnsOperational.
+			if hasDetectionConditionFraming(tail) && !explanatoryFramingTurnsOperational(tail, intents) {
+				return false
+			}
+			return containsRuleIntent(tail, intents)
 		}
 	}
 	return false
+}
+
+func hasDetectionConditionFraming(text string) bool {
+	return containsAnyLiteral(text,
+		"alert when", "alert if", "detect when", "detect if", "match when", "match if",
+		"flag when", "flag if", "trigger when", "trigger if", "identify attempts to",
+		"attempts to", "attempt to", "behavior that", "behaviour that",
+		"当出现时告警", "当检测到", "用于检测", "检测以下行为", "识别尝试", "尝试执行",
+	)
 }
 
 func explanatoryFramingTurnsOperational(clause string, intents []string) bool {
@@ -914,6 +1695,44 @@ func normalizedTermValues(terms rules.Terms) []string {
 	return values
 }
 
+// independentQualifierTerms removes qualifier literals that overlap a core or
+// an earlier qualifier literal. The original signals remain available for
+// scope and contradiction checks, while only independent text can add score.
+func independentQualifierTerms(terms rules.Terms, coveredGroups ...rules.Terms) rules.Terms {
+	covered := make([]string, 0)
+	for _, group := range coveredGroups {
+		covered = append(covered, normalizedTermValues(group)...)
+	}
+	filter := func(values []string) []string {
+		result := make([]string, 0, len(values))
+		for _, value := range values {
+			normalized := string(normalizeParts([]string{value}).standardRunes)
+			if normalized == "" || termOverlapsAny(normalized, covered) {
+				continue
+			}
+			result = append(result, value)
+		}
+		return result
+	}
+	return rules.Terms{ZH: filter(terms.ZH), EN: filter(terms.EN)}
+}
+
+func termOverlapsAny(value string, covered []string) bool {
+	valueASCII := isASCIIStringLocal(value)
+	for _, other := range covered {
+		if valueASCII && isASCIIStringLocal(other) {
+			if containsASCIIWord(value, other) || containsASCIIWord(other, value) {
+				return true
+			}
+			continue
+		}
+		if strings.Contains(value, other) || strings.Contains(other, value) {
+			return true
+		}
+	}
+	return false
+}
+
 func startsWithRuleIntent(clause string, intents []string) bool {
 	clause = strings.TrimSpace(clause)
 	for {
@@ -958,7 +1777,7 @@ func isSafeDetectionArtifactClause(clause string) bool {
 		return false
 	}
 	detectionSemantics := false
-	for _, marker := range []string{"detect", "alert", "signature", "indicator", "match", "检测", "告警", "签名", "指标", "匹配"} {
+	for _, marker := range []string{"detect", "alert", "signature", "indicator", "analytic", "outline", "match", "检测", "告警", "签名", "指标", "分析规则", "匹配"} {
 		if strings.Contains(clause, marker) {
 			detectionSemantics = true
 			break
@@ -981,7 +1800,7 @@ func isSafeDetectionArtifactClause(clause string) bool {
 
 func containsDetectionArtifact(clause string) bool {
 	for _, marker := range []string{
-		"yara rule", "yara signature", "sigma rule", "suricata rule", "suricata signature", "snort rule", "snort signature", "ioc extraction", "indicators of compromise",
+		"yara rule", "yara signature", "sigma rule", "sigma analytic", "suricata rule", "suricata signature", "suricata alert", "snort rule", "snort signature", "snort detection outline", "ioc extraction", "indicators of compromise",
 		"yara 规则", "sigma 规则", "suricata 规则", "snort 规则", "ioc 提取", "入侵指标",
 	} {
 		if strings.Contains(clause, marker) {
@@ -996,38 +1815,64 @@ var directiveMarkers = [][]rune{
 	[]rune("但是"), []rune("然而"), []rune("然后"), []rune("改为"), []rune("实际"),
 }
 
+type directiveBoundaryKind uint8
+
+const (
+	directiveBoundaryNone directiveBoundaryKind = iota
+	directiveBoundarySoft
+	directiveBoundaryContinuation
+	directiveBoundaryStrong
+)
+
 func walkDirectiveClauses(text []rune, visit func([]rune) bool) {
+	walkDirectiveClausesWithBoundary(text, func(clause []rune, _ directiveBoundaryKind) bool {
+		return visit(clause)
+	})
+}
+
+func walkDirectiveClausesWithBoundary(text []rune, visit func([]rune, directiveBoundaryKind) bool) {
 	start := 0
+	boundaryBefore := directiveBoundaryNone
 	for index := 0; index < len(text); index++ {
-		width := directiveBoundaryWidth(text, index)
+		width, boundaryKind := directiveBoundaryAt(text, index)
 		if width == 0 {
 			continue
 		}
 		if clause := trimRuneSpaces(text[start:index]); len(clause) > 0 {
-			if !visit(clause) {
+			if !visit(clause, boundaryBefore) {
 				return
 			}
 		}
+		boundaryBefore = boundaryKind
 		start = index + width
 		index += width - 1
 	}
 	if clause := trimRuneSpaces(text[start:]); len(clause) > 0 {
-		visit(clause)
+		visit(clause, boundaryBefore)
 	}
 }
 
 func directiveBoundaryWidth(text []rune, index int) int {
+	width, _ := directiveBoundaryAt(text, index)
+	return width
+}
+
+func directiveBoundaryAt(text []rune, index int) (int, directiveBoundaryKind) {
 	r := text[index]
 	if r == compactHardBoundary {
-		return 1
+		return 1, directiveBoundaryStrong
 	}
 	switch r {
-	case '.', '!', '?', ';', ':', ',', '。', '！', '？', '；', '：', '，':
+	case ',', '，':
 		if !singleRuneTokensAround(text, index) {
-			return 1
+			return 1, directiveBoundarySoft
+		}
+	case '.', '!', '?', ';', ':', '。', '！', '？', '；', '：':
+		if !singleRuneTokensAround(text, index) {
+			return 1, directiveBoundaryStrong
 		}
 	}
-	for _, marker := range directiveMarkers {
+	for markerIndex, marker := range directiveMarkers {
 		if len(text)-index < len(marker) {
 			continue
 		}
@@ -1039,10 +1884,19 @@ func directiveBoundaryWidth(text []rune, index int) int {
 			}
 		}
 		if matched {
-			return len(marker)
+			kind := directiveBoundarySoft
+			// Contrast and replacement markers introduce a new directive. Sequence
+			// and overlap markers remain a soft continuation boundary.
+			if markerIndex == 0 || markerIndex == 1 || markerIndex == 3 || markerIndex == 4 ||
+				markerIndex == 6 || markerIndex == 7 || markerIndex == 9 || markerIndex == 10 {
+				kind = directiveBoundaryStrong
+			} else {
+				kind = directiveBoundaryContinuation
+			}
+			return len(marker), kind
 		}
 	}
-	return 0
+	return 0, directiveBoundaryNone
 }
 
 func lastDirectiveClause(text []rune) []rune {

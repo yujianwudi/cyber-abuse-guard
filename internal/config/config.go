@@ -29,6 +29,7 @@ const (
 	maxSubjectMinutes    = 30 * 24 * 60
 	maxSubjectScore      = 1000000
 	maxSubjectEntries    = 1000000
+	maxPersistedSubjects = 10000
 	maxAuditRetentionDay = 3650
 	maxAuditDBMB         = 10240
 	maxClassifierTimeout = 10000
@@ -51,6 +52,19 @@ const (
 	ModeStrict   Mode = "strict"
 )
 
+// OpaqueMediaPolicy controls requests whose image/audio/video payload cannot be
+// inspected locally. Auto is represented by the empty value and resolves from
+// Mode without fetching remote URLs: strict blocks, balanced/observe/audit
+// audit, and off allows.
+type OpaqueMediaPolicy string
+
+const (
+	OpaqueMediaPolicyAuto  OpaqueMediaPolicy = ""
+	OpaqueMediaPolicyBlock OpaqueMediaPolicy = "block"
+	OpaqueMediaPolicyAudit OpaqueMediaPolicy = "audit"
+	OpaqueMediaPolicyAllow OpaqueMediaPolicy = "allow"
+)
+
 // ClassifierFailMode controls the local fallback if the optional classifier is
 // unavailable. v0.1 reserves only the safe deterministic-rules fallback.
 type ClassifierFailMode string
@@ -65,6 +79,7 @@ type Config struct {
 	MaxScanBytes              int                       `yaml:"max_scan_bytes"`
 	MaxJSONDepth              int                       `yaml:"max_json_depth"`
 	MaxTextParts              int                       `yaml:"max_text_parts"`
+	OpaqueMediaPolicy         OpaqueMediaPolicy         `yaml:"opaque_media_policy"`
 	Thresholds                Thresholds                `yaml:"thresholds"`
 	AllowContext              AllowContext              `yaml:"allow_context"`
 	HardBlockEvenIfAuthorized HardBlockEvenIfAuthorized `yaml:"hard_block_even_if_authorized"`
@@ -98,6 +113,7 @@ type HardBlockEvenIfAuthorized struct {
 
 type SubjectControl struct {
 	Enabled          bool `yaml:"enabled"`
+	Persistence      bool `yaml:"persistence"`
 	MaxSubjects      int  `yaml:"max_subjects"`
 	WindowMinutes    int  `yaml:"window_minutes"`
 	CooldownScore    int  `yaml:"cooldown_score"`
@@ -106,15 +122,17 @@ type SubjectControl struct {
 }
 
 type Audit struct {
-	Enabled         bool   `yaml:"enabled"`
-	DataDir         string `yaml:"data_dir"`
-	RetentionDays   int    `yaml:"retention_days"`
-	MaxDBMB         int    `yaml:"max_db_mb"`
-	LogRequestHash  bool   `yaml:"log_request_hash"`
-	LogSubjectHash  bool   `yaml:"log_subject_hash"`
-	LogRuleIDs      bool   `yaml:"log_rule_ids"`
-	LogCategory     bool   `yaml:"log_category"`
-	LogOriginalText bool   `yaml:"log_original_text"`
+	Enabled               bool   `yaml:"enabled"`
+	DataDir               string `yaml:"data_dir"`
+	RetentionDays         int    `yaml:"retention_days"`
+	MaxDBMB               int    `yaml:"max_db_mb"`
+	LogRequestHash        bool   `yaml:"log_request_hash"`
+	LogSubjectHash        bool   `yaml:"log_subject_hash"`
+	LogRuleIDs            bool   `yaml:"log_rule_ids"`
+	LogCategory           bool   `yaml:"log_category"`
+	LogOriginalText       bool   `yaml:"log_original_text"`
+	BackupBeforeMigration bool   `yaml:"backup_before_migration"`
+	MaxMigrationBackups   int    `yaml:"max_migration_backups"`
 }
 
 type TrustedProxy struct {
@@ -163,6 +181,7 @@ func Default() Config {
 		},
 		SubjectControl: SubjectControl{
 			Enabled:          true,
+			Persistence:      false,
 			MaxSubjects:      10000,
 			WindowMinutes:    60,
 			CooldownScore:    150,
@@ -170,15 +189,17 @@ func Default() Config {
 			CooldownMinutes:  30,
 		},
 		Audit: Audit{
-			Enabled:         true,
-			DataDir:         "",
-			RetentionDays:   30,
-			MaxDBMB:         256,
-			LogRequestHash:  true,
-			LogSubjectHash:  true,
-			LogRuleIDs:      true,
-			LogCategory:     true,
-			LogOriginalText: false,
+			Enabled:               true,
+			DataDir:               "",
+			RetentionDays:         30,
+			MaxDBMB:               256,
+			LogRequestHash:        true,
+			LogSubjectHash:        true,
+			LogRuleIDs:            true,
+			LogCategory:           true,
+			LogOriginalText:       false,
+			BackupBeforeMigration: true,
+			MaxMigrationBackups:   3,
 		},
 		TrustedProxy: TrustedProxy{
 			Enabled: false,
@@ -246,6 +267,9 @@ func Validate(cfg Config) error {
 	if cfg.MaxTextParts < 1 || cfg.MaxTextParts > MaxAllowedTextParts {
 		return invalidf("max_text_parts must be between 1 and %d", MaxAllowedTextParts)
 	}
+	if !cfg.OpaqueMediaPolicy.valid() {
+		return invalidf("opaque_media_policy must be one of block, audit, allow, or omitted for mode-aware defaults")
+	}
 
 	if err := validateThresholds(cfg.Thresholds); err != nil {
 		return err
@@ -256,6 +280,15 @@ func Validate(cfg Config) error {
 	if err := validateAudit(cfg.Audit); err != nil {
 		return err
 	}
+	if cfg.SubjectControl.Persistence && !cfg.SubjectControl.Enabled {
+		return invalidf("subject_control.persistence requires subject_control.enabled")
+	}
+	if cfg.SubjectControl.Persistence && !cfg.Audit.Enabled {
+		return invalidf("subject_control.persistence requires audit.enabled because state is stored in the local SQLite database")
+	}
+	if cfg.SubjectControl.Persistence && cfg.SubjectControl.MaxSubjects > maxPersistedSubjects {
+		return invalidf("subject_control.max_subjects must not exceed %d when persistence is enabled", maxPersistedSubjects)
+	}
 	if err := validateTrustedProxy(cfg.TrustedProxy); err != nil {
 		return err
 	}
@@ -263,6 +296,31 @@ func Validate(cfg Config) error {
 		return err
 	}
 	return nil
+}
+
+// EffectiveOpaqueMediaPolicy returns the explicit policy or the conservative
+// mode-aware default. It performs no I/O and never fetches media URLs.
+func (cfg Config) EffectiveOpaqueMediaPolicy() OpaqueMediaPolicy {
+	if cfg.OpaqueMediaPolicy != OpaqueMediaPolicyAuto {
+		return cfg.OpaqueMediaPolicy
+	}
+	switch cfg.Mode {
+	case ModeStrict:
+		return OpaqueMediaPolicyBlock
+	case ModeObserve, ModeAudit, ModeBalanced:
+		return OpaqueMediaPolicyAudit
+	default:
+		return OpaqueMediaPolicyAllow
+	}
+}
+
+func (policy OpaqueMediaPolicy) valid() bool {
+	switch policy {
+	case OpaqueMediaPolicyAuto, OpaqueMediaPolicyBlock, OpaqueMediaPolicyAudit, OpaqueMediaPolicyAllow:
+		return true
+	default:
+		return false
+	}
 }
 
 // Validate provides method syntax for callers holding a Config value.
@@ -316,11 +374,20 @@ func validateSubjectControl(s SubjectControl) error {
 }
 
 func validateAudit(a Audit) error {
+	if a.LogOriginalText {
+		return invalidf("audit.log_original_text must remain false; prompts and request bodies are never persisted")
+	}
 	if a.RetentionDays < 1 || a.RetentionDays > maxAuditRetentionDay {
 		return invalidf("audit.retention_days must be between 1 and %d", maxAuditRetentionDay)
 	}
 	if a.MaxDBMB < 1 || a.MaxDBMB > maxAuditDBMB {
 		return invalidf("audit.max_db_mb must be between 1 and %d", maxAuditDBMB)
+	}
+	if a.MaxMigrationBackups < 0 || a.MaxMigrationBackups > 10 {
+		return invalidf("audit.max_migration_backups must be between 0 and 10")
+	}
+	if a.BackupBeforeMigration && a.MaxMigrationBackups < 1 {
+		return invalidf("audit.max_migration_backups must be at least 1 when backup_before_migration is enabled")
 	}
 	if err := validateDataDir(a.DataDir); err != nil {
 		return err
@@ -391,7 +458,7 @@ func validateClassifier(c Classifier) error {
 		return invalidf("classifier.fail_mode must be %q", ClassifierFailRulesOnly)
 	}
 	if c.Enabled {
-		return invalidf("classifier.enabled is reserved but unsupported in v0.1.1")
+		return invalidf("classifier.enabled is reserved but unsupported in this release")
 	}
 	if c.Endpoint == "" {
 		return nil

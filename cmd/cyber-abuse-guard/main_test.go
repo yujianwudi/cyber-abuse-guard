@@ -4,11 +4,52 @@ import (
 	"encoding/json"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginabi"
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
 	guardplugin "github.com/yujianwudi/cyber-abuse-guard/internal/plugin"
 )
+
+func TestClearHostAPIWaitsForInFlightCallback(t *testing.T) {
+	callbackEntered := make(chan struct{})
+	releaseCallback := make(chan struct{})
+	callbackDone := make(chan struct{})
+	go func() {
+		withHostAPICallback(func() {
+			close(callbackEntered)
+			<-releaseCallback
+		})
+		close(callbackDone)
+	}()
+	<-callbackEntered
+
+	clearStarted := make(chan struct{})
+	clearDone := make(chan struct{})
+	go func() {
+		close(clearStarted)
+		clearHostAPIAndWait()
+		close(clearDone)
+	}()
+	<-clearStarted
+	select {
+	case <-clearDone:
+		t.Fatal("native host API was cleared while a callback was in flight")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	close(releaseCallback)
+	select {
+	case <-callbackDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("in-flight host callback did not finish")
+	}
+	select {
+	case <-clearDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("native host API clear did not resume after callback completion")
+	}
+}
 
 func TestABIEnvelopeRegistrationAndFailClosedExecutor(t *testing.T) {
 	if abiVersion != pluginabi.ABIVersion {

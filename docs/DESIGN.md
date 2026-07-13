@@ -1,4 +1,4 @@
-# CPA Cyber Abuse Guard v0.1.1 Design
+# CPA Cyber Abuse Guard v0.1.2 Design
 
 ## Scope and invariants
 
@@ -7,6 +7,14 @@ Cyber Abuse Guard is an in-process CPA C-ABI v1 plugin for CLIProxyAPI v7.2.67
 downstream caller sends clearly malicious, operational cyber-abuse requests to
 an upstream account. It cannot guarantee that an account will not receive a
 warning or be deactivated.
+
+This document describes the v0.1.2 candidate implementation, not an approved
+release. The methodologically valid v10 evaluation failed its first and only
+formal run (28/320 benign false positives, 49/320 policy blocks, 33/320 exact),
+so the release is blocked. No v0.1.2 tag, GitHub Release, or production
+deployment may be created. A future attempt requires implementation changes
+followed by a newly and independently authored unseen evaluation; v10 cannot be
+rerun.
 
 The implementation has three non-negotiable invariants:
 
@@ -35,6 +43,12 @@ declared as executor input and output formats. `gemini` is also declared and is
 covered when the installed CPA handler routes that entry protocol through the
 standard model-router path.
 
+For an unknown `SourceFormat`, Strict self-routes before interpretation.
+Balanced, Audit, and Observe still run a bounded generic untrusted-text walk so
+a new label is not a silent bypass; a counter and watchdog delta make it
+visible. This fallback cannot know every future provider's metadata semantics,
+so a new CPA/provider shape requires review and an explicit canonical mapping.
+
 For an allowed request, `model.route` returns `Handled: false`. For a blocked
 request, it returns `Handled: true`, `TargetKind: self`. The executor returns an
 RPC error envelope with HTTP status 403 and the stable marker
@@ -43,7 +57,7 @@ shape for the entry protocol.
 
 CPA v7.2.67's `ExecutorResponse` has payload and headers but no HTTP status.
 Consequently, ABI v1 cannot simultaneously return an arbitrary plugin-owned
-JSON body and a non-200 status from `executor.execute`. v0.1.1 favors the
+JSON body and a non-200 status from `executor.execute`. v0.1.2 favors the
 security property and correct 403 status, using CPA's protocol error wrapper.
 The stable marker and coarse category remain in the message; rule IDs and
 bypass details do not.
@@ -67,10 +81,12 @@ The extractor is format-tolerant and walks JSON tokens with bounded work:
 - role, model, identifiers, URLs, image fields, and known binary fields are not
   treated as prompt text at transport/message level; metadata-named keys such
   as `name`, `url`, `type`, and `model` remain inspectable inside tool payloads;
-- recognized media payloads and data URLs are omitted and marked truncated;
+- recognized image/audio/video/document-attachment payloads are omitted and marked as opaque media,
+  independently from incomplete text scanning;
+- HTTPS media URLs are metadata and are never fetched;
 - unknown fields (including a tool argument named `data`) remain inspectable;
-  long base64-like unknown strings are retained as text and marked truncated,
-  so they cannot become a silent bypass;
+  text decoding recognizes bounded URL escapes, HTML entities, Base64 text,
+  textual data URLs, JSON escapes, and nested tool JSON;
 - nested JSON inside tool arguments is scanned using the same shared budget;
 - Anthropic `tool_use.input` and equivalent nested `input` payloads are scanned
   as tool data regardless of whether the sibling `type` field appears before
@@ -87,9 +103,32 @@ The extractor is format-tolerant and walks JSON tokens with bounded work:
 The original request byte slice is used only during the call. It is never
 stored in events or risk-control state.
 
+### Bounded decoding and opaque media
+
+Encoded text is inspected without entering unbounded recursive decoding. At
+most two decode layers and eight unique variants are retained. Encoded input is
+capped at 128 KiB and decoded variants share a 64 KiB retained-byte budget.
+Only valid UTF-8, printable textual results are added. An incomplete recognized
+text envelope sets the ordinary truncation signal, which enforcing modes treat
+conservatively. There is no decompression, archive expansion, document parser,
+binary-media decoder, redirect handling, DNS resolution, or network fetch.
+Complete unknown or merely high-entropy strings remain literal classifier input
+and do not become an automatic block signal. This avoids treating arbitrary
+tokens, hashes, and compressed-looking identifiers as malicious, while leaving
+encrypted and novel encodings as an explicit detection limitation.
+
+Opaque image/audio/video/document attachment is a separate signal controlled by
+`opaque_media_policy`. An explicit `block`, `audit`, or `allow` wins. If the
+field is omitted, Off allows, Observe/Audit/Balanced audit, and Strict blocks.
+Auditing records only a coarse disposition and counters, not media bytes. An
+allow decision means “not inspectable by this plugin,” not “known safe.” Pure
+text behavior does not depend on this policy.
+
 ## Deterministic classifier
 
-Ruleset `1.0.1` is versioned YAML embedded into the shared object. Startup
+Ruleset `1.0.7` is versioned YAML embedded into the shared object. Its current
+canonical embedded SHA-256 is
+`7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134`. Startup
 compiles and validates it once. Rules use literal normalized terms rather than
 runtime regular expressions, eliminating catastrophic-backtracking risk.
 
@@ -146,7 +185,7 @@ Subject selection is ordered:
 2. an anonymous bucket.
 
 CPA v7.2.67 does not supply a distinct authenticated principal/key-policy ID or
-a trustworthy direct-peer address to ModelRouter. v0.1.1 therefore rejects
+a trustworthy direct-peer address to ModelRouter. v0.1.2 therefore rejects
 `trusted_proxy.enabled: true`; forwarded headers alone are spoofable and are
 never accepted as identity.
 
@@ -172,6 +211,50 @@ if they consume all capacity, a new risky subject is blocked with
 capacity through `subject_control`: `subjects`, `max_subjects`,
 `manual_blocked`, `evicted`, and `rejected_capacity`.
 
+### Optional subject persistence
+
+Persistence defaults to disabled. With `subject_control.persistence: false`,
+all risk, cooldown, and manual-block state is process-local and intentionally
+resets on CPA restart. Enabling persistence requires subject control, audit
+storage, a stable HMAC secret, and `max_subjects <= 10000`.
+
+The persistent type can represent only an HMAC subject, score/hit timestamps,
+cooldown, and manual state. It cannot represent a plaintext credential. A
+bounded snapshot replaces prior subject-state rows atomically. Restoration
+validates schema and key fingerprint, rejects duplicate or malformed hashes,
+applies expiry and time decay, then enforces the current capacity. Expired and
+over-capacity rows are counted in status.
+
+The loader detects schema/type/version errors, malformed or duplicate HMAC
+subject IDs, row/payload mismatches, and invalid bounded state. The snapshot is
+not protected by a separate keyed whole-snapshot MAC, so it does not prove
+completeness or authenticity against an actor who can write the SQLite file.
+Such an actor can delete otherwise valid rows. Production filesystem ownership
+and mode controls therefore remain part of the persistence trust boundary.
+
+Writes are debounced and periodic, and a bounded shutdown save is attempted.
+Database failure degrades persistence while in-memory rule enforcement
+continues. A different HMAC key produces an explicit key-mismatch state and
+blocks persistence writes, preserving the old snapshot for operator review
+instead of silently replacing uncorrelatable identities.
+
+### Dual-key rotation design (not implemented)
+
+v0.1.2 supports one active HMAC key only. A future safe rotation mechanism must
+be an explicit state machine:
+
+1. configure one active key and at most one previous read-only key;
+2. expose only domain-separated key fingerprints in authenticated status;
+3. accept old persisted subjects only during a finite, operator-configured
+   overlap window and keep them in a bounded transition map;
+4. compute every new subject ID and persistence write with the active key;
+5. never compare plaintext credentials across keys or log either key;
+6. finalize rotation explicitly, remove the previous key, and atomically drop
+   unmigrated old-key state after an operator-reviewed backup.
+
+Until that mechanism exists, normal upgrades must preserve the current key.
+Changing it is a correlation reset, not a transparent rotation.
+
 ## Audit store
 
 When enabled, SQLite stores only the minimal event schema. The database uses
@@ -189,6 +272,12 @@ symlinks are rejected; runtime permission failures make audit status visibly
 degraded. Operator-selected ancestor paths remain part of the deployment trust
 boundary.
 
+Pre-migration `VACUUM INTO` output is first created below a same-filesystem
+mode-0700 staging directory, changed to mode 0400, synced, and only then
+published through a no-overwrite hard link. A complete backup is therefore not
+temporarily exposed with SQLite's default creation mode in a 0755 data
+directory.
+
 An RPC rejected by the native no-copy size guard has no safely available body,
 model, source format, or request hash. When audit is enabled, the plugin records
 a minimal `scan_limit` event with `text_bytes_scanned: 0` and does not invent
@@ -197,6 +286,28 @@ those unavailable fields.
 No prompt, message, authorization header, plaintext subject, token, cookie,
 OAuth material, user code, or upstream account identity is persisted. Request
 correlation uses SHA-256 of the raw body. Subject correlation uses HMAC-SHA256.
+Requested models use a separate `cyber-abuse-guard/audit/model/v1` hash domain
+and `sha256-model-v1:` prefix. Source format is restricted to the canonical
+`openai`, `openai-response`, `claude`, `gemini`, or `unknown` enum. Legacy
+database reads are sanitized before query or CSV output.
+
+The database schema is versioned. `schema_version` records the active schema;
+`migration_history` records every applied version. A v0.1.1 event database with
+no metadata is recognized as schema v1. The schema-v2 migration adds optional
+subject-state tables inside a transaction. On failure, the old schema remains
+intact. When `audit.backup_before_migration` is enabled, SQLite `VACUUM INTO`
+creates a consistent mode-0400 pre-migration copy before the transaction.
+Backups are capped by `audit.max_migration_backups` and are never placed in a
+release archive.
+
+Existing schema objects are accepted only after exact column name/order/type/
+nullability/primary-key, required CHECK fragment, index column/direction,
+singleton version-row, and contiguous migration-history validation. This is a
+structural contract, not a keyed proof that no otherwise valid row was deleted.
+
+`audit.log_original_text` remains in the compatibility schema only to reject
+unsafe input. A value of `true` prevents activation or reconfiguration. There
+is no debug or emergency mode that persists raw request text.
 
 Reconfiguration builds and validates a complete immutable runtime state before
 an atomic swap. Invalid configuration leaves the last valid state active. This
@@ -217,12 +328,13 @@ recent successful configuration.
 ## Management routes
 
 Only CPA management routes are registered; no unauthenticated resource page is
-exposed in v0.1.1.
+exposed in v0.1.2.
 
 - `GET /plugins/cyber-abuse-guard/status`
 - `GET /plugins/cyber-abuse-guard/events`
 - `GET /plugins/cyber-abuse-guard/stats`
 - `POST /plugins/cyber-abuse-guard/test`
+- `POST /plugins/cyber-abuse-guard/health/probe`
 - `POST /plugins/cyber-abuse-guard/subjects/unblock` with
   `{"subject_hash":"..."}`
 - `DELETE /plugins/cyber-abuse-guard/events`
@@ -232,6 +344,13 @@ the plugin handler runs. The test route does not persist its input.
 
 CPA v7.2.67 management routes are exact matches and reject `:` or `*`, so the
 task book's suggested `{hash}` path parameter cannot be registered safely.
+
+CPA's Management Key middleware is the authentication authority. The plugin
+adds bounded body/query/method guards but cannot independently compare the
+configured Management Key because ABI v1 does not expose it. A normal client
+key therefore cannot authorize these routes, and deployment tests must verify
+the host's 401 behavior. Responses never include prompt text or plaintext
+subjects.
 
 ## Failure behavior
 
@@ -243,8 +362,22 @@ task book's suggested `{hash}` path parameter cannot be registered safely.
 - RPC beyond the native copy budget: no-copy local refusal in Balanced/Strict;
   allow in Off/Observe/Audit, with a minimal event in audit-capable modes;
 - audit failure: continue classifying and blocking;
-- panic at the ABI boundary: recover and return an internal plugin error;
-- optional classifier: interface reserved but not implemented in v0.1.1.
+- panic in `model.route`: increment counters and, when a validated
+  Balanced/Strict runtime is active, return a successful local self-route so
+  CPA cannot fall through to auth/provider selection; non-enforcing/no-runtime
+  cases still expose the error because they deliberately do not enforce;
+- panic in another ABI method: recover, return a parseable internal error, and
+  retain the non-zero ABI failure signal;
+- optional classifier: interface reserved but not implemented in v0.1.2.
+
+CPA v7.2.67 still owns the fail-open policy for router errors and fused plugins.
+No in-process plugin can prove that every future host or ABI failure will be
+fail-closed. The authenticated status exposes `loaded`, `enforcement_ready`,
+`router_errors`, `panics_recovered`, audit/HMAC/persistence degradation,
+reconfigure error, and build/ruleset identity. The read-only production
+watchdog checks those fields and runs built-in local-only probes. ABI v1 cannot
+enumerate router ordering or scan the plugin directory, so higher-priority
+router conflicts and duplicate `.so` versions remain mandatory operator checks.
 
 ## Verification strategy
 
@@ -274,4 +407,24 @@ For streaming blocks, the executor returns the 403 error before a stream is
 established. CPA closes the request promptly with a protocol-compatible regular
 error response. ABI v1 cannot simultaneously send HTTP 403 and establish an
 SSE stream with terminal frames; returning successful chunks would force HTTP
-200, so v0.1.1 chooses the genuine pre-stream 403.
+200, so v0.1.2 chooses the genuine pre-stream 403.
+
+## Build identity and release reproducibility
+
+Release builds link immutable version, full commit SHA, ruleset version,
+canonical ruleset SHA-256, and dirty state. Authenticated status exposes the
+same values. Formal release scripts require a clean worktree and annotated
+`v0.1.2` tag at `HEAD`; `ALLOW_DIRTY_BUILD=1` produces clearly marked
+development artifacts only.
+
+`SOURCE_DATE_EPOCH` derives from the commit timestamp unless explicitly fixed.
+Builds use `-trimpath`, a pinned Go toolchain, deterministic ZIP ordering and
+timestamps, a strict file allowlist, and a canonical ruleset manifest.
+CycloneDX SBOM and checksums are verified against source. The reproducibility
+gate builds in two clean clones and byte-compares both `.so` and ZIP.
+
+These mechanisms make evidence reproducible; they do not turn a failed safety
+gate into a release. v1-v8 are retired or consumed failures, v9 is a consumed
+methodology-invalid failure, and methodologically valid v10 is a consumed
+formal failure. The v0.1.2 release is therefore blocked permanently on this
+implementation/evaluation pairing.

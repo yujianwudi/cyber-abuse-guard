@@ -20,9 +20,10 @@ const (
 )
 
 type manifestDocument struct {
-	Version     string   `yaml:"version"`
-	ContextFile string   `yaml:"context_file"`
-	RuleFiles   []string `yaml:"rule_files"`
+	Version      string   `yaml:"version"`
+	ContextFile  string   `yaml:"context_file"`
+	SemanticFile string   `yaml:"semantic_file"`
+	RuleFiles    []string `yaml:"rule_files"`
 }
 
 type rulesDocument struct {
@@ -38,6 +39,11 @@ type contextEntry struct {
 type contextsDocument struct {
 	Version  string         `yaml:"version"`
 	Contexts []contextEntry `yaml:"contexts"`
+}
+
+type semanticsDocument struct {
+	Version  string            `yaml:"version"`
+	Profiles []SemanticProfile `yaml:"profiles"`
 }
 
 // LoadDefault parses and validates a fresh snapshot from the YAML assets
@@ -98,6 +104,30 @@ func LoadFS(source fs.FS, manifestNames ...string) (*RuleSet, error) {
 
 	set := &RuleSet{Version: manifest.Version, Contexts: contextMap}
 	seenFiles := map[string]struct{}{manifestName: {}, manifest.ContextFile: {}}
+	if manifest.SemanticFile != "" {
+		if err := validateAssetName(manifest.SemanticFile); err != nil {
+			return nil, fmt.Errorf("semantic file: %w", err)
+		}
+		if _, exists := seenFiles[manifest.SemanticFile]; exists {
+			return nil, fmt.Errorf("duplicate asset %q in manifest", manifest.SemanticFile)
+		}
+		seenFiles[manifest.SemanticFile] = struct{}{}
+		var document semanticsDocument
+		if err := decodeStrictFile(source, manifest.SemanticFile, &document); err != nil {
+			return nil, err
+		}
+		if document.Version != manifest.Version {
+			return nil, fmt.Errorf("semantic file %s version %q does not match manifest %q", manifest.SemanticFile, document.Version, manifest.Version)
+		}
+		set.Semantics = make(map[Category]SemanticProfile, len(document.Profiles))
+		for _, profile := range document.Profiles {
+			canonicalizeSemanticProfile(&profile)
+			if _, exists := set.Semantics[profile.Category]; exists {
+				return nil, fmt.Errorf("duplicate semantic profile category %q", profile.Category)
+			}
+			set.Semantics[profile.Category] = profile
+		}
+	}
 	for _, name := range manifest.RuleFiles {
 		if err := validateAssetName(name); err != nil {
 			return nil, fmt.Errorf("rule file: %w", err)
@@ -122,6 +152,19 @@ func LoadFS(source fs.FS, manifestNames ...string) (*RuleSet, error) {
 		return nil, fmt.Errorf("validate ruleset: %w", err)
 	}
 	return set, nil
+}
+
+func canonicalizeSemanticProfile(profile *SemanticProfile) {
+	profile.Harm = canonicalTerms(profile.Harm)
+	profile.Object = canonicalTerms(profile.Object)
+	profile.Action = canonicalTerms(profile.Action)
+	profile.Outcome = canonicalTerms(profile.Outcome)
+	profile.Target = canonicalTerms(profile.Target)
+	profile.Destination = canonicalTerms(profile.Destination)
+	profile.Evasion = canonicalTerms(profile.Evasion)
+	profile.Scale = canonicalTerms(profile.Scale)
+	profile.Sequence = canonicalTerms(profile.Sequence)
+	profile.Impact = canonicalTerms(profile.Impact)
 }
 
 func decodeStrictFile(source fs.FS, name string, target any) error {

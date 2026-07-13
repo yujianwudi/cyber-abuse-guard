@@ -2,6 +2,7 @@ package classifier
 
 import (
 	"strings"
+	"sync"
 	"unicode"
 	"unicode/utf8"
 
@@ -19,10 +20,44 @@ const (
 type normalizedViews struct {
 	standardRunes []rune
 	truncated     bool
+	storageUsed   int
 }
 
 type normalizationScratch struct {
 	iterator norm.Iter
+}
+
+// normalizedRunePool amortizes the bounded 1 MiB rune backing array used by
+// extreme inputs. Buffers are scrubbed through storageUsed before reuse so no
+// prompt-derived runes survive a classification call.
+var normalizedRunePool sync.Pool
+
+func takeNormalizedRuneBuffer() []rune {
+	value := normalizedRunePool.Get()
+	if value == nil {
+		return nil
+	}
+	return value.([]rune)[:0]
+}
+
+func putNormalizedRuneBuffer(buffer []rune, storageUsed int) {
+	if cap(buffer) == 0 || cap(buffer) > maxClassifierNormalizedRunes {
+		return
+	}
+	if storageUsed > cap(buffer) {
+		storageUsed = cap(buffer)
+	}
+	scrubNormalizedRuneBuffer(buffer, storageUsed)
+	normalizedRunePool.Put(buffer[:0])
+}
+
+func scrubNormalizedRuneBuffer(buffer []rune, storageUsed int) {
+	if storageUsed > cap(buffer) {
+		storageUsed = cap(buffer)
+	}
+	if storageUsed > 0 {
+		clear(buffer[:storageUsed])
+	}
 }
 
 func normalizeParts(parts []string) normalizedViews {
@@ -103,6 +138,7 @@ func normalizePartsInto(parts []string, destination []rune, scratch *normalizati
 		}
 	}
 
+	storageUsed := len(runes)
 	standard := runes[:0]
 	lastSpace := true
 	for _, r := range runes {
@@ -124,7 +160,7 @@ func normalizePartsInto(parts []string, destination []rune, scratch *normalizati
 	for len(standard) > 0 && standard[len(standard)-1] == ' ' {
 		standard = standard[:len(standard)-1]
 	}
-	return normalizedViews{standardRunes: standard, truncated: truncated}
+	return normalizedViews{standardRunes: standard, truncated: truncated, storageUsed: storageUsed}
 }
 
 func appendBoundary(runes []rune) []rune {
@@ -171,6 +207,9 @@ func validUTF8Prefix(value string, limit int) string {
 	}
 	if len(value) > limit {
 		value = value[:limit]
+	}
+	if utf8.ValidString(value) {
+		return value
 	}
 	return strings.ToValidUTF8(value, "\ufffd")
 }

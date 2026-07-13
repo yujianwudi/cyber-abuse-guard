@@ -11,29 +11,131 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  GO_VERSION: '1.26.4'
+  VERSION: '0.1.2'
+  CYCLONEDX_GOMOD_VERSION: 'v1.9.0'
+  GOVULNCHECK_VERSION: 'v1.6.0'
+
 jobs:
-  linux-amd64:
+  quality-and-artifacts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+      - name: Set up pinned Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - name: Install native verification dependencies
+        run: sudo apt-get update && sudo apt-get install -y build-essential binutils file zip unzip
+      - name: Install pinned security and SBOM tools
+        run: |
+          mkdir -p "$RUNNER_TEMP/bin"
+          GOBIN="$RUNNER_TEMP/bin" go install github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@${CYCLONEDX_GOMOD_VERSION}
+          GOBIN="$RUNNER_TEMP/bin" go install golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - name: format
+        run: make format-check
+      - name: git-diff-check
+        run: make git-diff-check
+      - name: module-verify
+        run: make module-verify
+      - name: unit-test
+        run: make unit-test
+      - name: race
+        run: make race
+      - name: vet
+        run: make vet
+      - name: fuzz-smoke
+        run: make fuzz-smoke
+      - name: operational-script-security
+        run: make script-test
+      - name: corpus-regression
+        run: make corpus-regression
+      - name: independent-evaluation-v6-frozen-integrity
+        run: >-
+          go test -tags=sqlite_omit_load_extension ./internal/classifier
+          -run='^TestEvaluationV6(Integrity|ProductionSnapshotIntegrity)$' -count=1 -v
+      - name: independent-evaluation-v7-frozen-integrity
+        run: >-
+          go test -tags=sqlite_omit_load_extension ./internal/classifier
+          -run='^TestEvaluationV7(Integrity|ProductionSnapshotIntegrity)$' -count=1 -v
+      - name: independent-evaluation-v8-frozen-integrity
+        run: >-
+          go test -tags=sqlite_omit_load_extension ./internal/classifier
+          -run='^TestEvaluationV8(Integrity|ProductionSnapshotIntegrity)$' -count=1 -v
+      - name: independent-evaluation-v9-frozen-integrity
+        run: >-
+          go test -tags=sqlite_omit_load_extension ./internal/classifier
+          -run='^TestEvaluationV9(Integrity|ProductionSnapshotIntegrity)$' -count=1 -v
+      - name: independent-evaluation-v10-frozen-integrity
+        run: >-
+          go test -tags=sqlite_omit_load_extension ./internal/classifier
+          -run='^TestEvaluationV10(Integrity|ProductionSnapshotIntegrity)$' -count=1 -v
+      - name: benchmark-acceptance
+        run: make benchmark
+      - name: dependency-vulnerability-gate
+        run: make vulncheck
+      - name: build-linux-amd64 and CPA-integration
+        env:
+          ALLOW_DIRTY_BUILD: '1'
+        run: make integration-test
+      - name: SBOM, package, and verify-release
+        env:
+          ALLOW_DIRTY_BUILD: '1'
+        run: make sbom package-release verify-release verification-fault-test
+      - name: artifact-hash
+        env:
+          ALLOW_DIRTY_BUILD: '1'
+        run: make artifact-hash
+      - name: clean-tree-check
+        run: make clean-tree-check
+      - name: Upload development verification artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: cyber-abuse-guard-linux-amd64-dirty
+          path: |
+            dist/cyber-abuse-guard-v0.1.2-dirty.so
+            dist/cyber-abuse-guard-v0.1.2-dirty.so.sha256
+            dist/cyber-abuse-guard_0.1.2-dirty_linux_amd64.zip
+            dist/build-metadata.json
+            dist/checksums.txt
+            dist/ruleset-manifest.json
+            dist/ruleset.sha256
+            dist/sbom.cdx.json
+          if-no-files-found: error
+
+  reproducibility:
+    needs: quality-and-artifacts
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+      - name: Checkout full history
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
-          go-version: '1.26.0'
+          fetch-depth: 0
+      - name: Set up pinned Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
           cache: true
-      - run: sudo apt-get update && sudo apt-get install -y build-essential file zip unzip
-      - run: make test vet race fuzz-smoke benchmark
-      - run: make integration-test
-      - run: make release verify-release
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: cyber-abuse-guard-linux-amd64
-          path: |
-            dist/cyber-abuse-guard-v0.1.1.so
-            dist/cyber-abuse-guard-v0.1.1.so.sha256
-            dist/cyber-abuse-guard_0.1.1_linux_amd64.zip
-            dist/checksums.txt
-          if-no-files-found: error
+      - name: Install reproducibility dependencies
+        run: |
+          sudo apt-get update && sudo apt-get install -y build-essential binutils file zip unzip
+          mkdir -p "$RUNNER_TEMP/bin"
+          GOBIN="$RUNNER_TEMP/bin" go install github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@${CYCLONEDX_GOMOD_VERSION}
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - name: Compare two clean-clone builds
+        env:
+          REPRODUCIBILITY_MODE: development
+        run: make reproducibility-test
+      - name: clean-tree-check
+        run: make clean-tree-check
 
   fuzz-long:
     if: github.event_name == 'push'
@@ -43,7 +145,7 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
-          go-version: '1.26.0'
+          go-version: ${{ env.GO_VERSION }}
       - run: |
           go test ./internal/extract -run='^$' -fuzz=FuzzExtractText -fuzztime=30s
           go test ./internal/classifier -run='^$' -fuzz=FuzzClassifier -fuzztime=30s

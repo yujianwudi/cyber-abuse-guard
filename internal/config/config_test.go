@@ -18,6 +18,9 @@ func TestDefaultMatchesTaskBook(t *testing.T) {
 	if got.MaxScanBytes != 262144 || got.MaxJSONDepth != 32 || got.MaxTextParts != 512 {
 		t.Fatalf("extraction defaults = %d/%d/%d", got.MaxScanBytes, got.MaxJSONDepth, got.MaxTextParts)
 	}
+	if got.OpaqueMediaPolicy != OpaqueMediaPolicyAuto || got.EffectiveOpaqueMediaPolicy() != OpaqueMediaPolicyAudit {
+		t.Fatalf("balanced opaque-media default = explicit:%q effective:%q", got.OpaqueMediaPolicy, got.EffectiveOpaqueMediaPolicy())
+	}
 	if got.Thresholds != (Thresholds{Audit: 35, BalancedBlock: 60, HardBlock: 80}) {
 		t.Fatalf("threshold defaults = %#v", got.Thresholds)
 	}
@@ -42,7 +45,8 @@ func TestDefaultMatchesTaskBook(t *testing.T) {
 	if got.Audit != (Audit{
 		Enabled: true, DataDir: "", RetentionDays: 30, MaxDBMB: 256,
 		LogRequestHash: true, LogSubjectHash: true, LogRuleIDs: true,
-		LogCategory: true, LogOriginalText: false,
+		LogCategory: true, LogOriginalText: false, BackupBeforeMigration: true,
+		MaxMigrationBackups: 3,
 	}) {
 		t.Fatalf("audit defaults = %#v", got.Audit)
 	}
@@ -62,6 +66,7 @@ func TestParseAppliesDefaultsAndOverrides(t *testing.T) {
 
 	data := []byte(`
 mode: strict
+opaque_media_policy: allow
 max_scan_bytes: 131072
 allow_context:
   ctf: false
@@ -85,6 +90,9 @@ classifier:
 	}
 	if got.Mode != ModeStrict || got.MaxScanBytes != 131072 {
 		t.Fatalf("overrides not applied: %#v", got)
+	}
+	if got.OpaqueMediaPolicy != OpaqueMediaPolicyAllow || got.EffectiveOpaqueMediaPolicy() != OpaqueMediaPolicyAllow {
+		t.Fatalf("opaque media override not applied: %#v", got)
 	}
 	if got.AllowContext.CTF || !got.AllowContext.Lab {
 		t.Fatalf("boolean override/default = %#v", got.AllowContext)
@@ -146,16 +154,26 @@ func TestValidateThresholdsAndRanges(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]func(*Config){
-		"invalid mode":        func(c *Config) { c.Mode = "maximum" },
-		"scan too small":      func(c *Config) { c.MaxScanBytes = 0 },
-		"scan too large":      func(c *Config) { c.MaxScanBytes = MaxAllowedScanBytes + 1 },
-		"depth too large":     func(c *Config) { c.MaxJSONDepth = MaxAllowedJSONDepth + 1 },
-		"parts too large":     func(c *Config) { c.MaxTextParts = MaxAllowedTextParts + 1 },
-		"threshold range":     func(c *Config) { c.Thresholds.HardBlock = 101 },
-		"threshold order":     func(c *Config) { c.Thresholds.BalancedBlock = c.Thresholds.Audit },
-		"subject capacity":    func(c *Config) { c.SubjectControl.MaxSubjects = maxSubjectEntries + 1 },
-		"subject score order": func(c *Config) { c.SubjectControl.ManualBlockScore = c.SubjectControl.CooldownScore },
-		"retention":           func(c *Config) { c.Audit.RetentionDays = -1 },
+		"invalid mode":                func(c *Config) { c.Mode = "maximum" },
+		"opaque media policy":         func(c *Config) { c.OpaqueMediaPolicy = "download" },
+		"scan too small":              func(c *Config) { c.MaxScanBytes = 0 },
+		"scan too large":              func(c *Config) { c.MaxScanBytes = MaxAllowedScanBytes + 1 },
+		"depth too large":             func(c *Config) { c.MaxJSONDepth = MaxAllowedJSONDepth + 1 },
+		"parts too large":             func(c *Config) { c.MaxTextParts = MaxAllowedTextParts + 1 },
+		"threshold range":             func(c *Config) { c.Thresholds.HardBlock = 101 },
+		"threshold order":             func(c *Config) { c.Thresholds.BalancedBlock = c.Thresholds.Audit },
+		"subject capacity":            func(c *Config) { c.SubjectControl.MaxSubjects = maxSubjectEntries + 1 },
+		"subject score order":         func(c *Config) { c.SubjectControl.ManualBlockScore = c.SubjectControl.CooldownScore },
+		"retention":                   func(c *Config) { c.Audit.RetentionDays = -1 },
+		"original text logging":       func(c *Config) { c.Audit.LogOriginalText = true },
+		"migration backups":           func(c *Config) { c.Audit.MaxMigrationBackups = 11 },
+		"backup count zero":           func(c *Config) { c.Audit.BackupBeforeMigration = true; c.Audit.MaxMigrationBackups = 0 },
+		"persistence without subject": func(c *Config) { c.SubjectControl.Persistence = true; c.SubjectControl.Enabled = false },
+		"persistence without audit":   func(c *Config) { c.SubjectControl.Persistence = true; c.Audit.Enabled = false },
+		"persistence capacity": func(c *Config) {
+			c.SubjectControl.Persistence = true
+			c.SubjectControl.MaxSubjects = maxPersistedSubjects + 1
+		},
 	}
 	for name, mutate := range tests {
 		mutate := mutate
@@ -167,6 +185,27 @@ func TestValidateThresholdsAndRanges(t *testing.T) {
 				t.Fatal("Validate() error = nil")
 			}
 		})
+	}
+}
+
+func TestOpaqueMediaPolicyModeAwareDefaults(t *testing.T) {
+	t.Parallel()
+	for _, testCase := range []struct {
+		mode Mode
+		want OpaqueMediaPolicy
+	}{
+		{mode: ModeOff, want: OpaqueMediaPolicyAllow},
+		{mode: ModeObserve, want: OpaqueMediaPolicyAudit},
+		{mode: ModeAudit, want: OpaqueMediaPolicyAudit},
+		{mode: ModeBalanced, want: OpaqueMediaPolicyAudit},
+		{mode: ModeStrict, want: OpaqueMediaPolicyBlock},
+	} {
+		cfg := Default()
+		cfg.Mode = testCase.mode
+		cfg.OpaqueMediaPolicy = OpaqueMediaPolicyAuto
+		if got := cfg.EffectiveOpaqueMediaPolicy(); got != testCase.want {
+			t.Errorf("mode %s effective policy=%s, want %s", testCase.mode, got, testCase.want)
+		}
 	}
 }
 
@@ -291,7 +330,7 @@ func TestValidateClassifierEndpoint(t *testing.T) {
 	cfg.Classifier.Enabled = true
 	cfg.Classifier.Endpoint = "http://127.0.0.1:8090/classify"
 	if err := Validate(cfg); err == nil {
-		t.Fatal("v0.1.1 must reject classifier.enabled instead of silently ignoring it")
+		t.Fatal("this release must reject classifier.enabled instead of silently ignoring it")
 	}
 }
 

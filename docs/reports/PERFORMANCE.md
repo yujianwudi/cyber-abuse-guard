@@ -1,64 +1,128 @@
-# Performance Report — v0.1.1
+# Performance Report — v0.1.2 candidate
 
-Measured 2026-07-12 on Ubuntu 26.04/WSL2, Go 1.26.0, linux/amd64, cgo enabled,
-13th Gen Intel Core i7-13650HX. Remote classification was disabled.
+## Status
 
-## Acceptance run
+The v0.1.2 engineering performance preflight is **PASS** on the recorded WSL2
+host. This does not approve release: methodologically valid evaluation v10 is
+`CONSUMED / FAIL`, so no clean release tag or production artifact may be
+created.
 
-`TestClassifierPerformanceAcceptance` measured 10,000 sequential decisions
-after warm-up:
+The release acceptance targets are:
 
-| Metric | Result | Target | Status |
-|---|---:|---:|---|
-| P50 | 28.332 microseconds | < 0.5 ms | PASS |
-| P95 | 53.809 microseconds | < 2 ms | PASS |
-| P99 | 142.819 microseconds | < 5 ms | PASS |
-| Total allocation | 32,482,232 bytes / 10,000 | bounded | PASS |
+| Metric/case | Release target | Final result |
+|---|---:|---|
+| Ordinary decision P95 | `< 2 ms` | **PASS — 124.682 us** |
+| Ordinary decision P99 | `< 5 ms` | **PASS — 216.869 us** |
+| Resource sanity after acceptance run | bounded; no leak trend | **PASS — goroutines stable** |
+| Candidate-rich adversarial input | `<= 100 ms/op` on recorded host | **PASS — 78.335194 ms/op** |
+| Near-budget large input | `<= 25 ms/op` on recorded host | **PASS — 14.970291 ms/op** |
+| Near-budget allocation | `< 1,000,000 bytes/op` | **PASS — 293,906 B/op** |
+| Race detector | no findings | **PASS** |
 
-The measured allocation is about 3.25 kB per ordinary decision. The test also
-forces garbage collection before and after the run and rejects more than 16
-MiB of retained-heap growth.
+The candidate-rich and near-budget CPU limits are host-specific regression
+ceilings. The final report must record CPU model, OS/kernel, Go version,
+`GOMAXPROCS`, power/virtualization context, run count, and variance. A materially
+different release runner needs a recorded baseline rather than an unexplained
+waiver.
 
-## Concurrency and resource stability
+## Historical v0.1.1 baseline (not v0.1.2 evidence)
 
-`TestClassifierRepeatedConcurrencyAndResourceSanity` ran 100 workers and
-10,000 total classifications. It reported:
+The last accepted v0.1.1 run on Ubuntu/WSL2 with a 13th Gen Intel Core
+i7-13650HX recorded:
 
-- zero incorrect decisions;
-- goroutines `2 -> 2`;
-- retained heap delta `-2,541,768` bytes after GC;
-- no race findings in the full `make race` run.
+| Case | Historical result |
+|---|---:|
+| Ordinary P50 | 28.332 microseconds |
+| Ordinary P95 | 53.809 microseconds |
+| Ordinary P99 | 142.819 microseconds |
+| Typical operational prompt | 21.843–23.626 microseconds; 3,272 B/op |
+| Four-role follow-up | 33.189–39.317 microseconds; 11,600 B/op |
+| Near-budget large input | 17.171–18.156 ms; ~1,050,144 B/op |
+| Candidate-rich adversarial input | 74.634–81.537 ms; 12,624 B/op |
 
-SQLite audit writes use a bounded queue and never wait on the request path.
-Database open/lock/write failures degrade audit status while rule enforcement
-continues. On its deadline, shutdown cancels in-flight SQLite work and returns;
-a background finalizer owns any driver cleanup that has not yet completed.
-Callbacks run outside store locks, and runtime shutdown clears the handler so
-no new host callback starts. An already-running host logger is a documented
-trusted/nonblocking host assumption. These paths are covered by unit and race
-tests.
+The historical near-budget allocation exceeded the v0.1.2 aspirational
+`< 1,000,000 bytes/op` goal. That is a known baseline gap, not a PASS. Bounded
+URL/HTML/Base64 decoding also adds work and therefore requires a fresh
+measurement.
 
-## Go benchmarks
+## v0.1.2 candidate measurements
 
-`go test ./internal/classifier -run='^$' -bench=. -benchmem -count=3` produced:
+Recorded on Go 1.26.4, Linux amd64 under WSL2, 20 logical CPUs, 13th Gen
+Intel(R) Core(TM) i7-13650HX:
 
-| Case | Time/op range | Bytes/op | Allocs/op |
-|---|---:|---:|---:|
-| Typical operational prompt | 21.843–23.626 microseconds | 3,272 | 27 |
-| Four-role follow-up (`system/user/assistant/user`) | 33.189–39.317 microseconds | 11,600 | 68 |
-| Large benign input (~280 KiB) | 17.171–18.156 ms | 1,050,144–1,050,149 | 7 |
-| Maximum punctuation-heavy normalization | 17.038–23.336 ms | 1,050,144–1,050,145 | 7 |
-| Candidate-rich adversarial input | 74.634–81.537 ms | 12,624 | 118 |
+| Case | Candidate result |
+|---|---:|
+| Ordinary P50 / P95 / P99 | 76.296 / 124.682 / 216.869 microseconds |
+| Typical raw classifier benchmark | 79.695–83.886 microseconds; 20,350 B/op; 42 allocs/op |
+| Candidate-rich max-parts acceptance | 78.335194 ms/op |
+| Candidate-rich raw benchmark | 76.693716–80.439013 ms/op; 78,360 B/op; 174 allocs/op |
+| Near-budget acceptance | 14.970291 ms/op; 293,906 B/op |
+| Concurrency/resource sanity | 100 workers; 10,000 classifications; goroutines 2→2 |
 
-Ordinary and role-aware conversational requests remain far below every latency
-target. v0.1.1 performs directive analysis once per classification and reuses
-matcher scratch storage, which keeps the candidate-rich case to about 12.6
-kB/op even though its intentionally dense candidate set costs substantially
-more CPU than a normal prompt.
+## Reproduction
 
-Deliberately large near-budget inputs remain bounded but allocate about
-1,050,144–1,050,149 bytes/op, slightly above the task book's aspirational
-“under 1 MB” goal. This
-is disclosed rather than hidden: `max_scan_bytes`, normalized-rune, JSON-depth,
-role-segment, and text-part limits bound the work, and a future streaming or
-byte-oriented normalized matcher could reduce peak allocation further.
+Run the release acceptance and raw benchmarks on the final commit:
+
+```bash
+go test -tags=sqlite_omit_load_extension ./internal/classifier \
+  -run 'TestClassifierPerformanceAcceptance|TestClassifierRepeatedConcurrencyAndResourceSanity' \
+  -count=1 -v
+
+go test -tags=sqlite_omit_load_extension ./internal/classifier \
+  -run='^$' -bench=. -benchmem -count=5
+```
+
+Capture machine and Go information:
+
+```bash
+go version
+go env GOOS GOARCH CGO_ENABLED GOMAXPROCS GOAMD64
+uname -a
+lscpu
+```
+
+The release CI runs at least the light acceptance and benchmark suite. If the
+allocation target or any hard latency/CPU gate fails, report the failure and do
+not weaken scan coverage, byte/depth/part limits, decoding, role handling, or
+rules merely to improve a benchmark.
+
+## CPU profile procedure
+
+Generate a classifier-only profile with fixed inputs and no network activity:
+
+```bash
+mkdir -p build/profiles
+go test -tags=sqlite_omit_load_extension ./internal/classifier \
+  -run='^$' -bench='BenchmarkClassifier|BenchmarkClassifierCandidateRich' \
+  -benchtime=10s -cpuprofile=build/profiles/classifier-cpu.pprof \
+  -memprofile=build/profiles/classifier-mem.pprof
+
+go tool pprof -top build/profiles/classifier-cpu.pprof \
+  > build/profiles/classifier-cpu-top.txt
+go tool pprof -top build/profiles/classifier-mem.pprof \
+  > build/profiles/classifier-mem-top.txt
+```
+
+Profiles may contain function/file names but must not use production requests.
+Use repository fixtures only, do not ship `.pprof` files in the release ZIP,
+and record only aggregate findings in this report.
+
+## Final result block
+
+```text
+release_commit_and_tag: NOT CREATED — RELEASE BLOCKED
+ruleset_version: 1.0.7
+ruleset_sha256: 7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134
+host: WSL2 Linux 6.18.33.1; 13th Gen Intel Core i7-13650HX; 20 logical CPUs
+go_version: go1.26.4 linux/amd64
+ordinary_p50: 76.296 us
+ordinary_p95: 124.682 us
+ordinary_p99: 216.869 us
+raw_classifier_benchmark: 79.695-83.886 us/op; 20350 B/op; 42 allocs/op
+candidate_rich_acceptance: 78.335194 ms/op
+candidate_rich_benchmark: 76.693716-80.439013 ms/op; 78360 B/op; 174 allocs/op
+near_budget_acceptance: 14.970291 ms/op
+near_budget_bytes_op: 293906
+race_result: PASS
+overall_performance_gate: PASS (engineering preflight only); RELEASE GATE remains FAIL
+```

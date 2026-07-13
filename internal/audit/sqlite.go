@@ -57,14 +57,16 @@ const insertEventSQL = `INSERT INTO audit_events (
 
 // Config controls SQLite durability and bounded background work.
 type Config struct {
-	Path            string
-	Retention       time.Duration
-	MaxBytes        int64
-	QueueSize       int
-	BusyTimeout     time.Duration
-	CleanupInterval time.Duration
-	Now             func() time.Time
-	OnError         func(error)
+	Path                  string
+	Retention             time.Duration
+	MaxBytes              int64
+	QueueSize             int
+	BusyTimeout           time.Duration
+	CleanupInterval       time.Duration
+	BackupBeforeMigration bool
+	MaxMigrationBackups   int
+	Now                   func() time.Time
+	OnError               func(error)
 }
 
 // Query is a parameterized event filter. An empty Query selects recent events;
@@ -84,6 +86,7 @@ type Status struct {
 	Healthy        bool   `json:"healthy"`
 	Degraded       bool   `json:"degraded"`
 	Closed         bool   `json:"closed"`
+	SchemaVersion  int    `json:"schema_version"`
 	LastError      string `json:"last_error,omitempty"`
 	QueueDepth     int    `json:"queue_depth"`
 	QueueCapacity  int    `json:"queue_capacity"`
@@ -132,15 +135,16 @@ type Store struct {
 	abortOnce sync.Once
 	closeErr  error
 
-	degraded atomic.Bool
-	aborted  atomic.Bool
-	lastErr  atomic.Value // string
-	enqueued atomic.Uint64
-	written  atomic.Uint64
-	dropped  atomic.Uint64
-	failed   atomic.Uint64
-	rejected atomic.Uint64
-	cleaned  atomic.Uint64
+	degraded      atomic.Bool
+	aborted       atomic.Bool
+	lastErr       atomic.Value // string
+	enqueued      atomic.Uint64
+	written       atomic.Uint64
+	dropped       atomic.Uint64
+	failed        atomic.Uint64
+	rejected      atomic.Uint64
+	cleaned       atomic.Uint64
+	schemaVersion atomic.Int64
 
 	reportMu   sync.Mutex
 	lastReport time.Time
@@ -169,6 +173,7 @@ func Open(cfg Config) (*Store, error) {
 		store.lastErr.Store(err.Error())
 	} else {
 		store.db = db
+		store.schemaVersion.Store(currentSchemaVersion)
 	}
 	store.wg.Add(1)
 	go store.run()
@@ -196,6 +201,9 @@ func withDefaults(cfg Config) Config {
 	}
 	if cfg.CleanupInterval <= 0 {
 		cfg.CleanupInterval = time.Hour
+	}
+	if cfg.MaxMigrationBackups <= 0 {
+		cfg.MaxMigrationBackups = 3
 	}
 	if cfg.Now == nil {
 		cfg.Now = time.Now
@@ -235,9 +243,9 @@ func openDatabase(cfg Config) (*sql.DB, error) {
 		db.Close()
 		return nil, fmt.Errorf("audit: configure auto_vacuum: %w", err)
 	}
-	if _, err := db.Exec(schema); err != nil {
+	if err := migrateDatabase(db, cfg, absPath); err != nil {
 		db.Close()
-		return nil, fmt.Errorf("audit: create schema: %w", err)
+		return nil, err
 	}
 	if err := secureSQLiteFiles(absPath); err != nil {
 		db.Close()
@@ -390,6 +398,7 @@ func (s *Store) Status() Status {
 		Healthy:        !degraded && !closed && s.db != nil,
 		Degraded:       degraded,
 		Closed:         closed,
+		SchemaVersion:  int(s.schemaVersion.Load()),
 		LastError:      lastError,
 		QueueDepth:     len(s.queue),
 		QueueCapacity:  cap(s.queue),

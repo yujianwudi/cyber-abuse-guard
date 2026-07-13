@@ -1,5 +1,64 @@
 # Changelog
 
+## 0.1.2 — Unreleased candidate
+
+Release status: **blocked candidate; not production-ready**. Blind generations
+v1-v8 are retired or consumed failures. v9 is frozen as
+`CONSUMED / METHODOLOGY INVALID / FAIL` because the exact taxonomy-enum
+validator was missing. The first and only methodologically valid v10 run failed
+with 28/320 benign false positives, 49/320 policy blocks, and 33/320 exact
+classifications. v10 is consumed and cannot be rerun. No `v0.1.2` tag, GitHub
+Release, or production deployment may be created from this candidate. A future
+release attempt requires a new implementation and a new independently authored
+unseen set.
+
+- Add bounded textual decoding for URL percent escapes, HTML entities,
+  inspectable Base64, textual data URLs, JSON escapes, and nested tool JSON.
+  Decoding is limited to two layers, eight variants, a 128 KiB encoded source,
+  and 64 KiB retained decoded text; no decompression, archive expansion, or
+  network fetch is performed.
+- Separate opaque image/audio/video handling from text truncation. Add
+  `opaque_media_policy: block|audit|allow` with mode-aware defaults: Off allows,
+  Observe/Audit/Balanced audit, and Strict blocks. Public media URLs are never
+  fetched.
+- Publish embedded ruleset `1.0.7` and expose linked version plus canonical
+  ruleset SHA-256 through build metadata and authenticated status.
+- Add router error and recovered-panic counters, `enforcement_ready`, explicit
+  audit/HMAC/persistence degradation, build identity, reconfigure error, and
+  ABI conflict-detection limitations to management status.
+- Add a read-only production health checker. Its benign and fixed-malicious
+  probes are evaluated locally through authenticated management routes and
+  never reach `/v1`, CPA auth selection, usage accounting, or an upstream.
+- Bound and harden management request bodies, query parameters, pagination,
+  method handling, delete/unblock inputs, and database-degraded responses. CPA
+  Management Key middleware remains the authentication authority; ordinary
+  downstream keys cannot authorize plugin management routes.
+- Keep `audit.log_original_text` only as a rejected compatibility field.
+  `true` fails configuration; no debug mode persists raw prompt/request text.
+- Introduce atomic SQLite schema migrations with `schema_version` and
+  `migration_history`. Schema v2 adds optional subject-state storage. Optional
+  pre-migration `VACUUM INTO` backups are mode 0400 and retention-bounded.
+- Add optional `subject_control.persistence`. It stores only HMAC subject IDs
+  and bounded risk/cooldown/manual-block state, applies expiry/decay/capacity on
+  restore, requires a stable HMAC key, and explicitly degrades on key mismatch
+  without overwriting the old snapshot. In-memory enforcement remains active.
+- Add a race-resistant HMAC secret-file generator that does not print secret
+  material. Document a future active/previous dual-key rotation state machine;
+  dual-key rotation is not implemented in v0.1.2.
+- Add a versioned build identity (`version`, commit, ruleset version/hash,
+  dirty state), clean-tag preflight, deterministic timestamps, strict
+  verification failure, ruleset manifest, CycloneDX SBOM, pinned
+  `govulncheck`, and two-clean-clone reproducibility comparison.
+- Refactor CI into explicit format, diff, module, unit, race, vet, fuzz,
+  regression, Holdout, benchmark, vulnerability, build, real-CPA integration,
+  verification-fault, artifact-hash, clean-tree, and reproducibility gates.
+- Add production operations documentation for Observe → Audit → Balanced
+  rollout, watchdog alarms, router-order/duplicate-binary manual checks,
+  binary/database rollback, HMAC retention, and opt-in complete cleanup.
+- Add evidence templates for tests, performance, CPA integration, privacy, and
+  release provenance. Missing formal artifacts are labelled `NOT CREATED —
+  RELEASE BLOCKED`; no v0.1.1 result is presented as v0.1.2 evidence.
+
 ## 0.1.1 — 2026-07-12
 
 - Treat artificial scan boundaries inside JSON escapes or UTF-8 sequences as

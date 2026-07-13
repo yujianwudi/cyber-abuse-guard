@@ -240,6 +240,8 @@ func scanEvent(row rowScanner) (Event, error) {
 	}
 	event.Timestamp = time.Unix(0, timestampNS).UTC()
 	event.Stream = stream != 0
+	event.Model = privacySafeModel(event.Model)
+	event.SourceFormat = privacySafeSourceFormat(event.SourceFormat)
 	return event, nil
 }
 

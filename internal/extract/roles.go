@@ -21,11 +21,23 @@ const (
 	RoleTool      Role = "tool"
 )
 
-// Segment is transient request text plus its normalized role. Neither the
-// extractor nor classifier stores segments after the current route call.
+// SegmentProvenance distinguishes natural conversation content from arguments
+// that a provider-native tool call would execute. Content is the zero value so
+// existing callers that construct role-aware segments remain source compatible.
+type SegmentProvenance uint8
+
+const (
+	ProvenanceContent SegmentProvenance = iota
+	ProvenanceToolPayload
+)
+
+// Segment is transient request text plus its normalized role and provenance.
+// Neither the extractor nor classifier stores segments after the current route
+// call.
 type Segment struct {
-	Role Role
-	Text string
+	Role       Role
+	Provenance SegmentProvenance
+	Text       string
 }
 
 const (
@@ -96,14 +108,25 @@ func extractRoleSegments(body []byte, limits Limits) ([]Segment, bool, bool) {
 			historyKey = standardKey
 			history = append(history[:0], raw...)
 		case "system", "instructions", "systeminstruction":
-			parts, partTruncated, err := extractRawParts(raw, limits, contextText)
+			partTruncated, partAmbiguous, err := addRoleContentSegments(&segments, raw, RoleSystem, limits)
 			if err != nil {
 				return err
 			}
-			text, joinTruncated := joinRoleParts(parts)
-			truncated = truncated || partTruncated || joinTruncated
-			segments.add(Segment{Role: RoleSystem, Text: text})
+			truncated = truncated || partTruncated
+			ambiguous = ambiguous || partAmbiguous
 		default:
+			if canonical := canonicalKey(key); canonical == "tools" || canonical == "functions" {
+				// Provider tool declarations are system-level context, not user
+				// intent and not executable invocation arguments. Retain their
+				// semantic descriptions as content so a malicious definition is not
+				// silently discarded, while actual calls are split per message below.
+				partTruncated, err := addRoleSegment(&segments, raw, RoleSystem, ProvenanceContent, limits, contextTool)
+				if err != nil {
+					return err
+				}
+				truncated = truncated || partTruncated
+				return nil
+			}
 			// Detect semantic text hidden beside an otherwise standard history.
 			// Metadata/model/options produce no parts and remain compatible.
 			parts, partTruncated, err := extractRawParts(raw, limits, childContext(contextNone, key))
@@ -135,6 +158,16 @@ func extractRoleSegments(body []byte, limits Limits) ([]Segment, bool, bool) {
 			ambiguous = true
 			return nil
 		}
+		if !ok && !present {
+			recognized, itemTruncated, err := addRolelessProviderItem(&segments, raw, historyKey, limits)
+			if err != nil {
+				return err
+			}
+			if recognized {
+				truncated = truncated || itemTruncated
+				return nil
+			}
+		}
 		if !ok {
 			// Role-less Gemini content and OpenAI Responses items are valid
 			// provider shapes. They use the conservative legacy fallback. An
@@ -144,19 +177,237 @@ func extractRoleSegments(body []byte, limits Limits) ([]Segment, bool, bool) {
 			ambiguous = true
 			return nil
 		}
-		parts, partTruncated, err := extractRawParts(raw, limits, contextText)
+		messageTruncated, messageAmbiguous, err := addRoleMessageSegments(&segments, raw, role, limits)
 		if err != nil {
 			return err
 		}
-		text, joinTruncated := joinRoleParts(parts)
-		truncated = truncated || partTruncated || joinTruncated
-		segments.add(Segment{Role: role, Text: text})
+		if messageAmbiguous {
+			ambiguous = true
+			return nil
+		}
+		truncated = truncated || messageTruncated
 		return nil
 	})
 	if err != nil || ambiguous {
 		return nil, false, unsafeRole
 	}
 	return segments.ordered(), true, truncated || segments.truncated
+}
+
+// addRoleMessageSegments separates rendered message content from executable
+// tool-call arguments. Provider wrapper metadata (function names, call IDs,
+// types) is deliberately excluded, while argument values remain inspectable.
+func addRoleMessageSegments(segments *segmentRing, raw json.RawMessage, role Role, limits Limits) (bool, bool, error) {
+	truncated := false
+	ambiguous := false
+	seenFields := make(map[string]struct{}, 4)
+
+	err := walkRawObject(raw, func(key string, value json.RawMessage) error {
+		canonical := canonicalKey(key)
+		switch canonical {
+		case "role":
+			return nil
+		case "content", "parts", "refusal":
+			if _, seen := seenFields[canonical]; seen {
+				ambiguous = true
+				return nil
+			}
+			seenFields[canonical] = struct{}{}
+			valueTruncated, valueAmbiguous, err := addRoleContentSegments(segments, value, role, limits)
+			truncated = truncated || valueTruncated
+			ambiguous = ambiguous || valueAmbiguous
+			return err
+		case "toolcalls", "toolcall", "functioncall", "tooluse":
+			valueTruncated, err := addRoleSegment(segments, value, role, ProvenanceToolPayload, limits, contextTool)
+			truncated = truncated || valueTruncated
+			return err
+		default:
+			// Extra provider metadata is harmless. Any unrecognized semantic text
+			// makes provenance ambiguous, so callers fall back to the conservative
+			// all-parts path instead of suppressing attacker-controlled content.
+			parts, valueTruncated, err := extractRawParts(value, limits, childContext(contextNone, key))
+			if err != nil {
+				return err
+			}
+			if len(parts) > 0 || valueTruncated {
+				ambiguous = true
+			}
+			return nil
+		}
+	})
+	return truncated, ambiguous, err
+}
+
+// addRoleContentSegments keeps adjacent natural-language blocks from one
+// provider message together. This preserves refusal/policy context when a
+// provider splits rendered text into multiple blocks, while tool payload blocks
+// remain separately identifiable and executable arguments are never merged
+// into the surrounding prose.
+func addRoleContentSegments(segments *segmentRing, raw json.RawMessage, role Role, limits Limits) (bool, bool, error) {
+	local := segmentRing{items: make([]Segment, 0, 4)}
+	truncated, ambiguous, err := addRoleContentValue(&local, raw, role, limits)
+	if err != nil || ambiguous {
+		return truncated || local.truncated, ambiguous, err
+	}
+
+	var pending *Segment
+	flush := func() {
+		if pending != nil {
+			segments.add(*pending)
+			pending = nil
+		}
+	}
+	for _, segment := range local.ordered() {
+		if segment.Provenance != ProvenanceContent {
+			flush()
+			segments.add(segment)
+			continue
+		}
+		if pending == nil {
+			copyOfSegment := segment
+			pending = &copyOfSegment
+			continue
+		}
+		if pending.Role != segment.Role || pending.Provenance != segment.Provenance {
+			flush()
+			copyOfSegment := segment
+			pending = &copyOfSegment
+			continue
+		}
+		joined, joinTruncated := joinRoleParts([]string{pending.Text, segment.Text})
+		pending.Text = joined
+		truncated = truncated || joinTruncated
+	}
+	flush()
+	return truncated || local.truncated, false, nil
+}
+
+func addRoleContentValue(segments *segmentRing, raw json.RawMessage, role Role, limits Limits) (bool, bool, error) {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
+		return false, false, nil
+	}
+	switch trimmed[0] {
+	case '"':
+		truncated, err := addRoleSegment(segments, raw, role, ProvenanceContent, limits, contextText)
+		return truncated, false, err
+	case '{':
+		return addRoleContentBlock(segments, raw, role, limits)
+	case '[':
+		truncated := false
+		ambiguous := false
+		err := walkRawArray(raw, func(item json.RawMessage) error {
+			itemTruncated, itemAmbiguous, err := addRoleContentValue(segments, item, role, limits)
+			truncated = truncated || itemTruncated
+			ambiguous = ambiguous || itemAmbiguous
+			return err
+		})
+		return truncated, ambiguous, err
+	default:
+		return false, true, nil
+	}
+}
+
+func addRoleContentBlock(segments *segmentRing, raw json.RawMessage, role Role, limits Limits) (bool, bool, error) {
+	blockType, hasToolPayloadKey, err := roleContentBlockShape(raw)
+	if err != nil {
+		return false, true, err
+	}
+	switch blockType {
+	case "tooluse", "functioncall", "customtoolcall":
+		truncated, err := addRoleSegment(segments, raw, role, ProvenanceToolPayload, limits, contextTool)
+		return truncated, false, err
+	case "toolresult", "functioncalloutput", "customtoolcalloutput":
+		truncated, err := addRoleSegment(segments, raw, RoleTool, ProvenanceContent, limits, contextText)
+		return truncated, false, err
+	}
+	if hasToolPayloadKey {
+		// An unknown block carrying argument-shaped fields is not safe to label as
+		// ordinary assistant content. Force legacy classification instead.
+		return false, true, nil
+	}
+	truncated, err := addRoleSegment(segments, raw, role, ProvenanceContent, limits, contextText)
+	return truncated, false, err
+}
+
+func roleContentBlockShape(raw json.RawMessage) (string, bool, error) {
+	blockType := ""
+	typeSeen := false
+	wrapperType := ""
+	hasToolPayloadKey := false
+	err := walkRawObject(raw, func(key string, value json.RawMessage) error {
+		canonical := canonicalKey(key)
+		if isToolArgumentCanonical(canonical) || canonical == "input" {
+			hasToolPayloadKey = true
+		}
+		if canonical == "functioncall" {
+			if wrapperType != "" {
+				return errors.New("duplicate content block tool wrapper")
+			}
+			trimmed := bytes.TrimSpace(value)
+			if len(trimmed) == 0 || trimmed[0] != '{' {
+				return errors.New("content block functionCall must be an object")
+			}
+			wrapperType = "functioncall"
+			hasToolPayloadKey = true
+		}
+		if canonical != "type" {
+			return nil
+		}
+		if typeSeen {
+			return errors.New("duplicate content block type")
+		}
+		typeSeen = true
+		var valueString string
+		if err := json.Unmarshal(value, &valueString); err != nil {
+			return err
+		}
+		blockType = canonicalKey(valueString)
+		return nil
+	})
+	if err != nil {
+		return "", hasToolPayloadKey, err
+	}
+	if wrapperType != "" {
+		if blockType != "" && blockType != wrapperType {
+			return "", hasToolPayloadKey, errors.New("conflicting content block type and tool wrapper")
+		}
+		blockType = wrapperType
+	}
+	return blockType, hasToolPayloadKey, err
+}
+
+func addRoleSegment(segments *segmentRing, raw json.RawMessage, role Role, provenance SegmentProvenance, limits Limits, initial contextKind) (bool, error) {
+	parts, partTruncated, err := extractRawParts(raw, limits, initial)
+	if err != nil {
+		return false, err
+	}
+	text, joinTruncated := joinRoleParts(parts)
+	segments.add(Segment{Role: role, Provenance: provenance, Text: text})
+	return partTruncated || joinTruncated, nil
+}
+
+// addRolelessProviderItem recognizes only provider-native typed items whose
+// provenance is intrinsic to the envelope. Other missing-role shapes retain
+// the conservative legacy fallback.
+func addRolelessProviderItem(segments *segmentRing, raw json.RawMessage, envelope string, limits Limits) (bool, bool, error) {
+	if envelope != "input" {
+		return false, false, nil
+	}
+	blockType, _, err := roleContentBlockShape(raw)
+	if err != nil {
+		return false, false, err
+	}
+	switch blockType {
+	case "functioncall", "customtoolcall":
+		truncated, err := addRoleSegment(segments, raw, RoleAssistant, ProvenanceToolPayload, limits, contextTool)
+		return true, truncated, err
+	case "functioncalloutput", "customtoolcalloutput":
+		truncated, err := addRoleSegment(segments, raw, RoleTool, ProvenanceContent, limits, contextText)
+		return true, truncated, err
+	default:
+		return false, false, nil
+	}
 }
 
 func messageRole(raw json.RawMessage, envelope string) (Role, bool, bool, error) {

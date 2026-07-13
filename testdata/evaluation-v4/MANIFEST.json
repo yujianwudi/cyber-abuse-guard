@@ -1,0 +1,124 @@
+{
+  "version": "evaluation-v4",
+  "generator": "cmd/evaluation-v4-author",
+  "method": "deterministic isolated authoring; static validation only; no classifier execution",
+  "files": [
+    {
+      "path": "benign.jsonl",
+      "lines": 300,
+      "bytes": 138155,
+      "sha256": "7f2f4a7c1e1921bad8131121272fe5bc0a85f3aab019ee70aaf343205f7d52a5"
+    },
+    {
+      "path": "policy-violations.jsonl",
+      "lines": 320,
+      "bytes": 161723,
+      "sha256": "1b5786d2c7ac177a28ef7701ce129e3646ccda7475f5180024caf85cbd695540"
+    }
+  ],
+  "distribution": {
+    "benign_by_taxonomy": {
+      "compliance": 43,
+      "ctf": 43,
+      "defensive_security": 43,
+      "education": 43,
+      "ordinary_development": 42,
+      "policy_refusal": 43,
+      "remediation": 43
+    },
+    "policy_violations_by_taxonomy": {
+      "credential_theft": 40,
+      "data_exfiltration": 40,
+      "defense_evasion": 40,
+      "malware_deployment": 40,
+      "phishing_deployment": 40,
+      "ransomware_deployment": 40,
+      "service_disruption": 40,
+      "unauthorized_exploitation": 40
+    },
+    "language_by_split": {
+      "benign": {
+        "en": 100,
+        "mixed": 100,
+        "zh": 100
+      },
+      "policy_violation": {
+        "en": 104,
+        "mixed": 112,
+        "zh": 104
+      }
+    },
+    "carrier_by_split": {
+      "benign": {
+        "anthropic_messages": 30,
+        "base64_text": 30,
+        "gemini_contents": 30,
+        "html_entity_text": 30,
+        "json_string_text": 30,
+        "multi_turn_roles": 30,
+        "openai_chat": 30,
+        "openai_responses": 30,
+        "tool_arguments": 30,
+        "url_encoded_text": 30
+      },
+      "policy_violation": {
+        "anthropic_messages": 32,
+        "base64_text": 32,
+        "gemini_contents": 32,
+        "html_entity_text": 32,
+        "json_string_text": 32,
+        "multi_turn_roles": 32,
+        "openai_chat": 32,
+        "openai_responses": 32,
+        "tool_arguments": 32,
+        "url_encoded_text": 32
+      }
+    },
+    "tag_by_split": {
+      "benign": {
+        "authorized_scope": 43,
+        "benign_intent": 300,
+        "colloquial": 60,
+        "compliance": 43,
+        "conceptual_high_level": 129,
+        "ctf": 43,
+        "defensive": 43,
+        "education": 43,
+        "encoding": 120,
+        "language_en": 100,
+        "language_mixed": 100,
+        "language_zh": 100,
+        "mixed_language": 100,
+        "multiturn": 30,
+        "non_operational": 300,
+        "ordinary_development": 42,
+        "plain_surface": 60,
+        "policy_refusal": 43,
+        "remediation": 43,
+        "safe_detection_rule": 43,
+        "tool": 30,
+        "typo": 60,
+        "unicode_homoglyph": 60,
+        "zero_width": 60
+      },
+      "policy_violation": {
+        "authorization_contradiction": 32,
+        "colloquial": 64,
+        "deployable_intent": 320,
+        "encoding": 128,
+        "language_en": 104,
+        "language_mixed": 112,
+        "language_zh": 104,
+        "mixed_language": 112,
+        "multiturn": 32,
+        "non_operational": 320,
+        "plain_surface": 64,
+        "policy_violation_intent": 320,
+        "tool": 32,
+        "typo": 64,
+        "unicode_homoglyph": 64,
+        "zero_width": 64
+      }
+    }
+  }
+}

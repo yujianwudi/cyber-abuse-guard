@@ -1,217 +1,325 @@
 # CPA Cyber Abuse Guard
 
-Cyber Abuse Guard is a local, native security plugin for
+CPA Cyber Abuse Guard is a local native security plugin for
 [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) (CPA). It inspects
-model requests before provider resolution and auth scheduling, blocks clearly
-malicious operational cyber-abuse requests locally, and preserves legitimate
-defensive research, remediation, CTF/lab, and authorized-testing workflows.
+model requests before provider resolution and authentication scheduling, and
+locally rejects clearly malicious operational cyber-abuse requests while
+preserving legitimate defensive analysis, remediation, incident response,
+CTF/lab, and authorized-testing workflows.
 
-Plugin version `0.1.1` targets CPA `v7.2.67`, commit
-`2075f77c8ebe9ec872759965661936fb1ac2931f`, Linux amd64, C ABI/RPC schema v1.
-The published binary is compatible with the official Debian Bookworm CPA image,
-requires glibc 2.34 or newer, and does not support musl/Alpine hosts.
+The v0.1.2 source targets CPA `v7.2.67` at commit
+`2075f77c8ebe9ec872759965661936fb1ac2931f`, Linux amd64, glibc 2.34 or newer,
+and CPA C ABI/RPC schema v1. musl/Alpine is not supported.
 
-> This plugin reduces risk. It cannot guarantee that an upstream account will
-> never receive a policy warning, suspension, or deactivation. Upstream
-> providers continue to apply their own independent policies.
+> **Release status:** v0.1.2 is a **blocked candidate**, not a production
+> release. Blind sets v1-v8 are retired or consumed failures; v9 is frozen as
+> `CONSUMED / METHODOLOGY INVALID / FAIL` because the exact taxonomy-enum
+> validator was missing. The first and only methodologically valid v10 run also
+> failed: benign FP 28/320, policy blocked 49/320, and exact 33/320. v10 is
+> consumed and `make holdout-test` now rejects a rerun. Do not create a
+> `v0.1.2` tag or GitHub Release, and do not deploy this candidate. A future
+> release attempt requires a new implementation and a newly, independently
+> authored unseen set; it must not reuse v10.
 
-## Security model
+> **Risk statement:** this plugin can reduce the number of risky requests that
+> reach upstream accounts. It cannot guarantee that any account will never be
+> warned, suspended, rate-limited, or deactivated. Upstream providers continue
+> to apply independent policies.
 
-The plugin registers a CPA `ModelRouter` and a local executor. Safe requests
-return `Handled: false` and continue through CPA unchanged. A blocked request
-returns `Handled: true`, `TargetKind: self`; the local executor rejects it with
-HTTP 403 and never calls a provider, host HTTP callback, or host model callback.
+## Security path
 
-The classifier requires combinations of harmful intent, a dangerous object or
-impact, and operational/target/evasion/scale evidence. It is not a one-keyword
-blacklist. Bilingual ruleset `1.0.1` is embedded into the `.so`; the default
-runtime does not send prompts to an auxiliary classifier or third party.
-Requests the plugin allows still follow CPA's configured upstream path.
-
-The plugin does **not**:
-
-- rewrite client identity, model names, system prompts, or safety declarations;
-- disguise malicious intent as education or research;
-- read CPA auth/OAuth files;
-- execute shell commands or user code;
-- upload prompts, tokens, cookies, or API keys to an additional classifier or
-  third party;
-- replace upstream safety systems.
-
-See [the design](docs/DESIGN.md), [threat model](docs/THREAT_MODEL.md), and
-[known limitations](docs/LIMITATIONS.md). Future work is tracked in
-[next-version recommendations](docs/NEXT_VERSION.md).
-Please report vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
-
-Recorded acceptance evidence is available in the [test report](docs/reports/TEST_REPORT.md),
-[performance report](docs/reports/PERFORMANCE.md), [corpus report](docs/reports/CORPUS_REPORT.md),
-and [CPA v7.2.67 integration report](docs/reports/CPA_INTEGRATION.md). The final
-Balanced corpus measured 0.00% false positives (0/142) and 100.00% malicious
-recall (154/154); 10k local decisions measured P95 53.809 microseconds on the
-documented test host.
-
-## Build and test
-
-Prerequisites: Linux amd64 with glibc 2.34 or newer, Go 1.26.0, a C compiler,
-`make`, `file`, `zip`, `unzip`, and GNU `sha256sum`. Go and CPA must both be
-built with cgo enabled for native plugin loading; musl/Alpine is unsupported.
-If Go 1.26 is not on `PATH`, pass its executable explicitly, for example
-`GO=/opt/go1.26/bin/go make test`.
-
-```bash
-make test
-make race
-make fuzz-smoke
-make build-linux-amd64
-make integration-test
-make release
-```
-
-The release command writes:
+The plugin registers a CPA `ModelRouter` and a local executor:
 
 ```text
-dist/cyber-abuse-guard-v0.1.1.so
-dist/cyber-abuse-guard-v0.1.1.so.sha256
-dist/cyber-abuse-guard_0.1.1_linux_amd64.zip
-dist/checksums.txt
+downstream request
+  -> CPA ModelRouter
+    -> allowed: Handled=false; original request continues unchanged
+    -> blocked: Handled=true, TargetKind=self
+       -> local executor returns HTTP 403
+       -> provider resolution, auth selection, usage, and upstream are skipped
 ```
 
-`make release` runs the pinned real-CPA integration suite before packaging.
-`make verify-release` also rejects a binary whose imported glibc symbol version
-is newer than `GLIBC_2.34`.
+The implementation never rewrites the requested model, client identity,
+system prompt, or safety declarations. It does not disguise malicious intent,
+read CPA auth/OAuth files, execute user code, or send request content to an
+auxiliary public classifier. Allowed requests still follow CPA's configured
+upstream path.
 
-On Windows, run the commands inside an amd64 Linux WSL distribution. A Docker
-test image is also provided:
+The embedded deterministic ruleset is `1.0.7`; its canonical embedded SHA-256
+is `7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134`.
+It requires combinations of
+harmful intent, a dangerous object or impact, and operational, target, evasion,
+or scale evidence. A lone keyword is not sufficient. Assertions such as
+“education”, “CTF”, or “authorized” do not wash deployment-oriented credential
+theft, phishing collection, ransomware, or data exfiltration.
+
+## CPA v7.2.67 fail-open boundary
+
+CPA v7.2.67 can continue native routing when a router returns an error, and can
+fuse a plugin after a panic. The plugin reduces this risk with bounded parsing,
+panic recovery, mode-aware local handling for known oversized RPCs, atomic
+reconfiguration, and health counters. It cannot change CPA host behavior from
+inside ABI v1.
+
+Production operators must monitor `loaded`, `enforcement_ready`,
+`router_errors`, `panics_recovered`, `audit_degraded`, `hmac_stable`,
+`persistence_degraded`, `last_reconfigure_error`, and the build/ruleset
+identity. Use the read-only watchdog:
 
 ```bash
-docker build -f Dockerfile.test -t cyber-abuse-guard-test .
-docker run --rm cyber-abuse-guard-test
+CPA_MANAGEMENT_KEY_FILE=/run/secrets/cpa-management.key \
+EXPECTED_MODE=balanced \
+./scripts/check-production-health.sh
 ```
 
-## Install in Docker CPA
+The watchdog accepts only a loopback CPA URL. It validates runtime/build/rules
+identity and health, rejects router-error or recovered-panic deltas, reports
+unknown source formats, and can enforce their probe-window delta with
+`MAX_NEW_UNKNOWN_SOURCE_FORMATS`. Its benign and malicious probes
+are built into the plugin and evaluated through authenticated management
+routes; it does not send the probe text to `/v1`, an auth selector, a provider,
+or an upstream account. It never changes CPA configuration, deletes an account,
+or removes another plugin.
 
-1. Verify the checksum:
+CPA ABI v1 also cannot enumerate router ordering or inspect the plugin
+directory. Operators must manually confirm that no higher-priority router can
+handle requests first, that `priority: 300` is effective, that the obsolete
+`antigravity-coding-filter` is disabled, and that only one version of this
+plugin `.so` is present.
 
-   ```bash
-   sha256sum -c cyber-abuse-guard-v0.1.1.so.sha256
-   ```
+## Modes and staged rollout
 
-2. Copy the library to the platform-specific plugin directory:
+| Mode | Request behavior | Event behavior |
+|---|---|---|
+| `off` | No extraction, classification, or blocking | No event persistence |
+| `observe` | Classifies but never blocks | In-memory aggregates only |
+| `audit` | Classifies but never blocks | Privacy-minimal events in SQLite |
+| `balanced` | Blocks clear operational abuse at the balanced threshold | Minimal events and subject controls |
+| `strict` | Blocks at the lower audit threshold | Most conservative; no challenge flow |
 
-   ```bash
-   mkdir -p ./plugins/linux/amd64
-   install -m 0755 cyber-abuse-guard-v0.1.1.so \
-     ./plugins/linux/amd64/cyber-abuse-guard-v0.1.1.so
-   mkdir -p ./plugin-data/cyber-abuse-guard
-   chmod 0700 ./plugin-data/cyber-abuse-guard
-   ```
+New deployments must use three stages:
 
-3. Mount both code and data:
+1. **Observe, 24–48 hours.** Check classification counts, latency, CPU/memory,
+   router errors, recovered panics, and HMAC/audit health without persisting
+   request-level events.
+2. **Audit, 24–48 hours.** Review privacy-minimal would-block events. Record
+   every threshold or policy change. Do not send dangerous test traffic to a
+   real provider.
+3. **Balanced.** Check blocks, legitimate-user reports, CPA 5xx responses,
+   audit health, plugin discovery, and watchdog deltas at least hourly during
+   the initial window. Keep the disable rollback ready.
 
-   ```yaml
-   services:
-     cli-proxy-api:
-       volumes:
-         - ./plugins:/CLIProxyAPI/plugins:ro
-         - ./plugin-data:/root/.cli-proxy-api/plugins
-       environment:
-         CYBER_ABUSE_GUARD_HMAC_KEY: ${CYBER_ABUSE_GUARD_HMAC_KEY}
-   ```
+Do not deploy directly from absent/off to `strict`. Full rollout, promotion,
+and abort criteria are in [Docker installation and operations](docs/INSTALL_DOCKER.md).
 
-4. Add [the example configuration](config.example.yaml) below
-   `plugins.configs.cyber-abuse-guard`. Start with `mode: audit`, keep
-   `subject_control.max_subjects: 10000`, verify decisions locally, and only
-   then switch to `balanced`. Disable the obsolete identity-rewrite filter
-   after verifying this plugin:
+## Privacy
 
-   ```yaml
-   antigravity-coding-filter:
-     enabled: false
-   ```
+Raw prompts, messages, tool payloads, authorization headers, plaintext API
+keys/IP addresses, cookies, OAuth tokens, uploaded code, and upstream account
+identity are never written to the audit database or returned by management
+APIs. `audit.log_original_text: true` is rejected; there is no debug override.
 
-5. Restart CPA and check its logs and management API:
+Stored audit fields are limited to timestamps, disposition, mode, coarse
+category, score, stable rule IDs, request SHA-256, subject HMAC, a
+domain-separated requested-model digest, the fixed canonical source enum
+(`openai`, `openai-response`, `claude`, `gemini`, or `unknown`), stream flag,
+scanned byte count, and latency. Subject persistence,
+when enabled, stores only HMAC subject IDs and bounded risk/cooldown/manual-
+block state. See [the privacy evidence plan](docs/reports/PRIVACY.md).
 
-   ```bash
-   docker compose restart cli-proxy-api
-   docker compose logs cli-proxy-api | grep -E 'plugin (loaded|registered)'
-   curl -H "Authorization: Bearer $CPA_MANAGEMENT_KEY" \
-     http://127.0.0.1:8317/v0/management/plugins/cyber-abuse-guard/status
-   ```
+## Encoded text and opaque media
 
-Detailed installation, upgrade, verification, and rollback commands are in
-[docs/INSTALL_DOCKER.md](docs/INSTALL_DOCKER.md).
+Text decoding is deliberately bounded: at most two layers and eight unique
+variants, with a 128 KiB encoded-source cap and a 64 KiB aggregate decoded-text
+cap. Supported textual envelopes are URL percent encoding, HTML entities,
+inspectable Base64 text, textual data URLs, JSON escapes, and bounded nested
+tool JSON. The plugin performs no decompression, archive expansion, or network
+fetch. A complete but unrecognized/high-entropy string is still scanned as
+literal text; it is not automatically blocked merely for looking encoded.
+An incomplete recognized envelope sets truncation, so Balanced and Strict fail
+closed. Encrypted or novel encodings remain a documented detection limit.
 
-## Configuration
+Image, audio, video, and document-attachment bytes are opaque. HTTPS media URLs
+are never fetched.
+`opaque_media_policy` may be `block`, `audit`, or `allow`; if omitted, the
+mode-aware defaults are:
 
-Production defaults use `mode: balanced`, a 256 KiB scan budget, a 60-point
-block threshold, a 10,000-entry subject-state cap, conservative rolling subject
-risk, and a 30-day audit retention. At capacity, the oldest non-manual risk
-entry is evicted; manual blocks are protected, and a new risky subject fails
-closed if no entry can be evicted. YAML keys are documented in
-[config.example.yaml](config.example.yaml).
-
-Modes:
-
-| Mode | Behavior |
+| Mode | Effective opaque-media policy |
 |---|---|
-| `off` | No extraction, classification, event persistence, or blocking. |
-| `observe` | In-memory aggregate statistics only; never blocks or persists per-request events. |
-| `audit` | Minimal event persistence; never blocks. |
-| `balanced` | Blocks clear operational abuse at the configured balanced threshold. |
-| `strict` | Blocks at the audit threshold; v0.1.1 does not implement a challenge flow. |
+| `off` | `allow` |
+| `observe`, `audit`, `balanced` | `audit` |
+| `strict` | `block` |
 
-`CYBER_ABUSE_GUARD_HMAC_KEY` should contain at least 32 bytes of high-entropy
-secret material. The plugin never persists its plaintext value. If no stable
-key is available, subject hashes use an ephemeral process key and status reports
-degraded correlation across restarts.
+`audit` records only an opaque-media disposition, never media content or URL
+contents. `allow` means the plugin cannot assess the opaque payload; it is not
+a safety approval.
 
-The `classifier` and `trusted_proxy` activation switches are reserved for a
-future CPA/plug-in revision. v0.1.1 rejects either switch when set to `true`
-rather than silently providing incomplete protection.
+## HMAC identity and optional subject persistence
+
+Use a stable secret file in production. Generate it without printing the key:
+
+```bash
+sudo install -d -m 0700 -o root -g root /opt/cliproxyapi/secrets
+sudo ./scripts/generate-hmac-key.sh \
+  /opt/cliproxyapi/secrets/cyber-abuse-guard-hmac.key
+sudo chown root:root \
+  /opt/cliproxyapi/secrets/cyber-abuse-guard-hmac.key
+```
+
+The generator requires a current-user-owned output directory with no symlinked
+path component and no group/world write bit. It refuses overwrite, uses a
+private temporary file, syncs the secret, publishes the mode-0600 regular file
+with a no-overwrite identity check, and syncs the containing directory.
+
+Mount that regular mode-0600 file read-only and set
+`CYBER_ABUSE_GUARD_HMAC_KEY_FILE`. The key must never be committed, included in
+an image, release archive, log, or status response. With no stable key,
+restart-to-restart subject correlation is degraded.
+
+`subject_control.persistence` is optional and defaults to `false`. When false,
+risk, cooldown, and manual-block state is process-local and resets at CPA
+restart. When true, audit storage must also be enabled, `max_subjects` cannot
+exceed 10,000, and a stable HMAC key is required. State restoration applies
+expiry, decay, and capacity limits. An HMAC key mismatch is explicit and
+blocks persistence writes so the old snapshot is not silently replaced;
+in-memory request enforcement continues.
+
+v0.1.2 does not implement dual-key rotation. The documented rotation design is
+to introduce an active key plus one read-only previous key, expose only their
+fingerprints, restore old HMAC state into a bounded transition map, write only
+active-key IDs, define a finite overlap deadline, and require an explicit
+operator finalize step. Until that state machine exists, keep the current key
+for ordinary upgrades. See [the design](docs/DESIGN.md).
+
+## SQLite migration
+
+The audit database has versioned `schema_version` and `migration_history`
+tables. Schema v2 adds optional subject-state tables. Startup validates exact
+table columns, order, types, constraints, indexes, the singleton schema row,
+and the complete migration sequence. Migration is atomic. A
+v0.1.1 database is detected as schema v1, optionally backed up with SQLite
+`VACUUM INTO`, and migrated without rewriting event content. Backups are
+read-only and bounded by `audit.max_migration_backups` (default 3).
+
+Do not delete the old database or backup until the upgraded plugin has passed
+local health checks. Downgrading a schema-v2 database to v0.1.1 is not claimed
+to be supported; use the pre-migration backup for a binary-and-database
+rollback.
+
+## Build, test, and release
+
+The release toolchain is pinned to Go `1.26.4`. Use Linux amd64 with cgo, GCC,
+GNU binutils, `file`, `zip`, `unzip`, `sha256sum`, `jq`, CycloneDX GoMod
+`v1.9.0`, and `govulncheck v1.6.0`.
+
+```bash
+make format-check git-diff-check module-verify
+make test race vet fuzz-smoke corpus-regression
+make benchmark integration-test
+make vulncheck
+
+# Historical-state check only: this intentionally fails because v10 is consumed.
+make holdout-test
+```
+
+`make formal-release` is the complete local release entry point, but it must
+not be run for the current blocked candidate. It is
+intentionally blocked unless the worktree is clean, the source version matches,
+and the real annotated tag `v0.1.2` points at `HEAD`. It runs the release gates,
+strict verification and fault injection, two-clone reproducibility, source
+packaging, and final evidence generation. Development builds may use
+`ALLOW_DIRTY_BUILD=1`; their filenames and linked metadata include `-dirty` and
+they are not formal release artifacts. Ordinary branch CI uses
+`REPRODUCIBILITY_MODE=development`: both commit-bound builds stay in temporary
+clones, use `-dirty` names, and never populate the repository `dist/` directory.
+
+The formal release set is expected to include:
+
+```text
+dist/cyber-abuse-guard-v0.1.2.so
+dist/cyber-abuse-guard-v0.1.2.so.sha256
+dist/cyber-abuse-guard_0.1.2_linux_amd64.zip
+dist/build-metadata.json
+dist/checksums.txt
+dist/ruleset-manifest.json
+dist/ruleset.sha256
+dist/sbom.cdx.json
+dist/release-test-summary.txt
+dist/release-test-summary.txt.sha256
+dist/release-evidence-final.md
+dist/release-evidence-final.md.sha256
+dist/cyber-abuse-guard-v0.1.2-source.tar.gz
+dist/cyber-abuse-guard-v0.1.2-source.tar.gz.sha256
+```
+
+GitHub Repository/Release, source `tar.gz`, and the audited release ZIP are the
+supported distribution channels. RAR is not a formal source or binary release
+format.
+
+The verifier treats a missing command, checksum mismatch, wrong ELF target,
+missing ABI symbol, glibc version above 2.34, build identity mismatch, ruleset
+mismatch, SBOM mismatch, unexpected ZIP entry, or incorrect file mode as a hard
+non-zero failure. Formal reproducibility accepts only the real annotated release
+tag and compares the published `.so`, ZIP, and SBOM with two clean clones of the
+same commit; it never synthesizes a tag or backfills missing root artifacts.
+
+Historical project-regression metrics are not a blind benchmark. v1-v8 are
+retired or consumed failures, v9 is a consumed methodology-invalid failure,
+and methodologically valid v10 is a consumed release-gate failure. Their frozen
+aggregate reports are under `docs/reports/`; the current decision is summarized
+in [RELEASE_EVIDENCE.md](docs/reports/RELEASE_EVIDENCE.md). None may be rerun or
+used for row-specific tuning.
+
+## Install, rollback, and cleanup
+
+Use [docs/INSTALL_DOCKER.md](docs/INSTALL_DOCKER.md) for checksum verification,
+single-version plugin installation, secret-file mounting, schema migration,
+Observe → Audit → Balanced rollout, watchdog operation, rollback to a previous
+`.so`, database restore, and explicit full cleanup.
+
+The shortest safe disable rollback is:
+
+```yaml
+plugins:
+  configs:
+    cyber-abuse-guard:
+      enabled: false
+```
+
+```bash
+docker compose restart cli-proxy-api
+```
+
+Verify that the plugin is not loaded/registered, CPA is healthy, `/v1/models`
+without a key still returns 401, New API can reach CPA, other plugins remain
+normal, and auth-file counts are unchanged. Audit data and HMAC secrets are
+retained unless the operator explicitly chooses to delete them.
 
 ## Management API
 
-CPA authenticates these routes with its Management Key before invoking the
-plugin:
+CPA protects the following exact routes with its Management Key before the
+plugin handler runs:
 
 ```text
 GET    /v0/management/plugins/cyber-abuse-guard/status
 GET    /v0/management/plugins/cyber-abuse-guard/events
 GET    /v0/management/plugins/cyber-abuse-guard/stats
 POST   /v0/management/plugins/cyber-abuse-guard/test
+POST   /v0/management/plugins/cyber-abuse-guard/health/probe
 POST   /v0/management/plugins/cyber-abuse-guard/subjects/unblock
 DELETE /v0/management/plugins/cyber-abuse-guard/events
 ```
 
-The status response distinguishes process lifetime (`started_at`) from the
-latest successful configuration (`configured_at`). Compatible hot reload keeps
-`started_at` unchanged. Its `subject_control` capacity snapshot contains
-`subjects`, `max_subjects`, `manual_blocked`, `evicted`, and
-`rejected_capacity`.
-
-Unblock request body:
+CPA v7.2.67 plugin routes cannot safely use dynamic path parameters, so unblock
+uses the fixed route and a bounded JSON body:
 
 ```json
-{"subject_hash":"hmac-sha256:..."}
+{"subject_hash":"hmac-sha256:<64 lowercase hex characters>"}
 ```
 
-CPA v7.2.67 supports exact plugin management routes only, so the task-book
-shape with `{hash}` in the URL is represented by this fixed route and JSON
-body. No unauthenticated resource page is registered.
+Normal downstream API keys do not authorize these routes. Responses contain no
+raw prompt or plaintext credential.
 
-## Privacy
-
-Audit events may contain timestamp, action, mode, coarse category, numeric
-score, stable rule IDs, request SHA-256, subject HMAC, model, source format,
-stream flag, scan byte count, and latency. They never contain the prompt,
-messages, authorization header, plaintext key/IP, cookie, OAuth token, uploaded
-code, or upstream account identity. A request rejected by the native no-copy
-RPC size guard records only a minimal `scan_limit` event; it does not invent a
-request hash, model, source format, or scanned-byte count that was unavailable.
-
-## Rollback
-
-Set `plugins.configs.cyber-abuse-guard.enabled: false`, restart CPA, confirm
-`effective_enabled: false`, and then remove the `.so` if desired. Removing the
-audit database is optional and must be an explicit operator decision. CPA does
-not need to be reinstalled.
+See also [DESIGN.md](docs/DESIGN.md), [RULES.md](docs/RULES.md),
+[LIMITATIONS.md](docs/LIMITATIONS.md), [THREAT_MODEL.md](docs/THREAT_MODEL.md),
+and [SECURITY.md](SECURITY.md).

@@ -135,6 +135,19 @@ func (i *Identifier) Status() IdentifierStatus {
 	return i.status
 }
 
+// KeyID returns a one-way identifier for the active HMAC key. It is suitable
+// for deciding whether persisted subject hashes are still correlatable after
+// restart; it never exposes the key itself.
+func (i *Identifier) KeyID() string {
+	if i == nil || len(i.key) == 0 {
+		return ""
+	}
+	digest := sha256.New()
+	_, _ = digest.Write([]byte("cyber-abuse-guard:hmac-key-id:v1\x00"))
+	_, _ = digest.Write(i.key)
+	return "sha256:" + hex.EncodeToString(digest.Sum(nil))
+}
+
 // FromHeaders prefers an Authorization Bearer credential over x-api-key and
 // otherwise returns an HMACed anonymous bucket. Header names are matched
 // case-insensitively even when a caller constructed a non-canonical Header map.

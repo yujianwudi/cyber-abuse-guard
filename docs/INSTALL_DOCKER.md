@@ -1,73 +1,174 @@
-# Docker Installation, Upgrade, and Rollback
+# Docker Installation, Staged Rollout, Rollback, and Cleanup
+
+## Release warning
+
+The v0.1.2 working tree is **release-blocked and must not be deployed**. v1-v8
+are retired or consumed failures; v9 is a consumed methodology-invalid
+failure; methodologically valid v10 failed its first and only formal run with
+28/320 benign false positives, 49/320 policy blocks, and 33/320 exact
+classifications. v10 cannot be rerun. Do not create a `v0.1.2` tag or GitHub
+Release and do not use the installation/rollout procedure below for this
+candidate. It is retained for future releases only after a new implementation
+passes a newly and independently authored unseen set.
+
+Development artifacts containing `-dirty` are test-only and must not be placed
+in a production plugin directory.
 
 ## Preconditions
 
-- CPA must be `v7.2.67` and built with `CGO_ENABLED=1`. Assets labeled
-  `_no-plugin` cannot load native plugins.
-- The container architecture must be Linux amd64 with glibc 2.34 or newer. The
-  published binary is compatible with the official Debian Bookworm CPA image;
-  musl/Alpine containers are not supported.
-- The deployment host needs `curl`, `unzip`, `sha256sum`, and `openssl`.
-- Back up the active CPA configuration before changing it.
+- CPA is exactly `v7.2.67` at commit
+  `2075f77c8ebe9ec872759965661936fb1ac2931f` and was built with
+  `CGO_ENABLED=1`. Assets labelled `_no-plugin` cannot load native plugins.
+- The container is Linux amd64 with glibc 2.34 or newer. Debian Bookworm is the
+  intended base; musl/Alpine is unsupported.
+- The deployment host has `curl`, `jq`, `unzip`, `sha256sum`, and `openssl`.
+- The CPA Management Key is available through a secret file for local health
+  checks; do not place it on a shared command line.
+- Back up CPA configuration, count CPA auth files, and record other enabled
+  plugins before changing anything.
+- Inspect Router priorities manually. `cyber-abuse-guard` should use priority
+  300; no higher-priority Router may handle the same request first. Disable the
+  obsolete `antigravity-coding-filter` after verifying this plugin.
+- Only one `cyber-abuse-guard` `.so` may exist in the active plugin directory.
+  CPA ABI v1 cannot enumerate ordering or detect duplicate versions for the
+  plugin itself.
 
-The release verifier rejects an artifact that imports a glibc symbol version
-newer than `GLIBC_2.34`, and `make release` runs the pinned real-CPA integration
-suite before creating an archive.
+The release verifier rejects a binary that imports a glibc symbol newer than
+`GLIBC_2.34`, has a wrong ELF target, lacks CPA ABI symbols, carries mismatched
+build/ruleset identity, or has a checksum/SBOM/archive mismatch.
 
-## Install
+## 1. Download and verify
+
+The commands below are a future-release operations reference. They do not
+authorize installing the current blocked candidate and apply only after a
+formal GitHub Release exists for a release-eligible version:
 
 ```bash
 set -eu
-VERSION=0.1.1
+VERSION=0.1.2
 ARCHIVE="cyber-abuse-guard_${VERSION}_linux_amd64.zip"
-# Override this for a fork or an internal release mirror.
+EVIDENCE="release-evidence-final.md"
+SOURCE="cyber-abuse-guard-v${VERSION}-source.tar.gz"
 RELEASE_BASE="${CYBER_ABUSE_GUARD_RELEASE_BASE:-https://github.com/yujianwudi/cyber-abuse-guard/releases/download/v${VERSION}}"
+work="$(mktemp -d)"
+trap 'rm -rf "$work"' EXIT
 
-curl -fLO "${RELEASE_BASE}/${ARCHIVE}"
-curl -fLO "${RELEASE_BASE}/checksums.txt"
-grep -F "  ${ARCHIVE}" checksums.txt | sha256sum -c -
-
-release_dir="cyber-abuse-guard-${VERSION}"
-mkdir -p "$release_dir"
-unzip -q "$ARCHIVE" -d "$release_dir"
-(cd "$release_dir/plugins/linux/amd64" && \
+curl -fL "$RELEASE_BASE/$ARCHIVE" -o "$work/$ARCHIVE"
+curl -fL "$RELEASE_BASE/checksums.txt" -o "$work/checksums.txt"
+curl -fL "$RELEASE_BASE/$EVIDENCE" -o "$work/$EVIDENCE"
+curl -fL "$RELEASE_BASE/$EVIDENCE.sha256" -o "$work/$EVIDENCE.sha256"
+curl -fL "$RELEASE_BASE/$SOURCE" -o "$work/$SOURCE"
+curl -fL "$RELEASE_BASE/$SOURCE.sha256" -o "$work/$SOURCE.sha256"
+(cd "$work" && sha256sum -c "$EVIDENCE.sha256" && sha256sum -c "$SOURCE.sha256")
+(cd "$work" && grep -F "  $ARCHIVE" checksums.txt | sha256sum -c -)
+unzip -q "$work/$ARCHIVE" -d "$work/release"
+(cd "$work/release/plugins/linux/amd64" && \
   sha256sum -c "cyber-abuse-guard-v${VERSION}.so.sha256")
-
-cp config.yaml "config.yaml.backup.$(date +%Y%m%d%H%M%S)"
-mkdir -p plugins/linux/amd64 plugin-data/cyber-abuse-guard
-install -m 0755 "$release_dir/plugins/linux/amd64/cyber-abuse-guard-v${VERSION}.so" \
-  "plugins/linux/amd64/cyber-abuse-guard-v${VERSION}.so"
-chmod 0700 plugin-data/cyber-abuse-guard
 ```
 
-Use a dedicated audit data directory. The plugin creates missing directories
-with mode 0700 but deliberately does not change permissions on an existing
-operator-owned directory. An existing directory must not be group/world
-writable; the final directory and DB/WAL/SHM paths must not be symlinks. Keep
-the entire ancestor chain outside attacker-controlled or same-user-mutated
-locations.
+Inspect `$work/release/build-metadata.json` and require:
 
-The default URL matches the plugin metadata. If the artifact is delivered from
-an internal mirror, set `CYBER_ABUSE_GUARD_RELEASE_BASE` to the directory URL
-that contains the ZIP and `checksums.txt`; do not disable checksum validation.
+- `source_version` equals `0.1.2`;
+- `dirty` is `false`;
+- `commit` is a full 40-character release commit;
+- `ruleset_version` and `ruleset_sha256` match the standalone ruleset manifest;
+- `$work/release-evidence-final.md` identifies the same commit, annotated tag,
+  rules snapshot, source archive, command-log digest, and artifact hashes.
 
-Generate a stable HMAC secret without printing it to logs:
+`checksums.txt` intentionally covers the seven reproducible core files: the
+shared object, its sidecar, the ZIP, build metadata, ruleset manifest, ruleset
+sidecar, and SBOM. Run-specific command logs, final evidence, and the source
+archive are outside the reproducible ZIP and each has its own SHA-256 sidecar;
+their hashes are also bound by the verified final evidence document.
+
+Do not bypass checksum validation for an internal mirror; set
+`CYBER_ABUSE_GUARD_RELEASE_BASE` to the mirror directory that contains the same
+files.
+
+## 2. Prepare directories and record rollback state
+
+Run from the deployment directory that contains `config.yaml` and the Compose
+file:
 
 ```bash
-secret_dir="${XDG_CONFIG_HOME:-$HOME/.config}/cyber-abuse-guard"
-install -d -m 0700 "$secret_dir"
-umask 077
-openssl rand -base64 48 > "$secret_dir/hmac"
-chmod 0600 "$secret_dir/hmac"
-export CYBER_ABUSE_GUARD_SECRET_FILE="$secret_dir/hmac"
+set -eu
+stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+install -d -m 0700 rollback/cyber-abuse-guard
+cp -p config.yaml "rollback/cyber-abuse-guard/config.${stamp}.yaml"
+
+mkdir -p plugins/linux/amd64
+find plugins/linux/amd64 -maxdepth 1 -type f \
+  -name 'cyber-abuse-guard*.so' -print \
+  > "rollback/cyber-abuse-guard/active-binaries.${stamp}.txt"
+
+# Record, but do not modify, the CPA auth inventory.
+find "${CPA_AUTH_DIR:?set CPA_AUTH_DIR to the CPA auth directory}" \
+  -maxdepth 1 -type f -print | sort \
+  > "rollback/cyber-abuse-guard/auth-files.${stamp}.txt"
 ```
 
-Reference it from the Compose environment or secret manager. Do not place the
-secret in this repository, Docker build context, or a release ZIP. The target
-must be a regular mode-0600 file, not a symlink. On Linux the plugin opens it
-with `O_NOFOLLOW`, then validates and reads through the same file descriptor.
+If a prior plugin exists, copy it to the rollback directory and remove it from
+the active directory before installing v0.1.2. Do not leave v0.1.1 and v0.1.2
+active together:
 
-Mount:
+```bash
+old_so="$(find plugins/linux/amd64 -maxdepth 1 -type f \
+  -name 'cyber-abuse-guard*.so' -print -quit)"
+if [ -n "$old_so" ]; then
+  cp -p "$old_so" "rollback/cyber-abuse-guard/"
+  rm -f -- "$old_so"
+fi
+```
+
+The rollback copy is outside CPA's plugin discovery directory.
+
+## 3. Create a stable HMAC secret
+
+Generate a regular mode-0600 file without printing the secret:
+
+```bash
+sudo install -d -m 0700 -o root -g root /opt/cliproxyapi/secrets
+sudo ./scripts/generate-hmac-key.sh \
+  /opt/cliproxyapi/secrets/cyber-abuse-guard-hmac.key
+sudo chown root:root \
+  /opt/cliproxyapi/secrets/cyber-abuse-guard-hmac.key
+sudo stat -c '%a %U %G %F' \
+  /opt/cliproxyapi/secrets/cyber-abuse-guard-hmac.key
+```
+
+The generator rejects an output directory that is not owned by the current
+user, contains a symlink component, or is group/world writable. It never
+overwrites an existing path and does not print the key. Expected mode is `600`.
+The target must be a regular non-symlink file. Do not
+commit it, copy it into a Docker build context, include it in a release archive,
+print it, or put it in YAML. The plugin status exposes only stability/degraded
+state and a one-way key identity, never the key.
+
+v0.1.2 has no dual-key rotation implementation. Preserve this file for normal
+upgrades and rollbacks. Changing it is an explicit subject-correlation reset;
+with persistence enabled, a mismatch is reported and old state is not
+overwritten.
+
+## 4. Install the binary and data directory
+
+Continue in the same shell where `$work` and `$VERSION` exist:
+
+```bash
+install -d -m 0755 plugins/linux/amd64
+install -d -m 0700 plugin-data/cyber-abuse-guard
+install -m 0755 \
+  "$work/release/plugins/linux/amd64/cyber-abuse-guard-v${VERSION}.so" \
+  "plugins/linux/amd64/cyber-abuse-guard-v${VERSION}.so"
+
+test "$(find plugins/linux/amd64 -maxdepth 1 -type f \
+  -name 'cyber-abuse-guard*.so' | wc -l)" -eq 1
+```
+
+An existing audit directory must not be group/world writable. The database,
+WAL, SHM, and final data directory must not be symlinks. Keep the entire path
+outside attacker-controlled or same-user-writable ancestors.
+
+Mount code read-only, data read-write, and the HMAC file read-only:
 
 ```yaml
 services:
@@ -75,136 +176,251 @@ services:
     volumes:
       - ./plugins:/CLIProxyAPI/plugins:ro
       - ./plugin-data:/root/.cli-proxy-api/plugins
-      # Bind a regular mode-0600 file. Compose secrets are commonly mounted
-      # 0444, which this plugin intentionally rejects.
-      - "${CYBER_ABUSE_GUARD_SECRET_FILE:?set CYBER_ABUSE_GUARD_SECRET_FILE}:/run/secrets/cyber_abuse_guard_hmac:ro"
+      - /opt/cliproxyapi/secrets/cyber-abuse-guard-hmac.key:/run/secrets/cyber-abuse-guard-hmac.key:ro
     environment:
-      CYBER_ABUSE_GUARD_HMAC_KEY_FILE: /run/secrets/cyber_abuse_guard_hmac
+      CYBER_ABUSE_GUARD_HMAC_KEY_FILE: /run/secrets/cyber-abuse-guard-hmac.key
 ```
 
-Merge `config.example.yaml` into the real `plugins` section. For the first
-deployment, explicitly keep audit-first mode and the bounded subject default:
+Some Compose secret mechanisms force mode 0444; this plugin intentionally
+rejects that. Use a regular mode-0600 bind-mounted file or a secret runtime that
+preserves the required permissions.
+
+## 5. Configure Observe first
+
+Merge `config.example.yaml` below `plugins.configs`. Start with:
 
 ```yaml
 plugins:
+  enabled: true
+  dir: plugins
   configs:
     cyber-abuse-guard:
-      mode: audit
+      enabled: true
+      priority: 300
+      mode: observe
+      opaque_media_policy: audit
       subject_control:
         enabled: true
+        persistence: false
         max_subjects: 10000
       audit:
         enabled: true
+        backup_before_migration: true
+        max_migration_backups: 3
+        log_original_text: false
+    antigravity-coding-filter:
+      enabled: false
 ```
 
-Then restart and inspect status:
+`log_original_text: true` is always rejected. There is no debug override.
+
+When `persistence: false`, restart clears risk, cooldown, and manual-block state.
+To enable persistence later, keep audit enabled, keep `max_subjects <= 10000`,
+and first verify `hmac_stable: true`. Subject-state rows contain only HMAC IDs
+and typed state.
+
+## 6. Upgrade and database migration
+
+At first v0.1.2 open, a v0.1.1 database is detected as schema v1 and migrated
+atomically to schema v2. With backup enabled, a consistent mode-0400
+`events.db.pre-v2-*.bak` is created through SQLite `VACUUM INTO`; only the newest
+configured number is retained.
+
+Before restart, make a separate operator backup while CPA is stopped if the
+database is business-critical:
+
+```bash
+docker compose stop cli-proxy-api
+cp -p plugin-data/cyber-abuse-guard/events.db \
+  "rollback/cyber-abuse-guard/events.${stamp}.db" 2>/dev/null || true
+docker compose up -d cli-proxy-api
+```
+
+Migration failure must not partially advance the schema, but it can leave audit
+degraded and must block promotion. Check status `audit.schema_version` and
+`audit_degraded`. v0.1.1 is not claimed to read schema v2; restore the matching
+pre-migration database when rolling the binary back.
+
+## 7. Restart and baseline checks
 
 ```bash
 docker compose restart cli-proxy-api
-docker compose logs --since=2m cli-proxy-api | grep -E 'plugin (loaded|registered)'
-curl -fsS -H "Authorization: Bearer $CPA_MANAGEMENT_KEY" \
-  http://127.0.0.1:8317/v0/management/plugins/cyber-abuse-guard/status
+docker compose logs --since=2m cli-proxy-api \
+  | grep -E 'plugin (loaded|registered)|cyber-abuse-guard'
+
+CPA_MANAGEMENT_KEY_FILE=/run/secrets/cpa-management.key \
+EXPECTED_MODE=observe \
+./scripts/check-production-health.sh
 ```
 
-Confirm that status reports the expected `configured_at` and
-`subject_control.max_subjects`. On later compatible hot reloads, `started_at`
-must remain unchanged while `configured_at` advances; the `subject_control`
-snapshot also reports current entries, manual blocks, evictions, and capacity
-rejections.
+The watchdog is read-only and loopback-only. It checks CPA reachability,
+authenticated status, loaded/ready state, exact mode and priority, build/ruleset
+identity, degradation, router/panic counters, and two built-in local probes. The
+malicious probe never enters a provider route, auth selector, usage queue, or
+upstream.
 
-Keep `mode: audit` while running the local management test route and reviewing
-events without prompt text. Switch to `balanced` only after the observed
-decisions match the deployment's expected traffic.
+Also verify from the deployment environment:
 
-## Functional verification
+```bash
+# CPA remains authenticated: no client key must not list models.
+test "$(curl -sS -o /dev/null -w '%{http_code}' \
+  http://127.0.0.1:8317/v1/models)" = 401
+```
 
-Use only harmless test descriptions. Confirm a normal programming prompt
-reaches a test provider, a clearly malicious descriptive test returns 403, and
-the upstream mock/provider access counter does not increment for the blocked
-request. Confirm a defensive remediation request is allowed.
+Verify New API → CPA using an ordinary harmless request, confirm other plugins
+still behave normally, and compare the current CPA auth-file list with the saved
+inventory. Installation must not create, delete, or modify auth files.
 
-## Upgrade
+## 8. Observe → Audit → Balanced rollout
+
+**Do not execute this rollout for the current v0.1.2 candidate.** Its formal
+evaluation gate failed. These stages document the operational process for a
+future candidate that passes a new independent evaluation.
+
+### Stage 1: Observe (24–48 hours)
+
+Keep `mode: observe`. It never blocks and does not persist per-request audit
+events. Monitor:
+
+- request/classification counts and latency;
+- CPU, memory, goroutines, and CPA 5xx;
+- `router_errors` and `panics_recovered` deltas;
+- `loaded`, `enforcement_ready`, `ruleset_version_match`, and dirty build state;
+- HMAC, audit, queue, and persistence degradation;
+- opaque-media counts and expected traffic mix.
+
+Abort if the plugin unloads, readiness is false, router/panic counters increase,
+the build identity mismatches, or CPA availability regresses.
+
+### Stage 2: Audit (24–48 hours)
+
+Change only `mode: audit`, restart or use the supported CPA configuration path,
+then run the watchdog with `EXPECTED_MODE=audit`. Review would-block events and
+coarse categories. No raw prompt exists in the DB; use controlled local test
+fixtures when adjudication needs text. Record every threshold or policy change
+with timestamp, owner, reason, before/after values, and review result.
+
+Do not send a dangerous probe through `/v1` to a real upstream. Use the built-in
+management health probe or the repository's Mock Upstream integration test.
+
+Abort on unexplained legitimate impact, database/queue degradation, growing
+router/panic counters, or CPA 5xx increase.
+
+### Stage 3: Balanced
+
+After approval, set `mode: balanced`, keep `opaque_media_policy: audit` unless a
+documented local risk decision says otherwise, restart, and run:
+
+```bash
+CPA_MANAGEMENT_KEY_FILE=/run/secrets/cpa-management.key \
+EXPECTED_MODE=balanced \
+./scripts/check-production-health.sh
+```
+
+During the initial window check at least hourly:
+
+- block count and category distribution;
+- legitimate-user complaints and sampled adjudication records;
+- CPA 4xx/5xx and upstream health;
+- loaded/registered/readiness and Router/Panic deltas;
+- SQLite size, queue dropped/failed/rejected counts, migration schema;
+- HMAC and optional subject persistence health;
+- opaque-media allowed/audited/blocked counters.
+
+Do not promote directly to Strict. Strict requires a separate risk review of its
+lower threshold and default opaque-media block behavior.
+
+## 9. Shortest disable rollback
+
+Set:
+
+```yaml
+cyber-abuse-guard:
+  enabled: false
+```
+
+Then:
+
+```bash
+docker compose restart cli-proxy-api
+```
+
+Verify all of the following before declaring rollback complete:
+
+- the plugin is not loaded/registered or reports `effective_enabled: false`;
+- CPA root/health is normal;
+- `/v1/models` without a key returns 401;
+- New API can reach CPA with a harmless authenticated request;
+- other plugins are normal;
+- the CPA auth-file inventory is unchanged;
+- no automation deleted or modified an upstream account.
+
+Do not delete the audit database or HMAC secret as part of the fastest rollback.
+
+## 10. Roll back to the previous binary and database
+
+Stop CPA, remove v0.1.2 from the active directory, restore exactly one previous
+`.so`, restore the matching configuration, and—when moving back to v0.1.1—use
+the saved pre-migration database:
 
 ```bash
 set -eu
-: "${NEXT_VERSION:?export NEXT_VERSION, for example 0.2.0}"
-: "${CPA_MANAGEMENT_KEY:?export CPA_MANAGEMENT_KEY}"
-NEXT_ARCHIVE="cyber-abuse-guard_${NEXT_VERSION}_linux_amd64.zip"
-NEXT_RELEASE_BASE="${CYBER_ABUSE_GUARD_RELEASE_BASE:-https://github.com/yujianwudi/cyber-abuse-guard/releases/download/v${NEXT_VERSION}}"
-upgrade_dir="$(mktemp -d)"
-trap 'rm -rf "$upgrade_dir"' EXIT
-
-curl -fL "${NEXT_RELEASE_BASE}/${NEXT_ARCHIVE}" -o "$upgrade_dir/$NEXT_ARCHIVE"
-curl -fL "${NEXT_RELEASE_BASE}/checksums.txt" -o "$upgrade_dir/checksums.txt"
-(cd "$upgrade_dir" && \
-  grep -F "  ${NEXT_ARCHIVE}" checksums.txt | sha256sum -c - && \
-  unzip -q "$NEXT_ARCHIVE" -d release && \
-  cd release/plugins/linux/amd64 && \
-  sha256sum -c "cyber-abuse-guard-v${NEXT_VERSION}.so.sha256")
-
-CONFIG_BACKUP="config.yaml.backup.$(date +%Y%m%d%H%M%S)"
-cp -p config.yaml "$CONFIG_BACKUP"
+docker compose stop cli-proxy-api
+rm -f -- plugins/linux/amd64/cyber-abuse-guard-v0.1.2.so
 install -m 0755 \
-  "$upgrade_dir/release/plugins/linux/amd64/cyber-abuse-guard-v${NEXT_VERSION}.so" \
-  "plugins/linux/amd64/cyber-abuse-guard-v${NEXT_VERSION}.so"
-docker compose restart cli-proxy-api
-docker compose logs --since=2m cli-proxy-api | grep -E 'plugin (loaded|registered)'
-curl -fsS -H "Authorization: Bearer $CPA_MANAGEMENT_KEY" \
-  http://127.0.0.1:8317/v0/management/plugins/cyber-abuse-guard/status \
-  | grep -F "\"version\":\"${NEXT_VERSION}\""
+  rollback/cyber-abuse-guard/cyber-abuse-guard-v0.1.1.so \
+  plugins/linux/amd64/cyber-abuse-guard-v0.1.1.so
+cp -p rollback/cyber-abuse-guard/config.REPLACE_WITH_STAMP.yaml config.yaml
+
+# Only for a full schema rollback after operator review:
+# rm -f -- plugin-data/cyber-abuse-guard/events.db-wal \
+#   plugin-data/cyber-abuse-guard/events.db-shm
+# install -m 0600 rollback/cyber-abuse-guard/events.REPLACE_WITH_STAMP.db \
+#   plugin-data/cyber-abuse-guard/events.db
+
+test "$(find plugins/linux/amd64 -maxdepth 1 -type f \
+  -name 'cyber-abuse-guard*.so' | wc -l)" -eq 1
+docker compose up -d cli-proxy-api
 ```
 
-CPA selects the highest versioned matching plugin file. Verify the reported
-version and integration behavior before removing the prior `.so`. Back up the
-SQLite database before a schema-changing release.
+Run the previous version's matching health/integration procedure. Preserve the
+same HMAC secret unless the rollback intentionally resets subject correlation.
 
-## Rollback
+## 11. Complete removal (explicit and destructive)
 
-The following performs a full disable/remove rollback. Set the exact installed
-version and the backup path created during install/upgrade:
+First complete the disable rollback and verify CPA without the plugin. Then stop
+CPA and inspect every path before removal. These commands require an explicit
+operator opt-in and never touch CPA auth files:
 
 ```bash
 set -eu
-: "${CURRENT_VERSION:?export CURRENT_VERSION, for example 0.1.1}"
-: "${CONFIG_BACKUP:?export CONFIG_BACKUP with the config backup path}"
-: "${CPA_MANAGEMENT_KEY:?export CPA_MANAGEMENT_KEY}"
-CPA_BASE_URL="${CPA_BASE_URL:-http://127.0.0.1:8317}"
+: "${REMOVE_CYBER_ABUSE_GUARD:?set to YES only after backup and review}"
+test "$REMOVE_CYBER_ABUSE_GUARD" = YES
 
-curl -fsS -X PATCH \
-  -H "Authorization: Bearer $CPA_MANAGEMENT_KEY" \
-  -H 'Content-Type: application/json' \
-  -d '{"enabled":false}' \
-  "$CPA_BASE_URL/v0/management/plugins/cyber-abuse-guard/enabled"
-docker compose restart cli-proxy-api
-curl -fsS -H "Authorization: Bearer $CPA_MANAGEMENT_KEY" \
-  "$CPA_BASE_URL/v0/management/plugins" \
-  | grep -F '"effective_enabled":false'
+docker compose stop cli-proxy-api
+rm -f -- plugins/linux/amd64/cyber-abuse-guard-v0.1.2.so
 
-rm -f -- \
-  "plugins/linux/amd64/cyber-abuse-guard-v${CURRENT_VERSION}.so" \
-  "plugins/linux/amd64/cyber-abuse-guard-v${CURRENT_VERSION}.so.sha256"
+# Remove the cyber-abuse-guard config block from config.yaml manually. Do not
+# delete the global plugins section or another plugin's configuration.
 
-# Data deletion is deliberately opt-in. Leave DELETE_PLUGIN_DATA unset to keep it.
-if [ "${DELETE_PLUGIN_DATA:-no}" = yes ]; then
-  docker compose stop cli-proxy-api
-  rm -f -- plugin-data/cyber-abuse-guard/events.db \
-    plugin-data/cyber-abuse-guard/events.db-wal \
-    plugin-data/cyber-abuse-guard/events.db-shm
+if [ "${REMOVE_PLUGIN_DATA:-NO}" = YES ]; then
+  test -d plugin-data/cyber-abuse-guard
+  rm -rf -- plugin-data/cyber-abuse-guard
 fi
 
-cp -p -- "$CONFIG_BACKUP" config.yaml
-docker compose restart cli-proxy-api
-if curl -fsS -H "Authorization: Bearer $CPA_MANAGEMENT_KEY" \
-  "$CPA_BASE_URL/v0/management/plugins" \
-  | grep -F '"id":"cyber-abuse-guard"'; then
-  echo 'rollback verification failed: plugin is still discovered' >&2
-  exit 1
+if [ "${REMOVE_HMAC_SECRET:-NO}" = YES ]; then
+  sudo test -f /opt/cliproxyapi/secrets/cyber-abuse-guard-hmac.key
+  sudo rm -f -- /opt/cliproxyapi/secrets/cyber-abuse-guard-hmac.key
 fi
+
+docker compose up -d cli-proxy-api
 ```
 
-To roll back an upgrade to an older plugin rather than remove the plugin,
-leave the prior versioned `.so` in `plugins/linux/amd64`, remove only the new
-version, restore the matching config backup, restart, and verify the old
-`version` through the authenticated status endpoint.
+`REMOVE_PLUGIN_DATA=YES` deletes events, WAL/SHM, migration backups, and optional
+subject persistence. `REMOVE_HMAC_SECRET=YES` permanently breaks correlation
+with any retained HMAC subject IDs. Keep both unset unless retention and audit
+requirements permit deletion.
 
-CPA does not need to be reinstalled.
+Final removal checks are the same as rollback: plugin absent, CPA healthy,
+unauthenticated `/v1/models` returns 401, New API connectivity works, other
+plugins work, and CPA auth-file counts and hashes are unchanged.

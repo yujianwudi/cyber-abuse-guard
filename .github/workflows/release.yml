@@ -3,34 +3,88 @@ name: Release
 on:
   push:
     tags:
-      # v0.1.1 is compiled into the native metadata. Widen this only after the
-      # source version and asset names become tag-derived.
-      - 'v0.1.1'
+      - 'v0.1.2'
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
+
+env:
+  GO_VERSION: '1.26.4'
+  VERSION: '0.1.2'
+  CYCLONEDX_GOMOD_VERSION: 'v1.9.0'
+  GOVULNCHECK_VERSION: 'v1.6.0'
 
 jobs:
   release:
+    permissions:
+      contents: write
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+      - name: Checkout tagged source and full history
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
-          go-version: '1.26.0'
+          fetch-depth: 0
+      - name: Set up pinned Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
           cache: true
-      - run: sudo apt-get update && sudo apt-get install -y build-essential file zip unzip
-      - run: make release verify-release
-      - uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3.0.1
+      - name: Install native release dependencies
+        run: sudo apt-get update && sudo apt-get install -y build-essential binutils file zip unzip
+      - name: Install pinned security and SBOM tools
+        run: |
+          mkdir -p "$RUNNER_TEMP/bin"
+          GOBIN="$RUNNER_TEMP/bin" go install github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@${CYCLONEDX_GOMOD_VERSION}
+          GOBIN="$RUNNER_TEMP/bin" go install golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - name: Tag, source version, and clean-tree preflight
+        run: make release-preflight clean-tree-check
+      - name: Run all release gates and build artifacts
+        run: |
+          make formal-release
+      - name: Recheck hashes and source cleanliness
+        run: make artifact-hash clean-tree-check
+      - name: Upload audited release artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: cyber-abuse-guard-v0.1.2-release
+          path: |
+            dist/cyber-abuse-guard-v0.1.2.so
+            dist/cyber-abuse-guard-v0.1.2.so.sha256
+            dist/cyber-abuse-guard_0.1.2_linux_amd64.zip
+            dist/build-metadata.json
+            dist/checksums.txt
+            dist/ruleset-manifest.json
+            dist/ruleset.sha256
+            dist/sbom.cdx.json
+            dist/release-test-summary.txt
+            dist/release-test-summary.txt.sha256
+            dist/release-evidence-final.md
+            dist/release-evidence-final.md.sha256
+            dist/cyber-abuse-guard-v0.1.2-source.tar.gz
+            dist/cyber-abuse-guard-v0.1.2-source.tar.gz.sha256
+          if-no-files-found: error
+      - name: Create draft GitHub release
+        uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3.0.1
         with:
           draft: true
           files: |
-            dist/cyber-abuse-guard-v0.1.1.so
-            dist/cyber-abuse-guard-v0.1.1.so.sha256
-            dist/cyber-abuse-guard_0.1.1_linux_amd64.zip
+            dist/cyber-abuse-guard-v0.1.2.so
+            dist/cyber-abuse-guard-v0.1.2.so.sha256
+            dist/cyber-abuse-guard_0.1.2_linux_amd64.zip
+            dist/build-metadata.json
             dist/checksums.txt
+            dist/ruleset-manifest.json
+            dist/ruleset.sha256
+            dist/sbom.cdx.json
+            dist/release-test-summary.txt
+            dist/release-test-summary.txt.sha256
+            dist/release-evidence-final.md
+            dist/release-evidence-final.md.sha256
+            dist/cyber-abuse-guard-v0.1.2-source.tar.gz
+            dist/cyber-abuse-guard-v0.1.2-source.tar.gz.sha256

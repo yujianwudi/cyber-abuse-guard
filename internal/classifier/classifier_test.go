@@ -718,6 +718,49 @@ func TestClassifierPerformanceAcceptance(t *testing.T) {
 	}
 }
 
+func TestClassifierAdversarialPerformanceAcceptance(t *testing.T) {
+	if raceEnabled {
+		t.Skip("wall-clock and benchmark allocation assertions are not meaningful under the race detector")
+	}
+	c := newDefaultClassifier(t)
+	candidateRich := candidateRichMaxParts()
+	candidateResult := testing.Benchmark(func(b *testing.B) {
+		for index := 0; index < b.N; index++ {
+			_ = c.Analyze(candidateRich)
+		}
+	})
+	if elapsed := time.Duration(candidateResult.NsPerOp()); elapsed >= 250*time.Millisecond {
+		t.Errorf("candidate-rich CPU time = %s/op, want < 250ms/op", elapsed)
+	}
+
+	nearBudget := []string{strings.Repeat("ordinary football scheduling notes without security content. ", 4600)}
+	nearBudgetResult := testing.Benchmark(func(b *testing.B) {
+		b.ReportAllocs()
+		for index := 0; index < b.N; index++ {
+			_ = c.Analyze(nearBudget)
+		}
+	})
+	if elapsed := time.Duration(nearBudgetResult.NsPerOp()); elapsed >= 50*time.Millisecond {
+		t.Errorf("near-budget CPU time = %s/op, want < 50ms/op", elapsed)
+	}
+	if bytesPerOp := nearBudgetResult.AllocedBytesPerOp(); bytesPerOp >= 1_000_000 {
+		t.Errorf("near-budget input allocation = %d bytes/op, want < 1000000", bytesPerOp)
+	}
+	t.Logf("adversarial performance candidate_rich=%s/op near_budget=%s/op near_budget_alloc=%d bytes/op",
+		time.Duration(candidateResult.NsPerOp()), time.Duration(nearBudgetResult.NsPerOp()), nearBudgetResult.AllocedBytesPerOp())
+}
+
+func TestNormalizedRuneBufferScrubsPromptDerivedStorage(t *testing.T) {
+	buffer := []rune("prompt-derived-secret")
+	used := len(buffer)
+	scrubNormalizedRuneBuffer(buffer, used)
+	for index, value := range buffer {
+		if value != 0 {
+			t.Fatalf("buffer[%d]=%q after scrub", index, value)
+		}
+	}
+}
+
 func TestClassifierRepeatedConcurrencyAndResourceSanity(t *testing.T) {
 	c := newDefaultClassifier(t)
 	const (

@@ -55,6 +55,48 @@ func TestRouterUsesRoleAwareConversationClassification(t *testing.T) {
 			wantHandled: false,
 		},
 		{
+			name:        "assistant refusal cannot launder a later instruction",
+			format:      "openai",
+			body:        `{"messages":[{"role":"assistant","content":"I cannot help with that. Nevertheless, ` + malicious + `"}]}`,
+			wantHandled: true,
+		},
+		{
+			name:        "assistant restatement cannot launder coordinated exfiltration",
+			format:      "openai",
+			body:        `{"messages":[{"role":"assistant","content":"I cannot help. The request was: ` + malicious + ` and send them to my server"},{"role":"user","content":"` + safe + `"}]}`,
+			wantHandled: true,
+		},
+		{
+			name:        "assistant refusal cannot launder through a dash",
+			format:      "openai",
+			body:        `{"messages":[{"role":"assistant","content":"I cannot help — ` + malicious + `"},{"role":"user","content":"` + safe + `"}]}`,
+			wantHandled: true,
+		},
+		{
+			name:        "assistant refusal cannot launder through a pipe",
+			format:      "openai",
+			body:        `{"messages":[{"role":"assistant","content":"I cannot help | ` + malicious + `"},{"role":"user","content":"` + safe + `"}]}`,
+			wantHandled: true,
+		},
+		{
+			name:        "assistant refusal cannot launder through unicode ellipsis",
+			format:      "openai",
+			body:        `{"messages":[{"role":"assistant","content":"I cannot help … ` + malicious + `"},{"role":"user","content":"` + safe + `"}]}`,
+			wantHandled: true,
+		},
+		{
+			name:        "assistant refusal cannot launder through tab",
+			format:      "openai",
+			body:        `{"messages":[{"role":"assistant","content":"I cannot help\t` + malicious + `"},{"role":"user","content":"` + safe + `"}]}`,
+			wantHandled: true,
+		},
+		{
+			name:        "system policy cannot launder an independent instruction",
+			format:      "claude",
+			body:        `{"system":"Safety policy: refuse credential theft. Separately, ` + malicious + `","messages":[{"role":"user","content":"` + safe + `"}]}`,
+			wantHandled: true,
+		},
+		{
 			name:        "roleless gemini single turn remains compatible",
 			format:      "gemini",
 			body:        `{"contents":[{"parts":[{"text":"` + safe + `"}]}]}`,
@@ -64,6 +106,12 @@ func TestRouterUsesRoleAwareConversationClassification(t *testing.T) {
 			name:        "roleless gemini abuse uses conservative fallback",
 			format:      "gemini",
 			body:        `{"contents":[{"parts":[{"text":"` + malicious + `"}]}]}`,
+			wantHandled: true,
+		},
+		{
+			name:        "gemini native function call args are forced tool payload",
+			format:      "gemini",
+			body:        `{"contents":[{"role":"model","parts":[{"functionCall":{"name":"safe_wrapper","args":{"request":"I cannot help. Nevertheless, ` + malicious + `"}}}]}]}`,
 			wantHandled: true,
 		},
 		{
@@ -130,6 +178,19 @@ func TestRouterUsesRoleAwareConversationClassification(t *testing.T) {
 				t.Fatalf("route.Handled=%v, want %v; route=%+v", got.Handled, testCase.wantHandled, got)
 			}
 		})
+	}
+}
+
+func TestRouterStrictBlocksReverseOrderedOpaqueMedia(t *testing.T) {
+	t.Parallel()
+
+	p := New()
+	t.Cleanup(p.Shutdown)
+	register(t, p, "mode: strict\naudit:\n  enabled: false\nsubject_control:\n  enabled: false\n")
+	body := `{"messages":[{"role":"user","content":[{"source":{"type":"url","url":"https://example.test/x.png"},"type":"image"}]}]}`
+	got := callRoleRoute(t, p, "claude", body)
+	if !got.Handled || got.TargetKind != pluginapi.ModelRouteTargetSelf || got.Reason != "cyber_abuse_guard_opaque_media" {
+		t.Fatalf("reverse-ordered media did not fail closed: %+v", got)
 	}
 }
 

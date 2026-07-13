@@ -96,12 +96,30 @@ type Rule struct {
 	Scale                  Terms    `yaml:"scale" json:"scale"`
 }
 
+// SemanticProfile defines a category-level evidence ontology. Unlike a rule,
+// no single dimension is independently actionable: the classifier must
+// compose several dimensions inside a bounded, related text window.
+type SemanticProfile struct {
+	Category    Category `yaml:"category" json:"category"`
+	Harm        Terms    `yaml:"harm" json:"harm"`
+	Object      Terms    `yaml:"object" json:"object"`
+	Action      Terms    `yaml:"action" json:"action"`
+	Outcome     Terms    `yaml:"outcome" json:"outcome"`
+	Target      Terms    `yaml:"target" json:"target"`
+	Destination Terms    `yaml:"destination" json:"destination"`
+	Evasion     Terms    `yaml:"evasion" json:"evasion"`
+	Scale       Terms    `yaml:"scale" json:"scale"`
+	Sequence    Terms    `yaml:"sequence" json:"sequence"`
+	Impact      Terms    `yaml:"impact" json:"impact"`
+}
+
 // RuleSet is a fully validated rules snapshot. Classifier.New compiles a
 // private copy, so subsequent caller mutation cannot affect a live classifier.
 type RuleSet struct {
-	Version  string                `json:"version"`
-	Rules    []Rule                `json:"rules"`
-	Contexts map[ContextKind]Terms `json:"contexts"`
+	Version   string                       `json:"version"`
+	Rules     []Rule                       `json:"rules"`
+	Contexts  map[ContextKind]Terms        `json:"contexts"`
+	Semantics map[Category]SemanticProfile `json:"semantics,omitempty"`
 }
 
 // Validate rejects ambiguous or incomplete rule snapshots before activation.
@@ -136,6 +154,10 @@ func Validate(s *RuleSet) error {
 		ids[rule.ID] = struct{}{}
 		if _, ok := validCategories[rule.Category]; !ok {
 			return fmt.Errorf("rule %s has unknown category %q", rule.ID, rule.Category)
+		}
+		wantProtected := categoryRequiresAuthorizationProtection(rule.Category)
+		if rule.AuthorizationProtected != wantProtected {
+			return fmt.Errorf("rule %s authorization_protected=%t, want %t for category %s", rule.ID, rule.AuthorizationProtected, wantProtected, rule.Category)
 		}
 		switch rule.Severity {
 		case "low", "medium", "high", "critical":
@@ -183,6 +205,46 @@ func Validate(s *RuleSet) error {
 		}
 	}
 
+	if len(s.Semantics) != 0 {
+		for category := range validCategories {
+			profile, ok := s.Semantics[category]
+			if !ok {
+				return fmt.Errorf("missing semantic profile for category %q", category)
+			}
+			if profile.Category != category {
+				return fmt.Errorf("semantic profile key %q contains category %q", category, profile.Category)
+			}
+			groups := []struct {
+				name  string
+				terms Terms
+			}{
+				{"harm", profile.Harm}, {"object", profile.Object}, {"action", profile.Action},
+				{"outcome", profile.Outcome}, {"target", profile.Target}, {"destination", profile.Destination},
+				{"evasion", profile.Evasion}, {"scale", profile.Scale}, {"sequence", profile.Sequence},
+				{"impact", profile.Impact},
+			}
+			owners := make(map[string]string)
+			for _, group := range groups {
+				if err := validateBilingual("semantic "+string(category)+" "+group.name, group.terms, true); err != nil {
+					return err
+				}
+				for _, value := range append(append([]string(nil), group.terms.ZH...), group.terms.EN...) {
+					for _, key := range evidenceKeys(value) {
+						if previous, exists := owners[key]; exists && previous != group.name {
+							return fmt.Errorf("semantic profile %s reuses normalized literal %q in %s and %s", category, value, previous, group.name)
+						}
+						owners[key] = group.name
+					}
+				}
+			}
+		}
+		for category := range s.Semantics {
+			if _, ok := validCategories[category]; !ok {
+				return fmt.Errorf("semantic profile has unknown category %q", category)
+			}
+		}
+	}
+
 	for kind := range s.Contexts {
 		if _, ok := validContextKinds[kind]; !ok {
 			return fmt.Errorf("unknown context kind %q", kind)
@@ -198,6 +260,15 @@ func Validate(s *RuleSet) error {
 		}
 	}
 	return nil
+}
+
+func categoryRequiresAuthorizationProtection(category Category) bool {
+	switch category {
+	case CategoryCredentialTheft, CategoryPhishing, CategoryRansomware, CategoryExfiltration:
+		return true
+	default:
+		return false
+	}
 }
 
 func validateIndependentEvidence(rule Rule) error {

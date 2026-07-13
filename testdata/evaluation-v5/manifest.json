@@ -1,0 +1,112 @@
+{
+  "aggregate": {
+    "benign": 320,
+    "policy_violations": 320,
+    "total": 640
+  },
+  "all_by_carrier": {
+    "anthropic_messages": 64,
+    "base64_text": 64,
+    "gemini_contents": 64,
+    "html_entity_text": 64,
+    "json_string_text": 64,
+    "multi_turn_roles": 64,
+    "openai_chat": 64,
+    "openai_responses": 64,
+    "tool_arguments": 64,
+    "url_encoded_text": 64
+  },
+  "all_by_feature": {
+    "attack_material_request": 80,
+    "authorized_bounded_assessment": 40,
+    "base64": 64,
+    "claimed_authorization": 80,
+    "colloquial": 64,
+    "compliance_and_normal_development": 40,
+    "conceptual_education": 40,
+    "defensive_monitoring": 40,
+    "deployable_request": 80,
+    "explicit_harmful_intent": 80,
+    "harmful_intent": 320,
+    "json_embedded": 64,
+    "multi_turn": 64,
+    "plain": 64,
+    "refusal_and_redirect": 40,
+    "remediation": 40,
+    "safe_scope": 320,
+    "security_rule": 40,
+    "tool_call": 64,
+    "toy_ctf": 40,
+    "typo": 64,
+    "unicode_homoglyph": 64,
+    "url_encoding": 64,
+    "zero_width": 64
+  },
+  "all_by_input_kind": {
+    "encoded_text": 128,
+    "json_embedded": 64,
+    "messages": 64,
+    "text": 320,
+    "tool_call": 64
+  },
+  "all_by_language": {
+    "en": 214,
+    "mixed": 212,
+    "zh": 214
+  },
+  "authoring_constraints": [
+    "independent authoring process",
+    "no classifier execution",
+    "no existing classifier, rules, tests, corpora, testdata, prior reports, or prior authors consulted",
+    "policy violations are abstract intent only: no target identifiers, credentials, payloads, commands, code, steps, or vulnerability details"
+  ],
+  "benign_by_context": {
+    "authorized_bounded_assessment": 40,
+    "compliance_and_normal_development": 40,
+    "conceptual_education": 40,
+    "defensive_monitoring": 40,
+    "refusal_and_redirect": 40,
+    "remediation": 40,
+    "security_rule": 40,
+    "toy_ctf": 40
+  },
+  "classifier_run": false,
+  "critical_categories": [
+    "credential_theft",
+    "phishing_deployment",
+    "ransomware_deployment",
+    "data_exfiltration"
+  ],
+  "deterministic": true,
+  "files": {
+    "benign": {
+      "path": "testdata/evaluation-v5/benign-security.jsonl",
+      "sha256": "589aa8e7609b5d28d6a35577f2908813f97d50ea9fdb152cf926e425518ac842",
+      "lines": 320,
+      "bytes": 148283
+    },
+    "policy_violations": {
+      "path": "testdata/evaluation-v5/policy-violations.jsonl",
+      "sha256": "ab012072260a953b98bd84c582d5a317fe41df903fd1724aaf80662cbfd19edc",
+      "lines": 320,
+      "bytes": 174924
+    }
+  },
+  "generator": "cmd/evaluation-v5-author",
+  "overwrite_policy": "exclusive-create; refuse if any target exists",
+  "policy_by_category": {
+    "credential_theft": 40,
+    "data_exfiltration": 40,
+    "defense_evasion": 40,
+    "malware_creation": 40,
+    "phishing_deployment": 40,
+    "ransomware_deployment": 40,
+    "service_disruption": 40,
+    "vulnerability_exploitation": 40
+  },
+  "schema_version": "evaluation-v5-manifest-1",
+  "self_duplicate_groups": 0,
+  "self_duplicate_records_after_first": 0,
+  "semantic_uniqueness_check": "sha256(normalize(extract(input)))",
+  "status": "PENDING"
+}

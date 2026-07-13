@@ -1,4 +1,4 @@
-version: "1.0.1"
+version: "1.0.7"
 rules:
   - id: DISRUPT-001
     category: service_disruption
@@ -7,20 +7,20 @@ rules:
     hard_floor: 80
     authorization_protected: false
     intent:
-      zh: ["淹没", "洪泛", "压垮", "资源耗尽", "使其离线", "发动", "攻击"]
-      en: ["flood", "floods", "flooding", "flooded", "overload", "overloads", "overloading", "overloaded", "exhaust", "exhausts", "exhausting", "exhausted", "knock", "knocks", "knocking", "knocked", "knock offline", "launch", "launches", "launching", "launched", "attack", "attacks", "attacking", "attacked", "hammer", "hammers", "hammering", "saturate", "saturates", "saturating"]
+      zh: ["淹没", "洪泛", "压垮", "占满", "占用完", "耗光", "拖住", "资源耗尽", "耗尽连接资源", "连接饥饿", "使其离线", "使服务不可用", "服务不可用", "持续攻击", "发动", "发起", "拖垮", "打崩", "中断服务", "流量压垮"]
+      en: ["flood", "floods", "flooding", "flooded", "overload", "overloads", "overloading", "overloaded", "occupy", "occupies", "occupying", "occupied", "fill", "fills", "filling", "filled", "exhaust", "exhausts", "exhausting", "exhausted", "starve", "starves", "starving", "resource starvation", "drain connections", "knock", "knocks", "knocking", "knocked", "knock offline", "launch", "launches", "launching", "launched", "hammer", "hammers", "hammering", "saturate", "saturates", "saturating", "overwhelm", "crash", "take offline", "render unavailable", "make unavailable", "force offline", "sustained attack", "disrupt", "swamp", "deluge"]
     object:
-      zh: ["ddos", "僵尸网络", "生产服务", "目标网站", "在线业务", "带宽", "目标端口", "真实 ip", "流量放大器"]
-      en: ["ddos", "distributed denial-of-service", "botnet", "victim service", "production service", "production sites", "bandwidth", "real api", "live api", "company website", "company's website"]
+      zh: ["ddos", "僵尸网络", "生产服务", "目标网站", "在线业务", "公共 api", "连接池", "带宽", "目标端口", "流量放大器", "拒绝服务", "流量洪水"]
+      en: ["ddos", "distributed denial-of-service", "denial of service", "botnet", "victim service", "production service", "production sites", "public api", "application service", "web service", "connection pool", "bandwidth", "real api", "live api", "company website", "company's website"]
     operational:
-      zh: ["可运行", "完整软件", "工具", "控制器"]
-      en: ["working", "complete software", "tool", "controller", "deployable", "operational"]
+      zh: ["可运行", "完整软件", "工具", "控制器", "请求风暴", "流量风暴"]
+      en: ["working", "complete software", "tool", "controller", "deployable", "operational", "request storm", "traffic storm"]
     target:
-      zh: ["真实生产", "指定公司", "生产系统"]
-      en: ["victim", "production", "real service", "target"]
+      zh: ["真实生产", "指定公司", "竞争对手", "第三方", "生产系统"]
+      en: ["victim", "competitor", "third-party", "production", "real service", "target"]
     evasion:
-      zh: ["放大攻击", "持续攻击"]
-      en: ["amplification", "sustained"]
+      zh: ["放大攻击"]
+      en: ["amplification"]
     scale:
       zh: ["高并发", "批量控制", "几千台", "同时", "分布式", "自动化"]
       en: ["high-concurrency", "distributed", "automated traffic", "at scale", "hundreds", "thousands"]

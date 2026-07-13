@@ -1,8 +1,15 @@
 package classifier
 
-import "github.com/yujianwudi/cyber-abuse-guard/internal/extract"
+import (
+	"strings"
+	"unicode"
+
+	"github.com/yujianwudi/cyber-abuse-guard/internal/extract"
+)
 
 const maxRoleClassifierSegments = 64
+
+var roleSafetyPunctuation = strings.NewReplacer("’", "'", "‘", "'", "“", `"`, "”", `"`)
 
 // AnalyzeSegments scores a role-aware conversation under balanced defaults.
 // The classifier is stateless: text is retained only for this call.
@@ -36,9 +43,12 @@ func (c *Classifier) ClassifyUntrustedPartsWithPolicy(parts []string, mode Mode,
 
 // ClassifySegmentsWithPolicy keeps user-to-user follow-up semantics while
 // preventing assistant/system/tool text from being combined with user evidence.
-// Every segment is also classified independently so older explicit abuse can
-// never be hidden by appending benign history. Unknown roles use the legacy
-// all-parts classifier as a conservative fallback.
+// Provider-native tool payloads are always scanned independently, even when an
+// assistant emitted them. Clear assistant refusals and system safety policies
+// are not attributed as user intent. Every other eligible segment is classified
+// independently so older explicit abuse can never be hidden by appending benign
+// history. Unknown roles or provenance use the legacy all-parts classifier as a
+// conservative fallback.
 func (c *Classifier) ClassifySegmentsWithPolicy(segments []extract.Segment, mode Mode, thresholds Thresholds, policy Policy) Result {
 	truncated := false
 	if len(segments) > maxRoleClassifierSegments {
@@ -73,13 +83,28 @@ func (c *Classifier) ClassifySegmentsWithPolicy(segments []extract.Segment, mode
 	best := c.ClassifyWithPolicy(nil, mode, thresholds, policy)
 	previousUser := ""
 	hasPreviousUser := false
+	recentUsers := make([]string, 0, 3)
 	for _, segment := range segments {
-		candidate := c.ClassifyWithPolicy([]string{segment.Text}, mode, thresholds, policy)
-		truncated = truncated || candidate.Truncated
-		if roleResultBetter(candidate, best) {
-			best = candidate
+		if shouldClassifyRoleSegment(segment) {
+			candidate := c.classifyWithPolicy(
+				[]string{segment.Text}, mode, thresholds, policy,
+				segment.Provenance == extract.ProvenanceToolPayload,
+			)
+			truncated = truncated || candidate.Truncated
+			if roleResultBetter(candidate, best) {
+				best = candidate
+			}
 		}
-		if segment.Role != extract.RoleUser {
+		if segment.Provenance == extract.ProvenanceContent && (segment.Role == extract.RoleAssistant || segment.Role == extract.RoleSystem) {
+			if continuation := unscopedSafetyContinuation(segment.Role, strings.ToLower(roleSafetyPunctuation.Replace(segment.Text))); continuation != "" {
+				candidate := c.ClassifyWithPolicy([]string{continuation}, mode, thresholds, policy)
+				truncated = truncated || candidate.Truncated
+				if roleResultBetter(candidate, best) {
+					best = candidate
+				}
+			}
+		}
+		if segment.Role != extract.RoleUser || segment.Provenance != extract.ProvenanceContent {
 			continue
 		}
 		if hasPreviousUser {
@@ -87,6 +112,28 @@ func (c *Classifier) ClassifySegmentsWithPolicy(segments []extract.Segment, mode
 			truncated = truncated || followUp.Truncated
 			if roleResultBetter(followUp, best) {
 				best = followUp
+			}
+			// Adjacent user turns may split an abuse intent from its object. Join
+			// only user-authored text and only when the prior turn is eligible for
+			// follow-up; system/assistant/tool examples can never contribute.
+			if followUpEligible([]rune(previousUser)) {
+				joined := c.ClassifyWithPolicy([]string{previousUser + "\n" + segment.Text}, mode, thresholds, policy)
+				truncated = truncated || joined.Truncated
+				if roleResultBetter(joined, best) {
+					best = joined
+				}
+			}
+		}
+		recentUsers = append(recentUsers, segment.Text)
+		if len(recentUsers) > 3 {
+			copy(recentUsers, recentUsers[len(recentUsers)-3:])
+			recentUsers = recentUsers[:3]
+		}
+		if len(recentUsers) == 3 && threeTurnPlanWindowEligible(recentUsers) {
+			joined := c.ClassifyWithPolicy([]string{strings.Join(recentUsers, "\n")}, mode, thresholds, policy)
+			truncated = truncated || joined.Truncated
+			if roleResultBetter(joined, best) {
+				best = joined
 			}
 		}
 		previousUser = segment.Text
@@ -96,8 +143,43 @@ func (c *Classifier) ClassifySegmentsWithPolicy(segments []extract.Segment, mode
 	return best
 }
 
+// threeTurnPlanWindowEligible permits one additional bounded user-only merge
+// when a conversation explicitly links fragments and asks for an operational
+// plan or sequence. Ordinary adjacent follow-ups retain the two-turn path; the
+// third turn is never merged merely because three user messages exist.
+func threeTurnPlanWindowEligible(turns []string) bool {
+	if len(turns) != 3 {
+		return false
+	}
+	first := strings.ToLower(roleSafetyPunctuation.Replace(turns[0]))
+	second := strings.ToLower(roleSafetyPunctuation.Replace(turns[1]))
+	last := strings.ToLower(roleSafetyPunctuation.Replace(turns[2]))
+	if hasNegatedSafetyFraming(first) || hasNegatedSafetyFraming(second) || hasNegatedSafetyFraming(last) ||
+		hasAffirmativeSafetyPurpose(last) || isSafetyDeliverableClause(last) ||
+		containsAnyRolePhrase(last, "detection plan", "defensive plan", "recovery plan", "restoration plan", "patch plan", "检测计划", "防御计划", "恢复计划", "补丁计划") {
+		return false
+	}
+	linked := containsAnyRolePhrase(first, "these messages", "one operation", "one workflow", "one rollout", "next pieces", "following pieces", "these fragments", "next details", "all three", "combine", "treat the next", "read the following", "这些消息", "同一操作", "同一流程", "同一投放", "下面几段", "以下片段", "接下来的内容", "合并") ||
+		containsAnyRolePhrase(second, "the above", "those pieces", "same operation", "same workflow", "上述", "前面的内容", "同一操作", "同一流程") ||
+		hasAnyPrefix(strings.TrimSpace(last), "now ", "next ", "then ", "continue ", "现在", "接下来", "然后", "继续")
+	if !linked {
+		return false
+	}
+	return containsAnyRolePhrase(last,
+		"execution plan", "execution sequence", "operating sequence", "operational sequence",
+		"implementation plan", "implementation sequence", "rollout plan", "deployment plan",
+		"actionable plan", "practical workflow", "step-by-step plan",
+		"执行计划", "执行步骤", "操作顺序", "实施计划", "实施步骤", "投放计划", "部署计划", "可操作方案",
+	)
+}
+
 func knownSegmentRoles(segments []extract.Segment) bool {
 	for _, segment := range segments {
+		switch segment.Provenance {
+		case extract.ProvenanceContent, extract.ProvenanceToolPayload:
+		default:
+			return false
+		}
 		switch segment.Role {
 		case extract.RoleSystem, extract.RoleUser, extract.RoleAssistant, extract.RoleTool:
 		default:
@@ -105,6 +187,278 @@ func knownSegmentRoles(segments []extract.Segment) bool {
 		}
 	}
 	return true
+}
+
+func shouldClassifyRoleSegment(segment extract.Segment) bool {
+	if segment.Provenance == extract.ProvenanceToolPayload {
+		return true
+	}
+	switch segment.Role {
+	case extract.RoleUser, extract.RoleTool:
+		return true
+	case extract.RoleAssistant, extract.RoleSystem:
+		return !isClearNonUserSafetyContent(segment.Role, segment.Text)
+	default:
+		// This branch is reachable only if this helper is used independently;
+		// ClassifySegmentsWithPolicy sends unknown provenance through its more
+		// conservative all-parts fallback before reaching it.
+		return true
+	}
+}
+
+// isClearNonUserSafetyContent recognizes only explicit refusals or policy
+// prohibitions. It is intentionally narrow: ordinary non-user instructions are
+// still scanned, and a refusal/policy followed by an operational override is
+// not suppressed. Tool payloads never reach this function.
+func isClearNonUserSafetyContent(role extract.Role, value string) bool {
+	text := strings.ToLower(strings.TrimSpace(value))
+	text = roleSafetyPunctuation.Replace(text)
+	text = strings.TrimLeft(text, " \t\r\n-*#>")
+	if text == "" || hasNonUserSafetyOverride(text) || hasUnscopedSafetyContinuation(role, text) {
+		return false
+	}
+
+	switch role {
+	case extract.RoleAssistant:
+		return hasAnyPrefix(text,
+			"i cannot ", "i can't ", "i will not ", "i won't ", "i refuse ", "i must refuse",
+			"i am unable ", "i'm unable ", "sorry, i cannot ", "sorry, i can't ",
+			"sorry, but i cannot ", "sorry, but i can't ", "cannot assist with ", "can't assist with ",
+			"i'm sorry, but i cannot ", "i'm sorry, but i can't ", "i am sorry, but i cannot ", "i am sorry, but i can't ",
+			"apologies, but i cannot ", "apologies, but i can't ", "as an ai, i cannot ", "as an ai, i can't ",
+			"我不能", "我无法", "我不会", "我拒绝", "抱歉，我不能", "抱歉，我无法", "无法协助", "不能协助",
+		)
+	case extract.RoleSystem:
+		policyFraming := containsAnyRolePhrase(text,
+			"system policy", "safety policy", "security policy", "content policy", "moderation policy", "abuse policy",
+			"system safety", "safe system policy", "安全策略", "安全政策", "内容策略", "审核策略", "滥用策略",
+		) || hasAnyPrefix(text,
+			"you must not ", "you must never ", "never assist ", "do not assist ", "don't assist ",
+			"never provide ", "do not provide ", "don't provide ", "you must refuse ", "always refuse ",
+			"refuse requests ", "reject requests ", "block requests ",
+			"不得协助", "不要协助", "严禁协助", "拒绝处理", "阻止请求",
+		)
+		prohibition := containsAnyRolePhrase(text,
+			"must refuse", "should refuse", "refuse any", "refuse requests", "reject any", "reject requests",
+			"block any", "block requests", "prevent ", "never ", "do not ", "don't ", "must not ",
+			"prohibit", "forbid", "not allowed", "禁止", "不得", "严禁", "拒绝", "阻止", "防止", "不要",
+		)
+		return policyFraming && prohibition
+	default:
+		return false
+	}
+}
+
+func hasNonUserSafetyOverride(text string) bool {
+	if containsAnyRolePhrase(text,
+		"do not refuse", "don't refuse", "must not refuse", "never refuse", "ignore the safety", "ignore safety",
+		"ignore the policy", "disregard the policy", "bypass the policy", "bypass safety", "policy is irrelevant",
+		"but here is the code", "however, here is the code", "instead, here is the code", "here's the working code",
+		"use the following code", "run the following code", "execute the following code", "nevertheless", "nonetheless",
+		"even so", "that said", "having said that", "all the same", "regardless", "despite that", "despite this",
+		"separately", "independently", "in any case", "anyway", "however", "instead", "but then", "and then",
+		"不要拒绝", "不得拒绝", "忽略安全", "忽略策略", "绕过策略", "策略无关", "但以下是代码", "不过以下是代码",
+		"使用以下代码", "运行以下代码", "执行以下代码", "尽管如此", "话虽如此", "无论如何", "然而", "另外",
+		"另行", "分别", "接下来", "然后照做", "照样执行",
+	) {
+		return true
+	}
+	return hasCoordinatedOperationalContinuation(text)
+}
+
+// hasCoordinatedOperationalContinuation catches a second operational predicate
+// hidden inside an otherwise scoped restatement, for example "the request was:
+// steal cookies and send them to my server". The role label is caller supplied,
+// so a quoted/restated request receives only narrow negative-scope treatment.
+func hasCoordinatedOperationalContinuation(text string) bool {
+	for _, separator := range []string{
+		" and ", " then ", " plus ", " as well as ", " followed by ", " & ",
+		"，", "、", "并且", "并将", "并把", "然后", "同时", "以及",
+	} {
+		remaining := text
+		for {
+			index := strings.Index(remaining, separator)
+			if index < 0 {
+				break
+			}
+			remaining = remaining[index+len(separator):]
+			continuation := strings.TrimSpace(remaining)
+			if hasOperationalContinuationPrefix(continuation) || hasAnyPrefix(continuation,
+				"writing ", "creating ", "generating ", "building ", "providing ", "giving ", "showing ",
+				"running ", "executing ", "deploying ", "sending ", "stealing ", "exfiltrating ",
+				"bypassing ", "exploiting ", "installing ",
+				"编写", "创建", "生成", "构建", "提供", "运行", "执行", "部署", "发送", "窃取", "绕过", "利用", "安装",
+			) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// hasUnscopedSafetyContinuation prevents a safe-looking prefix from laundering
+// later instructions. Only an explicit restatement of the refused request (or
+// another prohibition in a system policy) remains inside the safety scope.
+// Unknown later clauses are classified normally; benign alternatives will
+// simply score as benign, while attacker-controlled role labels gain no trust.
+func hasUnscopedSafetyContinuation(role extract.Role, text string) bool {
+	return unscopedSafetyContinuation(role, text) != ""
+}
+
+// unscopedSafetyContinuation returns the first clause that has escaped a
+// refusal/policy's negative scope. It is classified separately so the leading
+// refusal cannot cause the core negation detector to suppress the new request.
+func unscopedSafetyContinuation(role extract.Role, text string) string {
+	clauses := splitStrongSafetyClauses(text)
+	for index, clause := range clauses {
+		clause = strings.TrimSpace(clause)
+		if clause == "" || index == 0 {
+			continue
+		}
+		if isScopedSafetyContinuation(role, clause) && !hasNonUserSafetyOverride(clause) {
+			continue
+		}
+		return clause
+	}
+
+	// A comma or colon can introduce an imperative without creating a new
+	// sentence ("I cannot help: write ..."). Treat that as an operational
+	// continuation unless the delimiter explicitly introduces a quotation or
+	// restatement of the refused request.
+	for _, delimiter := range []string{",", ":", "，", "："} {
+		parts := strings.Split(text, delimiter)
+		for index := 1; index < len(parts); index++ {
+			continuation := strings.TrimSpace(parts[index])
+			if continuation == "" || isScopedSafetyContinuation(role, continuation) {
+				continue
+			}
+			if (delimiter == ":" || delimiter == "：") && isScopedSafetyContinuation(role, lastSafetyClause(parts[index-1])) {
+				continue
+			}
+			if hasOperationalContinuationPrefix(continuation) {
+				return continuation
+			}
+		}
+	}
+	return ""
+}
+
+// splitStrongSafetyClauses treats Unicode punctuation, symbols, and
+// non-ordinary whitespace as trust boundaries. This prevents a caller from
+// choosing an unlisted separator to keep a new instruction inside a leading
+// refusal's negative scope. Commas and colons retain their narrower handling
+// below, while ordinary punctuation inside a word is preserved.
+func splitStrongSafetyClauses(text string) []string {
+	runes := []rune(text)
+	clauses := make([]string, 0, 2)
+	start := 0
+	for index, current := range runes {
+		var previous, next rune
+		if index > 0 {
+			previous = runes[index-1]
+		}
+		if index+1 < len(runes) {
+			next = runes[index+1]
+		}
+		if !isStrongSafetyBoundary(current, previous, next) {
+			continue
+		}
+		if clause := strings.TrimSpace(string(runes[start:index])); clause != "" {
+			clauses = append(clauses, clause)
+		}
+		start = index + 1
+	}
+	if clause := strings.TrimSpace(string(runes[start:])); clause != "" {
+		clauses = append(clauses, clause)
+	}
+	return clauses
+}
+
+func isStrongSafetyBoundary(current, previous, next rune) bool {
+	if unicode.IsSpace(current) {
+		return current != ' '
+	}
+	// Paired punctuation keeps quoted/restated content attached to the
+	// surrounding refusal or policy scope. Curly quotes are normalized before
+	// this helper; the Unicode categories cover brackets and other quote forms.
+	if current == '`' || unicode.Is(unicode.Quotation_Mark, current) ||
+		unicode.Is(unicode.Ps, current) || unicode.Is(unicode.Pe, current) ||
+		unicode.Is(unicode.Pi, current) || unicode.Is(unicode.Pf, current) {
+		return false
+	}
+	// A comma or colon may introduce a scoped quotation/restatement and is
+	// evaluated with that context in unscopedSafetyContinuation.
+	switch current {
+	case ',', ':', '，', '：':
+		return false
+	}
+	if isSafetyWordRune(previous) && isSafetyWordRune(next) {
+		// Keep contractions, identifiers, and ordinary hyphenated words intact.
+		if unicode.Is(unicode.Pc, current) || unicode.Is(unicode.Hyphen, current) {
+			return false
+		}
+	}
+	return unicode.IsPunct(current) || unicode.IsSymbol(current)
+}
+
+func isSafetyWordRune(value rune) bool {
+	return unicode.IsLetter(value) || unicode.IsDigit(value) || unicode.IsMark(value)
+}
+
+func lastSafetyClause(value string) string {
+	if index := strings.LastIndexAny(value, ".!?;\n\r。！？；"); index >= 0 {
+		value = value[index+1:]
+	}
+	return strings.TrimSpace(value)
+}
+
+func isScopedSafetyContinuation(role extract.Role, clause string) bool {
+	clause = strings.TrimLeft(strings.TrimSpace(clause), "-*#> ")
+	switch role {
+	case extract.RoleAssistant:
+		return hasAnyPrefix(clause,
+			"the request was", "the forbidden request was", "the blocked request was", "the request says",
+			"the user asked", "you asked", "that request was", "this request was", "the quoted request was",
+			"被禁止的请求是", "被拦截的请求是", "该请求是", "这个请求是", "用户要求", "你要求",
+		)
+	case extract.RoleSystem:
+		return hasAnyPrefix(clause,
+			"refuse ", "reject ", "block ", "never ", "do not ", "don't ", "must not ", "should refuse ",
+			"the request was", "the forbidden request was", "the policy prohibits", "this is prohibited", "that is prohibited",
+			"拒绝", "禁止", "不得", "严禁", "不要", "必须拒绝", "应当拒绝", "该请求是", "这个请求是",
+		)
+	default:
+		return false
+	}
+}
+
+func hasOperationalContinuationPrefix(clause string) bool {
+	clause = strings.TrimLeft(strings.TrimSpace(clause), "-*#> ")
+	return hasAnyPrefix(clause,
+		"write ", "create ", "generate ", "build ", "provide ", "give ", "show ", "tell ", "return ",
+		"run ", "execute ", "deploy ", "send ", "steal ", "exfiltrate ", "bypass ", "exploit ", "install ",
+		"now ", "next ", "then ", "also ", "still ", "yet ",
+		"编写", "写出", "创建", "生成", "构建", "提供", "给出", "展示", "运行", "执行", "部署", "发送", "窃取",
+		"绕过", "利用", "安装", "现在", "接下来", "然后", "另外", "同时", "仍然",
+	)
+}
+
+func hasAnyPrefix(text string, prefixes ...string) bool {
+	for _, prefix := range prefixes {
+		if strings.HasPrefix(text, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func containsAnyRolePhrase(text string, phrases ...string) bool {
+	for _, phrase := range phrases {
+		if strings.Contains(text, phrase) {
+			return true
+		}
+	}
+	return false
 }
 
 func roleResultBetter(candidate, current Result) bool {

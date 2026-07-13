@@ -1,13 +1,13 @@
-version: "1.0.1"
+version: "1.0.7"
 contexts:
   - kind: defensive
     terms:
-      zh: ["防御", "检测", "防止", "安全检查", "加固", "告警", "识别迹象", "降低误报", "安全配置", "起草安全策略", "解释", "分析", "什么是", "yara 规则", "sigma 规则", "suricata 规则", "snort 规则", "ioc 提取", "入侵指标"]
-      en: ["defensive", "how to detect", "how to prevent", "detection guidance", "defensive controls", "secure settings", "security checklist", "warning signs", "alert for", "draft a system policy", "draft a safety policy", "explain", "analyze", "what is", "why attackers", "malware protection", "malware prevention", "ransomware insurance", "insurance options", "ransomware awareness", "ransomware-awareness", "phishing simulation", "campaign simulation", "phishing campaign tabletop exercise", "awareness training", "yara rule", "yara signature", "sigma rule", "suricata rule", "suricata signature", "snort rule", "snort signature", "ioc extraction", "indicators of compromise"]
+      zh: ["防御", "防护建议", "建议防护", "如何检测", "检测思路", "检测规则", "检测指导", "如何防止", "安全检查", "加固", "告警建议", "告警规则", "当出现时告警", "检测停止", "告警停止", "调查停止原因", "意外停止", "识别迹象", "降低误报", "安全配置", "起草安全策略", "员工测验", "桌面演练", "模拟钓鱼", "yara 规则", "sigma 规则", "suricata 规则", "snort 规则", "ioc 提取", "入侵指标"]
+      en: ["defensive", "defensive analysis", "defensive guidance", "recommend controls", "recommended controls", "explain controls", "explain defensive controls", "analyze for defenders", "how to detect", "how to prevent", "detection guidance", "defensive controls", "secure settings", "security checklist", "warning signs", "alert for", "alert when", "create an alert", "detect when", "investigate why", "unexpectedly stopped", "stopped unexpectedly", "failed unexpectedly", "investigate the outage", "draft a system policy", "draft a safety policy", "why attackers", "employee quiz", "recognizing suspicious", "reporting suspicious", "tabletop exercise", "mock phishing", "malware protection", "malware prevention", "ransomware insurance", "insurance options", "ransomware awareness", "ransomware-awareness", "phishing simulation", "campaign simulation", "phishing campaign tabletop exercise", "awareness training", "yara rule", "yara signature", "sigma rule", "sigma analytic", "suricata rule", "suricata signature", "suricata alert", "snort rule", "snort signature", "snort detection outline", "ioc extraction", "indicators of compromise"]
   - kind: remediation
     terms:
-      zh: ["修复", "补丁", "缓解", "恢复", "加固清单", "安全版本", "轮换", "撤销会话", "回归测试", "过期日志", "日志保留", "旧日志"]
-      en: ["remediation", "remediate", "mitigation", "patch", "recovery checklist", "restore", "safe version", "rotate", "revoke", "regression test", "old logs", "expired logs", "log retention", "retention policy"]
+      zh: ["如何修复", "修复方案", "修复建议", "应用补丁", "补丁指南", "缓解", "从备份恢复", "恢复清单", "恢复流程", "恢复采集", "恢复遥测", "恢复被删除的审计日志", "加固清单", "安全版本", "轮换", "撤销会话", "回归测试", "批准的维护", "计划维护", "过期日志", "日志保留", "旧日志"]
+      en: ["remediation", "remediate", "mitigation", "apply a patch", "patch guidance", "patching guidance", "recovery checklist", "restore from backup", "restore from backups", "restoration plan", "restore collection", "restore telemetry", "restore event collection", "restore deleted audit logs", "safe version", "rotate", "revoke", "regression test", "approved maintenance", "scheduled maintenance", "old logs", "expired logs", "log retention", "retention policy"]
   - kind: ctf
     terms:
       zh: ["ctf", "虚构赛题", "赛题"]
@@ -18,8 +18,8 @@ contexts:
       en: ["isolated lab", "offline lab", "lab server", "classroom sandbox", "toy service"]
   - kind: authorized
     terms:
-      zh: ["已获授权", "书面授权", "授权测试", "自有服务器", "自有代码", "自有网络", "授权范围", "所有者批准"]
-      en: ["i am authorized", "written authorization", "authorized engagement", "authorized assessment", "owner approval", "we own", "our own", "approved internal", "signed test plan"]
+      zh: ["已获授权", "书面授权", "授权测试", "自有服务器", "自有代码", "自有网络", "授权范围", "所有者批准", "批准压测", "批准的有界压测", "限速压测"]
+      en: ["i am authorized", "written authorization", "authorized engagement", "authorized assessment", "owner approval", "approved internal assessment", "signed test plan", "approved load test", "approved bounded load test", "bounded load test", "rate-limited load test"]
   - kind: static_analysis
     terms:
       zh: ["静态分析", "静态审查", "离线取证", "不运行样本", "代码审计", "分析样本", "反编译报告", "yara 规则", "sigma 规则", "suricata 规则", "snort 规则", "ioc 提取", "入侵指标"]
@@ -30,5 +30,5 @@ contexts:
       en: ["incident response", "incident responder", "containment", "containment actions", "preserve evidence", "forensic analysis", "forensic investigation", "triage", "from backups"]
   - kind: high_level
     terms:
-      zh: ["高层次", "概念性", "原理", "风险摘要", "面向管理层", "安全培训", "概念解释", "不涉及实现细节", "解释", "分析", "什么是"]
-      en: ["high-level", "high level", "conceptual", "overview", "broad terms", "training", "nontechnical audience", "without operational", "explain", "analyze", "what is", "why attackers", "malware protection", "malware prevention", "ransomware insurance", "insurance options", "ransomware awareness", "ransomware-awareness", "phishing simulation", "campaign simulation", "phishing campaign tabletop exercise", "awareness training"]
+      zh: ["高层次", "概念性", "概念层面", "对比方式", "比较方式", "原理", "风险摘要", "面向管理层", "安全培训", "概念解释", "不涉及实现细节", "不提供执行流程", "解释", "分析", "什么是"]
+      en: ["high-level", "high level", "conceptual", "conceptual comparison", "compare techniques", "contrast techniques", "overview", "broad terms", "training", "nontechnical audience", "without operational", "without an execution workflow", "do not provide an execution workflow", "explain", "analyze", "what is", "why attackers", "malware protection", "malware prevention", "ransomware insurance", "insurance options", "ransomware awareness", "ransomware-awareness", "phishing simulation", "campaign simulation", "phishing campaign tabletop exercise", "awareness training"]

@@ -14,25 +14,36 @@ import (
 	"unicode"
 )
 
+const (
+	modelHashDomain = "cyber-abuse-guard/audit/model/v1\x00"
+	modelHashPrefix = "sha256-model-v1:"
+
+	// SourceFormatUnknown is the only value retained for caller-supplied source
+	// formats outside the fixed CPA provider enum.
+	SourceFormatUnknown = "unknown"
+)
+
 // Event is the complete persistent audit schema. Keep this type deliberately
 // boring: adding request text, arbitrary metadata, or headers would violate the
 // package's privacy boundary.
 type Event struct {
-	ID               string    `json:"id"`
-	Timestamp        time.Time `json:"timestamp"`
-	Action           string    `json:"action"`
-	Mode             string    `json:"mode"`
-	Category         string    `json:"category,omitempty"`
-	RiskScore        int       `json:"risk_score"`
-	RuleIDs          []string  `json:"rule_ids,omitempty"`
-	RequestHash      string    `json:"request_hash,omitempty"`
-	SubjectHash      string    `json:"subject_hash,omitempty"`
-	Model            string    `json:"model,omitempty"`
-	SourceFormat     string    `json:"source_format,omitempty"`
-	Stream           bool      `json:"stream"`
-	TextBytesScanned int       `json:"text_bytes_scanned"`
-	Classifier       string    `json:"classifier,omitempty"`
-	LatencyUS        int64     `json:"latency_us"`
+	ID          string    `json:"id"`
+	Timestamp   time.Time `json:"timestamp"`
+	Action      string    `json:"action"`
+	Mode        string    `json:"mode"`
+	Category    string    `json:"category,omitempty"`
+	RiskScore   int       `json:"risk_score"`
+	RuleIDs     []string  `json:"rule_ids,omitempty"`
+	RequestHash string    `json:"request_hash,omitempty"`
+	SubjectHash string    `json:"subject_hash,omitempty"`
+	// Model is either empty or a domain-separated SHA-256 digest. The caller-
+	// controlled model name is never retained in a prepared audit event.
+	Model            string `json:"model,omitempty"`
+	SourceFormat     string `json:"source_format,omitempty"`
+	Stream           bool   `json:"stream"`
+	TextBytesScanned int    `json:"text_bytes_scanned"`
+	Classifier       string `json:"classifier,omitempty"`
+	LatencyUS        int64  `json:"latency_us"`
 }
 
 // HashRequest produces the one-way request correlation value accepted by an
@@ -40,6 +51,38 @@ type Event struct {
 func HashRequest(request []byte) string {
 	sum := sha256.Sum256(request)
 	return "sha256:" + hex.EncodeToString(sum[:])
+}
+
+// HashModel returns the deterministic, domain-separated correlation value used
+// for caller-controlled requested model names. It deliberately uses a distinct
+// domain and output prefix from HashRequest so equal inputs cannot be correlated
+// across the two audit fields.
+func HashModel(model string) string {
+	if model == "" {
+		return ""
+	}
+	hash := sha256.New()
+	_, _ = hash.Write([]byte(modelHashDomain))
+	_, _ = hash.Write([]byte(model))
+	return modelHashPrefix + hex.EncodeToString(hash.Sum(nil))
+}
+
+// CanonicalSourceFormat converts CPA provider names to the fixed values that
+// may cross the audit privacy boundary. The Anthropic alias maps to CPA's
+// canonical "claude" value; all other inputs collapse to "unknown".
+func CanonicalSourceFormat(sourceFormat string) string {
+	switch strings.ToLower(strings.TrimSpace(sourceFormat)) {
+	case "openai":
+		return "openai"
+	case "openai-response":
+		return "openai-response"
+	case "claude", "anthropic":
+		return "claude"
+	case "gemini":
+		return "gemini"
+	default:
+		return SourceFormatUnknown
+	}
 }
 
 func prepareEvent(event Event, now time.Time) (Event, error) {
@@ -56,6 +99,8 @@ func prepareEvent(event Event, now time.Time) (Event, error) {
 		event.Timestamp = event.Timestamp.UTC()
 	}
 	event.RuleIDs = append([]string(nil), event.RuleIDs...)
+	event.Model = privacySafeModel(event.Model)
+	event.SourceFormat = privacySafeSourceFormat(event.SourceFormat)
 	if err := validateEvent(event); err != nil {
 		return Event{}, err
 	}
@@ -79,14 +124,18 @@ func validateEvent(event Event) error {
 		value string
 		limit int
 	}{
-		"category":      {event.Category, 128},
-		"model":         {event.Model, 256},
-		"source_format": {event.SourceFormat, 64},
-		"classifier":    {event.Classifier, 64},
+		"category":   {event.Category, 128},
+		"classifier": {event.Classifier, 64},
 	} {
 		if err := validateField(name, field.value, field.limit, true); err != nil {
 			return err
 		}
+	}
+	if event.Model != "" && !validDigest(event.Model, modelHashPrefix) {
+		return errors.New("audit: model is not a domain-separated SHA-256 correlation value")
+	}
+	if event.SourceFormat != "" && !oneOf(event.SourceFormat, "openai", "openai-response", "claude", "gemini", SourceFormatUnknown) {
+		return errors.New("audit: source_format is not a canonical provider value")
 	}
 	if event.RiskScore < 0 || event.RiskScore > 1_000_000 {
 		return errors.New("audit: risk score is outside the supported range")
@@ -112,6 +161,22 @@ func validateEvent(event Event) error {
 		return errors.New("audit: subject_hash is not an HMAC-SHA256 correlation value")
 	}
 	return nil
+}
+
+// privacySafeModel is also used when reading legacy databases so management
+// and export surfaces never echo historical plaintext model values.
+func privacySafeModel(model string) string {
+	if model == "" || validDigest(model, modelHashPrefix) {
+		return model
+	}
+	return HashModel(model)
+}
+
+func privacySafeSourceFormat(sourceFormat string) string {
+	if sourceFormat == "" {
+		return ""
+	}
+	return CanonicalSourceFormat(sourceFormat)
 }
 
 func validateField(name, value string, limit int, emptyOK bool) error {
