@@ -85,16 +85,20 @@ Completed source-level checks:
 ```text
 bash -n changed release scripts                                  PASS
 scripts/create-store-archive-test.sh                             PASS
-go test ./internal/plugin ./cmd/cyber-abuse-guard               PASS
-go test ./integration/pluginstorecontract                       PASS
+go test -tags=sqlite_omit_load_extension plugin/cmd packages     PASS
+targeted go vet and race for plugin/cmd packages                 PASS
+go -C integration/pluginstorecontract test ./...                PASS
+synthetic DIST_DIR TestPublishedStoreArchive                    PASS
 CPA v7.2.72 TestHostRouteModel*                                  PASS
 CPA v7.2.72 TestSortRecordsPriorityDescendingAndIDTieBreak       PASS
 ```
 
-The real-artifact `TestPublishedStoreArchive` is wired into
-`scripts/package-release.sh` and `make cpa-store-contract`, but was not run in
-this workspace because formal/local packaging is prohibited for the blocked
-candidate. It must run against server-built artifacts.
+`TestPublishedStoreArchive` passed against a synthetic distribution directory
+created by `scripts/create-store-archive-test.sh`. The same test is wired into
+`scripts/package-release.sh` and `make cpa-store-contract`. It was not run
+against a real built `.so` in this workspace because formal/local packaging is
+prohibited for the blocked candidate; that final artifact check must run on the
+server-built output.
 
 ## Required server-sandbox evidence
 

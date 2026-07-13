@@ -36,6 +36,8 @@ holdout/evaluation data.
 source_version: 0.1.2
 target_cpa_version: v7.2.67
 target_cpa_commit: 2075f77c8ebe9ec872759965661936fb1ac2931f
+root_go_mod_cpa_baseline: v7.2.67
+phase0_v7.2.72_scope: official installer and host-routing source contracts only; no host compatibility claim
 cpa_abi: C ABI/RPC schema v1
 target_platform: linux/amd64
 glibc_floor: 2.34
@@ -48,6 +50,7 @@ source_tree_clean: NOT A RELEASE TREE; no tag may be created
 server_sandbox_validation: PENDING / NOT RUN
 current_diff_real_cpa_integration: NOT RUN
 current_diff_native_loading_or_deployment: NOT RUN
+phase0_four_protocol_403_zero_call_matrix: SERVER SANDBOX PENDING / NOT RUN
 prompt_injection_blind_evaluation: NOT CREATED
 ```
 
@@ -67,6 +70,7 @@ evidence column is complete.
 | Prompt-injection washing | post-v10 `META-OVERRIDE-001` source overlay covers hierarchy/refusal/persona/scope/output/disclosure/negative-authorization combinations while retaining ordinary taxonomy | SOURCE IMPLEMENTED; current-diff source tests PASS; server sandbox PENDING; formal evidence unresolved; v10 remains FAIL |
 | Multi-turn/role pollution | per-segment plus adjacent-user analysis; conservative unsupported roles; no semantic state across separate API calls | PASS current-diff source tests; cross-request continuation remains a limitation |
 | Router fail-open mitigation | panic recovery, mode-aware self-route, counters, readiness, local probes | PASS controlled CPA tests; host boundary remains |
+| Host fail-open boundary | explicitly retains plugin-not-loaded, registration failure, fused plugin, Router error/pre-result panic, invalid/empty target, executor-not-ready, and earlier handled Router; equal priority orders by plugin ID ascending; `enforcement_ready` is internal only | DOCUMENTED; current server validation pending |
 | Health monitoring | authenticated status plus read-only loopback watchdog | PASS local candidate tests; production deployment prohibited |
 | No original-text logging | unsafe field rejected; typed minimal events; no debug override | PASS candidate privacy scan |
 | SQLite migration | schema version/history, atomic v1→v2, bounded optional read-only backup | PASS candidate engineering tests |
@@ -76,8 +80,11 @@ evidence column is complete.
 | Opaque media | explicit policy, mode-aware defaults, separate signal/counters, no public fetch | PASS candidate engineering tests |
 | Rule version/hash | embedded YAML ruleset 1.0.7 remains canonical and status-visible; meta, matcher/normalizer, role, and extractor semantics require the containing build commit too | YAML identity PASS; complete classifier-policy identity UNRESOLVED until separately versioned or provenance-bound |
 | Performance gates | acceptance/benchmark/CPU-profile procedure documented | PASS candidate engineering gate; host-specific |
-| Management hardening | CPA-authenticated exact routes, body/query/page/method bounds, fixed unblock body | PASS controlled real-CPA tests |
+| Management hardening | CPA-authenticated exact routes, body/query/page/method bounds, fixed unblock body; deployment proxy limit required because CPA performs pre-plugin `io.ReadAll` | PRE-CHANGE HOST AUTH PASS; Nginx 1 MiB / pre-CPA 413 CURRENT SERVER TEST PENDING |
 | Router conflict/duplicate binary | ABI limitation surfaced; manual deployment checks/watchdog notice | MANUAL CONTROL REQUIRED |
+| CPA store ZIP | `cyber-abuse-guard_<version>_linux_amd64.zip` contains exactly one root executable `.so`; isolated v7.2.72 module uses official `pluginstore.InstallArchive` with synthetic bytes | SOURCE IMPLEMENTED; no v7.2.72 host compatibility claim; formal artifact NOT CREATED |
+| Audit bundle separation | reports, metadata, SBOM, docs, and operator scripts moved to `cyber-abuse-guard-v<version>-audit-bundle.zip` | SOURCE IMPLEMENTED; formal artifact NOT CREATED |
+| Executor method contract | `execute`, `execute_stream`, and `count_tokens` use policy 403; `http_request` uses 405 | SOURCE IMPLEMENTED; four-protocol real-host matrix PENDING |
 | CI/CD | explicit quality, Holdout, benchmark, vuln, CPA, artifact, fault, clean/repro gates | NO TAGGED RUN; release correctly blocked |
 | SBOM/vulnerability | CycloneDX 1.6 and pinned govulncheck in release workflow | PASS candidate checks; no formal release SBOM |
 | Reproducibility | fixed metadata/time/order and two-clean-clone byte comparison | NOT FINALIZED; release blocked before tag |
@@ -101,7 +108,7 @@ evidence column is complete.
 | `EVALUATION_V10_REPORT.md` | current methodologically valid formal gate | consumed; FAIL |
 | `CORPUS_REPORT.md` | project-maintained regression corpus | PASS candidate engineering signal; not blind evidence |
 | `PERFORMANCE.md` | latency, CPU, allocation, profile procedure | PASS pre-change baseline; current diff not benchmarked |
-| `CPA_INTEGRATION.md` | real CPA + mock upstream/auth/usage isolation | PASS pre-change baseline; current prompt-injection diff NOT RUN |
+| `CPA_INTEGRATION.md` | real CPA + mock upstream/auth/usage isolation plus isolated v7.2.72 store source contract | PASS pre-change v7.2.67 baseline; current prompt-injection/Phase0 real host NOT RUN; store contract is not compatibility evidence |
 | `PRIVACY.md` | DB/WAL/SHM/log/API/artifact/network canary scan | PASS pre-change baseline; current diff not rerun end-to-end |
 | `PROMPT_INJECTION_REVIEW.md` | sanitized external defensive review and current source response | development input only; not blind; server sandbox pending |
 
@@ -114,6 +121,11 @@ Every row must be PASS before “production-ready” is used:
 | Blocked raw content never reaches Mock Upstream | PASS PRE-CHANGE BASELINE; CURRENT DIFF NOT RUN |
 | Blocked request never enters CPA Auth Selector | PASS PRE-CHANGE BASELINE; CURRENT DIFF NOT RUN |
 | Blocked request creates no real-upstream usage record | PASS PRE-CHANGE BASELINE; CURRENT DIFF NOT RUN |
+| OpenAI Chat/Responses/Claude/Gemini `execute`, `execute_stream`, and `count_tokens` return policy 403; `http_request` returns 405 | SOURCE IMPLEMENTED; CURRENT SERVER SANDBOX PENDING |
+| Plugin absence/registration failure/fuse/Router error/pre-result panic/invalid target/not-ready/priority preemption remain documented host fail-open | OFFICIAL CPA SOURCE TEST PASS; CURRENT SERVER VALIDATION PENDING |
+| Same-priority Router order follows plugin ID ascending | OFFICIAL CPA SOURCE TEST PASS; SERVER FIXTURE PENDING |
+| CPA store ZIP has one root `.so` and is separate from the audit bundle | SYNTHETIC STORE CONTRACT PASS; FORMAL ARTIFACT NOT CREATED |
+| Management body above 1 MiB receives Nginx 413 before CPA `io.ReadAll` | SERVER SANDBOX PENDING / NOT RUN |
 | Raw prompt and plaintext credentials absent from all persistent/returned/logged surfaces | PASS PRE-CHANGE BASELINE; CURRENT DIFF END-TO-END PRIVACY NOT RUN |
 | Safe request identity, model, body, and tools remain unchanged | PASS PRE-CHANGE BASELINE; CURRENT DIFF NOT RUN |
 | No safety-system bypass, identity spoofing, or request laundering | DEVELOPMENT REGRESSION PASS ONLY; no blind generalization proof; server sandbox PENDING; release remains blocked |
@@ -266,7 +278,8 @@ blocked until a new unseen set is authored outside the implementation process.
 |---|---|---|
 | `cyber-abuse-guard-v0.1.2.so` | NOT CREATED | RELEASE BLOCKED |
 | `cyber-abuse-guard-v0.1.2.so.sha256` | NOT CREATED | RELEASE BLOCKED |
-| `cyber-abuse-guard_0.1.2_linux_amd64.zip` | NOT CREATED | RELEASE BLOCKED |
+| `cyber-abuse-guard_0.1.2_linux_amd64.zip` (CPA store ZIP; one root `.so`) | NOT CREATED | RELEASE BLOCKED |
+| `cyber-abuse-guard-v0.1.2-audit-bundle.zip` (separate evidence/operator bundle) | NOT CREATED | RELEASE BLOCKED |
 | `checksums.txt` | NOT CREATED | RELEASE BLOCKED |
 | `build-metadata.json` | NOT CREATED | RELEASE BLOCKED |
 | `ruleset-manifest.json` | NOT CREATED | RELEASE BLOCKED |
@@ -275,10 +288,11 @@ blocked until a new unseen set is authored outside the implementation process.
 | `release-test-summary.txt` | NOT CREATED | RELEASE BLOCKED |
 | `release-test-summary.txt.sha256` | NOT CREATED | RELEASE BLOCKED |
 
-Release ZIP verification must use an exact allowlist and reject `.git`, DB/WAL/
-SHM, migration backups, secret/key/PEM/env files, logs, and unexpected paths.
-GitHub Repository/Release, source `tar.gz`, and the audited ZIP are supported;
-RAR is not a formal release format.
+The CPA store ZIP must contain exactly one root regular executable `.so` and no
+second entry. The separate audit bundle uses an exact allowlist and rejects
+`.git`, DB/WAL/SHM, migration backups, secret/key/PEM/env files, logs, and
+unexpected paths. GitHub Repository/Release, source `tar.gz`, the store ZIP, and
+the audit bundle are supported; RAR is not a formal release format.
 
 ## Vulnerability and exception record
 
@@ -310,8 +324,10 @@ clone_a_commit: NOT APPLICABLE
 clone_b_commit: NOT APPLICABLE
 so_sha256_a: NOT CREATED
 so_sha256_b: NOT CREATED
-zip_sha256_a: NOT CREATED
-zip_sha256_b: NOT CREATED
+store_zip_sha256_a: NOT CREATED
+store_zip_sha256_b: NOT CREATED
+audit_bundle_sha256_a: NOT CREATED
+audit_bundle_sha256_b: NOT CREATED
 byte_identical: NOT CLAIMED
 ```
 
@@ -327,12 +343,20 @@ github_release_url: NOT CREATED — RELEASE BLOCKED
 github_actions_release_run: NOT RUN — RELEASE BLOCKED
 server_sandbox_validation: PENDING / NOT RUN
 current_diff_real_cpa_integration: NOT RUN
+root_cpa_development_baseline: v7.2.67
+phase0_v7.2.72_scope: official installer and host-routing source contracts only
+phase0_store_zip: NOT CREATED — RELEASE BLOCKED
+phase0_audit_bundle: NOT CREATED — RELEASE BLOCKED
+phase0_four_protocol_403_zero_call_matrix: PENDING / NOT RUN
+phase0_management_413_before_cpa: PENDING / NOT RUN
 prompt_injection_blind_evaluation: NOT CREATED
 classifier_policy_identity: UNRESOLVED — ruleset 1.0.7 hash covers YAML assets only; code semantics require containing build commit
 all_redlines_pass: NO
 known_unimplemented_requirements:
   - dual-key HMAC rotation (design only)
   - CPA ABI-v1 host fail-open/router enumeration/duplicate-directory visibility
+  - CPA pre-plugin management io.ReadAll requires a deployment proxy body limit
+  - CPA v7.2.72 host compatibility remains unqualified; only isolated source contracts exist
   - persisted subject snapshot has no keyed whole-snapshot MAC
   - unknown or encrypted encodings may evade semantic detection
 known_non_guarantee:

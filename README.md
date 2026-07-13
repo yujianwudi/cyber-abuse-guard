@@ -11,6 +11,15 @@ The v0.1.2 source targets CPA `v7.2.67` at commit
 `2075f77c8ebe9ec872759965661936fb1ac2931f`, Linux amd64, glibc 2.34 or newer,
 and CPA C ABI/RPC schema v1. musl/Alpine is not supported.
 
+The repository root `go.mod` and the current development/runtime baseline remain
+on CPA `v7.2.67`. An isolated source-contract module under
+`integration/pluginstorecontract` pins CPA `v7.2.72` only so the official
+`pluginstore.InstallArchive` implementation and official host-routing tests can
+verify archive naming/layout/install behavior plus Router ordering and fallback
+with opaque synthetic bytes. These source contracts do not load a plugin and
+are not evidence that this project is compatible with, deployable on, or tested
+against a CPA `v7.2.72` host.
+
 > **Release status:** v0.1.2 is a **blocked candidate**, not a production
 > release. Blind sets v1-v8 are retired or consumed failures; v9 is frozen as
 > `CONSUMED / METHODOLOGY INVALID / FAIL` because the exact taxonomy-enum
@@ -49,7 +58,8 @@ downstream request
   -> CPA ModelRouter
     -> allowed: Handled=false; original request continues unchanged
     -> blocked: Handled=true, TargetKind=self
-       -> local executor returns HTTP 403
+       -> execute / execute_stream / count_tokens return policy HTTP 403
+       -> http_request remains unsupported and returns HTTP 405
        -> provider resolution, auth selection, usage, and upstream are skipped
 ```
 
@@ -99,18 +109,28 @@ commit plus the YAML ruleset identity are required to identify this development
 behavior. A release-eligible successor must add a separate classifier-policy
 version/hash or bind all policy behavior to verified build provenance.
 
-## CPA v7.2.67 fail-open boundary
+## CPA host fail-open boundary
 
-CPA v7.2.67 can continue native routing when a router returns an error, and can
-fuse a plugin after a panic. The plugin reduces this risk with bounded parsing,
-panic recovery, mode-aware local handling for known oversized RPCs, atomic
-reconfiguration, and health counters. It cannot change CPA host behavior from
-inside ABI v1.
+The root development baseline is CPA v7.2.67. At the host boundary, CPA can
+continue other Routers or native routing when this plugin is not loaded, fails
+registration, is fused, returns a Router error, panics before a valid handled
+result is accepted, returns an invalid/empty target, or self-routes to an
+executor that is not ready. A higher-priority Router that handles the request
+first also prevents this guard from seeing it. Routers at the same priority are
+ordered by plugin ID ascending. The plugin reduces known in-process failure
+risk with bounded parsing, panic recovery, mode-aware local handling for known
+oversized RPCs, atomic reconfiguration, and health counters, but ABI v1 cannot
+turn these host conditions into global fail-closed behavior.
 
 Production operators must monitor `loaded`, `enforcement_ready`,
 `router_errors`, `panics_recovered`, `audit_degraded`, `hmac_stable`,
 `persistence_degraded`, `last_reconfigure_error`, and the build/ruleset
 identity. Use the read-only watchdog:
+
+`enforcement_ready` is only the plugin's internal runtime/readiness state. It
+does not prove that CPA loaded and registered the binary, that the host has not
+fused it, that Router ordering is favorable, or that CPA accepted the self
+executor as ready for a particular request format.
 
 ```bash
 CPA_MANAGEMENT_KEY_FILE=/run/secrets/cpa-management.key \
@@ -131,7 +151,8 @@ CPA ABI v1 also cannot enumerate router ordering or inspect the plugin
 directory. Operators must manually confirm that no higher-priority router can
 handle requests first, that `priority: 300` is effective, that the obsolete
 `antigravity-coding-filter` is disabled, and that only one version of this
-plugin `.so` is present.
+plugin `.so` is present. At equal priority, compare plugin IDs explicitly;
+lexicographically smaller IDs execute first.
 
 ## Modes and staged rollout
 
@@ -259,6 +280,14 @@ the current prompt-injection diff, no real-CPA integration, native loading,
 deployment, formal Holdout, release verification, or release packaging was
 performed locally; server sandbox validation remains pending.
 
+Phase 0 adds source-level CPA store archive checks and aligns the local executor
+method contract. It does not change the root CPA dependency from v7.2.67 and it
+does not supply current-diff evidence for four-protocol HTTP behavior or zero
+Auth Selector, Usage, Provider, and Mock Upstream calls. Those assertions remain
+pending for the owner-operated server sandbox.
+See [the Phase 0 CPA contract report](docs/reports/PHASE0_CPA_CONTRACT.md) for
+the exact source-level evidence and remaining server matrix.
+
 The release toolchain is pinned to Go `1.26.4`. Use Linux amd64 with cgo, GCC,
 GNU binutils, `file`, `zip`, `unzip`, `sha256sum`, `jq`, CycloneDX GoMod
 `v1.9.0`, and `govulncheck v1.6.0`.
@@ -296,6 +325,7 @@ The formal release set is expected to include:
 dist/cyber-abuse-guard-v0.1.2.so
 dist/cyber-abuse-guard-v0.1.2.so.sha256
 dist/cyber-abuse-guard_0.1.2_linux_amd64.zip
+dist/cyber-abuse-guard-v0.1.2-audit-bundle.zip
 dist/build-metadata.json
 dist/checksums.txt
 dist/ruleset-manifest.json
@@ -309,16 +339,26 @@ dist/cyber-abuse-guard-v0.1.2-source.tar.gz
 dist/cyber-abuse-guard-v0.1.2-source.tar.gz.sha256
 ```
 
-GitHub Repository/Release, source `tar.gz`, and the audited release ZIP are the
-supported distribution channels. RAR is not a formal source or binary release
-format.
+The two ZIP files have different contracts:
+
+- `cyber-abuse-guard_<version>_linux_amd64.zip` is the CPA store installation
+  ZIP. Its root contains exactly one regular executable `.so` and no nested
+  documentation or second shared object.
+- `cyber-abuse-guard-v<version>-audit-bundle.zip` is the separate documentation,
+  metadata, SBOM, verification, and operator-material bundle. It is not a CPA
+  store installation archive.
+
+GitHub Repository/Release, source `tar.gz`, the CPA store ZIP, and the audit
+bundle are the supported distribution channels. RAR is not a formal source or
+binary release format.
 
 The verifier treats a missing command, checksum mismatch, wrong ELF target,
 missing ABI symbol, glibc version above 2.34, build identity mismatch, ruleset
 mismatch, SBOM mismatch, unexpected ZIP entry, or incorrect file mode as a hard
 non-zero failure. Formal reproducibility accepts only the real annotated release
-tag and compares the published `.so`, ZIP, and SBOM with two clean clones of the
-same commit; it never synthesizes a tag or backfills missing root artifacts.
+tag and compares the published `.so`, store ZIP, audit bundle, and SBOM with two
+clean clones of the same commit; it never synthesizes a tag or backfills missing
+root artifacts.
 
 Historical project-regression metrics are not a blind benchmark. v1-v8 are
 retired or consumed failures, v9 is a consumed methodology-invalid failure,
@@ -376,6 +416,13 @@ uses the fixed route and a bounded JSON body:
 
 Normal downstream API keys do not authorize these routes. Responses contain no
 raw prompt or plaintext credential.
+
+CPA currently calls `io.ReadAll` in `ServeManagementHTTP` before invoking the
+plugin handler. The plugin's 1 MiB management-body limit and 2 MiB RPC-envelope
+limit therefore do not cap host HTTP memory consumption. A deployment-facing
+reverse proxy must enforce its own request-body limit (the Docker/Nginx example
+uses `client_max_body_size 1m`) and the server sandbox must prove that an
+oversized request receives HTTP 413 before it reaches CPA.
 
 See also [DESIGN.md](docs/DESIGN.md), [RULES.md](docs/RULES.md),
 [LIMITATIONS.md](docs/LIMITATIONS.md), [THREAT_MODEL.md](docs/THREAT_MODEL.md),

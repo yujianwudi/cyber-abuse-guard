@@ -46,17 +46,24 @@
    quotation/provenance extensions and deliberately split non-adjacent evidence
    can remain outside the deterministic follow-up window.
 
-8. **CPA router failures are host-level fail-open.** CPA v7.2.67 may continue
-   native routing after a Router error and may fuse a panicking plugin. The
-   plugin self-routes known failures and recovered ModelRouter panics in an
-   active Balanced/Strict runtime, but it cannot alter CPA's host policy or
-   prove fail-closed behavior for every future ABI/host defect. Watchdog and
-   counter-delta monitoring are mandatory.
+8. **CPA router failures are host-level fail-open.** The root development
+   baseline is CPA v7.2.67. CPA may continue other Routers or native routing if
+   the plugin is not loaded, registration fails, it is fused, the Router returns
+   an error, a panic occurs before the host accepts a valid handled result, the
+   target is invalid/empty, or the self executor is not ready. The plugin
+   self-routes known failures and recovered ModelRouter panics in an active
+   Balanced/Strict runtime, but it cannot alter CPA's host policy or prove
+   fail-closed behavior for every host/ABI failure. `enforcement_ready` reports
+   only internal plugin state and does not prove host load, registration,
+   ordering, fuse state, or per-request executor readiness. Watchdog and
+   counter-delta monitoring remain mandatory.
 
 9. **Router ordering cannot be enumerated.** The first handled Router wins. ABI
    v1 does not expose loaded Router ordering, so a higher-priority plugin can
    bypass this guard. Use priority 300, inspect deployment configuration, and
-   disable the old `antigravity-coding-filter`.
+   disable the old `antigravity-coding-filter`. Routers at the same priority are
+   ordered by plugin ID ascending; a lexicographically earlier ID can still
+   handle the request first.
 
 10. **Duplicate plugin binaries cannot be detected in-process.** ABI v1 does
     not expose the plugin directory. The operator must ensure only one
@@ -65,7 +72,11 @@
 11. **403 versus SSE is an ABI-v1 tradeoff.** `ExecutorResponse` has no status
     field. A blocked stream returns a genuine HTTP 403 before SSE is
     established. ABI v1 cannot return both a 403 and a successful terminal SSE
-    frame; successful chunks would force HTTP 200.
+    frame; successful chunks would force HTTP 200. The policy executor routes
+    `execute`, `execute_stream`, and `count_tokens` to the same policy HTTP 403;
+    `http_request` remains unsupported with HTTP 405. Current-diff real-host
+    behavior across OpenAI Chat, OpenAI Responses, Claude, and Gemini remains a
+    server-sandbox requirement.
 
 12. **Protocol-specific error shapes differ.** OpenAI-compatible handlers can
     retain a stable marker. Anthropic may normalize plugin errors and drop
@@ -79,7 +90,12 @@
     plugin routes, so subject unblock uses a fixed path and bounded JSON body.
     CPA host middleware, not the plugin, is the Management Key verification
     authority; ABI v1 does not reveal the configured key to the plugin. Host
-    401 behavior must be integration-tested.
+    401 behavior must be integration-tested. CPA currently executes
+    `io.ReadAll` in `ServeManagementHTTP` before calling the plugin, so the
+    plugin's 1 MiB body and 2 MiB RPC-envelope limits are not a host HTTP memory
+    ceiling. Deployments need an upstream body limit such as Nginx
+    `client_max_body_size 1m`, with a server test proving HTTP 413 occurs before
+    CPA receives the request.
 
 15. **No trustworthy remote address in `ModelRouteRequest`.** CPA exposes
     neither a verified direct peer nor a separate authenticated principal/key
@@ -151,9 +167,14 @@
     evicts logical entries immediately, but heap buckets may remain until later
     garbage collection. The new logical limit is enforced for every request.
 
-29. **Only one host/runtime target is qualified.** CPA v7.2.67 at the pinned
-    commit, Linux amd64, and glibc 2.34+ are the intended matrix. musl/Alpine is
-    unsupported. A newer CPA or ABI requires a new integration run.
+29. **Only one host/runtime target is qualified.** The repository root `go.mod`
+    and development/runtime baseline remain CPA v7.2.67 at the pinned commit,
+    Linux amd64, and glibc 2.34+. musl/Alpine is unsupported. The isolated
+    v7.2.72 source-contract module verifies the official archive/install logic
+    and official host Router ordering/fallback tests with synthetic bytes; it
+    does not establish Guard native-host, ABI, executor, management, stream, or
+    deployment compatibility. A newer CPA or ABI still requires a complete new
+    integration run.
 
 30. **Performance evidence is host-specific and cannot override the failed
     release gate.** The current development candidate measured approximately
@@ -192,11 +213,12 @@
     retained and amplified.
 
 36. **Server sandbox validation is pending.** The current prompt-injection
-    changes have source-level regression, static-analysis, and module evidence
-    only. They have not been deployed, natively loaded, or exercised through a
-    current-diff real CPA integration locally. Owner-operated server sandbox
-    validation is **PENDING / NOT RUN** and cannot reverse the v10 release
-    failure.
+    and Phase 0 changes have source-level evidence only unless separately listed
+    in the test report. They have not been deployed, natively loaded, or
+    exercised through a current-diff real CPA integration locally. In
+    particular, the four-protocol 403 matrix and zero Auth Selector, Provider,
+    Usage, and Mock Upstream calls remain **PENDING / NOT RUN** in the
+    owner-operated server sandbox and cannot reverse the v10 release failure.
 
 37. **Classifier-policy identity is not yet independently versioned.**
     Ruleset `1.0.7` and its canonical hash identify the embedded YAML
@@ -221,3 +243,11 @@
     therefore remain outside semantic classification unless equivalent text is
     present in a value. Provider/tool schemas should reject unapproved control
     keys before they reach the model or executor.
+
+40. **The CPA store ZIP is not the audit bundle.**
+    `cyber-abuse-guard_<version>_linux_amd64.zip` must contain exactly one root
+    `.so`; CPA's official store installer rejects the former nested
+    `plugins/linux/amd64/...` layout. Documentation, SBOM, build metadata,
+    reports, and operator scripts belong in the separate
+    `cyber-abuse-guard-v<version>-audit-bundle.zip`. Neither artifact exists as
+    an approved v0.1.2 release because the release gate remains blocked.

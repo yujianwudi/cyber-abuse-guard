@@ -8,6 +8,11 @@ downstream caller sends clearly malicious, operational cyber-abuse requests to
 an upstream account. It cannot guarantee that an account will not receive a
 warning or be deactivated.
 
+The root module and runtime baseline remain on CPA v7.2.67. The isolated
+`integration/pluginstorecontract` module pins CPA v7.2.72 only to execute the
+official store-installer and host-routing source contracts without loading a
+shared library. Those source tests do not establish native-host compatibility.
+
 This document describes the v0.1.2 candidate implementation, not an approved
 release. The methodologically valid v10 evaluation failed its first and only
 formal run (28/320 benign false positives, 49/320 policy blocks, 33/320 exact),
@@ -34,7 +39,8 @@ The shared object exports `cliproxy_plugin_init` and returns ABI version 1. The
 JSON RPC capabilities are:
 
 - `model_router`: inspect `ModelRouteRequest` before provider/auth selection;
-- `executor`: terminate blocked non-streaming and streaming requests locally;
+- `executor`: terminate blocked non-streaming, streaming, and token-count
+  requests locally; HTTP forwarding remains explicitly unsupported;
 - `management_api`: expose management-key-protected status, event, stats, test,
   unblock, and delete routes.
 
@@ -54,6 +60,12 @@ request, it returns `Handled: true`, `TargetKind: self`. The executor returns an
 RPC error envelope with HTTP status 403 and the stable marker
 `cyber_abuse_guard_blocked`. CPA v7.2.67 turns that error into the native error
 shape for the entry protocol.
+
+`executor.execute`, `executor.execute_stream`, and `executor.count_tokens` use
+this same policy-403 path. `executor.http_request` is not implemented and
+returns HTTP 405. The real four-protocol HTTP/SSE and zero
+Auth/Usage/Provider/Upstream matrix for the current diff remains a server-
+sandbox requirement.
 
 CPA v7.2.67's `ExecutorResponse` has payload and headers but no HTTP status.
 Consequently, ABI v1 cannot simultaneously return an arbitrary plugin-owned
@@ -381,6 +393,12 @@ key therefore cannot authorize these routes, and deployment tests must verify
 the host's 401 behavior. Responses never include prompt text or plaintext
 subjects.
 
+The plugin rejects a management body above 1 MiB and a serialized RPC envelope
+above 2 MiB. These are plugin-side limits only: CPA currently calls `io.ReadAll`
+inside `ServeManagementHTTP` before invoking the plugin. A reverse proxy must
+therefore enforce the HTTP request-body ceiling, and the server sandbox must
+prove that an oversized request receives 413 before CPA reads it.
+
 ## Failure behavior
 
 - invalid initial config: plugin registration fails visibly;
@@ -399,14 +417,21 @@ subjects.
   retain the non-zero ABI failure signal;
 - optional classifier: interface reserved but not implemented in v0.1.2.
 
-CPA v7.2.67 still owns the fail-open policy for router errors and fused plugins.
-No in-process plugin can prove that every future host or ABI failure will be
-fail-closed. The authenticated status exposes `loaded`, `enforcement_ready`,
+CPA owns the host fail-open policy. A plugin that is absent, fails registration,
+is fused, returns a Router error, panics before an accepted handled result,
+returns an invalid/empty target, or self-routes to an executor that is not ready
+can be skipped while later Routers or native routing continue. A higher-priority
+handled Router wins; equal priority is ordered by plugin ID ascending. No in-
+process plugin can prove that every host or ABI failure will be fail-closed.
+The authenticated status exposes `loaded`, `enforcement_ready`,
 `router_errors`, `panics_recovered`, audit/HMAC/persistence degradation,
 reconfigure error, and build/ruleset identity. The read-only production
 watchdog checks those fields and runs built-in local-only probes. ABI v1 cannot
 enumerate router ordering or scan the plugin directory, so higher-priority
 router conflicts and duplicate `.so` versions remain mandatory operator checks.
+`enforcement_ready` reflects plugin-internal runtime state only; it does not
+prove host load/registration, non-fused state, ordering, or per-request executor
+readiness.
 
 ## Verification strategy
 
@@ -415,6 +440,13 @@ inputs, hard-block exceptions, subject decay/cooldown, config rollback, SQLite
 privacy, management handlers, and ABI envelopes. Separate corpora contain at
 least 100 benign security prompts and 100 clearly malicious operational
 prompts. Benchmarks report classifier latency and allocations.
+
+The isolated CPA v7.2.72 contract module calls the official
+`pluginstore.InstallArchive` with opaque bytes and runs the official
+`TestHostRouteModel*` and Router-sorting tests. It verifies store naming,
+root-only library layout, checksum, installed path/bytes, repeat installation,
+nested-layout rejection, priority ordering, and documented host fallback. It
+does not load the Guard `.so`.
 
 The integration harness builds the `.so`, builds CPA at the pinned commit,
 starts a local mock OpenAI-compatible upstream, and starts CPA with the plugin.
@@ -427,6 +459,8 @@ stream termination, role-aware follow-ups, metadata-named OpenAI and Anthropic
 tool payloads, a Base64-expanded RPC above 8 MiB, and disabled-plugin recovery.
 
 `make release` depends on this real-CPA integration suite before packaging.
+For the current Phase 0 diff that real-host suite was deliberately not run
+locally; server-sandbox evidence is still required.
 Release verification inspects the ELF and rejects a binary whose imported glibc
 symbol version exceeds `GLIBC_2.34`. The published artifact therefore requires
 glibc 2.34 or newer, is compatible with the official Debian Bookworm CPA image,
@@ -448,9 +482,12 @@ development artifacts only.
 
 `SOURCE_DATE_EPOCH` derives from the commit timestamp unless explicitly fixed.
 Builds use `-trimpath`, a pinned Go toolchain, deterministic ZIP ordering and
-timestamps, a strict file allowlist, and a canonical ruleset manifest.
-CycloneDX SBOM and checksums are verified against source. The reproducibility
-gate builds in two clean clones and byte-compares both `.so` and ZIP.
+timestamps, strict file allowlists, and a canonical ruleset manifest. The CPA
+store ZIP contains exactly one root mode-0755 `.so`; documentation, metadata,
+SBOM, and operational material live in a separately named audit bundle.
+CycloneDX SBOM and checksums are verified against source and cover both ZIPs.
+The reproducibility gate builds in two clean clones and byte-compares the `.so`,
+store ZIP, audit bundle, and SBOM.
 
 These mechanisms make evidence reproducible; they do not turn a failed safety
 gate into a release. v1-v8 are retired or consumed failures, v9 is a consumed
