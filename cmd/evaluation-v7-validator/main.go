@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -32,6 +33,49 @@ var requiredPolicyTaxonomies = []string{
 	"data_exfiltration",
 	"defense_evasion",
 }
+
+type priorCorpus struct {
+	Path   string
+	SHA256 string
+	Rows   int
+}
+
+var evaluationV7Prior = []priorCorpus{
+	{Path: "testdata/corpus/benign-security.jsonl", SHA256: "f7d4152fd372819797ac853b5f5ccb21724d8f6c78c574600736ab657457e040", Rows: 142},
+	{Path: "testdata/corpus/malicious-operational.jsonl", SHA256: "27f1328943ef344b0c77e5875a8cf24e4ab01681e7335ed0fd4ca3d97a976ba6", Rows: 154},
+	{Path: "testdata/evaluation-v4/benign.jsonl", SHA256: "7f2f4a7c1e1921bad8131121272fe5bc0a85f3aab019ee70aaf343205f7d52a5", Rows: 300},
+	{Path: "testdata/evaluation-v4/policy-violations.jsonl", SHA256: "1b5786d2c7ac177a28ef7701ce129e3646ccda7475f5180024caf85cbd695540", Rows: 320},
+	{Path: "testdata/evaluation-v5/benign-security.jsonl", SHA256: "589aa8e7609b5d28d6a35577f2908813f97d50ea9fdb152cf926e425518ac842", Rows: 320},
+	{Path: "testdata/evaluation-v5/policy-violations.jsonl", SHA256: "ab012072260a953b98bd84c582d5a317fe41df903fd1724aaf80662cbfd19edc", Rows: 320},
+	{Path: "testdata/evaluation-v6/evaluation-v6.jsonl", SHA256: "d3b74587a787251f0ddad46189236fbe3059db683fb023583517f0092710b265", Rows: 640},
+	{Path: "testdata/holdout/benign-security.jsonl", SHA256: "46736f53d31c3caa7c1d585c3bdfb7bb60848c6d60ae75c12076c35cd2f19e1f", Rows: 246},
+	{Path: "testdata/holdout/malicious-operational.jsonl", SHA256: "a86bb28cc509969e2c3f27901413f9a82422c6dbeea98cda68145f47693688cc", Rows: 260},
+	{Path: "testdata/holdout-v2/benign-security.jsonl", SHA256: "e88f9a1dc4bd3465b041ab2e636dbde74f7e48aa319b2ff42c26ae46d06b5b4b", Rows: 240},
+	{Path: "testdata/holdout-v2/malicious-operational.jsonl", SHA256: "64f1fb64494458a4e937c83970ca0a90b1f9f367e7e021fe7018365fc97d4ab4", Rows: 260},
+	{Path: "testdata/holdout-v3/benign-security.jsonl", SHA256: "7edc6d5ff97b04c005bdeb2e66de585b9d50d261a128a54f229af57cb0bb5d25", Rows: 300},
+	{Path: "testdata/holdout-v3/malicious-operational.jsonl", SHA256: "8d7ddbae41f0b6f4870febc4b1ba73c490b92b920f19db4f4290b3ff3227710e", Rows: 320},
+}
+
+var evaluationV8Prior = appendPriorCorpus(evaluationV7Prior,
+	priorCorpus{Path: "testdata/evaluation-v7/evaluation-v7.jsonl", SHA256: "bd7ec34c6b38244d9b2cf28512b2b427c855129f290f9ef1feec13fc545e5afc", Rows: 640},
+)
+
+var evaluationV9Prior = appendPriorCorpus(evaluationV8Prior,
+	priorCorpus{Path: "testdata/evaluation-v8/evaluation-v8.jsonl", SHA256: "c722af0c6aae0bd909e808c8bb7a25f3e3481d8e135206e4d8e8ab3efb54edcd", Rows: 640},
+)
+
+var evaluationV10Prior = appendPriorCorpus(evaluationV9Prior,
+	priorCorpus{Path: "testdata/evaluation-v9/evaluation-v9.jsonl", SHA256: "0481ee919f12a267458f99780fdd2c252209de81b89d5e6c9cac156e38c12c0c", Rows: 640},
+)
+
+var knownCorpusPaths = func() map[string]struct{} {
+	result := make(map[string]struct{}, len(evaluationV10Prior)+1)
+	for _, item := range evaluationV10Prior {
+		result[filepath.ToSlash(filepath.Clean(item.Path))] = struct{}{}
+	}
+	result["testdata/evaluation-v10/evaluation-v10.jsonl"] = struct{}{}
+	return result
+}()
 
 type targetRecord struct {
 	ID       string          `json:"id"`
@@ -77,6 +121,14 @@ type summary struct {
 	CarrierPolicy                map[string]int `json:"carrier_policy"`
 }
 
+type validationProfile struct {
+	Name        string
+	PolicyLabel string
+	Carriers    []string
+	Languages   map[string]int
+	Prior       []priorCorpus
+}
+
 func main() {
 	if len(os.Args) == 2 {
 		targetPath = os.Args[1]
@@ -84,10 +136,12 @@ func main() {
 		fmt.Fprintln(os.Stderr, "usage: evaluation-validator [target.jsonl]")
 		os.Exit(2)
 	}
-	targetSlash := filepath.ToSlash(targetPath)
-	if strings.Contains(targetSlash, "/evaluation-v8/") || strings.Contains(targetSlash, "/evaluation-v9/") || strings.Contains(targetSlash, "/evaluation-v10/") {
-		requiredFields = []string{"carrier", "id", "input", "label", "language", "source", "tags", "taxonomy"}
+	profile := profileForTarget(targetPath)
+	if profile.Name == "unsupported" {
+		fmt.Fprintf(os.Stderr, "unsupported evaluation target: %s\n", targetPath)
+		os.Exit(2)
 	}
+	requiredFields = requiredFieldsForTarget(targetPath)
 	s, err := validate()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -99,9 +153,200 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	if s.TaxonomyEnumFailures != 0 || s.TaxonomyDistributionFailures != 0 {
+	if err := validateSummary(s, profile); err != nil {
+		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+}
+
+func profileForTarget(path string) validationProfile {
+	slash := filepath.ToSlash(path)
+	switch {
+	case strings.Contains(slash, "/evaluation-v8/"):
+		return validationProfile{
+			Name:        "evaluation-v8",
+			PolicyLabel: "policy_violation",
+			Carriers: []string{
+				"openai_chat", "openai_responses", "anthropic_messages", "gemini_contents",
+				"generic_prompt", "nested_json", "openai_tool_call", "anthropic_tool_use",
+				"gemini_function_call", "responses_function_call", "multi_turn_chat", "url_encoded_prompt",
+				"base64_prompt", "unicode_confusable", "zero_width_dialogue", "api_query_wrapper",
+			},
+			Languages: map[string]int{"en": 227, "zh-CN": 187, "zh-en": 226},
+			Prior:     evaluationV8Prior,
+		}
+	case strings.Contains(slash, "/evaluation-v9/"):
+		return validationProfile{
+			Name:        "evaluation-v9",
+			PolicyLabel: "policy",
+			Carriers: []string{
+				"openai_chat", "openai_chat_blocks", "openai_responses", "anthropic_messages",
+				"gemini_contents", "prompt_scalar", "nested_request", "openai_tool_call",
+				"anthropic_tool_use", "gemini_function_call", "tool_result", "url_encoded",
+				"html_entity", "base64_text", "text_data_url", "multi_turn",
+			},
+			Languages: map[string]int{"en": 160, "mixed": 160, "zh": 320},
+			Prior:     evaluationV9Prior,
+		}
+	case strings.Contains(slash, "/evaluation-v10/"):
+		return validationProfile{
+			Name:        "evaluation-v10",
+			PolicyLabel: "policy",
+			Carriers: []string{
+				"openai_chat_plain", "openai_chat_content_parts", "openai_responses_input", "openai_responses_function_call",
+				"anthropic_messages_plain", "anthropic_tool_use", "gemini_contents_plain", "gemini_function_call",
+				"tool_arguments_json_string", "tool_parameters_object", "url_encoded_text", "html_entity_text",
+				"base64_text", "markdown_fence", "xml_wrapper", "nested_json_text",
+			},
+			Languages: map[string]int{"en": 320, "zh-CN": 320},
+			Prior:     evaluationV10Prior,
+		}
+	case strings.Contains(slash, "/evaluation-v7/"):
+		return validationProfile{
+			Name:        "evaluation-v7",
+			PolicyLabel: "policy_violation",
+			Carriers: []string{
+				"openai_chat", "openai_responses", "anthropic_messages", "gemini_contents", "multi_turn_roles",
+				"tool_arguments", "base64_text", "url_encoded_text", "html_entity_text", "json_string_text",
+			},
+			Languages: map[string]int{"en": 214, "mixed": 212, "zh": 214},
+			Prior:     evaluationV7Prior,
+		}
+	default:
+		return validationProfile{Name: "unsupported"}
+	}
+}
+
+func requiredFieldsForTarget(path string) []string {
+	targetSlash := filepath.ToSlash(path)
+	if strings.Contains(targetSlash, "/evaluation-v8/") || strings.Contains(targetSlash, "/evaluation-v9/") || strings.Contains(targetSlash, "/evaluation-v10/") {
+		return []string{"carrier", "id", "input", "label", "language", "source", "tags", "taxonomy"}
+	}
+	return []string{"carrier", "expected", "id", "input", "language", "split", "tags", "taxonomy"}
+}
+
+func appendPriorCorpus(existing []priorCorpus, values ...priorCorpus) []priorCorpus {
+	result := make([]priorCorpus, 0, len(existing)+len(values))
+	result = append(result, existing...)
+	result = append(result, values...)
+	return result
+}
+
+func validateSummary(s summary, profile validationProfile) error {
+	if profile.Name == "unsupported" || len(profile.Carriers) == 0 || len(profile.Prior) == 0 {
+		return errors.New("unsupported or incomplete evaluation validation profile")
+	}
+	failures := make([]string, 0, 16)
+	addCountFailure := func(name string, count int) {
+		if count != 0 {
+			failures = append(failures, fmt.Sprintf("%s=%d", name, count))
+		}
+	}
+	addCountFailure("schema_failures", s.SchemaFailures)
+	addCountFailure("input_object_failures", s.InputObjectFailures)
+	addCountFailure("duplicate_ids", s.DuplicateIDs)
+	addCountFailure("tag_failures", s.TagFailures)
+	addCountFailure("extraction_failures", s.ExtractionFailures)
+	addCountFailure("self_duplicate_groups", s.SelfDuplicateGroups)
+	addCountFailure("self_duplicate_rows", s.SelfDuplicateRows)
+	addCountFailure("prior_failures", s.PriorFailures)
+	addCountFailure("cross_overlap_rows", s.CrossOverlapRows)
+	addCountFailure("cross_overlap_hashes", s.CrossOverlapHashes)
+	addCountFailure("taxonomy_enum_failures", s.TaxonomyEnumFailures)
+	addCountFailure("taxonomy_distribution_failures", s.TaxonomyDistributionFailures)
+
+	if len(s.DatasetSHA256) != sha256.Size*2 {
+		failures = append(failures, "dataset_sha256 is missing or malformed")
+	}
+	if s.Lines != 640 {
+		failures = append(failures, fmt.Sprintf("lines=%d want=640", s.Lines))
+	}
+	if s.Bytes <= 0 {
+		failures = append(failures, fmt.Sprintf("bytes=%d want>0", s.Bytes))
+	}
+	if s.RoleAware+s.Untrusted != s.Lines {
+		failures = append(failures, fmt.Sprintf("extraction_path_rows=%d want=%d", s.RoleAware+s.Untrusted, s.Lines))
+	}
+	wantPriorRows := 0
+	for _, item := range profile.Prior {
+		wantPriorRows += item.Rows
+	}
+	if s.PriorFiles != len(profile.Prior) || s.PriorRows != wantPriorRows {
+		failures = append(failures, fmt.Sprintf(
+			"prior corpus inventory files=%d rows=%d want files=%d rows=%d",
+			s.PriorFiles,
+			s.PriorRows,
+			len(profile.Prior),
+			wantPriorRows,
+		))
+	}
+	if len(s.PriorFailureFiles) != 0 {
+		failures = append(failures, "prior_failure_files is non-empty")
+	}
+	if len(s.UnexpectedTaxonomies) != 0 {
+		failures = append(failures, "unexpected_policy_taxonomies is non-empty")
+	}
+	if len(s.MissingTaxonomies) != 0 {
+		failures = append(failures, "missing_policy_taxonomies is non-empty")
+	}
+
+	wantExpected := map[string]int{"benign": 320, profile.PolicyLabel: 320}
+	checkDistribution(&failures, "expected", s.Expected, wantExpected)
+	wantTaxonomy := map[string]int{"benign": 320}
+	for _, taxonomy := range requiredPolicyTaxonomies {
+		wantTaxonomy[taxonomy] = 40
+	}
+	checkDistribution(&failures, "taxonomy", s.Taxonomy, wantTaxonomy)
+	checkDistribution(&failures, "language", s.Language, profile.Languages)
+
+	perCarrier := 640 / len(profile.Carriers)
+	perCarrierLabel := 320 / len(profile.Carriers)
+	wantCarrier := make(map[string]int, len(profile.Carriers))
+	wantCarrierLabel := make(map[string]int, len(profile.Carriers))
+	for _, carrier := range profile.Carriers {
+		wantCarrier[carrier] = perCarrier
+		wantCarrierLabel[carrier] = perCarrierLabel
+	}
+	checkDistribution(&failures, "carrier", s.Carrier, wantCarrier)
+	checkDistribution(&failures, "carrier_benign", s.CarrierBenign, wantCarrierLabel)
+	checkDistribution(&failures, "carrier_policy", s.CarrierPolicy, wantCarrierLabel)
+
+	if len(failures) != 0 {
+		return fmt.Errorf("%s validation failed: %s", profile.Name, strings.Join(failures, "; "))
+	}
+	return nil
+}
+
+func checkDistribution(failures *[]string, name string, got, want map[string]int) {
+	if equalCounts(got, want) {
+		return
+	}
+	*failures = append(*failures, fmt.Sprintf("%s=%s want=%s", name, formatCounts(got), formatCounts(want)))
+}
+
+func equalCounts(left, right map[string]int) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for key, count := range right {
+		if left[key] != count {
+			return false
+		}
+	}
+	return true
+}
+
+func formatCounts(counts map[string]int) string {
+	keys := make([]string, 0, len(counts))
+	for key := range counts {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, key := range keys {
+		parts = append(parts, fmt.Sprintf("%s:%d", key, counts[key]))
+	}
+	return "{" + strings.Join(parts, ",") + "}"
 }
 
 func validate() (summary, error) {
@@ -203,7 +448,7 @@ func validate() (summary, error) {
 		}
 	}
 
-	priorHashes, files, rows, failures, failureFiles, err := loadPriorHashes()
+	priorHashes, files, rows, failures, failureFiles, err := loadPriorHashes(profileForTarget(targetPath))
 	if err != nil {
 		return s, err
 	}
@@ -219,30 +464,110 @@ func validate() (summary, error) {
 	return s, nil
 }
 
-func loadPriorHashes() (map[[32]byte]struct{}, int, int, int, map[string]int, error) {
-	paths := make([]string, 0, 16)
-	err := filepath.WalkDir("testdata", func(path string, entry os.DirEntry, err error) error {
+func loadPriorHashes(profile validationProfile) (map[[32]byte]struct{}, int, int, int, map[string]int, error) {
+	return loadPriorHashesFrom(testdataRootForTarget(targetPath), targetPath, profile.Prior)
+}
+
+func testdataRootForTarget(path string) string {
+	directory := filepath.Dir(filepath.Clean(path))
+	for {
+		if filepath.Base(directory) == "testdata" {
+			return directory
+		}
+		parent := filepath.Dir(directory)
+		if parent == directory {
+			return "testdata"
+		}
+		directory = parent
+	}
+}
+
+func loadPriorHashesFrom(root, target string, inventory []priorCorpus) (map[[32]byte]struct{}, int, int, int, map[string]int, error) {
+	inventoryBase := filepath.Dir(filepath.Clean(root))
+	expected := make(map[string]priorCorpus, len(inventory))
+	for _, item := range inventory {
+		clean := filepath.ToSlash(filepath.Clean(item.Path))
+		if clean == "." || item.SHA256 == "" || item.Rows <= 0 {
+			return nil, 0, 0, 0, nil, fmt.Errorf("invalid frozen prior corpus entry: %+v", item)
+		}
+		if _, exists := expected[clean]; exists {
+			return nil, 0, 0, 0, nil, fmt.Errorf("duplicate frozen prior corpus path %s", clean)
+		}
+		expected[clean] = item
+	}
+	targetAbsolute, err := filepath.Abs(target)
+	if err != nil {
+		return nil, 0, 0, 0, nil, fmt.Errorf("resolve target path: %w", err)
+	}
+	seen := make(map[string]struct{}, len(inventory))
+	err = filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		if !entry.IsDir() && strings.EqualFold(filepath.Ext(path), ".jsonl") && filepath.Clean(path) != filepath.Clean(targetPath) {
-			paths = append(paths, path)
+		if entry.IsDir() {
+			if path != root && strings.Contains(entry.Name(), ".tmp-") {
+				return fmt.Errorf("unexpected fixture staging directory %s", filepath.ToSlash(path))
+			}
+			return nil
 		}
-		return nil
+		if !strings.EqualFold(filepath.Ext(path), ".jsonl") {
+			return nil
+		}
+		absolute, err := filepath.Abs(path)
+		if err != nil {
+			return err
+		}
+		if filepath.Clean(absolute) == filepath.Clean(targetAbsolute) {
+			return nil
+		}
+		relative, err := filepath.Rel(inventoryBase, path)
+		if err != nil {
+			return err
+		}
+		clean := filepath.ToSlash(filepath.Clean(relative))
+		if _, ok := expected[clean]; ok {
+			seen[clean] = struct{}{}
+			return nil
+		}
+		if _, known := knownCorpusPaths[clean]; known {
+			// A later frozen evaluation is not prior data for an earlier profile.
+			return nil
+		}
+		return fmt.Errorf("unexpected corpus file %s", clean)
 	})
 	if err != nil {
 		return nil, 0, 0, 0, nil, err
+	}
+	paths := make([]string, 0, len(inventory))
+	for clean := range expected {
+		if _, ok := seen[clean]; !ok {
+			return nil, 0, 0, 0, nil, fmt.Errorf("missing frozen prior corpus file %s", clean)
+		}
+		paths = append(paths, filepath.Join(inventoryBase, filepath.FromSlash(clean)))
 	}
 	sort.Strings(paths)
 	hashes := map[[32]byte]struct{}{}
 	rows, failures := 0, 0
 	failureFiles := map[string]int{}
 	for _, path := range paths {
-		file, err := os.Open(path)
+		data, err := os.ReadFile(path)
 		if err != nil {
 			return nil, 0, 0, 0, nil, err
 		}
-		scanner := bufio.NewScanner(file)
+		digest := sha256.Sum256(data)
+		relative, err := filepath.Rel(inventoryBase, path)
+		if err != nil {
+			return nil, 0, 0, 0, nil, err
+		}
+		clean := filepath.ToSlash(filepath.Clean(relative))
+		item := expected[clean]
+		if hex.EncodeToString(digest[:]) != item.SHA256 {
+			return nil, 0, 0, 0, nil, fmt.Errorf("prior corpus hash mismatch for %s", clean)
+		}
+		if lineCount := bytes.Count(data, []byte{'\n'}); lineCount != item.Rows || len(data) == 0 || data[len(data)-1] != '\n' {
+			return nil, 0, 0, 0, nil, fmt.Errorf("prior corpus row mismatch for %s: got %d want %d", clean, lineCount, item.Rows)
+		}
+		scanner := bufio.NewScanner(bytes.NewReader(data))
 		scanner.Buffer(make([]byte, 64*1024), 4*1024*1024)
 		for scanner.Scan() {
 			rows++
@@ -261,10 +586,6 @@ func loadPriorHashes() (map[[32]byte]struct{}, int, int, int, map[string]int, er
 			hashes[sha256.Sum256([]byte(canonical))] = struct{}{}
 		}
 		if err := scanner.Err(); err != nil {
-			_ = file.Close()
-			return nil, 0, 0, 0, nil, err
-		}
-		if err := file.Close(); err != nil {
 			return nil, 0, 0, 0, nil, err
 		}
 	}

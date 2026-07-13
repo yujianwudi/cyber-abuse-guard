@@ -72,11 +72,11 @@ jobs:
       - name: independent-evaluation-v9-frozen-integrity
         run: >-
           go test -tags=sqlite_omit_load_extension ./internal/classifier
-          -run='^TestEvaluationV9(Integrity|ProductionSnapshotIntegrity)$' -count=1 -v
+          -run='^TestEvaluationV9(Integrity|HistoricalSnapshotRecordIntegrity|ConsumedRerunRejected)$' -count=1 -v
       - name: independent-evaluation-v10-frozen-integrity
         run: >-
           go test -tags=sqlite_omit_load_extension ./internal/classifier
-          -run='^TestEvaluationV10(Integrity|ProductionSnapshotIntegrity)$' -count=1 -v
+          -run='^TestEvaluationV10(Integrity|HistoricalSnapshotRecordIntegrity|ConsumedRerunRejected)$' -count=1 -v
       - name: benchmark-acceptance
         run: make benchmark
       - name: dependency-vulnerability-gate

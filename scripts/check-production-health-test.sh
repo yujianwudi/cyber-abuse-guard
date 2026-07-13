@@ -185,6 +185,21 @@ try:
     ManagementHandler.unknown_source_formats = 3
     historical = run_watchdog()
 
+    ManagementHandler.router_errors = 8
+    ManagementHandler.panics_recovered = 9
+    leading_zero_budgets = run_watchdog({
+        "MAX_ROUTER_ERRORS": "08",
+        "MAX_PANICS_RECOVERED": "09",
+        "MAX_NEW_UNKNOWN_SOURCE_FORMATS": "00",
+    })
+
+    ManagementHandler.router_errors = 9
+    leading_zero_budget_exceeded = run_watchdog({
+        "MAX_ROUTER_ERRORS": "08",
+        "MAX_PANICS_RECOVERED": "09",
+        "MAX_NEW_UNKNOWN_SOURCE_FORMATS": "00",
+    })
+
     ManagementHandler.router_errors = 0
     ManagementHandler.panics_recovered = 0
     ManagementHandler.final_status_mode = "observe"
@@ -216,6 +231,12 @@ if historical.returncode != 0:
     sys.stderr.write(historical.stdout)
     sys.stderr.write(historical.stderr)
     raise SystemExit("historical cumulative counters permanently failed the watchdog")
+if leading_zero_budgets.returncode != 0:
+    sys.stderr.write(leading_zero_budgets.stdout)
+    sys.stderr.write(leading_zero_budgets.stderr)
+    raise SystemExit("leading-zero decimal watchdog budgets were rejected")
+if leading_zero_budget_exceeded.returncode == 0:
+    raise SystemExit("leading-zero decimal watchdog budget was not enforced")
 if final_status_drift.returncode == 0:
     raise SystemExit("post-probe mode drift was not rejected")
 if probe_identity_drift.returncode == 0:

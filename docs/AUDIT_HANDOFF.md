@@ -86,6 +86,52 @@ CPA 管理面只注册固定路径；普通下游 API Key 不能替代 Managemen
     clean-tag preflight、dirty 标记、严格 verifier/故障注入、SBOM、双 clone 复现、
     source tar.gz、最终 evidence 和 GitHub Tag workflow。
 
+### 4.1 v10 之后的审计加固（2026-07-13）
+
+当前 `agent/post-v10-production-hardening` 分支的本轮提示注入工作基于
+`68ce0f662cbb034e61e1f3a8b91f50ea20c57637`，包含 v10 消耗之后的工程加固；这些修改
+没有独立盲测结论，不能改变 Release Gate FAIL：
+
+- v7-v10 作者工具在写入前使用生产 `ExtractText` 证明每种 carrier 能恢复原始语义；
+  validator 对 schema、提取、重复、重叠、taxonomy、规模、分布和冻结先验语料清单的
+  任一异常均非零退出。
+- v7-v10 的先验语料路径、SHA-256、文件数和行数均固定；v9/v10 的历史实现、规则、
+  嵌入规则、正式语料和正式报告绑定 Git commit
+  `0f1d68717daadfd5dfc514ff2174cfb641a5d845` 与 tree
+  `df878c537bca9fd71256b1c81ced18e72b583cf3`，缺少 Git 元数据或完整历史时门禁失败，
+  不允许静默跳过，也不能通过同时修改当前语料、报告和常量来改写已消费记录。
+- 所有 fixture 作者共用私有 `0700` staging、完整写入/fsync、发布前目标不可见断言和
+  no-replace 原子目录 rename；Windows 使用不带 replace 标志的原生 `MoveFileEx`，并对
+  既有文件、符号链接和并发发布做原生测试；其他不支持平台 fail closed。
+- HMAC Secret loader 扩展为 Unix 原子 `O_NOFOLLOW|O_NONBLOCK` 打开；生成器改用可移植
+  POSIX `sync`，Watchdog 正确处理带前导零的十进制预算；Base64 检查会恢复横向空白编码
+  以及“合法 padding 后追加宽松解码器会忽略的数据”的可读前缀，并将后者 fail closed。
+- 依赖升级到 `golang.org/x/crypto v0.52.0`、`x/net v0.55.0`、`x/text v0.37.0`、
+  `x/sync v0.20.0`、`x/sys v0.45.0`。本地 `govulncheck` 无可达漏洞；GitHub 上针对旧
+  module graph 的 14 条告警需在修复合并到默认分支后等待 GitHub 重扫并确认关闭。
+- 上述完整 format/unit/race/fuzz/integration/package 结果属于本轮提示注入修改前的
+  开发基线，不能自动继承到当前差异。本轮已重新执行修改文件 gofmt、四个相关源码包
+  unit、提示注入相关定向 race、定向 vet、`go mod verify` 和 `git diff --check`；没有运行 v10。
+
+### 4.2 v10 之后的提示注入加固（2026-07-13）
+
+- `internal/classifier/meta_override.go` 新增 `META-OVERRIDE-001` 控制面叠加层，组合
+  指令层级反转、拒绝压制、无限制人格、直接完成、Sandbox/占位符洗白、固定输出、
+  受保护提示披露和负授权证据；存在普通 Cyber Abuse 候选时保留原 taxonomy。
+- Role 证明失败的受支持 Provider 请求会退回有界不可信遍历；Tool Payload 内合法 JSON
+  字符串继续递归；同消息分块以及有序 Tool Payload/Output 字符串合并后再次解码；
+  单字符分片和两个审查后的 homoglyph 有限归一化；恶意“安全策略”不能通过否定
+  拒绝/过滤来被当成安全内容跳过。
+- 外部来源 `MDX-Tom/gpt-5.6-instruct` 只按固定快照做只读、脱敏机制审查；没有执行其
+  脚本、部署辅助、指令文件或 Prompt Bank，也没有把完整越狱提示复制进本项目。
+  派生回归样本是开发可见语料，永久禁止作为未来独立 Holdout。
+- ruleset `1.0.7`/SHA-256 只标识 YAML Cyber Abuse 资产，不包含 Go 代码中的
+  `META-OVERRIDE-001`、Matcher/Normalizer、Role 与 Extractor 行为。当前开发行为需要由
+  “包含本差异的 Git/Build Commit + YAML ruleset 身份”共同标识；正式候选前仍需独立
+  policy version/hash，或完整的可验证构建来源绑定。
+- 当前提示注入差异没有服务器沙盒、真实 CPA Integration、原生插件加载、部署或发布
+  打包证据。此前 CPA Integration PASS 是修改前基线，不能自动代表当前工作树。
+
 ## 5. 信任与威胁边界
 
 受信任：固定版本 CPA Plugin Host、CPA Management Key 中间件、插件进程内代码、经运维
@@ -121,10 +167,18 @@ v10 使用 ruleset `1.0.7`，canonical embedded ruleset SHA-256 为
 
 ## 7. 验证状态
 
-已验证（开发工作树候选证据）：unit/race/vet/fuzz、module/script/actionlint、普通 Corpus、
+修改前基线已验证（开发工作树候选证据）：unit/race/vet/fuzz、module/script/actionlint、普通 Corpus、
 Round 4 Development Suite、benchmark、govulncheck、真实 CPA + Mock Upstream/Auth/Usage、
 隐私、candidate package/verifier/fault checks。普通 Corpus 为 0/142 FP、154/154 recall/exact；
 Round 4 为 64/64 恶意阻断、0/64 合法误报。这些非盲测工程结果不能覆盖 v10 的正式失败。
+
+本轮提示注入差异已用锁定的 Go `1.26.4` 验证：修改文件 gofmt；
+`go test -tags=sqlite_omit_load_extension ./internal/rules ./internal/extract ./internal/classifier ./internal/plugin -count=1`；
+相同四包定向 `go vet`；`go mod verify`；`go mod tidy -diff`；`git diff --check`。
+以上仅为源码级开发证据。
+新增提示注入/提取/Router 回归用例的三包定向 `go test -race` 也已通过。
+`SERVER SANDBOX VALIDATION: PENDING / NOT RUN`；当前差异的真实 CPA Integration、原生
+加载、部署、正式 Holdout、正式打包、Tag 和 GitHub Release 均未运行或被禁止。
 
 最终红线已经失败：v10 Release Gate FAIL。因此干净发布 Commit、Annotated Tag、GitHub
 Release、正式产物发布和生产灰度均不得继续。未来评审必须来自新实现与全新独立集合。
@@ -179,6 +233,8 @@ tag_target_commit: NOT CREATED — RELEASE BLOCKED
 github_actions_ci_run: candidate checks only; no approving tagged run
 github_actions_release_run: NOT RUN — RELEASE BLOCKED
 github_release_url: NOT CREATED — RELEASE BLOCKED
+server_sandbox_validation: PENDING / NOT RUN
+current_prompt_injection_integration: NOT RUN
 release_decision: REJECT / FAIL
 ```
 

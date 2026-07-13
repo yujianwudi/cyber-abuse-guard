@@ -164,6 +164,35 @@ capacity marker.
 The result contains only category, score, action, evidence IDs, and aggregate
 context flags. It never contains matched prompt fragments.
 
+### Post-v10 meta-override layer
+
+The development tree adds `META-OVERRIDE-001` after ordinary category
+assessment. It compiles bounded bilingual evidence families for hierarchy
+replacement, refusal suppression, unrestricted persona, direct completion,
+scope laundering, forced output/authorization bypass, protected-prompt
+disclosure, and explicit negative authorization. Independent families must
+compose; it is not a single-keyword bypass detector.
+
+If ordinary cyber-abuse evidence exists, the layer raises the score while
+preserving the original taxonomy. A strong standalone control-plane attack is
+reported under `defense_evasion`. Prompt-derived CTF/lab/authorization claims
+cannot reduce the layer. Defensive quoted analysis is discounted only with an
+affirmative non-execution purpose and no contradictory continuation.
+
+Role proof failure on a supported provider body causes a bounded conservative
+re-extraction. Tool provenance is inspected independently, nested valid JSON
+strings recurse only inside an established tool payload, joined content blocks
+are decoded again, and isolated single-character fragmentation has a narrow
+reconstruction path. These mechanisms remain stateless across independent API
+calls and do not attest to local instruction-file integrity.
+
+Ruleset `1.0.7` identifies the embedded YAML assets only. The complete
+code-level policy also includes the meta layer, matcher/normalizer behavior,
+role handling, and extraction semantics. The containing Git/build commit plus
+the YAML identity are required to identify this development behavior; a future
+release must add a separate policy identity or fully bind it to verified build
+provenance.
+
 Mode semantics are:
 
 - `off`: skip extraction, classification, audit, and risk accumulation;

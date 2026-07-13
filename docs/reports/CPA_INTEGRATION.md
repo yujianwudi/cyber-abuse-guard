@@ -2,11 +2,14 @@
 
 ## Status
 
-The v0.1.2 candidate integration run is **PASS**. It built and loaded the current
-dirty-suffixed development artifact through the real CPA v7.2.67 Plugin Host;
-this is engineering evidence only. Methodologically valid evaluation v10 is
-`CONSUMED / FAIL`, so no clean `v0.1.2` release tag or production artifact may
-be created. Integration PASS cannot override the failed release gate.
+**PRE-PROMPT-INJECTION-CHANGE BASELINE — CURRENT DIFF NOT RUN.** The recorded
+v0.1.2 candidate integration run passed against an earlier dirty-suffixed
+development artifact through the real CPA v7.2.67 Plugin Host. It was not rerun
+for the current prompt-injection/extraction diff and must not be presented as
+current-diff CPA, native-load, or deployment evidence. Methodologically valid
+evaluation v10 is `CONSUMED / FAIL`, so no clean `v0.1.2` release tag or
+production artifact may be created. The historical integration PASS cannot
+override the failed release gate.
 
 Target host: CLIProxyAPI `v7.2.67` at commit
 `2075f77c8ebe9ec872759965661936fb1ac2931f`, CPA C ABI/RPC schema v1.
@@ -23,7 +26,7 @@ counting CPA auth selector and usage-queue probe, and avoid all real providers.
 
 ## Mandatory assertions
 
-| Assertion | Final result |
+| Assertion | Pre-change baseline result |
 |---|---|
 | ELF discovered, `dlopen` loaded, ABI metadata registered | **PASS** |
 | Runtime version/commit/dirty/ruleset version/hash match build metadata | **PASS** |
@@ -132,5 +135,5 @@ cpa_version: v7.2.67
 cpa_commit: 2075f77c8ebe9ec872759965661936fb1ac2931f
 command_exit_status: 0
 integration_log_sha256: candidate evidence only; no formal tagged release log
-overall_cpa_integration_gate: PASS (engineering preflight only); RELEASE GATE remains FAIL
+overall_cpa_integration_gate: PASS PRE-CHANGE BASELINE; CURRENT DIFF NOT RUN; RELEASE GATE remains FAIL
 ```

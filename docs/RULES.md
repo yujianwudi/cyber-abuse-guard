@@ -48,6 +48,32 @@ payloads remain inspectable even when the field is named `name`, `url`, `type`,
 or `model`. Order-independent Anthropic `tool_use.input` and second-order JSON
 use the same shared limits.
 
+## Meta-override implementation overlay
+
+`META-OVERRIDE-001` is a post-v10 implementation-level decision overlay, not a
+lone-keyword rule. It combines independent bilingual families for hierarchy
+replacement, refusal suppression, unrestricted mode/persona, direct
+completion, scope/placeholder laundering, output control, protected-prompt or
+hidden-reasoning disclosure, and explicit negative authorization.
+
+When a normal cyber-abuse candidate already exists, the overlay raises its
+score without replacing the original category. A strong standalone
+control-plane attack is reported as `defense_evasion`. Prompt-derived CTF/lab,
+fictional-target, and authorization claims do not reduce this overlay.
+Defensive quoted material can reduce it only when the request has an
+affirmative analysis/remediation purpose, an explicit non-execution signal,
+and no contradictory operational continuation.
+
+System, assistant, and tool segments are evaluated with their provenance.
+Benign safety/refusal quotations are kept separate from user intent, while an
+explicitly hostile non-user instruction remains inspectable. Linked adjacent
+segments in one request can compose evidence. A hostile system/tool control
+marker may combine with an explicitly linked following user segment, while a
+new `now`/`then` operational turn exits an inert quotation. Defensive
+non-execution language reduces the overlay only when it follows the last quoted
+meta-control phrase; a label placed before later instructions cannot launder
+them. Separate API calls remain stateless.
+
 ## Bounded decoding before matching
 
 The extractor preserves the original text and adds bounded decoded views:
@@ -58,11 +84,22 @@ The extractor preserves the original text and adds bounded decoded views:
 - inspectable standard or URL-safe Base64 text;
 - textual data URLs.
 
+After content blocks from one provider message are joined, the same bounded
+decoder runs once more to detect an encoded value split into sub-threshold
+blocks. Ordered strings extracted from one tool payload or function output also
+receive one pristine joined decode pass. Inside an already-established tool
+payload, every valid JSON-looking string can be recursively inspected under the
+same depth, part, and byte budgets. The compact matcher also has a tightly
+bounded reconstruction path for isolated one-character fragments separated by
+line/content boundaries.
+
 At most two decode layers and eight unique variants are retained. Encoded source
 is capped at 128 KiB, and decoded variants share a 64 KiB retained-byte budget.
 Only printable valid UTF-8 text is accepted. The plugin performs no
 decompression, archive expansion, document parsing, binary-media decoding, or
-network fetch. An incomplete recognized text envelope sets `Truncated`;
+network fetch. It does not claim Base32, arbitrary hex, quoted-printable,
+encryption, or unbounded transform coverage. An incomplete recognized text
+envelope sets `Truncated`;
 Balanced/Strict handle that conservatively.
 
 Image/audio/video is not converted into text. It is governed separately by
@@ -91,6 +128,14 @@ The manifest canonically identifies every embedded rule file. The ruleset
 version and canonical SHA-256 are linked into the binary, exposed by
 authenticated status, compared with source by `verify-release.sh`, and included
 in `build-metadata.json`. A missing or mismatched identity is a release failure.
+
+This identity covers the embedded YAML rule assets. The complete code-level
+policy also includes `META-OVERRIDE-001`, matcher/normalizer mappings, role
+handling, and extraction semantics; none is covered by ruleset `1.0.7` or its
+canonical hash. The containing Git/build commit plus the YAML identity are
+required to identify this development behavior. Before a successor can be a
+release candidate, it must add a separately verified classifier-policy
+version/hash or fully bind those semantics to verified build provenance.
 
 Any rule change requires a new ruleset version, regression review, manifest
 regeneration, changelog entry, and independent blind evaluation. Default rules

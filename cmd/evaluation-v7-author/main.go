@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/yujianwudi/cyber-abuse-guard/internal/extract"
@@ -289,10 +290,7 @@ func applySurface(text string, languageIndex, variant int) (string, string) {
 		prefix := localized{"Plainly speaking, ", "说白了，", "说白了，plainly speaking，"}
 		return prefix[languageIndex] + lowerInitial(text), "colloquial"
 	case 1:
-		if languageIndex == 1 {
-			return strings.Replace(text, "请", "请", 1) + " 文中故意把安全写成安荃。", "typo"
-		}
-		return strings.Replace(text, "conceptual", "conceptul", 1), "typo"
+		return introduceTypo(text), "typo"
 	case 2:
 		if languageIndex == 1 {
 			return "sаfety 语境：" + text, "unicode_homoglyph"
@@ -303,6 +301,27 @@ func applySurface(text string, languageIndex, variant int) (string, string) {
 	default:
 		return text, "plain"
 	}
+}
+
+func introduceTypo(value string) string {
+	for _, replacement := range [][2]string{
+		{"conceptual", "conceptul"},
+		{"Conceptual", "Conceptul"},
+		{"security", "securtiy"},
+		{"Security", "Securtiy"},
+	} {
+		if changed := strings.Replace(value, replacement[0], replacement[1], 1); changed != value {
+			return changed
+		}
+	}
+	runes := []rune(value)
+	for index := 0; index+1 < len(runes); index++ {
+		if unicode.IsLetter(runes[index]) && unicode.IsLetter(runes[index+1]) && runes[index] != runes[index+1] {
+			runes[index], runes[index+1] = runes[index+1], runes[index]
+			return string(runes)
+		}
+	}
+	return value + "x"
 }
 
 func lowerInitial(value string) string {

@@ -149,12 +149,14 @@ router_errors_before="$status_router_errors"
 panics_before="$status_panics_recovered"
 unknown_source_formats_before="$status_unknown_source_formats"
 if [[ -n "$MAX_ROUTER_ERRORS" ]]; then
-  (( router_errors_before <= MAX_ROUTER_ERRORS )) || fail "router_errors=${router_errors_before} exceeds ${MAX_ROUTER_ERRORS}"
+  max_router_errors=$((10#$MAX_ROUTER_ERRORS))
+  (( router_errors_before <= max_router_errors )) || fail "router_errors=${router_errors_before} exceeds ${max_router_errors}"
 elif (( router_errors_before > 0 )); then
   printf 'NOTICE: cumulative router_errors=%s; set MAX_ROUTER_ERRORS to enforce an absolute restart-scoped budget.\n' "$router_errors_before" >&2
 fi
 if [[ -n "$MAX_PANICS_RECOVERED" ]]; then
-  (( panics_before <= MAX_PANICS_RECOVERED )) || fail "panics_recovered=${panics_before} exceeds ${MAX_PANICS_RECOVERED}"
+  max_panics_recovered=$((10#$MAX_PANICS_RECOVERED))
+  (( panics_before <= max_panics_recovered )) || fail "panics_recovered=${panics_before} exceeds ${max_panics_recovered}"
 elif (( panics_before > 0 )); then
   printf 'NOTICE: cumulative panics_recovered=%s; set MAX_PANICS_RECOVERED to enforce an absolute restart-scoped budget.\n' "$panics_before" >&2
 fi

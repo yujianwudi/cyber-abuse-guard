@@ -169,3 +169,55 @@
     delta, but a future provider may encode semantics under fields the generic
     walker cannot identify. Every new CPA/provider source label still requires
     compatibility review and an explicit canonical mapping.
+
+32. **Prompt-injection detection remains heuristic.** The post-v10
+    `META-OVERRIDE-001` overlay requires combinations of reviewed control-plane
+    evidence, but cannot guarantee coverage of every persona, hierarchy
+    inversion, language, steganographic form, or future jailbreak technique.
+
+33. **Cross-request continuation remains stateless.** The classifier can use
+    adjacent segments and history present in the current request body. It does
+    not retain prompt fragments or semantic flags across independent API calls;
+    callers that omit relevant history can therefore remove context the plugin
+    never received.
+
+34. **Local instruction-file integrity is outside the plugin boundary.** The
+    router cannot prove the owner, mode, allowlist membership, or hash of a
+    local `model_instructions_file` before CPA serializes a request. That
+    control belongs to the launcher/deployment environment.
+
+35. **Control-plane taxonomy is coarse.** A strong standalone meta override is
+    currently reported as `defense_evasion`, not a dedicated prompt-injection
+    category. When ordinary abuse is present, the original abuse taxonomy is
+    retained and amplified.
+
+36. **Server sandbox validation is pending.** The current prompt-injection
+    changes have source-level regression, static-analysis, and module evidence
+    only. They have not been deployed, natively loaded, or exercised through a
+    current-diff real CPA integration locally. Owner-operated server sandbox
+    validation is **PENDING / NOT RUN** and cannot reverse the v10 release
+    failure.
+
+37. **Classifier-policy identity is not yet independently versioned.**
+    Ruleset `1.0.7` and its canonical hash identify the embedded YAML
+    cyber-abuse assets, not the complete Go-level policy. The meta overlay,
+    matcher/normalizer mappings, role handling, and extraction semantics all
+    affect decisions. The containing Git/build commit plus the YAML identity
+    are required for this development tree. A future release must add a policy
+    version/hash or fully bind these semantics to verified build provenance.
+
+38. **Provider safety-control semantics are not enforced.** Recognized
+    transport/configuration containers such as `safetySettings`,
+    `generationConfig`, and generic `options` are not interpreted as model
+    policy. The plugin scans model-visible text and tool data; it does not prove
+    that a client or CPA configuration kept every provider-side safety option
+    enabled. Enforce those controls with a server-side allowlist and verify them
+    in the owner-operated sandbox.
+
+39. **Tool JSON property names are not standalone instructions.** Text values
+    inside established tool payloads are scanned recursively, but a property
+    name whose value is only a boolean, number, or `null` is not promoted to
+    prompt text. A key-only control such as `reveal_system_prompt: true` can
+    therefore remain outside semantic classification unless equivalent text is
+    present in a value. Provider/tool schemas should reject unapproved control
+    keys before they reach the model or executor.

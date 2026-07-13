@@ -241,11 +241,11 @@ func commonHomoglyphReplacement(r rune) (rune, bool) {
 		return 'e', true
 	case '\u04bb': // Cyrillic shha
 		return 'h', true
-	case '\u0456', '\u03b9': // Cyrillic i, Greek iota
+	case '\u0456', '\u03b9', '\u0131': // Cyrillic i, Greek iota, dotless i
 		return 'i', true
 	case '\u0458': // Cyrillic je
 		return 'j', true
-	case '\u03ba': // Greek kappa
+	case '\u03ba', '\u043a': // Greek kappa, Cyrillic ka
 		return 'k', true
 	case '\u04cf': // Cyrillic palochka
 		return 'l', true

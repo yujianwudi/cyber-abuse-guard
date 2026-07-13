@@ -133,6 +133,13 @@ func decodeOneLayer(value string) ([]decodeStep, bool, bool) {
 		} else {
 			appendText(decoded, true)
 		}
+	} else if decoded, ok := recoverMalformedBase64Prefix(value, minBase64SourceBytes); ok {
+		// Some permissive decoders stop at valid padding and ignore trailing
+		// alphabet characters. Scan the recoverable prefix, but mark the envelope
+		// incomplete so enforcing modes fail closed on the discarded suffix.
+		recognized = true
+		incomplete = true
+		appendText(decoded, true)
 	} else if looksLikeMalformedBase64(value) {
 		// Strong, token-shaped Base64 with malformed terminal padding is an
 		// incomplete inspection, not an ordinary identifier. Textual data URLs
@@ -164,17 +171,23 @@ func isHexByte(value byte) bool {
 
 func looksLikeMalformedBase64(value string) bool {
 	trimmed := strings.TrimSpace(value)
-	if len(trimmed) < minBase64SourceBytes || strings.ContainsAny(trimmed, " \t") || strings.Contains(trimmed, "://") {
+	if compact, ok := horizontalBase64Candidate(trimmed); ok {
+		trimmed = compact
+	} else if strings.ContainsAny(trimmed, " \t") {
+		return false
+	}
+	if len(trimmed) < minBase64SourceBytes || strings.Contains(trimmed, "://") {
 		return false
 	}
 	// Terminal '=' is the explicit padding signal. Restrict it to the final
 	// four bytes so ordinary key=value text and URLs do not become truncation
 	// failures merely because they contain an equals sign.
 	padding := strings.IndexByte(trimmed, '=')
-	if padding < len(trimmed)-4 {
-		return false
-	}
-	if padding < 0 && !strings.ContainsAny(trimmed, "\r\n") {
+	if padding < 0 {
+		if !strings.ContainsAny(trimmed, "\r\n") {
+			return false
+		}
+	} else if padding < len(trimmed)-4 {
 		return false
 	}
 	base64ish := 0
@@ -234,6 +247,11 @@ func isTextualDataMIME(mediaType string) bool {
 func decodeBase64Text(value string, minimum int) (string, bool, bool) {
 	decoded, found := decodeBase64Bytes(value, minimum)
 	if !found {
+		if compact, ok := horizontalBase64Candidate(value); ok {
+			decoded, found = decodeBase64Bytes(compact, minimum)
+		}
+	}
+	if !found {
 		return "", false, false
 	}
 	if !isInspectableText(decoded) {
@@ -244,6 +262,96 @@ func decodeBase64Text(value string, minimum int) (string, bool, bool) {
 		return "", hasStrongBase64Signal(value), false
 	}
 	return string(decoded), true, true
+}
+
+func recoverMalformedBase64Prefix(value string, minimum int) (string, bool) {
+	trimmed := strings.TrimSpace(value)
+	if compact, ok := horizontalBase64Candidate(trimmed); ok {
+		trimmed = compact
+	}
+	if len(trimmed) < minimum || strings.Contains(trimmed, "://") {
+		return "", false
+	}
+	padding := strings.IndexByte(trimmed, '=')
+	if padding < 0 {
+		return "", false
+	}
+	end := padding + 1
+	if end < len(trimmed) && trimmed[end] == '=' {
+		end++
+	}
+	for ; end > padding; end-- {
+		if end >= len(trimmed) {
+			continue
+		}
+		if !malformedBase64Suffix(trimmed[end:]) {
+			continue
+		}
+		decoded, found := decodeBase64Bytes(trimmed[:end], minimum)
+		if found && isInspectableText(decoded) {
+			return string(decoded), true
+		}
+	}
+	return "", false
+}
+
+func malformedBase64Suffix(value string) bool {
+	if value == "" {
+		return false
+	}
+	for _, r := range value {
+		switch {
+		case r >= 'A' && r <= 'Z', r >= 'a' && r <= 'z', r >= '0' && r <= '9',
+			r == '+' || r == '/' || r == '-' || r == '_' || r == '=' || r == '\r' || r == '\n':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func stripHorizontalBase64Whitespace(value string) (string, bool) {
+	if !strings.ContainsAny(value, " \t") {
+		return value, false
+	}
+	var builder strings.Builder
+	builder.Grow(len(value))
+	for _, r := range value {
+		if r != ' ' && r != '\t' {
+			builder.WriteRune(r)
+		}
+	}
+	return builder.String(), true
+}
+
+func horizontalBase64Candidate(value string) (string, bool) {
+	compact, changed := stripHorizontalBase64Whitespace(value)
+	if !changed || len(compact) < minBase64SourceBytes {
+		return value, false
+	}
+	for _, r := range value {
+		switch {
+		case r == ' ' || r == '\t' || r == '\r' || r == '\n',
+			r >= 'A' && r <= 'Z', r >= 'a' && r <= 'z', r >= '0' && r <= '9',
+			r == '+' || r == '/' || r == '-' || r == '_' || r == '=':
+		default:
+			return value, false
+		}
+	}
+	if strings.HasSuffix(strings.TrimSpace(compact), "=") {
+		return compact, true
+	}
+	chunks := strings.FieldsFunc(value, func(r rune) bool { return r == ' ' || r == '\t' })
+	if len(chunks) < 2 {
+		return value, false
+	}
+	for index, chunk := range chunks {
+		chunk = strings.ReplaceAll(strings.ReplaceAll(chunk, "\r", ""), "\n", "")
+		if chunk == "" || (index < len(chunks)-1 && len(chunk)%4 != 0) {
+			return value, false
+		}
+	}
+	return compact, true
 }
 
 func hasStrongBase64Signal(value string) bool {
@@ -345,6 +453,12 @@ func looksPotentiallyEncoded(value string) bool {
 		(strings.Contains(trimmed, "&") && strings.Contains(trimmed, ";")) {
 		return true
 	}
-	_, _, valid := compactBase64(trimmed)
-	return valid && len(trimmed) >= minBase64SourceBytes && hasStrongBase64Signal(trimmed)
+	candidate := trimmed
+	horizontal := false
+	if compact, ok := horizontalBase64Candidate(trimmed); ok {
+		candidate = compact
+		horizontal = true
+	}
+	_, _, valid := compactBase64(candidate)
+	return valid && len(candidate) >= minBase64SourceBytes && (horizontal || hasStrongBase64Signal(candidate))
 }

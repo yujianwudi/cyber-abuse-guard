@@ -17,8 +17,11 @@ Reasons:
    1.0.7 and failed benign false-positive, overall, and all four critical
    category floors. The release is blocked and v10 is frozen against reruns.
 4. Non-blind functional, performance, real-CPA integration, privacy,
-   vulnerability, candidate packaging, and verifier-fault checks passed as
-   engineering preflight. They cannot override the blind release-gate failure.
+   vulnerability, candidate packaging, and verifier-fault checks passed as a
+   pre-prompt-injection-change engineering baseline. The current diff has only
+   the source-level checks recorded in `TEST_REPORT.md`; it does not inherit
+   current-diff CPA/native/deployment evidence. Neither baseline nor current
+   checks can override the blind release-gate failure.
 5. The clean release commit, annotated tag `v0.1.2`, GitHub Release, formal
    artifact set, and formal artifact SHA-256 values were deliberately not
    created because the release gate failed.
@@ -42,6 +45,10 @@ release_commit: NOT CREATED — RELEASE BLOCKED
 annotated_tag: NOT CREATED — RELEASE BLOCKED
 ruleset_sha256: 7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134
 source_tree_clean: NOT A RELEASE TREE; no tag may be created
+server_sandbox_validation: PENDING / NOT RUN
+current_diff_real_cpa_integration: NOT RUN
+current_diff_native_loading_or_deployment: NOT RUN
+prompt_injection_blind_evaluation: NOT CREATED
 ```
 
 ## Audit-item closure matrix
@@ -55,10 +62,10 @@ evidence column is complete.
 | Script executable bits | Shell scripts tracked as executable in release source | PASS candidate Git-mode check; no tagged release source |
 | Verifier must fail hard | `set -euo pipefail`, strict dependency/artifact/ELF/ABI/hash/archive checks, fault injection | PASS candidate fault suite; no formal artifact |
 | Clean-tag-only artifacts | formal builds reject modified/staged/untracked files; dirty override is visibly suffixed | PASS mechanism; no release tag created |
-| Independent evaluation | v1-v9 history frozen; methodologically valid v10 consumed after one formal run | **FAIL: v10 GATE / RELEASE BLOCKED** |
-| Encoding/bypass tests | bounded URL/HTML/Base64/text-data/JSON/tool decoding; two layers and resource caps | PASS candidate engineering tests |
-| Prompt-injection washing | protected critical categories retain hard authorization behavior | UNRESOLVED after consumed v10 FAIL |
-| Multi-turn/role pollution | per-segment plus adjacent-user analysis; conservative unsupported roles | PASS candidate engineering tests |
+| Independent evaluation | v1-v9 history frozen; v9/v10 implementation, rules, corpus, and formal report evidence bound to a recomputable historical Git commit/tree with missing/shallow history rejected; exact prior-corpus paths/hashes/rows frozen; methodologically valid v10 consumed after one formal run | **FAIL: v10 GATE / RELEASE BLOCKED** |
+| Encoding/bypass tests | bounded URL/HTML/Base64/text-data/JSON/tool decoding; ambiguous-schema fallback; recursive JSON in tool payloads; split-block and ordered tool-field re-decode; isolated-character reconstruction | PASS current-diff source tests; server sandbox pending |
+| Prompt-injection washing | post-v10 `META-OVERRIDE-001` source overlay covers hierarchy/refusal/persona/scope/output/disclosure/negative-authorization combinations while retaining ordinary taxonomy | SOURCE IMPLEMENTED; current-diff source tests PASS; server sandbox PENDING; formal evidence unresolved; v10 remains FAIL |
+| Multi-turn/role pollution | per-segment plus adjacent-user analysis; conservative unsupported roles; no semantic state across separate API calls | PASS current-diff source tests; cross-request continuation remains a limitation |
 | Router fail-open mitigation | panic recovery, mode-aware self-route, counters, readiness, local probes | PASS controlled CPA tests; host boundary remains |
 | Health monitoring | authenticated status plus read-only loopback watchdog | PASS local candidate tests; production deployment prohibited |
 | No original-text logging | unsafe field rejected; typed minimal events; no debug override | PASS candidate privacy scan |
@@ -67,7 +74,7 @@ evidence column is complete.
 | HMAC production handling | atomic no-output generator, mode-0600 secret file, stable/degraded status | PASS candidate tests; dual-key rotation remains design-only |
 | Dual-key rotation | design documented; not implemented | ACCEPTED LIMITATION, operator must preserve key |
 | Opaque media | explicit policy, mode-aware defaults, separate signal/counters, no public fetch | PASS candidate engineering tests |
-| Rule version/hash | embedded 1.0.7, canonical manifest/hash linked and status-visible | PASS candidate identity; canonical SHA recorded above |
+| Rule version/hash | embedded YAML ruleset 1.0.7 remains canonical and status-visible; meta, matcher/normalizer, role, and extractor semantics require the containing build commit too | YAML identity PASS; complete classifier-policy identity UNRESOLVED until separately versioned or provenance-bound |
 | Performance gates | acceptance/benchmark/CPU-profile procedure documented | PASS candidate engineering gate; host-specific |
 | Management hardening | CPA-authenticated exact routes, body/query/page/method bounds, fixed unblock body | PASS controlled real-CPA tests |
 | Router conflict/duplicate binary | ABI limitation surfaced; manual deployment checks/watchdog notice | MANUAL CONTROL REQUIRED |
@@ -81,7 +88,7 @@ evidence column is complete.
 
 | Document | Scope | Current status |
 |---|---|---|
-| `TEST_REPORT.md` | full command/test matrix | candidate engineering PASS / v10 release FAIL |
+| `TEST_REPORT.md` | full command/test matrix | pre-change baseline PASS; current-diff targeted source checks PASS; v10 release FAIL |
 | `HOLDOUT_REPORT.md` | frozen v1 calibration diagnostic | consumed history |
 | `HOLDOUT_V2_REPORT.md` | independently authored frozen v2 aggregate | consumed; FAIL |
 | `HOLDOUT_V3_REPORT.md` | historical blind generation v3 | consumed; FAIL |
@@ -93,9 +100,10 @@ evidence column is complete.
 | `EVALUATION_V9_REPORT.md` | independent evaluation v9 | consumed; METHODOLOGY INVALID / FAIL |
 | `EVALUATION_V10_REPORT.md` | current methodologically valid formal gate | consumed; FAIL |
 | `CORPUS_REPORT.md` | project-maintained regression corpus | PASS candidate engineering signal; not blind evidence |
-| `PERFORMANCE.md` | latency, CPU, allocation, profile procedure | PASS candidate engineering gate; host-specific |
-| `CPA_INTEGRATION.md` | real CPA + mock upstream/auth/usage isolation | PASS candidate engineering gate |
-| `PRIVACY.md` | DB/WAL/SHM/log/API/artifact/network canary scan | PASS candidate engineering gate |
+| `PERFORMANCE.md` | latency, CPU, allocation, profile procedure | PASS pre-change baseline; current diff not benchmarked |
+| `CPA_INTEGRATION.md` | real CPA + mock upstream/auth/usage isolation | PASS pre-change baseline; current prompt-injection diff NOT RUN |
+| `PRIVACY.md` | DB/WAL/SHM/log/API/artifact/network canary scan | PASS pre-change baseline; current diff not rerun end-to-end |
+| `PROMPT_INJECTION_REVIEW.md` | sanitized external defensive review and current source response | development input only; not blind; server sandbox pending |
 
 ## Mandatory redlines
 
@@ -103,12 +111,12 @@ Every row must be PASS before “production-ready” is used:
 
 | Redline | Status |
 |---|---|
-| Blocked raw content never reaches Mock Upstream | PASS candidate controlled integration |
-| Blocked request never enters CPA Auth Selector | PASS candidate controlled integration |
-| Blocked request creates no real-upstream usage record | PASS candidate controlled integration |
-| Raw prompt and plaintext credentials absent from all persistent/returned/logged surfaces | PASS candidate privacy suite |
-| Safe request identity, model, body, and tools remain unchanged | PASS candidate controlled integration |
-| No safety-system bypass, identity spoofing, or request laundering | PASS candidate implementation tests; not proof of blind generalization |
+| Blocked raw content never reaches Mock Upstream | PASS PRE-CHANGE BASELINE; CURRENT DIFF NOT RUN |
+| Blocked request never enters CPA Auth Selector | PASS PRE-CHANGE BASELINE; CURRENT DIFF NOT RUN |
+| Blocked request creates no real-upstream usage record | PASS PRE-CHANGE BASELINE; CURRENT DIFF NOT RUN |
+| Raw prompt and plaintext credentials absent from all persistent/returned/logged surfaces | PASS PRE-CHANGE BASELINE; CURRENT DIFF END-TO-END PRIVACY NOT RUN |
+| Safe request identity, model, body, and tools remain unchanged | PASS PRE-CHANGE BASELINE; CURRENT DIFF NOT RUN |
+| No safety-system bypass, identity spoofing, or request laundering | DEVELOPMENT REGRESSION PASS ONLY; no blind generalization proof; server sandbox PENDING; release remains blocked |
 | Legitimate defense/remediation/CTF/authorized work meets FP gate | FAIL v10 (28 / 320 false positives; 8.75%) |
 | Clean Git worktree | NOT A RELEASE TREE; release stopped before tag |
 | Release built from exact annotated tag and commit | NOT CREATED because v10 failed |
@@ -245,6 +253,13 @@ consumption_status: EXECUTED ONCE / FAIL; rerun rejected by gate
 If any floor fails, preserve the files and hashes, publish aggregate failure,
 and stop the release. Do not delete/relabel misses or tune one literal per row.
 
+The current development tree is newer than the implementation/dependency
+snapshot recorded above. Post-v10 audit fixes and dependency updates must not
+replace that historical hash or be evaluated by rerunning the consumed corpus.
+CI verifies the frozen corpus, historical report markers, and rerun rejection
+separately. Current source has no independent release result and remains
+blocked until a new unseen set is authored outside the implementation process.
+
 ## Required formal artifacts
 
 | Artifact | SHA-256 | Verified |
@@ -273,9 +288,11 @@ govulncheck_version: v1.6.0
 result: PASS (candidate engineering check; 0 reachable vulnerabilities)
 github_dependabot_open_alerts: 14 (7 critical, 2 high, 5 moderate)
 github_dependabot_packages: golang.org/x/crypto; golang.org/x/net
-unfixed_high_severity_findings: PRESENT at dependency-version level; not reachable according to govulncheck
+post_v10_source_versions: golang.org/x/crypto v0.52.0; golang.org/x/net v0.55.0
+patched_version_floor_status: SATISFIED IN DEVELOPMENT BRANCH; GitHub closure requires merge to the default branch and repository rescan
+unfixed_high_severity_findings: OPEN IN GITHUB against prior pushed module graph; not reachable according to prior govulncheck
 exceptions: NONE GRANTED; production release remains prohibited
-required_follow_up: update or replace the affected dependency graph in a future implementation, rerun all gates, and use a new independent evaluation
+required_follow_up: review and merge the dependency remediation, confirm GitHub alerts close after rescan, rerun all gates, and use a new independent evaluation
 ```
 
 GitHub's dependency-version alerts and `govulncheck` answer different questions.
@@ -308,6 +325,10 @@ annotated_tag_object: NOT CREATED — RELEASE BLOCKED
 tag_target_commit: NOT CREATED — RELEASE BLOCKED
 github_release_url: NOT CREATED — RELEASE BLOCKED
 github_actions_release_run: NOT RUN — RELEASE BLOCKED
+server_sandbox_validation: PENDING / NOT RUN
+current_diff_real_cpa_integration: NOT RUN
+prompt_injection_blind_evaluation: NOT CREATED
+classifier_policy_identity: UNRESOLVED — ruleset 1.0.7 hash covers YAML assets only; code semantics require containing build commit
 all_redlines_pass: NO
 known_unimplemented_requirements:
   - dual-key HMAC rotation (design only)

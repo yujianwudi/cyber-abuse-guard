@@ -40,13 +40,18 @@ func snapshot(patterns []string, excludeTests bool) (string, error) {
 	for _, pattern := range patterns {
 		matches, err := filepath.Glob(filepath.FromSlash(pattern))
 		if err != nil {
-			return "", err
+			return "", fmt.Errorf("snapshot pattern %q: %w", pattern, err)
 		}
+		included := 0
 		for _, path := range matches {
 			if excludeTests && strings.HasSuffix(path, "_test.go") {
 				continue
 			}
 			paths = append(paths, path)
+			included++
+		}
+		if included == 0 {
+			return "", fmt.Errorf("snapshot pattern %q matched no eligible files", pattern)
 		}
 	}
 	if len(paths) == 0 {

@@ -34,12 +34,29 @@ implemented behavior.
 9. Add an authenticated management UI mechanism only after CPA offers a safe
    private resource route. CPA v7.2.67 public resource routes must never carry
    audit or subject data.
-10. Replace whole-buffer rune normalization with a streaming/byte-oriented
-    matcher to bring near-budget allocation below 1,000,000 bytes/op without
-    reducing scan, decode, history, or rule coverage.
+10. Preserve the achieved near-budget allocation gate (currently well below
+    1,000,000 bytes/op). Consider streaming/byte-oriented normalization only if
+    future rule or decoder growth regresses the measured gate, and never reduce
+    scan, decode, history, or rule coverage to recover performance.
 11. Add long-running nightly fuzz, soak, migration-fault, and memory-leak jobs,
     signed provenance/attestation, and reproducibility comparison across two
     independent Linux builders rather than two local clones only.
 12. Qualify newer CPA releases and architectures one at a time with the full
     Mock Upstream/Auth Selector/Usage isolation suite. Do not infer compatibility
     from ABI numbers alone.
+13. Add a privacy-safe cross-request control-plane state model that stores only
+    bounded semantic flags and expiry, never prompt fragments. Alternatively,
+    require and verify complete caller-supplied history for continuation cases.
+14. Add launcher/deployment attestation for local instruction files: trusted
+    owner, restrictive mode, allowlisted path, pinned hash, and visible drift
+    status without exposing file contents.
+15. Give code-level classifier policies a canonical version and hash included
+    in build metadata, authenticated status, verification, and release
+    evidence, or migrate `META-OVERRIDE-001` into versioned embedded rule assets.
+16. Consider additional strongly marked bounded decoders (for example selected
+    Base32, hex, or quoted-printable forms) only with strict source/size/layer
+    signals, adversarial resource tests, and benign multilingual contrasts. Do
+    not add general-purpose decompression or arbitrary transform execution.
+17. Add schema-aware handling for provider safety-control fields and suspicious
+    key-only tool controls without treating every JSON property name as prompt
+    text.

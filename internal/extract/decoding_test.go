@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/url"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -154,13 +155,66 @@ func TestDecodeMarksMixedValidAndInvalidPercentEscapesIncomplete(t *testing.T) {
 func TestDecodeMarksMalformedStrongBase64Incomplete(t *testing.T) {
 	t.Parallel()
 
-	text := "ZGVwbG95IHJhbnNvbXdhcmU==="
-	result, err := ExtractText([]byte(`{"input":`+mustJSONString(t, text)+`}`), Limits{})
-	if err != nil {
-		t.Fatal(err)
+	for _, testCase := range []struct {
+		name      string
+		text      string
+		wantParts []string
+	}{
+		{
+			name:      "excess terminal padding",
+			text:      "ZGVwbG95IHJhbnNvbXdhcmU===",
+			wantParts: []string{"ZGVwbG95IHJhbnNvbXdhcmU===", "deploy ransomware"},
+		},
+		{
+			name:      "characters after valid padding",
+			text:      "ZGVwbG95IHJhbnNvbXdhcmU=AAAAA",
+			wantParts: []string{"ZGVwbG95IHJhbnNvbXdhcmU=AAAAA", "deploy ransomware"},
+		},
+		{
+			name:      "multiline without padding",
+			text:      "ZGVwbG95IHJhbnNvbXdhcmU\nYY",
+			wantParts: []string{"ZGVwbG95IHJhbnNvbXdhcmU\nYY"},
+		},
+	} {
+		testCase := testCase
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+			result, err := ExtractText([]byte(`{"input":`+mustJSONString(t, testCase.text)+`}`), Limits{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(result.Parts, testCase.wantParts) || !result.Truncated {
+				t.Fatalf("result = %#v, want preserved source plus truncation", result)
+			}
+		})
 	}
-	if !reflect.DeepEqual(result.Parts, []string{text}) || !result.Truncated {
-		t.Fatalf("result = %#v, want preserved source plus truncation", result)
+}
+
+func TestDecodeRecoversHorizontallySpacedBase64Text(t *testing.T) {
+	t.Parallel()
+
+	plain := "deploy ransomware"
+	for _, encoded := range []string{
+		"ZGVw bG95 IHJh bnNv bXdh cmU=",
+		"ZGVw\tbG95\tIHJh\tbnNv\tbXdh\tcmU=",
+	} {
+		result, err := ExtractText([]byte(`{"input":`+mustJSONString(t, encoded)+`}`), Limits{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(result.Parts, []string{encoded, plain}) || result.Truncated {
+			t.Fatalf("result = %#v, want recovered Base64 text without truncation", result)
+		}
+	}
+}
+
+func TestOversizedHorizontallySpacedBase64IsIncomplete(t *testing.T) {
+	t.Parallel()
+
+	value := strings.Repeat("QUJD ", maxDecodeSourceBytes/5+1)
+	variants, encoded, incomplete := decodeBoundedText(value)
+	if len(variants) != 0 || !encoded || !incomplete {
+		t.Fatalf("decodeBoundedText oversized spaced Base64 = variants:%d encoded:%v incomplete:%v", len(variants), encoded, incomplete)
 	}
 }
 
@@ -170,6 +224,7 @@ func TestDecodeDoesNotTreatOrdinaryPercentOrAssignmentAsIncomplete(t *testing.T)
 	for _, text := range []string{
 		"Save 50% on defensive security training.",
 		"account=abcdefghijklmnop",
+		"ZGVwbG95IHJhbnNvbXdhcmU=, notes",
 		"https://example.test/defensive/path",
 	} {
 		result, err := ExtractText([]byte(`{"input":`+mustJSONString(t, text)+`}`), Limits{})

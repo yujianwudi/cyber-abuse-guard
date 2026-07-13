@@ -1,10 +1,10 @@
 // Command holdout-v3-author materializes the independently authored v3
 // release-gate fixtures. The generated JSONL is frozen after its first write;
-// this command refuses to overwrite either file.
+// this command refuses to overwrite the published fixture directory.
 package main
 
 import (
-	"bufio"
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -15,6 +15,8 @@ import (
 	"sort"
 	"strings"
 	"unicode/utf16"
+
+	"github.com/yujianwudi/cyber-abuse-guard/internal/fixturepublish"
 )
 
 const sourceMarker = "independent-holdout-v3-2026-07-12"
@@ -56,9 +58,6 @@ func main() {
 		fatal(err)
 	}
 	out := filepath.Join(root, "testdata", "holdout-v3")
-	if err := os.MkdirAll(out, 0o755); err != nil {
-		fatal(err)
-	}
 	benign, err := materialize("benign", "V3-B", benignSeeds())
 	if err != nil {
 		fatal(err)
@@ -70,10 +69,18 @@ func main() {
 	if len(benign) != 300 || len(malicious) != 320 {
 		fatal(fmt.Errorf("unexpected fixture counts: benign=%d malicious=%d", len(benign), len(malicious)))
 	}
-	if err := writeNew(filepath.Join(out, "benign-security.jsonl"), benign); err != nil {
+	benignData, err := encodeFixtures(benign)
+	if err != nil {
 		fatal(err)
 	}
-	if err := writeNew(filepath.Join(out, "malicious-operational.jsonl"), malicious); err != nil {
+	maliciousData, err := encodeFixtures(malicious)
+	if err != nil {
+		fatal(err)
+	}
+	if err := fixturepublish.Publish(out, []fixturepublish.File{
+		{Name: "benign-security.jsonl", Data: benignData},
+		{Name: "malicious-operational.jsonl", Data: maliciousData},
+	}); err != nil {
 		fatal(err)
 	}
 	fmt.Printf("wrote frozen holdout v3: benign=%d malicious=%d\n", len(benign), len(malicious))
@@ -292,34 +299,16 @@ func requestFor(structure, text, label string) (json.RawMessage, error) {
 	}
 }
 
-func writeNew(path string, fixtures []fixture) error {
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
-	if err != nil {
-		return err
-	}
-	ok := false
-	defer func() {
-		_ = file.Close()
-		if !ok {
-			_ = os.Remove(path)
-		}
-	}()
-	writer := bufio.NewWriter(file)
-	encoder := json.NewEncoder(writer)
+func encodeFixtures(fixtures []fixture) ([]byte, error) {
+	var output bytes.Buffer
+	encoder := json.NewEncoder(&output)
 	encoder.SetEscapeHTML(false)
 	for _, item := range fixtures {
 		if err := encoder.Encode(item); err != nil {
-			return err
+			return nil, err
 		}
 	}
-	if err := writer.Flush(); err != nil {
-		return err
-	}
-	if err := file.Sync(); err != nil {
-		return err
-	}
-	ok = true
-	return file.Close()
+	return output.Bytes(), nil
 }
 
 func unique(values []string) []string {

@@ -213,7 +213,7 @@ func (m *literalMatcher) matchCompactWithScratch(text []rune, signals []bool, be
 	state := 0
 	compactIndex := 0
 	for index, r := range text {
-		if r == compactHardBoundary || isHardCompactSeparator(text, index) {
+		if isHardCompactSeparator(text, index) {
 			state = 0
 			compactIndex = 0
 			continue
@@ -253,7 +253,11 @@ func (m *literalMatcher) matchCompactWithScratch(text []rune, signals []bool, be
 func isHardCompactSeparator(text []rune, index int) bool {
 	r := text[index]
 	if r == compactHardBoundary {
-		return true
+		// Preserve a tightly bounded reconstruction path for one-character
+		// tokens split across lines or provider content blocks (for example,
+		// s\nt\ne\na\nl). Ordinary multi-character clauses still reset here, so
+		// evidence cannot cross normal message or sentence boundaries.
+		return !singleRuneTokensAround(text, index)
 	}
 	if unicode.IsSpace(r) || isCompactRune(r) || r == '_' {
 		return false

@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -19,9 +20,14 @@ const (
 
 	evaluationV10CorpusSHA256 = "e42b881103a00c0a7bf0359f8494804bc3aeabc6c2e0bafff99593043129cbef"
 
+	// These hashes identify the implementation used by the consumed v10 run.
+	// A later development HEAD must not be forced to match this historical record.
+	evaluationV10HistoricalCommit             = "0f1d68717daadfd5dfc514ff2174cfb641a5d845"
+	evaluationV10HistoricalTree               = "df878c537bca9fd71256b1c81ced18e72b583cf3"
 	evaluationV10ImplementationSnapshotSHA256 = "090955c800944f8d248ff960cd5c860b17ea0d566cfa0aae90554db30248096b"
 	evaluationV10RulesSnapshotSHA256          = "3fb15df990c7e6369b8dc4c4e725cf1b09a8251275b2145afcd1cd9a859741db"
 	evaluationV10EmbeddedRulesetSHA256        = "7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134"
+	evaluationV10HistoricalReportSHA256       = "e4c293eaae0fa29b5ccea8c43d09a76f98ef8827cd428de574c0942f24816010"
 )
 
 var evaluationV10Carriers = []string{
@@ -49,21 +55,28 @@ func TestEvaluationV10Integrity(t *testing.T) {
 	t.Logf("evaluation-v10 integrity PASS: files=1 records=%d benign=%d policy=%d extraction_failures=0 role_aware=%d untrusted=%d taxonomy_enum_failures=0", summary.Total, summary.Benign, summary.Policy, summary.RoleAware, summary.Untrusted)
 }
 
-func TestEvaluationV10ProductionSnapshotIntegrity(t *testing.T) {
+func TestEvaluationV10HistoricalSnapshotRecordIntegrity(t *testing.T) {
 	t.Parallel()
-	evaluationV10RequireProductionSnapshots(t, evaluationV10RepositoryRoot(t))
-	t.Log("evaluation-v10 production snapshot integrity PASS")
+	evaluationV10RequireHistoricalSnapshotRecord(t, evaluationV10RepositoryRoot(t))
+	t.Log("evaluation-v10 historical snapshot record integrity PASS")
+}
+
+func TestEvaluationV10ConsumedRerunRejected(t *testing.T) {
+	t.Parallel()
+	if err := evaluationV10ConsumedRerunError("1"); err == nil {
+		t.Fatal("consumed evaluation-v10 rerun was not rejected")
+	}
 }
 
 func TestIndependentHoldoutV10(t *testing.T) {
-	if os.Getenv(evaluationV10Environment) == "1" {
-		t.Fatal("independent evaluation-v10 is consumed after its one formal run and must not be classified again; see docs/reports/EVALUATION_V10_REPORT.md")
+	if err := evaluationV10ConsumedRerunError(os.Getenv(evaluationV10Environment)); err != nil {
+		t.Fatal(err)
 	}
 	t.Skip("independent evaluation-v10 is consumed; frozen integrity tests remain available")
 
 	root := evaluationV10RepositoryRoot(t)
 	summary := evaluationV10RequireIntegrity(t, root)
-	evaluationV10RequireProductionSnapshots(t, root)
+	evaluationV10RequireHistoricalSnapshotRecord(t, root)
 	set, err := guardrules.LoadDefault()
 	if err != nil || set.Version != "1.0.7" {
 		t.Fatal("evaluation-v10 setup failures=1")
@@ -221,23 +234,49 @@ func evaluationV10RequireIntegrity(t *testing.T, root string) evaluationV8Summar
 	return summary
 }
 
-func evaluationV10RequireProductionSnapshots(t *testing.T, root string) {
+func evaluationV10ConsumedRerunError(value string) error {
+	if value == "1" {
+		return errors.New("independent evaluation-v10 is consumed after its one formal run and must not be classified again; see docs/reports/EVALUATION_V10_REPORT.md")
+	}
+	return nil
+}
+
+func evaluationV10RequireHistoricalSnapshotRecord(t *testing.T, root string) {
 	t.Helper()
-	implementation, err := evaluationV6HashSnapshot(root, []string{"go.mod", "go.sum", "internal/classifier/*.go", "internal/extract/*.go", "internal/rules/*.go", "rules/*.go"}, true)
+	report, err := os.ReadFile(filepath.Join(root, "docs", "reports", "EVALUATION_V10_REPORT.md"))
 	if err != nil {
-		t.Fatal("evaluation-v10 implementation snapshot failures=1")
+		t.Fatal("evaluation-v10 historical report failures=1")
 	}
-	rules, err := evaluationV6HashSnapshot(root, []string{"rules/*.yaml"}, false)
-	if err != nil {
-		t.Fatal("evaluation-v10 rules snapshot failures=1")
+	markers := []string{
+		"Status: **CONSUMED / FAIL**",
+		evaluationV10CorpusSHA256,
+		evaluationV10HistoricalCommit,
+		evaluationV10HistoricalTree,
+		evaluationV10ImplementationSnapshotSHA256,
+		evaluationV10RulesSnapshotSHA256,
+		evaluationV10EmbeddedRulesetSHA256,
+		evaluationV10HistoricalReportSHA256,
+		"`INDEPENDENT_HOLDOUT_V10=1`",
+		"must not be rerun",
 	}
-	embedded, err := evaluationV8EmbeddedRulesHash(root)
-	if err != nil {
-		t.Fatal("evaluation-v10 embedded ruleset snapshot failures=1")
+	for _, marker := range markers {
+		if !bytes.Contains(report, []byte(marker)) {
+			t.Fatalf("evaluation-v10 historical report marker missing: %q", marker)
+		}
 	}
-	if implementation != evaluationV10ImplementationSnapshotSHA256 || rules != evaluationV10RulesSnapshotSHA256 || embedded != evaluationV10EmbeddedRulesetSHA256 {
-		t.Fatalf("evaluation-v10 production snapshot mismatches=1 implementation=%s rules=%s embedded=%s", implementation, rules, embedded)
-	}
+	evaluationRequireHistoricalGitSnapshot(
+		t,
+		root,
+		evaluationV10HistoricalCommit,
+		evaluationV10HistoricalTree,
+		evaluationV10ImplementationSnapshotSHA256,
+		evaluationV10RulesSnapshotSHA256,
+		evaluationV10EmbeddedRulesetSHA256,
+		[]evaluationHistoricalBlob{
+			{Path: "testdata/evaluation-v10/evaluation-v10.jsonl", SHA256: evaluationV10CorpusSHA256},
+			{Path: "docs/reports/EVALUATION_V10_REPORT.md", SHA256: evaluationV10HistoricalReportSHA256},
+		},
+	)
 }
 
 func evaluationV10LogMetrics(t *testing.T, metrics evaluationV6Metrics) {

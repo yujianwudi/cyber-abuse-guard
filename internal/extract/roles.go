@@ -80,10 +80,10 @@ func (r *segmentRing) ordered() []Segment {
 // shapes so role labels can never make an untrusted protocol less strict.
 func extractRoleSegments(body []byte, limits Limits) ([]Segment, bool, bool) {
 	var historyKey string
-	var history json.RawMessage
 	segments := segmentRing{items: make([]Segment, 0, maxRoleSegments)}
 	truncated := false
 	ambiguous := false
+	unsafeRole := false
 
 	err := walkRawObject(body, func(key string, raw json.RawMessage) error {
 		standardKey := standardRoleKey(key)
@@ -94,7 +94,13 @@ func extractRoleSegments(body []byte, limits Limits) ([]Segment, bool, bool) {
 				return nil
 			}
 			historyKey = standardKey
-			history = append(history[:0], raw...)
+			historyTruncated, historyAmbiguous, historyUnsafeRole, err := addRoleHistorySegments(&segments, raw, historyKey, limits)
+			if err != nil {
+				return err
+			}
+			truncated = truncated || historyTruncated
+			ambiguous = ambiguous || historyAmbiguous
+			unsafeRole = unsafeRole || historyUnsafeRole
 		case "input":
 			// OpenAI Responses arrays carry the same top-level role shape as
 			// messages. Scalar or otherwise unstructured input uses legacy mode.
@@ -106,7 +112,13 @@ func extractRoleSegments(body []byte, limits Limits) ([]Segment, bool, bool) {
 				return nil
 			}
 			historyKey = standardKey
-			history = append(history[:0], raw...)
+			historyTruncated, historyAmbiguous, historyUnsafeRole, err := addRoleHistorySegments(&segments, raw, historyKey, limits)
+			if err != nil {
+				return err
+			}
+			truncated = truncated || historyTruncated
+			ambiguous = ambiguous || historyAmbiguous
+			unsafeRole = unsafeRole || historyUnsafeRole
 		case "system", "instructions", "systeminstruction":
 			partTruncated, partAmbiguous, err := addRoleContentSegments(&segments, raw, RoleSystem, limits)
 			if err != nil {
@@ -127,27 +139,41 @@ func extractRoleSegments(body []byte, limits Limits) ([]Segment, bool, bool) {
 				truncated = truncated || partTruncated
 				return nil
 			}
-			// Detect semantic text hidden beside an otherwise standard history.
-			// Metadata/model/options produce no parts and remain compatible.
-			parts, partTruncated, err := extractRawParts(raw, limits, childContext(contextNone, key))
+			canonical := canonicalKey(key)
+			if isMetadataKeyCanonical(canonical) || isProviderMetadataContainerCanonical(canonical) {
+				return nil
+			}
+			// Preserve role isolation for the recognized history while treating
+			// every semantic string under an unknown top-level field as untrusted
+			// user content. A forged/future envelope therefore cannot hide text,
+			// and harmless metadata cannot collapse the whole request into a
+			// provenance-less fallback.
+			parts, partTruncated, err := extractRawParts(raw, limits, contextText)
 			if err != nil {
 				return err
 			}
-			if len(parts) > 0 || partTruncated {
-				ambiguous = true
+			for _, part := range parts {
+				segments.add(Segment{Role: RoleUser, Provenance: ProvenanceContent, Text: part})
 			}
+			truncated = truncated || partTruncated
 		}
 		return nil
 	})
 	if err != nil || ambiguous {
-		return nil, false, false
+		return nil, false, unsafeRole
 	}
 	if historyKey == "" {
 		return nil, false, false
 	}
 
+	return segments.ordered(), true, truncated || segments.truncated
+}
+
+func addRoleHistorySegments(segments *segmentRing, history json.RawMessage, historyKey string, limits Limits) (bool, bool, bool, error) {
+	truncated := false
+	ambiguous := false
 	unsafeRole := false
-	err = walkRawArray(history, func(raw json.RawMessage) error {
+	err := walkRawArray(history, func(raw json.RawMessage) error {
 		if !rawStartsWith(raw, '{') {
 			ambiguous = true
 			return nil
@@ -159,7 +185,7 @@ func extractRoleSegments(body []byte, limits Limits) ([]Segment, bool, bool) {
 			return nil
 		}
 		if !ok && !present {
-			recognized, itemTruncated, err := addRolelessProviderItem(&segments, raw, historyKey, limits)
+			recognized, itemTruncated, err := addRolelessProviderItem(segments, raw, historyKey, limits)
 			if err != nil {
 				return err
 			}
@@ -177,7 +203,7 @@ func extractRoleSegments(body []byte, limits Limits) ([]Segment, bool, bool) {
 			ambiguous = true
 			return nil
 		}
-		messageTruncated, messageAmbiguous, err := addRoleMessageSegments(&segments, raw, role, limits)
+		messageTruncated, messageAmbiguous, err := addRoleMessageSegments(segments, raw, role, limits)
 		if err != nil {
 			return err
 		}
@@ -188,10 +214,7 @@ func extractRoleSegments(body []byte, limits Limits) ([]Segment, bool, bool) {
 		truncated = truncated || messageTruncated
 		return nil
 	})
-	if err != nil || ambiguous {
-		return nil, false, unsafeRole
-	}
-	return segments.ordered(), true, truncated || segments.truncated
+	return truncated, ambiguous, unsafeRole, err
 }
 
 // addRoleMessageSegments separates rendered message content from executable
@@ -222,16 +245,21 @@ func addRoleMessageSegments(segments *segmentRing, raw json.RawMessage, role Rol
 			truncated = truncated || valueTruncated
 			return err
 		default:
-			// Extra provider metadata is harmless. Any unrecognized semantic text
-			// makes provenance ambiguous, so callers fall back to the conservative
-			// all-parts path instead of suppressing attacker-controlled content.
-			parts, valueTruncated, err := extractRawParts(value, limits, childContext(contextNone, key))
+			// Keep the known message content under its proven role, but treat text
+			// below an unknown sibling field as a separate untrusted user segment.
+			// This is conservative without allowing harmless metadata to erase role
+			// isolation for assistant/system refusals and policies.
+			if isProviderMetadataContainerCanonical(canonical) {
+				return nil
+			}
+			parts, valueTruncated, err := extractRawParts(value, limits, contextText)
 			if err != nil {
 				return err
 			}
-			if len(parts) > 0 || valueTruncated {
-				ambiguous = true
+			for _, part := range parts {
+				segments.add(Segment{Role: RoleUser, Provenance: ProvenanceContent, Text: part})
 			}
+			truncated = truncated || valueTruncated
 			return nil
 		}
 	})
@@ -250,10 +278,48 @@ func addRoleContentSegments(segments *segmentRing, raw json.RawMessage, role Rol
 		return truncated || local.truncated, ambiguous, err
 	}
 
-	var pending *Segment
+	type pendingContent struct {
+		role       Role
+		provenance SegmentProvenance
+		rawParts   []string
+	}
+	var pending *pendingContent
 	flush := func() {
 		if pending != nil {
-			segments.add(*pending)
+			rawJoined, joinTruncated := joinRoleParts(pending.rawParts)
+			truncated = truncated || joinTruncated
+			analysisParts := make([]string, 0, 1+len(pending.rawParts)*2)
+			seen := make(map[string]struct{}, 1+len(pending.rawParts)*2)
+			appendUnique := func(value string) {
+				if strings.TrimSpace(value) == "" {
+					return
+				}
+				if _, exists := seen[value]; exists {
+					return
+				}
+				seen[value] = struct{}{}
+				analysisParts = append(analysisParts, value)
+			}
+			appendDecoded := func(value string) {
+				decoded, encoded, incomplete := decodeBoundedText(value)
+				if encoded && incomplete {
+					truncated = true
+				}
+				for _, variant := range decoded {
+					appendUnique(variant)
+				}
+			}
+			appendUnique(rawJoined)
+			for _, rawPart := range pending.rawParts {
+				appendDecoded(rawPart)
+			}
+			// Decode the pristine joined source after the per-block views. This
+			// closes both sub-threshold splits and independently decodable chunks;
+			// decoded fragments never contaminate the reassembly candidate.
+			appendDecoded(rawJoined)
+			text, textTruncated := joinRoleParts(analysisParts)
+			truncated = truncated || textTruncated
+			segments.add(Segment{Role: pending.role, Provenance: pending.provenance, Text: text})
 			pending = nil
 		}
 	}
@@ -264,19 +330,15 @@ func addRoleContentSegments(segments *segmentRing, raw json.RawMessage, role Rol
 			continue
 		}
 		if pending == nil {
-			copyOfSegment := segment
-			pending = &copyOfSegment
+			pending = &pendingContent{role: segment.Role, provenance: segment.Provenance, rawParts: []string{segment.Text}}
 			continue
 		}
-		if pending.Role != segment.Role || pending.Provenance != segment.Provenance {
+		if pending.role != segment.Role || pending.provenance != segment.Provenance {
 			flush()
-			copyOfSegment := segment
-			pending = &copyOfSegment
+			pending = &pendingContent{role: segment.Role, provenance: segment.Provenance, rawParts: []string{segment.Text}}
 			continue
 		}
-		joined, joinTruncated := joinRoleParts([]string{pending.Text, segment.Text})
-		pending.Text = joined
-		truncated = truncated || joinTruncated
+		pending.rawParts = append(pending.rawParts, segment.Text)
 	}
 	flush()
 	return truncated || local.truncated, false, nil
@@ -289,7 +351,7 @@ func addRoleContentValue(segments *segmentRing, raw json.RawMessage, role Role, 
 	}
 	switch trimmed[0] {
 	case '"':
-		truncated, err := addRoleSegment(segments, raw, role, ProvenanceContent, limits, contextText)
+		truncated, err := addRawRoleContentSegment(segments, raw, role, limits)
 		return truncated, false, err
 	case '{':
 		return addRoleContentBlock(segments, raw, role, limits)
@@ -318,7 +380,7 @@ func addRoleContentBlock(segments *segmentRing, raw json.RawMessage, role Role, 
 		truncated, err := addRoleSegment(segments, raw, role, ProvenanceToolPayload, limits, contextTool)
 		return truncated, false, err
 	case "toolresult", "functioncalloutput", "customtoolcalloutput":
-		truncated, err := addRoleSegment(segments, raw, RoleTool, ProvenanceContent, limits, contextText)
+		truncated, err := addRawRoleContentSegment(segments, raw, RoleTool, limits)
 		return truncated, false, err
 	}
 	if hasToolPayloadKey {
@@ -326,8 +388,18 @@ func addRoleContentBlock(segments *segmentRing, raw json.RawMessage, role Role, 
 		// ordinary assistant content. Force legacy classification instead.
 		return false, true, nil
 	}
-	truncated, err := addRoleSegment(segments, raw, role, ProvenanceContent, limits, contextText)
+	truncated, err := addRawRoleContentSegment(segments, raw, role, limits)
 	return truncated, false, err
+}
+
+func addRawRoleContentSegment(segments *segmentRing, raw json.RawMessage, role Role, limits Limits) (bool, error) {
+	parts, partTruncated, err := extractRawPartsWithoutDecode(raw, limits, contextText)
+	if err != nil {
+		return false, err
+	}
+	text, joinTruncated := joinRoleParts(parts)
+	segments.add(Segment{Role: role, Provenance: ProvenanceContent, Text: text})
+	return partTruncated || joinTruncated, nil
 }
 
 func roleContentBlockShape(raw json.RawMessage) (string, bool, error) {
@@ -382,9 +454,47 @@ func addRoleSegment(segments *segmentRing, raw json.RawMessage, role Role, prove
 	if err != nil {
 		return false, err
 	}
+	if provenance == ProvenanceToolPayload || role == RoleTool {
+		rawParts, rawTruncated, rawErr := extractRawPartsWithoutDecode(raw, limits, initial)
+		if rawErr != nil {
+			return false, rawErr
+		}
+		text, analysisTruncated := joinRolePartsWithPristineDecode(parts, rawParts)
+		segments.add(Segment{Role: role, Provenance: provenance, Text: text})
+		return partTruncated || rawTruncated || analysisTruncated, nil
+	}
 	text, joinTruncated := joinRoleParts(parts)
 	segments.add(Segment{Role: role, Provenance: provenance, Text: text})
 	return partTruncated || joinTruncated, nil
+}
+
+func joinRolePartsWithPristineDecode(parts, rawParts []string) (string, bool) {
+	rawJoined, truncated := joinRoleParts(rawParts)
+	analysisParts := make([]string, 0, len(parts)+3)
+	seen := make(map[string]struct{}, len(parts)+3)
+	appendUnique := func(value string) {
+		if strings.TrimSpace(value) == "" {
+			return
+		}
+		if _, exists := seen[value]; exists {
+			return
+		}
+		seen[value] = struct{}{}
+		analysisParts = append(analysisParts, value)
+	}
+	appendUnique(rawJoined)
+	decoded, encoded, incomplete := decodeBoundedText(rawJoined)
+	if encoded && incomplete {
+		truncated = true
+	}
+	for _, variant := range decoded {
+		appendUnique(variant)
+	}
+	for _, part := range parts {
+		appendUnique(part)
+	}
+	text, joinTruncated := joinRoleParts(analysisParts)
+	return text, truncated || joinTruncated
 }
 
 // addRolelessProviderItem recognizes only provider-native typed items whose
@@ -467,6 +577,15 @@ func standardRoleKey(key string) string {
 func extractRawParts(raw []byte, limits Limits, initial contextKind) ([]string, bool, error) {
 	result := Result{Parts: make([]string, 0, minInt(4, limits.MaxTextParts))}
 	x := extractor{limits: limits, result: &result}
+	if err := x.walkJSON(raw, initial, 0, false); err != nil {
+		return nil, false, err
+	}
+	return result.Parts, result.Truncated, nil
+}
+
+func extractRawPartsWithoutDecode(raw []byte, limits Limits, initial contextKind) ([]string, bool, error) {
+	result := Result{Parts: make([]string, 0, minInt(4, limits.MaxTextParts))}
+	x := extractor{limits: limits, result: &result, skipDecode: true}
 	if err := x.walkJSON(raw, initial, 0, false); err != nil {
 		return nil, false, err
 	}

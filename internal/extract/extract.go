@@ -191,9 +191,10 @@ const (
 )
 
 type extractor struct {
-	limits Limits
-	result *Result
-	stop   bool
+	limits     Limits
+	result     *Result
+	stop       bool
+	skipDecode bool
 }
 
 // walkJSON uses Decoder.Token and an explicit stack. Consequently, semantic
@@ -453,7 +454,8 @@ func (x *extractor) processString(text, key string, ctx contextKind, media bool,
 			return
 		}
 	}
-	if isToolArgumentCanonical(canonical) {
+	nestedToolString := isToolArgumentCanonical(canonical) || ctx == contextToolPayload
+	if nestedToolString {
 		if x.processNestedToolJSON(trimmed, semanticDepth) {
 			return
 		}
@@ -463,12 +465,15 @@ func (x *extractor) processString(text, key string, ctx contextKind, media bool,
 		return
 	}
 	x.addText(text, key)
+	if x.skipDecode {
+		return
+	}
 	decoded, encoded, incomplete := decodeBoundedText(text)
 	if encoded && incomplete {
 		x.result.Truncated = true
 	}
 	for _, variant := range decoded {
-		if isToolArgumentCanonical(canonical) && x.processNestedToolJSON(strings.TrimSpace(variant), semanticDepth) {
+		if nestedToolString && x.processNestedToolJSON(strings.TrimSpace(variant), semanticDepth) {
 			if x.stop {
 				return
 			}
@@ -599,6 +604,15 @@ func isToolArgumentCanonical(key string) bool {
 func isMetadataKeyCanonical(key string) bool {
 	switch key {
 	case "role", "type", "name", "id", "model", "status", "index", "mimetype", "mediatype", "encoding", "url", "callid", "toolcallid", "finishreason":
+		return true
+	default:
+		return false
+	}
+}
+
+func isProviderMetadataContainerCanonical(key string) bool {
+	switch key {
+	case "metadata", "options", "requestoptions", "generationconfig", "safetysettings":
 		return true
 	default:
 		return false

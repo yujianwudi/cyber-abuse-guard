@@ -1,4 +1,4 @@
-//go:build linux
+//go:build unix
 
 package subject
 
@@ -15,7 +15,7 @@ func openSecretFile(path string) (*os.File, error) {
 	// blocking before fstat rejects it as non-regular.
 	file, err := os.OpenFile(path, os.O_RDONLY|syscall.O_CLOEXEC|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
 	if err != nil {
-		if errors.Is(err, syscall.ELOOP) {
+		if isNoFollowLinkError(err) {
 			return nil, errors.New("subject: HMAC secret file must not be a symbolic link")
 		}
 		return nil, fmt.Errorf("subject: open HMAC secret file: %w", err)

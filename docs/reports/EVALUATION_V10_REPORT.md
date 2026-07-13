@@ -58,19 +58,35 @@ Language totals are `en=320` and `zh-CN=320`. The sixteen carriers each contain
 ## Consumed independent gate
 
 The gate is `internal/classifier/evaluation_v10_gate_test.go`. Static corpus,
-exact-taxonomy, and production-snapshot integrity tests remain available. The
-one opt-in run used production `extract.ExtractText`, role-aware or untrusted
-classification as indicated by the extractor, balanced mode, default
-thresholds, and default policy. It emitted only aggregate metrics. The gate now
-rejects `INDEPENDENT_HOLDOUT_V10=1` immediately so the consumed corpus cannot be
-classified again.
+exact-taxonomy, and historical snapshot-record integrity tests remain
+available. The recorded snapshot hashes identify the implementation used by
+the consumed run; a later post-v10 development HEAD is intentionally not
+required to reproduce those hashes. The one opt-in run used production
+`extract.ExtractText`, role-aware or untrusted classification as indicated by
+the extractor, balanced mode, default thresholds, and default policy. It
+emitted only aggregate metrics. The gate now rejects
+`INDEPENDENT_HOLDOUT_V10=1` immediately so the consumed corpus cannot be
+classified again. Future implementation quality must be evaluated with a new
+independent blind set.
 
+- Historical snapshot commit:
+  `0f1d68717daadfd5dfc514ff2174cfb641a5d845`
+- Historical snapshot tree:
+  `df878c537bca9fd71256b1c81ced18e72b583cf3`
+- Historical report Git-blob SHA-256:
+  `e4c293eaae0fa29b5ccea8c43d09a76f98ef8827cd428de574c0942f24816010`
 - Production implementation/dependency snapshot SHA-256:
   `090955c800944f8d248ff960cd5c860b17ea0d566cfa0aae90554db30248096b`
 - YAML rules snapshot SHA-256:
   `3fb15df990c7e6369b8dc4c4e725cf1b09a8251275b2145afcd1cd9a859741db`
 - Canonical embedded ruleset SHA-256:
   `7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134`
+
+In a full Git checkout, the frozen-integrity test resolves that commit to the
+recorded tree, verifies the frozen corpus and formal report Git blobs, and
+recomputes all three implementation/rules hashes directly from Git blobs. This
+keeps later development HEADs free to evolve without reducing the historical
+record to editable report strings or mutable corpus constants.
 
 Release thresholds are benign false-positive rate `<5%`, overall blocked and
 exact rates `>90%`, and blocked plus exact rates `>=95%` for

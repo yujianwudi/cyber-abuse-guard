@@ -437,11 +437,11 @@ func evidenceHomoglyphReplacement(r rune) (rune, bool) {
 		return 'e', true
 	case '\u04bb':
 		return 'h', true
-	case '\u0456', '\u03b9':
+	case '\u0456', '\u03b9', '\u0131':
 		return 'i', true
 	case '\u0458':
 		return 'j', true
-	case '\u03ba':
+	case '\u03ba', '\u043a':
 		return 'k', true
 	case '\u04cf':
 		return 'l', true

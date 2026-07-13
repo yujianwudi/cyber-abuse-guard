@@ -462,9 +462,9 @@ func validateAndEncode(samples []sample) ([]byte, validationStats, error) {
 			return nil, stats, fmt.Errorf("input marshal %q: %w", item.ID, err)
 		}
 		extracted, err := extract.ExtractText(inputJSON, extract.Limits{})
-		if err != nil || extracted.Truncated || len(extracted.Parts) == 0 {
+		if !healthyExtraction(extracted, err) {
 			stats.extractFailures++
-			return nil, stats, fmt.Errorf("extraction %q failed: err=%v truncated=%t parts=%d", item.ID, err, extracted.Truncated, len(extracted.Parts))
+			return nil, stats, fmt.Errorf("extraction %q failed: err=%v parse_error=%q truncated=%t parts=%d", item.ID, err, extracted.ParseError, extracted.Truncated, len(extracted.Parts))
 		}
 		normalizedExtracted := normalizeSemantic(strings.Join(extracted.Parts, "\n"))
 		normalizedSemantic := normalizeSemantic(item.Semantic)
@@ -510,6 +510,10 @@ func validateAndEncode(samples []sample) ([]byte, validationStats, error) {
 		}
 	}
 	return output.Bytes(), stats, nil
+}
+
+func healthyExtraction(result extract.Result, err error) bool {
+	return err == nil && result.ParseError == "" && !result.Truncated && len(result.Parts) > 0
 }
 
 func validateExactSchema(line []byte) error {

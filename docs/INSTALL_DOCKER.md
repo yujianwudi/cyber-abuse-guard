@@ -11,6 +11,11 @@ Release and do not use the installation/rollout procedure below for this
 candidate. It is retained for future releases only after a new implementation
 passes a newly and independently authored unseen set.
 
+An owner-operated server sandbox result for the post-v10 prompt-injection
+development tree can provide engineering feedback only. It cannot reverse the
+consumed v10 failure, authorize this installation procedure, or substitute for
+a new independent release evaluation.
+
 Development artifacts containing `-dirty` are test-only and must not be placed
 in a production plugin directory.
 

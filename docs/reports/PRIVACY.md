@@ -2,13 +2,15 @@
 
 ## Status
 
-The v0.1.2 candidate privacy suite is **PASS**. Typed canary tests covered audit
-events, SQLite files, management responses, parse failures, oversized routes,
-unknown source formats, persistence and migration paths. Candidate packaging,
-SBOM, strict archive verification, and the local-only network/proxy checks also
-passed. This is engineering evidence only: methodologically valid evaluation
-v10 is `CONSUMED / FAIL`, so no clean `v0.1.2` release tag or production
-artifact may be created. Privacy PASS cannot override the failed release gate.
+**PRE-PROMPT-INJECTION-CHANGE BASELINE — CURRENT-DIFF END-TO-END PRIVACY NOT
+RUN.** Typed canary tests previously covered audit events, SQLite files,
+management responses, parse failures, oversized routes, unknown source formats,
+persistence, migration, candidate packaging, SBOM, strict archive verification,
+and local-only network/proxy checks. Those results belong to an earlier
+development artifact and were not rerun after the current classifier/extractor
+changes. Current evidence is limited to the source-level checks in
+`TEST_REPORT.md`. Methodologically valid evaluation v10 is `CONSUMED / FAIL`,
+so no clean `v0.1.2` release tag or production artifact may be created.
 
 ## Privacy invariants
 
@@ -29,6 +31,10 @@ Allowed audit fields are limited to time, disposition, mode, coarse category,
 score, stable rule IDs, request SHA-256, subject HMAC, a domain-separated model
 digest, a fixed canonical source-format enum, stream flag, scanned byte count,
 and latency. Request SHA-256 is correlation metadata, not an encryption claim.
+The prompt-injection overlay emits only fixed identifiers such as
+`META-OVERRIDE-001` and `META-OVERRIDE-001:hierarchy`; it never returns or
+persists the matched phrase, quoted prompt, tool payload, or protected prompt
+content.
 
 Optional subject persistence stores only:
 
@@ -155,5 +161,5 @@ subject IDs.
 release_commit_tag_and_plugin_sha256: NOT CREATED — RELEASE BLOCKED
 privacy_test_log_sha256: candidate evidence only; no formal tagged release log
 canary_values: synthetic repository-only values; no production credential used
-overall_privacy_gate: PASS (engineering preflight only); RELEASE GATE remains FAIL
+overall_privacy_gate: PASS PRE-CHANGE BASELINE; CURRENT DIFF NOT RUN; RELEASE GATE remains FAIL
 ```
