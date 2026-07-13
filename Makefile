@@ -29,8 +29,12 @@ format-check:
 	@command -v "$(GOFMT)" >/dev/null 2>&1 || { \
 		echo 'required formatter not found: $(GOFMT)' >&2; exit 1; \
 	}; \
-	files="$$(git ls-files '*.go')"; \
-	bad="$$($(GOFMT) -l $$files)" || exit $$?; \
+	files=(); \
+	while IFS= read -r -d '' file; do \
+		[[ -f "$$file" ]] && files+=("$$file"); \
+	done < <(git ls-files -co --exclude-standard -z -- '*.go'); \
+	if [[ $${#files[@]} -eq 0 ]]; then exit 0; fi; \
+	bad="$$($(GOFMT) -l "$${files[@]}")" || exit $$?; \
 	if [[ -n "$$bad" ]]; then printf 'gofmt required:\n%s\n' "$$bad" >&2; exit 1; fi
 
 git-diff-check:

@@ -3,12 +3,40 @@ set -euo pipefail
 
 root="$(cd "${BASH_SOURCE[0]%/*}/.." && pwd -P)"
 generator="$root/scripts/generate-hmac-key.sh"
-for required in mktemp chmod ln sha256sum stat rm grep mkdir awk; do
+for required in mktemp chmod ln sha256sum stat rm grep mkdir awk sync; do
   command -v "$required" >/dev/null 2>&1 || {
     printf 'required generator-test command not found: %s\n' "$required" >&2
     exit 127
   }
 done
+
+stat_mode() {
+  local path="$1" value
+  if value="$(stat -c '%a' -- "$path" 2>/dev/null)"; then
+    printf '%s\n' "$value"
+    return 0
+  fi
+  if value="$(stat -f '%Lp' "$path" 2>/dev/null)"; then
+    printf '%s\n' "$value"
+    return 0
+  fi
+  printf 'could not read file mode with GNU or BSD stat: %s\n' "$path" >&2
+  return 1
+}
+
+stat_size() {
+  local path="$1" value
+  if value="$(stat -c '%s' -- "$path" 2>/dev/null)"; then
+    printf '%s\n' "$value"
+    return 0
+  fi
+  if value="$(stat -f '%z' "$path" 2>/dev/null)"; then
+    printf '%s\n' "$value"
+    return 0
+  fi
+  printf 'could not read file size with GNU or BSD stat: %s\n' "$path" >&2
+  return 1
+}
 
 work="$(mktemp -d)"
 cleanup() {
@@ -24,8 +52,27 @@ output="$($generator "$key" 2>"$work/success.err")"
 [[ "$output" == "generated mode-0600 HMAC key: $key" ]]
 [[ ! -s "$work/success.err" ]]
 [[ -f "$key" && ! -L "$key" ]]
-[[ "$(stat -c '%a' -- "$key")" == 600 ]]
-[[ "$(stat -c '%s' -- "$key")" == 65 ]]
+[[ "$(stat_mode "$key")" == 600 ]]
+[[ "$(stat_size "$key")" == 65 ]]
+
+# The generator must not require GNU sync's -d/-f extensions. A strict shim
+# accepts only the no-argument POSIX form and records that it was invoked.
+sync_bin="$work/sync-bin"
+sync_log="$work/sync.log"
+mkdir -m 0700 "$sync_bin"
+printf '%s\n' \
+  '#!/usr/bin/env bash' \
+  'set -euo pipefail' \
+  '[[ $# -eq 0 ]] || { printf "sync received non-portable arguments: %s\\n" "$*" >&2; exit 64; }' \
+  'printf "called\\n" >> "$SYNC_LOG"' \
+  > "$sync_bin/sync"
+chmod 0700 "$sync_bin/sync"
+portable_key="$private/portable-sync.key"
+SYNC_LOG="$sync_log" PATH="$sync_bin:$PATH" "$generator" "$portable_key" \
+  >"$work/portable-sync.out" 2>"$work/portable-sync.err"
+[[ "$(grep -Fxc 'called' "$sync_log")" == 1 ]]
+[[ -f "$portable_key" && ! -L "$portable_key" ]]
+[[ "$(stat_mode "$portable_key")" == 600 ]]
 
 before="$(sha256sum "$key" | awk '{print $1}')"
 if "$generator" "$key" >"$work/overwrite.out" 2>"$work/overwrite.err"; then
@@ -80,7 +127,7 @@ if ! { [[ "$race_one_status" -eq 0 && "$race_two_status" -ne 0 ]] ||
   exit 1
 fi
 [[ -f "$race_key" && ! -L "$race_key" ]]
-[[ "$(stat -c '%a' -- "$race_key")" == 600 ]]
-[[ "$(stat -c '%s' -- "$race_key")" == 65 ]]
+[[ "$(stat_mode "$race_key")" == 600 ]]
+[[ "$(stat_size "$race_key")" == 65 ]]
 
 echo "generate-hmac-key security tests: PASS"

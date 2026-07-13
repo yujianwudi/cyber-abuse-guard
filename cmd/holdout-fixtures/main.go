@@ -7,6 +7,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -14,6 +15,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/yujianwudi/cyber-abuse-guard/internal/fixturepublish"
 )
 
 const source = "independent-holdout-2026-07-12"
@@ -50,8 +53,14 @@ func main() {
 	check(err)
 	benign := buildBenign()
 	malicious := buildMalicious()
-	check(writeJSONL(filepath.Join(root, "testdata", "holdout", "benign-security.jsonl"), benign))
-	check(writeJSONL(filepath.Join(root, "testdata", "holdout", "malicious-operational.jsonl"), malicious))
+	benignData, err := encodeRecords(benign)
+	check(err)
+	maliciousData, err := encodeRecords(malicious)
+	check(err)
+	check(fixturepublish.Publish(filepath.Join(root, "testdata", "holdout"), []fixturepublish.File{
+		{Name: "benign-security.jsonl", Data: benignData},
+		{Name: "malicious-operational.jsonl", Data: maliciousData},
+	}))
 	fmt.Printf("wrote %d benign and %d malicious holdout records\n", len(benign), len(malicious))
 }
 
@@ -355,23 +364,16 @@ func raw(value any) json.RawMessage {
 	return b
 }
 
-func writeJSONL(path string, records []record) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	file, err := os.Create(path)
-	if err != nil {
-		return err
-	}
-	encoder := json.NewEncoder(file)
+func encodeRecords(records []record) ([]byte, error) {
+	var output bytes.Buffer
+	encoder := json.NewEncoder(&output)
 	encoder.SetEscapeHTML(false)
 	for _, item := range records {
 		if err := encoder.Encode(item); err != nil {
-			_ = file.Close()
-			return err
+			return nil, err
 		}
 	}
-	return file.Close()
+	return output.Bytes(), nil
 }
 
 func appendTags(existing []string, values ...string) []string {

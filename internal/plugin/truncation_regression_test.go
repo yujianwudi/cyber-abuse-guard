@@ -32,3 +32,23 @@ func TestEscapeBoundaryTruncationFailsClosedInEnforcingModes(t *testing.T) {
 		})
 	}
 }
+
+func TestMalformedBase64PrefixFailsClosedInEnforcingModes(t *testing.T) {
+	t.Parallel()
+
+	body := `{"input":"ZGVwbG95IHJhbnNvbXdhcmU=AAAAA"}`
+	for _, mode := range []string{"balanced", "strict"} {
+		mode := mode
+		t.Run(mode, func(t *testing.T) {
+			t.Parallel()
+			p := New()
+			t.Cleanup(p.Shutdown)
+			register(t, p, "mode: "+mode+"\naudit:\n  enabled: false\nsubject_control:\n  enabled: false\n")
+
+			route := callRoute(t, p, body)
+			if !route.Handled || route.TargetKind != pluginapi.ModelRouteTargetSelf || route.Reason != "cyber_abuse_guard_scan_limit" {
+				t.Fatalf("malformed Base64 prefix did not fail closed: %+v", route)
+			}
+		})
+	}
+}

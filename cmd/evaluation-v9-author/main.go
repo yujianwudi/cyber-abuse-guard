@@ -551,6 +551,8 @@ func validateAndMarshal(records []authoredRecord) ([]byte, int, int, error) {
 		result, err := extract.ExtractText(record.Input, extract.Limits{})
 		if err != nil || result.ParseError != "" || result.Truncated || len(result.Parts) == 0 {
 			extractFailures++
+		} else if !recoversAuthoredSemantic(result, authored.semantic) {
+			extractFailures++
 		}
 		semanticKey := normalizeSemantic(authored.semantic)
 		if priorID, exists := semantics[semanticKey]; exists {
@@ -601,6 +603,25 @@ func validateAndMarshal(records []authoredRecord) ([]byte, int, int, error) {
 		}
 	}
 	return output.Bytes(), extractFailures, semanticDuplicates, nil
+}
+
+func recoversAuthoredSemantic(result extract.Result, intended string) bool {
+	want := normalizeSemantic(intended)
+	if want == "" {
+		return false
+	}
+	candidates := make([]string, 0, len(result.Parts)+len(result.Segments)+1)
+	candidates = append(candidates, result.Parts...)
+	for _, segment := range result.Segments {
+		candidates = append(candidates, segment.Text)
+	}
+	candidates = append(candidates, strings.Join(result.Parts, "\n"))
+	for _, candidate := range candidates {
+		if strings.Contains(normalizeSemantic(candidate), want) {
+			return true
+		}
+	}
+	return false
 }
 
 func normalizeSemantic(value string) string {

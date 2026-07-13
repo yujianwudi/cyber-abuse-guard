@@ -86,6 +86,33 @@ CPA 管理面只注册固定路径；普通下游 API Key 不能替代 Managemen
     clean-tag preflight、dirty 标记、严格 verifier/故障注入、SBOM、双 clone 复现、
     source tar.gz、最终 evidence 和 GitHub Tag workflow。
 
+### 4.1 v10 之后的审计加固（2026-07-13）
+
+当前 `agent/post-v10-production-hardening` 分支基于
+`d4673a750af1e0a004629fed7c6ced5f0c5dd492`，包含 v10 消耗之后的工程加固；这些修改
+没有独立盲测结论，不能改变 Release Gate FAIL：
+
+- v7-v10 作者工具在写入前使用生产 `ExtractText` 证明每种 carrier 能恢复原始语义；
+  validator 对 schema、提取、重复、重叠、taxonomy、规模、分布和冻结先验语料清单的
+  任一异常均非零退出。
+- v7-v10 的先验语料路径、SHA-256、文件数和行数均固定；v9/v10 的历史实现、规则、
+  嵌入规则、正式语料和正式报告绑定 Git commit
+  `0f1d68717daadfd5dfc514ff2174cfb641a5d845` 与 tree
+  `df878c537bca9fd71256b1c81ced18e72b583cf3`，缺少 Git 元数据或完整历史时门禁失败，
+  不允许静默跳过，也不能通过同时修改当前语料、报告和常量来改写已消费记录。
+- 所有 fixture 作者共用私有 `0700` staging、完整写入/fsync、发布前目标不可见断言和
+  no-replace 原子目录 rename；Windows 使用不带 replace 标志的原生 `MoveFileEx`，并对
+  既有文件、符号链接和并发发布做原生测试；其他不支持平台 fail closed。
+- HMAC Secret loader 扩展为 Unix 原子 `O_NOFOLLOW|O_NONBLOCK` 打开；生成器改用可移植
+  POSIX `sync`，Watchdog 正确处理带前导零的十进制预算；Base64 检查会恢复横向空白编码
+  以及“合法 padding 后追加宽松解码器会忽略的数据”的可读前缀，并将后者 fail closed。
+- 依赖升级到 `golang.org/x/crypto v0.52.0`、`x/net v0.55.0`、`x/text v0.37.0`、
+  `x/sync v0.20.0`、`x/sys v0.45.0`。本地 `govulncheck` 无可达漏洞；GitHub 上针对旧
+  module graph 的 14 条告警需在修复合并到默认分支后等待 GitHub 重扫并确认关闭。
+- 修改后 format、diff、module、全量 unit、vet 和定向 race 均通过；Go 1.26.4 下
+  `govulncheck` 为 0 个可达漏洞；CodeRabbit 最终复审为 0 issues。没有运行或重新消费
+  v10。
+
 ## 5. 信任与威胁边界
 
 受信任：固定版本 CPA Plugin Host、CPA Management Key 中间件、插件进程内代码、经运维

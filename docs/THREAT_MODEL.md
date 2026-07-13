@@ -60,8 +60,10 @@ language or encoding, and can produce false positives/negatives. Decoding is
 bounded, images/audio/video are not semantically inspected, and public media
 URLs are never fetched. `observe` and `audit` deliberately do not block. CPA or
 upstream behavior outside the pinned ABI may change, and CPA v7.2.67 retains a
-host-level Router fail-open boundary. Holdout v1 and v2 are consumed historical
-evidence; the separately authored blind v3 is required before release. Upstream
-providers independently enforce their own policies. Therefore the plugin
-reduces risk but cannot guarantee that an account will never be warned,
-suspended, or deactivated.
+host-level Router fail-open boundary. Holdout/evaluation generations v1-v9 are
+retired, consumed, or methodology-invalid history; methodologically valid v10
+was consumed and failed. Any future release attempt requires a new
+independently authored unseen set for a materially new implementation and must
+not reuse v10. Upstream providers independently enforce their own policies.
+Therefore the plugin reduces risk but cannot guarantee that an account will
+never be warned, suspended, or deactivated.

@@ -20,6 +20,12 @@ and CPA C ABI/RPC schema v1. musl/Alpine is not supported.
 > `v0.1.2` tag or GitHub Release, and do not deploy this candidate. A future
 > release attempt requires a new implementation and a newly, independently
 > authored unseen set; it must not reuse v10.
+>
+> **Post-v10 development note:** the current development tree contains audit-driven
+> hardening and dependency updates made after the recorded v10 implementation
+> snapshot. These changes have engineering-test evidence only and do not
+> inherit any v10 approval. A future candidate still requires a new independent
+> unseen set.
 
 > **Risk statement:** this plugin can reduce the number of risky requests that
 > reach upstream accounts. It cannot guarantee that any account will never be
@@ -211,6 +217,12 @@ rollback.
 The release toolchain is pinned to Go `1.26.4`. Use Linux amd64 with cgo, GCC,
 GNU binutils, `file`, `zip`, `unzip`, `sha256sum`, `jq`, CycloneDX GoMod
 `v1.9.0`, and `govulncheck v1.6.0`.
+
+The v9/v10 historical-provenance tests require a full Git clone containing the
+recorded commit. A source `tar.gz` intentionally excludes `.git`; it is suitable
+for source inspection and ordinary builds, but cannot satisfy or claim that
+historical integrity gate. Run the complete test matrix from a full-history
+clone.
 
 ```bash
 make format-check git-diff-check module-verify

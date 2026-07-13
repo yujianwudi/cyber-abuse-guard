@@ -148,6 +148,9 @@ func buildRecords() ([]record, error) {
 			if err != nil {
 				return nil, fmt.Errorf("%s: %w", id, err)
 			}
+			if err := validateCarrierSemantic(input, text); err != nil {
+				return nil, fmt.Errorf("%s carrier %s: %w", id, carrier, err)
+			}
 			result = append(result, record{
 				ID:       id,
 				Label:    label,
@@ -273,6 +276,29 @@ func wrapCarrier(index int, id, text string) (json.RawMessage, error) {
 	}
 	b, err := json.Marshal(value)
 	return json.RawMessage(b), err
+}
+
+func validateCarrierSemantic(input json.RawMessage, intended string) error {
+	result, err := extract.ExtractText(input, extract.Limits{})
+	if err != nil || result.ParseError != "" || result.Truncated || len(result.Parts) == 0 {
+		return fmt.Errorf("ExtractText failure err=%v parse=%q truncated=%v parts=%d", err, result.ParseError, result.Truncated, len(result.Parts))
+	}
+	want := semanticKey([]string{intended})
+	if want == "" {
+		return errors.New("authored semantic normalized to empty text")
+	}
+	candidates := make([]string, 0, len(result.Parts)+len(result.Segments)+1)
+	candidates = append(candidates, result.Parts...)
+	for _, segment := range result.Segments {
+		candidates = append(candidates, segment.Text)
+	}
+	candidates = append(candidates, strings.Join(result.Parts, "\n"))
+	for _, candidate := range candidates {
+		if strings.Contains(semanticKey([]string{candidate}), want) {
+			return nil
+		}
+	}
+	return errors.New("ExtractText did not recover the authored semantic text")
 }
 
 func mustJSONString(value any) string {

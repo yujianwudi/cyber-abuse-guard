@@ -12,6 +12,34 @@ Release, or production deployment may be created from this candidate. A future
 release attempt requires a new implementation and a new independently authored
 unseen set.
 
+- Harden the post-v10 development tree after independent review. Carrier
+  authors now prove that production extraction recovers the authored semantic
+  text; validators fail on schema, duplication, extraction, overlap, taxonomy,
+  scale, distribution, and frozen prior-corpus inventory errors; snapshot globs
+  must all match; and one shared fixture publisher keeps incomplete staging
+  private before a no-replace atomic rename. Files and Unix directory metadata
+  are synced; non-Unix directory sync is explicitly best-effort. Unix tests
+  now assert that the destination name stays absent throughout staging.
+  Windows uses native `MoveFileEx` without replace semantics and is exercised
+  against existing files, symlinks, and concurrent publishers.
+- Preserve v9/v10 corpus and historical implementation hashes without forcing
+  later development HEADs to equal consumed-run snapshots. Full-history CI now
+  binds the recorded hashes to commit `0f1d68717daadfd5dfc514ff2174cfb641a5d845`
+  and tree `df878c537bca9fd71256b1c81ced18e72b583cf3`, then recomputes them from Git
+  blobs. The frozen v9/v10 corpus and formal report blobs are bound to the same
+  commit so changing current files and constants together cannot rewrite the
+  consumed record. Missing Git metadata or shallow history fails this gate
+  closed instead of silently passing. Current source remains unevaluated until
+  a new independent unseen set exists.
+- Harden malformed and permissively decoded Base64 handling, including
+  horizontal whitespace and valid padded prefixes followed by ignored suffix
+  bytes. Also harden atomic no-follow HMAC secret opening across Unix, callback
+  synchronization tests, decimal watchdog budgets, and portable HMAC-key
+  publication synchronization.
+- Update `golang.org/x/crypto` to `v0.52.0` and `golang.org/x/net` to `v0.55.0`
+  plus their required `x/text`, `x/sync`, and `x/sys` versions, meeting the
+  minimum patched versions for all 14 alerts against the prior module graph.
+
 - Add bounded textual decoding for URL percent escapes, HTML entities,
   inspectable Base64, textual data URLs, JSON escapes, and nested tool JSON.
   Decoding is limited to two layers, eight variants, a 128 KiB encoded source,
@@ -52,6 +80,8 @@ unseen set.
 - Refactor CI into explicit format, diff, module, unit, race, vet, fuzz,
   regression, Holdout, benchmark, vulnerability, build, real-CPA integration,
   verification-fault, artifact-hash, clean-tree, and reproducibility gates.
+  Format checking includes tracked and untracked Go files and exits cleanly
+  when a repository contains none.
 - Add production operations documentation for Observe → Audit → Balanced
   rollout, watchdog alarms, router-order/duplicate-binary manual checks,
   binary/database rollback, HMAC retention, and opt-in complete cleanup.

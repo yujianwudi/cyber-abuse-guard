@@ -55,7 +55,7 @@ evidence column is complete.
 | Script executable bits | Shell scripts tracked as executable in release source | PASS candidate Git-mode check; no tagged release source |
 | Verifier must fail hard | `set -euo pipefail`, strict dependency/artifact/ELF/ABI/hash/archive checks, fault injection | PASS candidate fault suite; no formal artifact |
 | Clean-tag-only artifacts | formal builds reject modified/staged/untracked files; dirty override is visibly suffixed | PASS mechanism; no release tag created |
-| Independent evaluation | v1-v9 history frozen; methodologically valid v10 consumed after one formal run | **FAIL: v10 GATE / RELEASE BLOCKED** |
+| Independent evaluation | v1-v9 history frozen; v9/v10 implementation, rules, corpus, and formal report evidence bound to a recomputable historical Git commit/tree with missing/shallow history rejected; exact prior-corpus paths/hashes/rows frozen; methodologically valid v10 consumed after one formal run | **FAIL: v10 GATE / RELEASE BLOCKED** |
 | Encoding/bypass tests | bounded URL/HTML/Base64/text-data/JSON/tool decoding; two layers and resource caps | PASS candidate engineering tests |
 | Prompt-injection washing | protected critical categories retain hard authorization behavior | UNRESOLVED after consumed v10 FAIL |
 | Multi-turn/role pollution | per-segment plus adjacent-user analysis; conservative unsupported roles | PASS candidate engineering tests |
@@ -245,6 +245,13 @@ consumption_status: EXECUTED ONCE / FAIL; rerun rejected by gate
 If any floor fails, preserve the files and hashes, publish aggregate failure,
 and stop the release. Do not delete/relabel misses or tune one literal per row.
 
+The current development tree is newer than the implementation/dependency
+snapshot recorded above. Post-v10 audit fixes and dependency updates must not
+replace that historical hash or be evaluated by rerunning the consumed corpus.
+CI verifies the frozen corpus, historical report markers, and rerun rejection
+separately. Current source has no independent release result and remains
+blocked until a new unseen set is authored outside the implementation process.
+
 ## Required formal artifacts
 
 | Artifact | SHA-256 | Verified |
@@ -273,9 +280,11 @@ govulncheck_version: v1.6.0
 result: PASS (candidate engineering check; 0 reachable vulnerabilities)
 github_dependabot_open_alerts: 14 (7 critical, 2 high, 5 moderate)
 github_dependabot_packages: golang.org/x/crypto; golang.org/x/net
-unfixed_high_severity_findings: PRESENT at dependency-version level; not reachable according to govulncheck
+post_v10_source_versions: golang.org/x/crypto v0.52.0; golang.org/x/net v0.55.0
+patched_version_floor_status: SATISFIED IN DEVELOPMENT BRANCH; GitHub closure requires merge to the default branch and repository rescan
+unfixed_high_severity_findings: OPEN IN GITHUB against prior pushed module graph; not reachable according to prior govulncheck
 exceptions: NONE GRANTED; production release remains prohibited
-required_follow_up: update or replace the affected dependency graph in a future implementation, rerun all gates, and use a new independent evaluation
+required_follow_up: review and merge the dependency remediation, confirm GitHub alerts close after rescan, rerun all gates, and use a new independent evaluation
 ```
 
 GitHub's dependency-version alerts and `govulncheck` answer different questions.

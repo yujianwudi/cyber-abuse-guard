@@ -12,41 +12,59 @@ import (
 )
 
 func TestClearHostAPIWaitsForInFlightCallback(t *testing.T) {
+	const timeout = 2 * time.Second
+
 	callbackEntered := make(chan struct{})
 	releaseCallback := make(chan struct{})
-	callbackDone := make(chan struct{})
+	callbackDone := make(chan bool, 1)
 	go func() {
+		released := false
 		withHostAPICallback(func() {
 			close(callbackEntered)
-			<-releaseCallback
+			select {
+			case <-releaseCallback:
+				released = true
+			case <-time.After(timeout):
+			}
 		})
-		close(callbackDone)
+		callbackDone <- released
 	}()
-	<-callbackEntered
+	select {
+	case <-callbackEntered:
+	case <-time.After(timeout):
+		t.Fatal("host callback did not acquire the read lock")
+	}
 
-	clearStarted := make(chan struct{})
 	clearDone := make(chan struct{})
 	go func() {
-		close(clearStarted)
 		clearHostAPIAndWait()
 		close(clearDone)
 	}()
-	<-clearStarted
-	select {
-	case <-clearDone:
-		t.Fatal("native host API was cleared while a callback was in flight")
-	case <-time.After(50 * time.Millisecond):
+
+	// A pending RWMutex writer prevents new readers. Since the callback still
+	// holds the initial read lock, a failed TryRLock proves that clear has
+	// reached the synchronization wait rather than merely starting its goroutine.
+	deadline := time.Now().Add(timeout)
+	for hostAPIMu.TryRLock() {
+		hostAPIMu.RUnlock()
+		if time.Now().After(deadline) {
+			t.Fatal("native host API clear did not enter the synchronization wait")
+		}
+		time.Sleep(time.Millisecond)
 	}
 
 	close(releaseCallback)
 	select {
-	case <-callbackDone:
-	case <-time.After(2 * time.Second):
-		t.Fatal("in-flight host callback did not finish")
+	case released := <-callbackDone:
+		if !released {
+			t.Fatal("in-flight host callback timed out waiting for release")
+		}
+	case <-time.After(timeout):
+		t.Fatal("in-flight host callback did not report completion")
 	}
 	select {
 	case <-clearDone:
-	case <-time.After(2 * time.Second):
+	case <-time.After(timeout):
 		t.Fatal("native host API clear did not resume after callback completion")
 	}
 }

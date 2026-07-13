@@ -75,8 +75,10 @@ if [[ "$(stat -c '%d:%i' -- "$temporary")" != "$(stat -c '%d:%i' -- "$output")" 
 fi
 rm -f -- "$temporary"
 temporary=""
-sync -d -- "$output"
-sync -f -- "$directory"
+# A no-argument sync is specified by POSIX and flushes both the published file
+# and its directory entry. Key generation is rare enough that the broader
+# flush is preferable to depending on GNU-only sync -d/-f options.
+sync
 
 if [[ -L "$output" || ! -f "$output" ]]; then
   echo "generated HMAC key is not a regular file" >&2

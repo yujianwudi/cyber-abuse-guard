@@ -34,9 +34,10 @@ implemented behavior.
 9. Add an authenticated management UI mechanism only after CPA offers a safe
    private resource route. CPA v7.2.67 public resource routes must never carry
    audit or subject data.
-10. Replace whole-buffer rune normalization with a streaming/byte-oriented
-    matcher to bring near-budget allocation below 1,000,000 bytes/op without
-    reducing scan, decode, history, or rule coverage.
+10. Preserve the achieved near-budget allocation gate (currently well below
+    1,000,000 bytes/op). Consider streaming/byte-oriented normalization only if
+    future rule or decoder growth regresses the measured gate, and never reduce
+    scan, decode, history, or rule coverage to recover performance.
 11. Add long-running nightly fuzz, soak, migration-fault, and memory-leak jobs,
     signed provenance/attestation, and reproducibility comparison across two
     independent Linux builders rather than two local clones only.

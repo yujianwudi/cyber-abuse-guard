@@ -16,6 +16,18 @@ ruleset 1.0.7 and failed with benign FP 28/320, policy blocked 49/320, and exact
 GitHub Release, formal artifact set, or production deployment. A future attempt
 requires a new implementation and a new independently authored unseen set.
 
+The current development tree is a post-v10 implementation. Evaluation tooling,
+extraction edges, cross-Unix secret-file handling, operational scripts, and
+dependencies changed after the v10 implementation snapshot. Historical v9/v10
+checks retain recorded corpus and snapshot hashes without forcing later
+development HEADs to equal those implementations. In a full Git checkout, v9
+and v10 now recompute those hashes from the frozen historical commit/tree, and
+verify the corresponding corpus and formal report Git blobs. The validator
+requires the exact path, SHA-256, and row inventory of every earlier JSONL
+corpus. Missing Git metadata or a shallow checkout without the recorded commit
+is a hard test failure, not a skipped integrity gate. This does not relax the
+release gate: current source is unevaluated and needs a new independent set.
+
 Known history: v1 is a retired methodology-invalid diagnostic; v2-v8 are
 consumed failures; v9 is `CONSUMED / METHODOLOGY INVALID / FAIL` because the
 exact taxonomy-enum validator was missing; v10 is a methodologically valid
@@ -40,7 +52,7 @@ must not be converted into a tagged-release matrix because v10 failed.
 | Consumed Holdout v2 integrity only | `go test -tags=sqlite_omit_load_extension ./internal/classifier -run '^TestIndependentHoldoutV2FrozenIntegrity$' -count=1` | PASS (no classification) |
 | Consumed Holdout v3 frozen integrity | default unit test | **PASS (no classification)** |
 | Consumed evaluation v4-v8 frozen integrity/history | default unit tests + frozen reports | **PASS / frozen (no authorized rerun)** |
-| Consumed invalid evaluation v9 integrity/history | default unit tests + `EVALUATION_V9_REPORT.md` | **METHODOLOGY INVALID / FAIL** |
+| Consumed invalid evaluation v9 integrity/history | default unit tests + historical Git-blob recomputation + `EVALUATION_V9_REPORT.md` | **METHODOLOGY INVALID / FAIL** |
 | Formal evaluation v10 | first and only `make holdout-test` | **FAIL — FP 28/320; blocked 49/320; exact 33/320** |
 | Consumed v10 rerun protection | current `make holdout-test` | **PASS — rerun rejected with non-zero exit** |
 | Development generalization Round 4 | default classifier development tests | **PASS — malicious 64/64; legitimate FP 0/64** |
@@ -49,7 +61,7 @@ must not be converted into a tagged-release matrix because v10 failed.
 | Linux amd64 build | `make build-linux-amd64` | **PASS (dirty-suffixed candidate)** |
 | Real CPA integration | `make integration-test` | **PASS** |
 | Formal clean-tag release | `make release` | **NOT RUN / BLOCKED by v10 FAIL** |
-| Candidate release packaging | `make sbom package-release` | **PASS** |
+| Candidate release packaging | `make sbom package-release` | **PASS — dirty development ZIP/SO/SBOM regenerated after dependency upgrade** |
 | Strict release verification | `make verify-release` | **PASS (candidate artifact)** |
 | Verifier fault injection | `make verification-fault-test` | **PASS — all 14 faults rejected** |
 | Artifact hashes | `make artifact-hash` | **PASS (candidate artifact)** |
