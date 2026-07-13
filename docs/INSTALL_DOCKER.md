@@ -21,13 +21,13 @@ in a production plugin directory.
 
 ## Preconditions
 
-- CPA is exactly `v7.2.67` at commit
-  `2075f77c8ebe9ec872759965661936fb1ac2931f` and was built with
+- CPA is exactly `v7.2.72` at commit
+  `6279bb8a4c2835ff6ed99c6b85083b2afbefa681` and was built with
   `CGO_ENABLED=1`. Assets labelled `_no-plugin` cannot load native plugins.
-  The repository root `go.mod` still pins this version. The isolated CPA
-  `v7.2.72` module under `integration/pluginstorecontract` validates the
-  official store installer and host-routing source contracts; it is not Guard
-  native-host compatibility or deployment evidence for v7.2.72.
+  The repository root and isolated contract module both pin this version.
+  GitHub CI is configured to load the real Store-installed guard `.so` and a
+  pure-C second Router/executor through the v7.2.72 Host; the authoritative CI
+  result and Leo's independent verification are still required.
 - The container is Linux amd64 with glibc 2.34 or newer. Debian Bookworm is the
   intended base; musl/Alpine is unsupported.
 - The deployment host has `curl`, `jq`, `unzip`, `sha256sum`, and `openssl`.
@@ -224,11 +224,14 @@ location /v0/management/plugins/cyber-abuse-guard/ {
 }
 ```
 
-This is a deployment control, not a source-level proof. In the owner-operated
-server sandbox, send a body slightly above 1 MiB and verify that Nginx returns
-HTTP 413 before CPA access logs, plugin counters, or the management handler show
-the request. Do not apply a 1 MiB limit indiscriminately to model-request routes
-that intentionally support larger bodies.
+This is a deployment control, not a plugin-internal proof. The repository's
+`make management-proxy-413-test` starts an isolated Nginx and counted CPA-handler
+stub and is designed to assert an oversized request returns HTTP 413 with
+handler count zero, followed by a small traversing control. Its authoritative
+result must come from GitHub CI, and Leo must repeat the equivalent check in the
+target deployment. Do not apply a 1 MiB limit
+indiscriminately to model-request routes that intentionally support larger
+bodies.
 
 ## 5. Configure Observe first
 
@@ -310,6 +313,13 @@ per-request self-executor readiness checks. A missing plugin, registration
 failure, fused plugin, Router error/panic, invalid or empty target, not-ready
 executor, or earlier handled Router can cause CPA to continue routing.
 
+The GitHub CI suite is designed to make this boundary concrete with a real
+pure-C second Router/executor. It asserts higher-priority bypass,
+same-priority plugin-ID ordering, invalid/error/not-ready continuation, guard
+missing/registration failure/disabled behavior, and native fallback. Panic/fuse
+remain verified by the checksum-pinned official-source Host overlay because ABI
+v1 cannot safely inject those private Go states from a C plugin.
+
 Also verify from the deployment environment:
 
 ```bash
@@ -322,11 +332,21 @@ Verify New API → CPA using an ordinary harmless request, confirm other plugins
 still behave normally, and compare the current CPA auth-file list with the saved
 inventory. Installation must not create, delete, or modify auth files.
 
-For the current Phase 0 development diff, server verification is still required
-for OpenAI Chat, OpenAI Responses, Claude, and Gemini. For each protocol, prove
-that `execute`, `execute_stream`, and `count_tokens` policy paths return HTTP 403,
-that `http_request` returns 405, and that blocked requests leave Auth Selector,
-Provider, Usage, and Mock Upstream counters at zero.
+The GitHub CI automation covers OpenAI Chat, OpenAI Responses, Claude, and
+Gemini allow/refusal paths against CPA v7.2.72, including streaming pre-SSE 403,
+Anthropic/Gemini token-count 403, and zero Auth Selector,
+Provider, Usage, and Mock Upstream counters for blocked requests. The
+implementation-freeze GitHub CI result is recorded as PASS; repetition in Leo's
+isolated target environment is still required before any release decision.
+
+`executor.http_request` is different: current tests reach the official
+`ProviderExecutor.HttpRequest` adapter as `(nil, error)` with `StatusCode()==405`
+and a project-owned `httptest.Server` that manually maps that error to HTTP.
+CPA v7.2.72 does expose `POST /v1/alpha/search`, but its ordinary selection path
+is fixed to `codex` and it maps every `HttpRequest` error to HTTP 502. No current
+official public route maps Guard's status error to a final client 405. That
+result is `NOT AVAILABLE / NOT RUN`, cannot be created by the current CI job,
+and remains an explicit `BLOCKED FOR HANDOFF` item.
 
 ## 8. Observe → Audit → Balanced rollout
 

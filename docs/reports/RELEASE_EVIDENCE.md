@@ -1,372 +1,228 @@
-# v0.1.2 Release Evidence and Audit Closure
+# v0.1.2 Development Evidence and Release Closure
 
-Last updated: 2026-07-13 (Asia/Shanghai)
+Last updated: 2026-07-14 (Asia/Shanghai)
 
 ## Decision
 
-**RELEASE DECISION: FAIL / NOT PRODUCTION-READY.**
+**RELEASE DECISION: FAIL / RELEASE BLOCKED.**
 
-Reasons:
+**DEVELOPMENT HANDOFF STATUS: BLOCKED FOR HANDOFF.**
 
-1. Holdout and evaluation generations v1-v9 are consumed or frozen historical
-   evidence and cannot approve this release.
-2. Independently authored evaluation v9 was executed once, then invalidated
-   because its taxonomy names violated the fixed authoring contract and the
-   static gate had failed to reject those names. It is frozen against reruns.
-3. Methodologically valid evaluation v10 was executed once against ruleset
-   1.0.7 and failed benign false-positive, overall, and all four critical
-   category floors. The release is blocked and v10 is frozen against reruns.
-4. Non-blind functional, performance, real-CPA integration, privacy,
-   vulnerability, candidate packaging, and verifier-fault checks passed as a
-   pre-prompt-injection-change engineering baseline. The current diff has only
-   the source-level checks recorded in `TEST_REPORT.md`; it does not inherit
-   current-diff CPA/native/deployment evidence. Neither baseline nor current
-   checks can override the blind release-gate failure.
-5. The clean release commit, annotated tag `v0.1.2`, GitHub Release, formal
-   artifact set, and formal artifact SHA-256 values were deliberately not
-   created because the release gate failed.
+The methodologically valid evaluation v10 was executed once and failed. Its
+aggregate result is immutable; it was not read or rerun during this work. The
+post-v10 implementation may be prepared for independent Leo verification only
+after its final commit, clean tree, GitHub CI, real CPA v7.2.72 Host matrix,
+proxy check, and artifact identities are recorded. Those engineering fields are
+now recorded for implementation freeze `9c8114e`; this is still not a release
+approval or independent quality PASS.
 
-No pending or failed item may be converted to PASS based on design intent,
-historical v0.1.1 output, a dirty development build, or a retest of consumed
-holdout/evaluation data.
+No tag, GitHub Release, formal artifact publication, or production deployment is
+authorized. Even a future passing engineering matrix cannot guarantee that an
+upstream account will never be warned, rate-limited, suspended, or deactivated.
 
-## Target and release identity
+Methodology incident: two incorrectly scoped WSL source-search commands
+unexpectedly emitted several rows from the retired `testdata/holdout-v3`
+corpus. Both were stopped immediately; the rows were not analyzed or used for
+tuning or conclusions. Evaluation v10 content was not accessed. The retired
+holdout-v3 corpus is no longer eligible as independent evidence, and the
+incident independently blocks handoff.
+
+Independent Host audit also found a separate handoff blocker. Guard
+`executor.http_request` returns an RPC error carrying status 405 and the official
+adapter returns `(nil, error)`. CPA v7.2.72's provider-specific public
+`POST /v1/alpha/search` consumer normally selects `codex` and maps every
+`HttpRequest` error to HTTP 502. The project `httptest.Server` manually maps the
+status error and is not official Host evidence. No current official route maps
+Guard's error to final client 405, so that result is `NOT AVAILABLE / NOT RUN`
+and current CI cannot close it.
+
+## Development identity
 
 ```text
-source_version: 0.1.2
-target_cpa_version: v7.2.67
-target_cpa_commit: 2075f77c8ebe9ec872759965661936fb1ac2931f
-root_go_mod_cpa_baseline: v7.2.67
-phase0_v7.2.72_scope: official installer and host-routing source contracts only; no host compatibility claim
+repository: https://github.com/yujianwudi/cyber-abuse-guard
+starting_baseline: a121a444cb0d82cba4e27754914a1f88258e1d7b
+branch: agent/complete-classifier-cpa-v7272-handoff
+reliability_checkpoint_commit: 573def2649d164161e2dfdfeb3f59b1e1b38ebbc
+implementation_freeze_commit: 9c8114e22841f9a19b15b1f4b3c48531aa2453a0
+evidence_document_commit: SELF (resolve with git log -1 -- this file)
+worktree: CLEAN AT FINAL HANDOFF
+root_cpa_version: v7.2.72
+cpa_upstream_tag_commit: 6279bb8a4c2835ff6ed99c6b85083b2afbefa681
+cpa_module_sum: h1:ppce0MLsz2xJi2yi3/A60zu03cM7bMWBAEJ6eC29E5Y=
+cpa_go_mod_sum: h1:f4pcyAej8RoeRhIxJfm+OUMkCKaApiA8WzxR2XVlBh8=
 cpa_abi: C ABI/RPC schema v1
-target_platform: linux/amd64
-glibc_floor: 2.34
-go_version: 1.26.4
+target: linux/amd64, glibc 2.34+
+go_toolchain_for_recorded_wsl_checks: go1.26.4 linux/amd64
 ruleset_version: 1.0.7
-release_commit: NOT CREATED — RELEASE BLOCKED
-annotated_tag: NOT CREATED — RELEASE BLOCKED
 ruleset_sha256: 7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134
-source_tree_clean: NOT A RELEASE TREE; no tag may be created
-server_sandbox_validation: PENDING / NOT RUN
-current_diff_real_cpa_integration: NOT RUN
-current_diff_native_loading_or_deployment: NOT RUN
-phase0_four_protocol_403_zero_call_matrix: SERVER SANDBOX PENDING / NOT RUN
-prompt_injection_blind_evaluation: NOT CREATED
+classifier_policy_version: classifier-policy-v2
+classifier_policy_sha256: dc9a174099cb2f621e5333a508d4645604f96f470a6d9ae12a1acfb363d29cf2
 ```
 
-## Audit-item closure matrix
+The classifier-policy digest is source-bound and exposed through classifier
+results/authenticated status. Current build metadata and artifact verification
+do not yet bind it, so the full final Git commit remains part of the behavior
+identity.
 
-“Implemented” describes source state; it is not a release PASS until the
-evidence column is complete.
+Three WSL commands were mistakenly executed outside the authorized evidence
+path: `make cpa-router-fixture-blackbox`,
+`make cpa-v7272-host-blackbox`, and
+`scripts/management-proxy-413-test.sh`. They used loopback/Mock components only,
+contacted no production service or real provider, and cleanup left no fixture
+process running. Their status is:
 
-| Audit item | Source response | Evidence status |
+```text
+LOCAL MIS-EXECUTION RECORDED / EXCLUDED; CI REQUIRED / NOT YET AUTHORITATIVE
+```
+
+They are not delivery PASS evidence.
+
+## Current implementation closure matrix
+
+| Area | Source state | Executed evidence at this revision |
 |---|---|---|
-| Clean Git commit and annotated tag | Formal preflight rejects dirty source, mismatched version/tag/HEAD | NOT CREATED; blocked by v10 FAIL |
-| Script executable bits | Shell scripts tracked as executable in release source | PASS candidate Git-mode check; no tagged release source |
-| Verifier must fail hard | `set -euo pipefail`, strict dependency/artifact/ELF/ABI/hash/archive checks, fault injection | PASS candidate fault suite; no formal artifact |
-| Clean-tag-only artifacts | formal builds reject modified/staged/untracked files; dirty override is visibly suffixed | PASS mechanism; no release tag created |
-| Independent evaluation | v1-v9 history frozen; v9/v10 implementation, rules, corpus, and formal report evidence bound to a recomputable historical Git commit/tree with missing/shallow history rejected; exact prior-corpus paths/hashes/rows frozen; methodologically valid v10 consumed after one formal run | **FAIL: v10 GATE / RELEASE BLOCKED** |
-| Encoding/bypass tests | bounded URL/HTML/Base64/text-data/JSON/tool decoding; ambiguous-schema fallback; recursive JSON in tool payloads; split-block and ordered tool-field re-decode; isolated-character reconstruction | PASS current-diff source tests; server sandbox pending |
-| Prompt-injection washing | post-v10 `META-OVERRIDE-001` source overlay covers hierarchy/refusal/persona/scope/output/disclosure/negative-authorization combinations while retaining ordinary taxonomy | SOURCE IMPLEMENTED; current-diff source tests PASS; server sandbox PENDING; formal evidence unresolved; v10 remains FAIL |
-| Multi-turn/role pollution | per-segment plus adjacent-user analysis; conservative unsupported roles; no semantic state across separate API calls | PASS current-diff source tests; cross-request continuation remains a limitation |
-| Router fail-open mitigation | panic recovery, mode-aware self-route, counters, readiness, local probes | PASS controlled CPA tests; host boundary remains |
-| Host fail-open boundary | explicitly retains plugin-not-loaded, registration failure, fused plugin, Router error/pre-result panic, invalid/empty target, executor-not-ready, and earlier handled Router; equal priority orders by plugin ID ascending; `enforcement_ready` is internal only | DOCUMENTED; current server validation pending |
-| Health monitoring | authenticated status plus read-only loopback watchdog | PASS local candidate tests; production deployment prohibited |
-| No original-text logging | unsafe field rejected; typed minimal events; no debug override | PASS candidate privacy scan |
-| SQLite migration | schema version/history, atomic v1→v2, bounded optional read-only backup | PASS candidate engineering tests |
-| Subject persistence | optional HMAC-only typed snapshots, decay/capacity restore, key mismatch protection | PASS candidate engineering tests; no keyed whole-snapshot MAC |
-| HMAC production handling | atomic no-output generator, mode-0600 secret file, stable/degraded status | PASS candidate tests; dual-key rotation remains design-only |
-| Dual-key rotation | design documented; not implemented | ACCEPTED LIMITATION, operator must preserve key |
-| Opaque media | explicit policy, mode-aware defaults, separate signal/counters, no public fetch | PASS candidate engineering tests |
-| Rule version/hash | embedded YAML ruleset 1.0.7 remains canonical and status-visible; meta, matcher/normalizer, role, and extractor semantics require the containing build commit too | YAML identity PASS; complete classifier-policy identity UNRESOLVED until separately versioned or provenance-bound |
-| Performance gates | acceptance/benchmark/CPU-profile procedure documented | PASS candidate engineering gate; host-specific |
-| Management hardening | CPA-authenticated exact routes, body/query/page/method bounds, fixed unblock body; deployment proxy limit required because CPA performs pre-plugin `io.ReadAll` | PRE-CHANGE HOST AUTH PASS; Nginx 1 MiB / pre-CPA 413 CURRENT SERVER TEST PENDING |
-| Router conflict/duplicate binary | ABI limitation surfaced; manual deployment checks/watchdog notice | MANUAL CONTROL REQUIRED |
-| CPA store ZIP | `cyber-abuse-guard_<version>_linux_amd64.zip` contains exactly one root executable `.so`; isolated v7.2.72 module uses official `pluginstore.InstallArchive` with synthetic bytes | SOURCE IMPLEMENTED; no v7.2.72 host compatibility claim; formal artifact NOT CREATED |
-| Audit bundle separation | reports, metadata, SBOM, docs, and operator scripts moved to `cyber-abuse-guard-v<version>-audit-bundle.zip` | SOURCE IMPLEMENTED; formal artifact NOT CREATED |
-| Executor method contract | `execute`, `execute_stream`, and `count_tokens` use policy 403; `http_request` uses 405 | SOURCE IMPLEMENTED; four-protocol real-host matrix PENDING |
-| CI/CD | explicit quality, Holdout, benchmark, vuln, CPA, artifact, fault, clean/repro gates | NO TAGGED RUN; release correctly blocked |
-| SBOM/vulnerability | CycloneDX 1.6 and pinned govulncheck in release workflow | PASS candidate checks; no formal release SBOM |
-| Reproducibility | fixed metadata/time/order and two-clean-clone byte comparison | NOT FINALIZED; release blocked before tag |
-| Gray rollout | Observe → Audit → Balanced with promotion/abort criteria | DOCUMENTED; prohibited for this candidate |
-| Rollback/cleanup | disable, previous binary/DB restore, secret retention, explicit data removal | DOCUMENTED; no production rollout authorized |
+| Wrapper/amplifier separation | Wrapper-only cannot synthesize a Cyber Abuse taxonomy; wrapper can amplify only an independent base behavior | Targeted classifier DEVELOPMENT SELF-CHECK **PASS** |
+| Behavior graph | Privacy-safe evidence relations for behavior, intent, target, execution, evasion, impact, scale, authorization, role, carrier, and reasons | Targeted DEVELOPMENT SELF-CHECK **PASS** |
+| Role/multi-turn/tool/placeholder/carrier | Bounded provider-aware extraction and composition | Targeted classifier/plugin DEVELOPMENT SELF-CHECK **PASS** |
+| Classifier identity | `classifier-policy-v2` source digest test and authenticated status | DEVELOPMENT SELF-CHECK **PASS**; artifact binding incomplete |
+| Development corpus | 35 visible cases; validator, fixed taxonomy, coverage, extraction, duplicate/near-duplicate checks | DEVELOPMENT SELF-CHECK **PASS**; never blind evidence |
+| Subject idempotency | One risk hit per subject/request digest across retries, methods, races, reconfigure, persistence | Windows and WSL targeted DEVELOPMENT SELF-CHECK **PASS** |
+| Pending cache | Ordered O(1) refresh/eviction | Targeted tests/benchmarks **PASS** |
+| HMAC/SQLite/lifecycle | owner/mode/type, migration rollback/collision, audit close, lifecycle races | WSL race/vet DEVELOPMENT SELF-CHECK **PASS** |
+| Privacy canary | DB/backup/snapshot/API/log/panic/CSV/watchdog/release-evidence scans | Recorded WSL/script DEVELOPMENT SELF-CHECK **PASS** |
+| CPA root dependency | root `go.mod` on v7.2.72 | module inspection/verify **PASS** |
+| Official Host source contract | 16 exact upstream test names plus fail-open overlays | Windows SOURCE OVERLAY **PASS** |
+| Real Guard first install through `InstallManifest` and Host load | harness exists | **GITHUB CI PASS**; local mis-execution remains excluded |
+| Same-Dist repeat-skip/tamper-repair through `TestPublishedStoreArchive` | real artifact contract exists | **GITHUB CI PASS** with required Dist artifacts; synthetic fallback disabled |
+| Four-protocol 403/pre-SSE/token-count | harness exists | **GITHUB CI PASS — 32 Host subtests** |
+| `http_request` 405 at ProviderExecutor adapter/status-error layer | source/adapter test | **SOURCE / ADAPTER CHECK — response=nil** |
+| Final official CPA handler/client HTTP 405 | current public consumer maps executor errors to 502 | **NOT AVAILABLE / NOT RUN — BLOCKED FOR HANDOFF** |
+| Auth/Provider/Usage/Mock Upstream zero side effects | counting seams exist | **GITHUB CI PASS** |
+| Router priority/not-ready/invalid-target/fallback | second native fixture exists | **GITHUB CI PASS — 15 isolated scenarios** |
+| Fuse/pre-result panic | official source overlay only | **SOURCE OVERLAY ONLY** |
+| Management proxy 413 before CPA `io.ReadAll` | script/fixture exists | **GITHUB CI PASS** — counted CPA-handler stub remained zero |
+| GitHub CI | workflow changes exist | **PASS** — push `29292693070`, PR `29292695293`; push long fuzz PASS; both reproducibility jobs PASS |
+| Development-candidate artifact verification | store/audit split and verifier source exist | **GITHUB CI PASS / HASHES RECORDED**; not a formal release |
 
-## Evidence documents
+No row may be upgraded based on design intent, compilation, an older branch, or
+another evidence class.
 
-| Document | Scope | Current status |
-|---|---|---|
-| `TEST_REPORT.md` | full command/test matrix | pre-change baseline PASS; current-diff targeted source checks PASS; v10 release FAIL |
-| `HOLDOUT_REPORT.md` | frozen v1 calibration diagnostic | consumed history |
-| `HOLDOUT_V2_REPORT.md` | independently authored frozen v2 aggregate | consumed; FAIL |
-| `HOLDOUT_V3_REPORT.md` | historical blind generation v3 | consumed; FAIL |
-| `EVALUATION_V4_REPORT.md` | independent evaluation v4 | consumed history |
-| `EVALUATION_V5_REPORT.md` | independent evaluation v5 | consumed history |
-| `EVALUATION_V6_REPORT.md` | independent evaluation v6 | consumed; FAIL |
-| `EVALUATION_V7_REPORT.md` | independent evaluation v7 | consumed; FAIL |
-| `EVALUATION_V8_REPORT.md` | independent evaluation v8 | consumed; FAIL |
-| `EVALUATION_V9_REPORT.md` | independent evaluation v9 | consumed; METHODOLOGY INVALID / FAIL |
-| `EVALUATION_V10_REPORT.md` | current methodologically valid formal gate | consumed; FAIL |
-| `CORPUS_REPORT.md` | project-maintained regression corpus | PASS candidate engineering signal; not blind evidence |
-| `PERFORMANCE.md` | latency, CPU, allocation, profile procedure | PASS pre-change baseline; current diff not benchmarked |
-| `CPA_INTEGRATION.md` | real CPA + mock upstream/auth/usage isolation plus isolated v7.2.72 store source contract | PASS pre-change v7.2.67 baseline; current prompt-injection/Phase0 real host NOT RUN; store contract is not compatibility evidence |
-| `PRIVACY.md` | DB/WAL/SHM/log/API/artifact/network canary scan | PASS pre-change baseline; current diff not rerun end-to-end |
-| `PROMPT_INJECTION_REVIEW.md` | sanitized external defensive review and current source response | development input only; not blind; server sandbox pending |
+## Performance and privacy interpretation
 
-## Mandatory redlines
+Same-machine classifier development medians improved on all five measured
+latency cases from `a121a44` to `a1be19f`. Allocations increased on the ordinary,
+candidate-rich, and role-aware paths. Pending-cache and duplicate-request
+microbenchmarks show the intended constant-time behavior. These results are
+`DEVELOPMENT SELF-CHECK / NOT FINAL EVIDENCE`; Leo must rerun the final commit.
 
-Every row must be PASS before “production-ready” is used:
+Privacy canary/race/vet checks passed for the named safe WSL/script commands.
+The v1→v2 migration additionally fails closed before backup publication or
+migration when legacy request/subject/model/source-format values violate the
+digest/fixed-provider privacy contract; it preserves the original DB for
+operator repair and does not auto-sanitize legacy plaintext. Exact-commit
+GitHub CI passed the real Host, proxy-413, artifact, SBOM, and privacy gates;
+Leo independent review remains not run.
+
+## Frozen evaluation evidence
+
+Evaluation generations v1-v8 remain retired or consumed historical failures;
+v9 remains `CONSUMED / METHODOLOGY INVALID / FAIL`. The methodologically valid
+v10 first-and-only run remains:
+
+| Aggregate | Frozen result | Gate |
+|---|---:|---|
+| Benign false positives | 28 / 320 (8.75%) | FAIL; required `<5%` |
+| Policy blocked | 49 / 320 (15.31%) | FAIL; required `>90%` |
+| Policy exact taxonomy | 33 / 320 (10.31%) | FAIL; required `>90%` |
+
+All four critical taxonomy floors also failed. The v10 report, hashes, byte/row
+counts, and taxonomy aggregates remain frozen in
+`EVALUATION_V10_REPORT.md`. No row-level result or sample may be used for tuning.
+
+The visible 35-case development corpus is permanently ineligible for a future
+v11. A future quality decision requires a newly authored, isolated, unseen set
+outside the implementation process.
+
+## Final engineering redlines
 
 | Redline | Status |
 |---|---|
-| Blocked raw content never reaches Mock Upstream | PASS PRE-CHANGE BASELINE; CURRENT DIFF NOT RUN |
-| Blocked request never enters CPA Auth Selector | PASS PRE-CHANGE BASELINE; CURRENT DIFF NOT RUN |
-| Blocked request creates no real-upstream usage record | PASS PRE-CHANGE BASELINE; CURRENT DIFF NOT RUN |
-| OpenAI Chat/Responses/Claude/Gemini `execute`, `execute_stream`, and `count_tokens` return policy 403; `http_request` returns 405 | SOURCE IMPLEMENTED; CURRENT SERVER SANDBOX PENDING |
-| Plugin absence/registration failure/fuse/Router error/pre-result panic/invalid target/not-ready/priority preemption remain documented host fail-open | OFFICIAL CPA SOURCE TEST PASS; CURRENT SERVER VALIDATION PENDING |
-| Same-priority Router order follows plugin ID ascending | OFFICIAL CPA SOURCE TEST PASS; SERVER FIXTURE PENDING |
-| CPA store ZIP has one root `.so` and is separate from the audit bundle | SYNTHETIC STORE CONTRACT PASS; FORMAL ARTIFACT NOT CREATED |
-| Management body above 1 MiB receives Nginx 413 before CPA `io.ReadAll` | SERVER SANDBOX PENDING / NOT RUN |
-| Raw prompt and plaintext credentials absent from all persistent/returned/logged surfaces | PASS PRE-CHANGE BASELINE; CURRENT DIFF END-TO-END PRIVACY NOT RUN |
-| Safe request identity, model, body, and tools remain unchanged | PASS PRE-CHANGE BASELINE; CURRENT DIFF NOT RUN |
-| No safety-system bypass, identity spoofing, or request laundering | DEVELOPMENT REGRESSION PASS ONLY; no blind generalization proof; server sandbox PENDING; release remains blocked |
-| Legitimate defense/remediation/CTF/authorized work meets FP gate | FAIL v10 (28 / 320 false positives; 8.75%) |
-| Clean Git worktree | NOT A RELEASE TREE; release stopped before tag |
-| Release built from exact annotated tag and commit | NOT CREATED because v10 failed |
-| Verifier returns non-zero on every injected missing/mismatch fault | PASS candidate fault suite |
-| Independent blind evaluation v10 meets all gates | **FAIL: method valid; release blocked** |
-| Documentation states risk reduction, not an account-ban guarantee | PASS (documentation) |
+| Clean final handoff commit and tree | **PASS AT FINAL HANDOFF** |
+| Safe local Go test/race/boundary scripts | **DEVELOPMENT SELF-CHECK PASS** |
+| GitHub CI on exact implementation commit | **PASS — push and PR runs** |
+| Real v7.2.72 store install and native `.so` load | **GITHUB CI PASS** |
+| Same-Dist repeat-skip/tamper-repair with required real artifacts | **GITHUB CI PASS** |
+| Four protocols: allow/block, non-stream/stream, pre-SSE, token-count | **GITHUB CI PASS** |
+| `http_request` adapter/status-error 405 | **SOURCE / ADAPTER CHECK — response=nil** |
+| Final official CPA client HTTP 405 | **NOT AVAILABLE / NOT RUN — current public consumer maps the error to 502; BLOCKER** |
+| Blocked Auth Selector/Provider/Usage/Mock Upstream all zero | **GITHUB CI PASS** |
+| Multi-Router priority/fallback fixture | **GITHUB CI PASS — 15 scenarios** |
+| Management proxy 413 before CPA read | **GITHUB CI PASS** |
+| Development-candidate privacy/artifact canary scan | **GITHUB CI PASS** |
+| Implementation-freeze performance rerun | **GITHUB CI PASS**; Leo rerun not run |
+| Leo independent verification | **NOT RUN** |
+| New independent blind evaluation | **NOT CREATED**; development corpus forbidden |
+| Tag/GitHub Release/production deployment | **NOT CREATED / PROHIBITED** |
 
-## Historical consumed evaluation v7 evidence
+## Required development artifacts
 
-Generated after classifier, rules, decoder, and test methodology were frozen.
-The author/reviewer did not use prior rows as templates for row-specific fixes.
-Record:
+These would be development candidates only, not approved release assets:
 
-```text
-dataset_file: testdata/evaluation-v7/evaluation-v7.jsonl
-total_records: 640
-benign_records: 320
-policy_violation_records: 320
-dataset_bytes: 404528
-dataset_sha256: bd7ec34c6b38244d9b2cf28512b2b427c855129f290f9ef1feec13fc545e5afc
-implementation_sha256: 62f0fe804b5f2f38bf74c26d4b347827899053c2f6d71a4d9d60583310bde6c3
-rules_sha256: a3641baffbb65f1de8ba73ad98fb69446122b9712e12bc2b02ba7f37a2027e10
-source_marker: independent-evaluation-v7-2026-07-13
-dedup_against_all_3822_prior_rows: PASS (normalized exact semantic overlap 0)
-production_path_command: make holdout-test
-benign_fp: 4/320 = 1.25% (PASS; required < 5%)
-overall_policy_blocked: 97/320 = 30.31% (FAIL; required > 90%)
-overall_policy_exact: 97/320 = 30.31% (FAIL; required > 90%)
-credential_theft_blocked_exact: 40/40 = 100% (PASS; required >= 95%)
-phishing_deployment_blocked_exact: 0/40 = 0% (FAIL; required >= 95%)
-ransomware_deployment_blocked_exact: 40/40 = 100% (PASS; required >= 95%)
-data_exfiltration_blocked_exact: 0/40 = 0% (FAIL; required >= 95%)
-row_level_output_disabled: PASS (gate implementation inspection)
-formal_command: make holdout-test
-exit_status: non-zero (quality gate failed)
-consumption_status: EXECUTED ONCE / FAIL; rerun rejected by gate
-```
-
-## Historical consumed evaluation v8 evidence
-
-Generated after classifier, ruleset 1.0.6, decoder, and test methodology were
-frozen. The author/reviewer did not use prior rows as templates for row-specific
-fixes. Record:
-
-```text
-dataset_file: testdata/evaluation-v8/evaluation-v8.jsonl
-total_records: 640
-benign_records: 320
-policy_violation_records: 320
-dataset_bytes: 442461
-dataset_sha256: c722af0c6aae0bd909e808c8bb7a25f3e3481d8e135206e4d8e8ab3efb54edcd
-implementation_dependency_sha256: 67dc31487d5453827e18f4c8d2586e9f4f35684b32a136463c94f64f314d5452
-yaml_rules_snapshot_sha256: ca37b48e484e37376d80db31b7521cfbf722c5e4a454b80cca8085316bc9e3bb
-ruleset_sha256: e25b781bfc88dac1e50e09147902f0debf7075368ea5709d73b8d32543c1ff75
-source_marker: independent_synthetic_v8
-dedup_against_all_4462_prior_rows: PASS (normalized exact semantic overlap 0)
-production_path_command: make holdout-test
-benign_fp: 13/320 = 4.06% (PASS; required < 5%)
-overall_policy_blocked: 126/320 = 39.38% (FAIL; required > 90%)
-overall_policy_exact: 119/320 = 37.19% (FAIL; required > 90%)
-credential_theft_blocked_exact: 37/40 = 92.5% (FAIL; required >= 95%)
-phishing_deployment_blocked_exact: 40/40 = 100% (PASS; required >= 95%)
-ransomware_deployment_blocked_exact: 40/40 = 100% (PASS; required >= 95%)
-data_exfiltration_blocked_exact: 1/40 = 2.5% (FAIL; required >= 95%)
-row_level_output_disabled: PASS (gate implementation inspection)
-formal_command: make holdout-test
-exit_status: non-zero (quality gate failed)
-consumption_status: EXECUTED ONCE / FAIL; rerun rejected by gate
-```
-
-## Historical invalid evaluation v9 evidence
-
-Generated after classifier, ruleset 1.0.7, decoder, and test methodology were
-frozen. The author/reviewer did not use prior rows as templates for row-specific
-fixes. Record:
-
-```text
-dataset_file: testdata/evaluation-v9/evaluation-v9.jsonl
-total_records: 640
-benign_records: 320
-policy_records: 320
-dataset_bytes: 312095
-dataset_sha256: 0481ee919f12a267458f99780fdd2c252209de81b89d5e6c9cac156e38c12c0c
-implementation_dependency_sha256: 090955c800944f8d248ff960cd5c860b17ea0d566cfa0aae90554db30248096b
-yaml_rules_snapshot_sha256: 3fb15df990c7e6369b8dc4c4e725cf1b09a8251275b2145afcd1cd9a859741db
-ruleset_sha256: 7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134
-source_marker: independent-evaluation-v9-author
-dedup_against_all_5102_prior_rows: PASS (normalized exact semantic overlap 0)
-production_path_command: make holdout-test
-methodology_status: INVALID (unexpected taxonomy names; exact enum gate missing)
-release_gate_eligible: false
-benign_fp_observed: 8/320 = 2.5% (diagnostic only)
-overall_policy_blocked_observed: 32/320 = 10% (diagnostic only)
-overall_policy_exact_observed: 32/320 = 10% (diagnostic only)
-row_level_output_disabled: PASS (gate implementation inspection)
-formal_command: make holdout-test
-exit_status: non-zero
-consumption_status: EXECUTED ONCE / METHODOLOGY INVALID / FAIL; rerun rejected
-```
-
-## Historical consumed evaluation v10 evidence
-
-Generated after classifier, ruleset 1.0.7, decoder, exact taxonomy methodology,
-and test procedure were frozen. Record:
-
-```text
-dataset_file: testdata/evaluation-v10/evaluation-v10.jsonl
-total_records: 640
-benign_records: 320
-policy_records: 320
-dataset_bytes: 394629
-dataset_sha256: e42b881103a00c0a7bf0359f8494804bc3aeabc6c2e0bafff99593043129cbef
-implementation_dependency_sha256: 090955c800944f8d248ff960cd5c860b17ea0d566cfa0aae90554db30248096b
-yaml_rules_snapshot_sha256: 3fb15df990c7e6369b8dc4c4e725cf1b09a8251275b2145afcd1cd9a859741db
-ruleset_sha256: 7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134
-source_marker: evaluation-v10-author
-exact_taxonomy_enum_gate: PASS (0 unexpected, 0 missing, eight categories x 40)
-dedup_against_all_5742_prior_rows: PASS (normalized exact semantic overlap 0)
-production_path_command: make holdout-test
-methodology_status: VALID
-benign_fp: 28/320 = 8.75% (FAIL; required < 5%)
-overall_policy_blocked: 49/320 = 15.31% (FAIL; required > 90%)
-overall_policy_exact: 33/320 = 10.31% (FAIL; required > 90%)
-credential_theft_blocked_exact: 8/40 = 20% (FAIL; required >= 95%)
-phishing_deployment_blocked_exact: 0/40 = 0% (FAIL; required >= 95%)
-ransomware_deployment_blocked_exact: 24/40 = 60% (FAIL; required >= 95%)
-data_exfiltration_blocked_exact: 0/40 = 0% (FAIL; required >= 95%)
-row_level_output_disabled: PASS (gate implementation inspection)
-formal_command: make holdout-test
-exit_status: non-zero (quality gate failed)
-consumption_status: EXECUTED ONCE / FAIL; rerun rejected by gate
-```
-
-If any floor fails, preserve the files and hashes, publish aggregate failure,
-and stop the release. Do not delete/relabel misses or tune one literal per row.
-
-The current development tree is newer than the implementation/dependency
-snapshot recorded above. Post-v10 audit fixes and dependency updates must not
-replace that historical hash or be evaluated by rerunning the consumed corpus.
-CI verifies the frozen corpus, historical report markers, and rerun rejection
-separately. Current source has no independent release result and remains
-blocked until a new unseen set is authored outside the implementation process.
-
-## Required formal artifacts
-
-| Artifact | SHA-256 | Verified |
+| Artifact | SHA-256 | Status |
 |---|---|---|
-| `cyber-abuse-guard-v0.1.2.so` | NOT CREATED | RELEASE BLOCKED |
-| `cyber-abuse-guard-v0.1.2.so.sha256` | NOT CREATED | RELEASE BLOCKED |
-| `cyber-abuse-guard_0.1.2_linux_amd64.zip` (CPA store ZIP; one root `.so`) | NOT CREATED | RELEASE BLOCKED |
-| `cyber-abuse-guard-v0.1.2-audit-bundle.zip` (separate evidence/operator bundle) | NOT CREATED | RELEASE BLOCKED |
-| `checksums.txt` | NOT CREATED | RELEASE BLOCKED |
-| `build-metadata.json` | NOT CREATED | RELEASE BLOCKED |
-| `ruleset-manifest.json` | NOT CREATED | RELEASE BLOCKED |
-| `ruleset.sha256` | NOT CREATED | RELEASE BLOCKED |
-| `sbom.cdx.json` | NOT CREATED | RELEASE BLOCKED |
-| `release-test-summary.txt` | NOT CREATED | RELEASE BLOCKED |
-| `release-test-summary.txt.sha256` | NOT CREATED | RELEASE BLOCKED |
+| `cyber-abuse-guard-v0.1.2-dirty.so` | `e7562d3993e69ec3b0bbb052b1cb472aa6b7e527afce7ca36342b90aeec869b9` | **GITHUB CI VERIFIED** |
+| `cyber-abuse-guard-v0.1.2-dirty.so.sha256` | `69f1340cb919d911645ece16f10bb9de1a165543ac7b7b24a8431c1c0bca90cf` | **GITHUB CI VERIFIED** |
+| `cyber-abuse-guard_0.1.2-dirty_linux_amd64.zip` (one root `.so`) | `544406fbf246f4989f1e4275cce69f0d112d0ff68a5c720d4ecf5113d4a87121` | **GITHUB CI VERIFIED / REAL HOST INSTALLED** |
+| `cyber-abuse-guard-v0.1.2-dirty-audit-bundle.zip` | `4ada1c9a802f68390f03ed0ac672497fbb6e70e638e689d27a68c57203d55a8d` | **GITHUB CI VERIFIED** |
+| `build-metadata.json` | `01ba04cac4058c008a3790626f02a7b545ce92c31afd1423a9f5316c9b6e2fb8` | **GITHUB CI VERIFIED** |
+| `checksums.txt` | `ccc17d139a3a9e74b9f021998c1c7151adb177303c18a14b1b93ad53061dbb10` | **DOWNLOADED CI ARTIFACT / LOCALLY REHASHED** |
+| `ruleset-manifest.json` | `486a4dfad49b4e96a600f908cbea47376baab5c8875324999ae50b6251f1af7e` | **GITHUB CI VERIFIED** |
+| `ruleset.sha256` | `a8ff687340617dc18832047f841979a0bd06ff8c50a4bc3c15dd7da37b6fbee2` | **GITHUB CI VERIFIED** |
+| `sbom.cdx.json` | `72ab91ed1b0ee8cb461b8847a18c759f324b34299b2bb6a5d854e467954690c0` | **GITHUB CI VERIFIED** |
+| `release-test-summary.txt` | NOT CREATED | **FORMAL-RELEASE-ONLY; RELEASE BLOCKED** |
 
-The CPA store ZIP must contain exactly one root regular executable `.so` and no
-second entry. The separate audit bundle uses an exact allowlist and rejects
-`.git`, DB/WAL/SHM, migration backups, secret/key/PEM/env files, logs, and
-unexpected paths. GitHub Repository/Release, source `tar.gz`, the store ZIP, and
-the audit bundle are supported; RAR is not a formal release format.
+Push artifact `cyber-abuse-guard-linux-amd64-dirty` is Actions artifact ID
+`8295799031`, uploaded size `10240174`, container digest
+`sha256:399e936956f430b607253653ee3c1a01f6073b6158b8258ec24f76d305d69b2c`.
+The PR-run artifact is ID `8295796754`, size `10240111`, container digest
+`sha256:02d2bf56f7e3024169877ac46134141316bcfe35bb9cf59292496ce4900e1622`.
+Container digests are not substitutes for the internal-file hashes above.
 
-## Vulnerability and exception record
+Store ZIP and audit bundle must remain separate. The store ZIP must contain
+exactly one root regular executable `.so`, with no absolute path, `..`,
+backslash escape, symlink, or duplicate entry. Formal release scripts remain
+blocked because v10 failed; development artifacts must be clearly dirty/non-
+release and must not be uploaded as a GitHub Release.
 
-```text
-govulncheck_command: govulncheck ./...
-govulncheck_version: v1.6.0
-result: PASS (candidate engineering check; 0 reachable vulnerabilities)
-github_dependabot_open_alerts: 14 (7 critical, 2 high, 5 moderate)
-github_dependabot_packages: golang.org/x/crypto; golang.org/x/net
-post_v10_source_versions: golang.org/x/crypto v0.52.0; golang.org/x/net v0.55.0
-patched_version_floor_status: SATISFIED IN DEVELOPMENT BRANCH; GitHub closure requires merge to the default branch and repository rescan
-unfixed_high_severity_findings: OPEN IN GITHUB against prior pushed module graph; not reachable according to prior govulncheck
-exceptions: NONE GRANTED; production release remains prohibited
-required_follow_up: review and merge the dependency remediation, confirm GitHub alerts close after rescan, rerun all gates, and use a new independent evaluation
-```
+## Known unresolved limitations
 
-GitHub's dependency-version alerts and `govulncheck` answer different questions.
-The latter found no reachable vulnerable call path in this candidate, but that
-does not waive the 14 open Dependabot alerts. No time-bounded release exception
-was granted; the already-failed blind gate and these unresolved module alerts
-both prohibit a production release.
-
-## Reproducibility record
-
-```text
-status: NOT FINALIZED — release stopped after v10 FAIL
-source_date_epoch: NOT APPLICABLE
-clone_a_commit: NOT APPLICABLE
-clone_b_commit: NOT APPLICABLE
-so_sha256_a: NOT CREATED
-so_sha256_b: NOT CREATED
-store_zip_sha256_a: NOT CREATED
-store_zip_sha256_b: NOT CREATED
-audit_bundle_sha256_a: NOT CREATED
-audit_bundle_sha256_b: NOT CREATED
-byte_identical: NOT CLAIMED
-```
+- CPA ABI-v1 Host fail-open, Router enumeration, and duplicate plugin-directory
+  visibility;
+- no HMAC dual-key rotation and no keyed whole-snapshot MAC;
+- bounded text decoders cannot interpret arbitrary encoding, encryption,
+  archive/document content, or opaque media semantics;
+- cross-request classifier semantics remain stateless;
+- classifier-policy identity is not yet embedded in artifact metadata;
+- a local SQLite writer remains trusted for snapshot completeness;
+- no guarantee against upstream account action.
 
 ## Final approval block
 
-This block must be completed by the release owner after independent review:
-
 ```text
-release_commit: NOT CREATED — RELEASE BLOCKED
-annotated_tag_object: NOT CREATED — RELEASE BLOCKED
-tag_target_commit: NOT CREATED — RELEASE BLOCKED
+implementation_freeze_commit: 9c8114e22841f9a19b15b1f4b3c48531aa2453a0
+evidence_document_commit: SELF (resolve with git log -1 -- this file)
+annotated_tag: NOT CREATED — RELEASE BLOCKED
 github_release_url: NOT CREATED — RELEASE BLOCKED
-github_actions_release_run: NOT RUN — RELEASE BLOCKED
-server_sandbox_validation: PENDING / NOT RUN
-current_diff_real_cpa_integration: NOT RUN
-root_cpa_development_baseline: v7.2.67
-phase0_v7.2.72_scope: official installer and host-routing source contracts only
-phase0_store_zip: NOT CREATED — RELEASE BLOCKED
-phase0_audit_bundle: NOT CREATED — RELEASE BLOCKED
-phase0_four_protocol_403_zero_call_matrix: PENDING / NOT RUN
-phase0_management_413_before_cpa: PENDING / NOT RUN
-prompt_injection_blind_evaluation: NOT CREATED
-classifier_policy_identity: UNRESOLVED — ruleset 1.0.7 hash covers YAML assets only; code semantics require containing build commit
-all_redlines_pass: NO
-known_unimplemented_requirements:
-  - dual-key HMAC rotation (design only)
-  - CPA ABI-v1 host fail-open/router enumeration/duplicate-directory visibility
-  - CPA pre-plugin management io.ReadAll requires a deployment proxy body limit
-  - CPA v7.2.72 host compatibility remains unqualified; only isolated source contracts exist
-  - persisted subject snapshot has no keyed whole-snapshot MAC
-  - unknown or encrypted encodings may evade semantic detection
-known_non_guarantee:
-  - cannot guarantee that an upstream account will never be warned, suspended, or banned
+github_actions_ci_run: PASS — push 29292693070; pull_request 29292695293
+real_host_matrix: GITHUB CI PASS — 32 Host subtests; 15 Router scenarios
+management_proxy_413: GITHUB CI PASS
+http_request_adapter_405: SOURCE / ADAPTER STATUS-ERROR CHECK (response=nil)
+official_cpa_final_client_http_405: NOT AVAILABLE / NOT RUN — BLOCKED FOR HANDOFF
+development_candidate_artifact_hashes: RECORDED / VERIFIED; not formal release assets
+leo_verification: NOT RUN
+new_independent_blind_evaluation: NOT CREATED
+all_handoff_redlines_pass: NO
 release_owner: NOT APPROVED
 independent_reviewer: NOT APPROVED
-approval_time_utc: NOT APPLICABLE
-decision: REJECT / FAIL
+decision: BLOCKED FOR HANDOFF / RELEASE FAIL
 ```
-
-Even after approval, the release statement remains: the plugin reduces risk and
-cannot guarantee that an upstream account will never be warned, suspended, or
-deactivated.

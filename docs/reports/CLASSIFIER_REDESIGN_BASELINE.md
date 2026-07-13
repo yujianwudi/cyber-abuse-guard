@@ -2,7 +2,7 @@
 
 Status: development baseline and redesign contract
 Ruleset at this branch: `1.0.7`
-Classifier policy: `classifier-policy-v2` / `4b70efba69165a23f3d6fb7a631f3470352a392e2fdc12131c6f27fbbd5a50d5`
+Classifier policy: `classifier-policy-v2` / `dc9a174099cb2f621e5333a508d4645604f96f470a6d9ae12a1acfb363d29cf2`
 Date: 2026-07-14
 
 ## Isolation statement

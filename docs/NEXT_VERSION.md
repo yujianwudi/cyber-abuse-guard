@@ -32,7 +32,7 @@ implemented behavior.
    bounded request/response sizes, rules-only fallback, and privacy canaries.
    Public endpoints must remain unsupported by default.
 9. Add an authenticated management UI mechanism only after CPA offers a safe
-   private resource route. CPA v7.2.67 public resource routes must never carry
+   private resource route. CPA v7.2.72 public resource routes must never carry
    audit or subject data.
 10. Preserve the achieved near-budget allocation gate (currently well below
     1,000,000 bytes/op). Consider streaming/byte-oriented normalization only if
@@ -50,9 +50,10 @@ implemented behavior.
 14. Add launcher/deployment attestation for local instruction files: trusted
     owner, restrictive mode, allowlisted path, pinned hash, and visible drift
     status without exposing file contents.
-15. Give code-level classifier policies a canonical version and hash included
-    in build metadata, authenticated status, verification, and release
-    evidence, or migrate `META-OVERRIDE-001` into versioned embedded rule assets.
+15. Carry the existing `classifier-policy-v2` identity through build metadata,
+    linker metadata, release manifests, artifact verification, reproducibility
+    comparison, and Leo evidence. The source digest and authenticated status now
+    exist; artifact-level provenance binding remains unfinished.
 16. Consider additional strongly marked bounded decoders (for example selected
     Base32, hex, or quoted-printable forms) only with strict source/size/layer
     signals, adversarial resource tests, and benign multilingual contrasts. Do
@@ -60,3 +61,14 @@ implemented behavior.
 17. Add schema-aware handling for provider safety-control fields and suspicious
     key-only tool controls without treating every JSON property name as prompt
     text.
+18. Extend the behavior graph with bounded pronoun/reference resolution and
+    longer conversation linking without storing prompt fragments or turning
+    generic variables into targets. Any extension needs positive/negative
+    minimal pairs and resource caps.
+19. Add a recoverable Host fixture seam for fused and pre-result-panic cases if
+    CPA exposes one. Continue using official source-overlay tests meanwhile; do
+    not substitute a process crash or `segfault` for a valid Host outcome.
+20. Replace the visible 35-case development corpus with a newly authored,
+    independently isolated evaluation only at verification time. The current
+    development cases and derived wording are permanently ineligible for that
+    holdout.

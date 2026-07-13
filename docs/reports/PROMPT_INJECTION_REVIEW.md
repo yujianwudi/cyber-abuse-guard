@@ -1,5 +1,11 @@
 # Defensive Review: `MDX-Tom/gpt-5.6-instruct`
 
+> Historical defensive-input review. The branch, commit, classifier identity,
+> and pending-validation statements below describe the earlier snapshot and are
+> superseded by implementation freeze `9c8114e`. See
+> `LEO_VERIFICATION_HANDOFF.md` and `CPA_INTEGRATION.md` for current evidence;
+> the original review record is retained unchanged below this notice.
+
 Status: **development input only / not blind evidence / server sandbox validation pending**
 
 Implementation branch: `agent/post-v10-production-hardening`
