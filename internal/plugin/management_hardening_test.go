@@ -173,6 +173,21 @@ func TestManagementBoundsAndQueryWhitelist(t *testing.T) {
 	}
 }
 
+func TestManagementRejectsOversizedRPCEnvelope(t *testing.T) {
+	p := New()
+	t.Cleanup(p.Shutdown)
+
+	raw, code := p.Call(pluginabi.MethodManagementHandle, make([]byte, maxManagementEnvelope+1))
+	if code != 0 {
+		t.Fatalf("oversized management envelope call code = %d; envelope=%s", code, raw)
+	}
+	var response pluginapi.ManagementResponse
+	decodeOKResult(t, raw, &response)
+	if response.StatusCode != http.StatusRequestEntityTooLarge || bodyErrorCode(response.Body) != "request_too_large" {
+		t.Fatalf("oversized management envelope response=%+v body=%s", response, response.Body)
+	}
+}
+
 func TestManagementEventDeletionWritesPrivacySafeAuditMarker(t *testing.T) {
 	p := New()
 	t.Cleanup(p.Shutdown)

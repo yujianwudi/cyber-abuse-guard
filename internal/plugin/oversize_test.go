@@ -46,7 +46,7 @@ func TestOversizedExecutorReturnsLocalPolicyRefusal(t *testing.T) {
 	p := New()
 	defer p.Shutdown()
 	register(t, p, "mode: balanced\naudit:\n  enabled: false\nsubject_control:\n  enabled: false\n")
-	for _, method := range []string{pluginabi.MethodExecutorExecute, pluginabi.MethodExecutorExecuteStream} {
+	for _, method := range []string{pluginabi.MethodExecutorExecute, pluginabi.MethodExecutorExecuteStream, pluginabi.MethodExecutorCountTokens} {
 		raw, code := p.CallOversized(method)
 		if code != 0 {
 			t.Fatalf("%s code=%d envelope=%s", method, code, raw)

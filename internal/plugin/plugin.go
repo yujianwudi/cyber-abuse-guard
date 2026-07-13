@@ -210,10 +210,10 @@ func (p *Plugin) Call(method string, request []byte) (response []byte, returnCod
 		return okEnvelope(struct {
 			Identifier string `json:"identifier"`
 		}{Identifier: ID}), 0
-	case pluginabi.MethodExecutorExecute, pluginabi.MethodExecutorExecuteStream:
+	case pluginabi.MethodExecutorExecute, pluginabi.MethodExecutorExecuteStream, pluginabi.MethodExecutorCountTokens:
 		return p.blockExecution(request), 0
-	case pluginabi.MethodExecutorCountTokens, pluginabi.MethodExecutorHTTPRequest:
-		return errorEnvelope(unsupportedErrorCode, "this policy executor does not provide token counting or HTTP forwarding", 405, ""), 0
+	case pluginabi.MethodExecutorHTTPRequest:
+		return errorEnvelope(unsupportedErrorCode, "this policy executor does not provide HTTP forwarding", 405, ""), 0
 	case pluginabi.MethodManagementRegister:
 		return p.registerManagement(request), 0
 	case pluginabi.MethodManagementHandle:
@@ -249,7 +249,7 @@ func (p *Plugin) CallOversized(method string) (response []byte, returnCode int) 
 	switch method {
 	case pluginabi.MethodModelRoute:
 		return p.callOversizedModelRoute()
-	case pluginabi.MethodExecutorExecute, pluginabi.MethodExecutorExecuteStream:
+	case pluginabi.MethodExecutorExecute, pluginabi.MethodExecutorExecuteStream, pluginabi.MethodExecutorCountTokens:
 		return errorEnvelope(blockedErrorCode, refusalMessage, 403, "scan_limit"), 0
 	default:
 		return errorEnvelope("request_too_large", "plugin RPC request exceeds the size limit", 0, ""), 0
