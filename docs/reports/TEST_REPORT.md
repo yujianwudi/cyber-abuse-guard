@@ -45,7 +45,7 @@ must not be converted into a tagged-release matrix because v10 failed.
 | Consumed v10 rerun protection | current `make holdout-test` | **PASS — rerun rejected with non-zero exit** |
 | Development generalization Round 4 | default classifier development tests | **PASS — malicious 64/64; legitimate FP 0/64** |
 | Benchmark acceptance | `make benchmark` | **PASS** |
-| Dependency vulnerability gate | `make vulncheck` | **PASS — 0 reachable vulnerabilities** |
+| Dependency vulnerability evidence | `make vulncheck` + GitHub Dependabot | **0 reachable vulnerabilities; 14 open module alerts (7 critical, 2 high, 5 moderate); no release exception** |
 | Linux amd64 build | `make build-linux-amd64` | **PASS (dirty-suffixed candidate)** |
 | Real CPA integration | `make integration-test` | **PASS** |
 | Formal clean-tag release | `make release` | **NOT RUN / BLOCKED by v10 FAIL** |

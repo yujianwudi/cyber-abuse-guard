@@ -271,13 +271,18 @@ RAR is not a formal release format.
 govulncheck_command: govulncheck ./...
 govulncheck_version: v1.6.0
 result: PASS (candidate engineering check; 0 reachable vulnerabilities)
-unfixed_high_severity_findings: NONE FOUND by candidate check
-exceptions: NONE RECORDED
-exception_owner_expiry_and_mitigation: NOT APPLICABLE
+github_dependabot_open_alerts: 14 (7 critical, 2 high, 5 moderate)
+github_dependabot_packages: golang.org/x/crypto; golang.org/x/net
+unfixed_high_severity_findings: PRESENT at dependency-version level; not reachable according to govulncheck
+exceptions: NONE GRANTED; production release remains prohibited
+required_follow_up: update or replace the affected dependency graph in a future implementation, rerun all gates, and use a new independent evaluation
 ```
 
-An unfixed high-severity reachable finding fails release unless a specific,
-time-bounded, owner-approved exception with impact and mitigation is recorded.
+GitHub's dependency-version alerts and `govulncheck` answer different questions.
+The latter found no reachable vulnerable call path in this candidate, but that
+does not waive the 14 open Dependabot alerts. No time-bounded release exception
+was granted; the already-failed blind gate and these unresolved module alerts
+both prohibit a production release.
 
 ## Reproducibility record
 
