@@ -1,7 +1,7 @@
 SHELL := /bin/bash
 
 GO ?= go
-GOFMT ?= $(dir $(GO))gofmt
+GOFMT ?= gofmt
 VERSION ?= 0.1.2
 CYCLONEDX_GOMOD ?= cyclonedx-gomod
 CYCLONEDX_GOMOD_VERSION ?= v1.9.0
