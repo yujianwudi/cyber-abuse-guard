@@ -2,8 +2,11 @@ package pluginstorecontract
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -11,14 +14,121 @@ import (
 const (
 	cpaModulePath        = "github.com/router-for-me/CLIProxyAPI/v7"
 	cpaPinnedVersion     = "v7.2.72"
+	cpaPinnedModuleSum   = "h1:ppce0MLsz2xJi2yi3/A60zu03cM7bMWBAEJ6eC29E5Y="
+	cpaPinnedGoModSum    = "h1:f4pcyAej8RoeRhIxJfm+OUMkCKaApiA8WzxR2XVlBh8="
 	cpaPluginHostPackage = cpaModulePath + "/internal/pluginhost"
 )
+
+var criticalCPAHostTests = []string{
+	"TestHostRouteModelAllowsExplicitExecutorPluginTarget",
+	"TestHostRouteModelClonesPluginMetadata",
+	"TestHostRouteModelContinuesAfterUnhandled",
+	"TestHostRouteModelDefaultsHandledRouterToOwnExecutor",
+	"TestHostRouteModelErrorAndPanicDoNotBreakFallback",
+	"TestHostRouteModelPropagatesAvailableProviders",
+	"TestHostRouteModelRejectsProviderAndExecutorBothSet",
+	"TestHostRouteModelRoutesToBuiltinProvider",
+	"TestHostRouteModelSkipsExecutorWithoutProviderIdentifier",
+	"TestHostRouteModelSkipsExecutorWithUnsupportedFormats",
+	"TestHostRouteModelSkipsOAuthOnlyExecutorTargets",
+	"TestHostRouteModelSkipsOriginatingPlugin",
+	"TestHostRouteModelSkipsUnavailableBuiltinProvider",
+	"TestHostRouteModelSkipsUnavailableExecutorTargets",
+	"TestHostRouteModelUsesHighestPriorityFirstMatch",
+	"TestSortRecordsPriorityDescendingAndIDTieBreak",
+}
+
+type resolvedCPAModule struct {
+	Path     string
+	Version  string
+	Dir      string
+	Sum      string
+	GoModSum string
+	Replace  *resolvedCPAModule
+}
 
 // TestOfficialCPAHostRoutingSourceContract runs the routing contract tests
 // shipped by the pinned CPA module. It deliberately tests the official source
 // package instead of copying the host's priority, fail-open, fuse, target
 // validation, or executor-readiness implementation into this repository.
 func TestOfficialCPAHostRoutingSourceContract(t *testing.T) {
+	goBinary, moduleArguments, _ := preparePinnedCPAModule(t)
+
+	listed := runGoCommand(t, goBinary,
+		"test", moduleArguments[0], moduleArguments[1], "-list", "^Test", cpaPluginHostPackage,
+	)
+	listedTests := make(map[string]struct{})
+	for _, line := range strings.Split(listed, "\n") {
+		name := strings.TrimSpace(line)
+		if strings.HasPrefix(name, "Test") && !strings.ContainsAny(name, " \t") {
+			listedTests[name] = struct{}{}
+		}
+	}
+	for _, name := range criticalCPAHostTests {
+		if _, ok := listedTests[name]; !ok {
+			t.Fatalf("pinned CPA host package no longer lists required test %q", name)
+		}
+	}
+
+	exactNames := make([]string, 0, len(criticalCPAHostTests))
+	for _, name := range criticalCPAHostTests {
+		exactNames = append(exactNames, regexp.QuoteMeta(name))
+	}
+	testPattern := "^(" + strings.Join(exactNames, "|") + ")$"
+	runGoCommand(t, goBinary,
+		"test", moduleArguments[0], moduleArguments[1], "-count=1", "-v",
+		"-run", testPattern,
+		cpaPluginHostPackage,
+	)
+}
+
+// TestCPAHostFailOpenFixtureContract copies the checksum-verified pinned module
+// to an ephemeral directory and adds only a _test.go file. The fixture can
+// therefore exercise the real Host's private lifecycle, fuse, ordering, and
+// readiness state without forking or changing any production CPA source.
+func TestCPAHostFailOpenFixtureContract(t *testing.T) {
+	goBinary, _, module := preparePinnedCPAModule(t)
+	fixturePath, errFixtureAbs := filepath.Abs(filepath.Join("testfixtures", "host_failopen_overlay_test.go.txt"))
+	if errFixtureAbs != nil {
+		t.Fatalf("resolve Host fixture path: %v", errFixtureAbs)
+	}
+	if _, errFixtureStat := os.Stat(fixturePath); errFixtureStat != nil {
+		t.Fatalf("stat Host fixture: %v", errFixtureStat)
+	}
+	moduleCopy := filepath.Join(t.TempDir(), "cpa-v7.2.72")
+	if errCopyModule := os.CopyFS(moduleCopy, os.DirFS(module.Dir)); errCopyModule != nil {
+		t.Fatalf("copy pinned CPA module for Host fixture: %v", errCopyModule)
+	}
+	fixtureData, errReadFixture := os.ReadFile(fixturePath)
+	if errReadFixture != nil {
+		t.Fatalf("read Host fixture: %v", errReadFixture)
+	}
+	targetPath := filepath.Join(moduleCopy, "internal", "pluginhost", "cyber_abuse_guard_host_fixture_test.go")
+	if errWriteFixture := os.WriteFile(targetPath, fixtureData, 0o600); errWriteFixture != nil {
+		t.Fatalf("write ephemeral Host fixture: %v", errWriteFixture)
+	}
+	const fixtureTestName = "TestCyberAbuseGuardHostFailOpenFixtureMatrix"
+	listed := runGoCommandInDir(t, moduleCopy, goBinary,
+		"test", "-mod=mod", "-list", "^"+fixtureTestName+"$", "./internal/pluginhost",
+	)
+	foundFixtureTest := false
+	for _, line := range strings.Split(listed, "\n") {
+		if strings.TrimSpace(line) == fixtureTestName {
+			foundFixtureTest = true
+			break
+		}
+	}
+	if !foundFixtureTest {
+		t.Fatalf("ephemeral CPA Host overlay does not list required test %q", fixtureTestName)
+	}
+	runGoCommandInDir(t, moduleCopy, goBinary,
+		"test", "-mod=mod", "-count=1", "-v",
+		"-run", "^"+fixtureTestName+"$", "./internal/pluginhost",
+	)
+}
+
+func preparePinnedCPAModule(t *testing.T) (string, []string, resolvedCPAModule) {
+	t.Helper()
 	goBinary, errLookPath := exec.LookPath("go")
 	if errLookPath != nil {
 		t.Fatalf("locate go tool: %v", errLookPath)
@@ -32,7 +142,7 @@ func TestOfficialCPAHostRoutingSourceContract(t *testing.T) {
 	if errReadModuleSum != nil {
 		t.Fatalf("read pinned module checksums: %v", errReadModuleSum)
 	}
-	temporaryModule := t.TempDir() + "/host-contract.mod"
+	temporaryModule := filepath.Join(t.TempDir(), "host-contract.mod")
 	if errWriteModule := os.WriteFile(temporaryModule, moduleData, 0o600); errWriteModule != nil {
 		t.Fatalf("write temporary module definition: %v", errWriteModule)
 	}
@@ -42,25 +152,56 @@ func TestOfficialCPAHostRoutingSourceContract(t *testing.T) {
 	}
 	moduleArguments := []string{"-mod=mod", "-modfile=" + temporaryModule}
 
-	moduleVersion := runGoCommand(t, goBinary,
-		"list", moduleArguments[0], moduleArguments[1], "-m", "-f", "{{.Version}}", cpaModulePath,
+	moduleJSON := runGoJSONCommand(t, goBinary,
+		"list", moduleArguments[0], moduleArguments[1], "-m", "-json", cpaModulePath,
 	)
-	if got := strings.TrimSpace(moduleVersion); got != cpaPinnedVersion {
-		t.Fatalf("resolved CPA module version = %q, want %q", got, cpaPinnedVersion)
+	var module resolvedCPAModule
+	if errUnmarshal := json.Unmarshal([]byte(moduleJSON), &module); errUnmarshal != nil {
+		t.Fatalf("decode resolved CPA module metadata: %v", errUnmarshal)
 	}
-
-	const testPattern = `^(TestHostRouteModel.*|TestSortRecordsPriorityDescendingAndIDTieBreak)$`
-	runGoCommand(t, goBinary,
-		"test", moduleArguments[0], moduleArguments[1], "-count=1", "-v",
-		"-run", testPattern,
-		cpaPluginHostPackage,
-	)
+	if module.Replace != nil {
+		t.Fatal("resolved CPA module unexpectedly uses a replacement")
+	}
+	if module.Path != cpaModulePath || module.Version != cpaPinnedVersion || strings.TrimSpace(module.Dir) == "" {
+		t.Fatalf("resolved CPA module = %s@%s dir=%q, want %s@%s with source dir",
+			module.Path, module.Version, module.Dir, cpaModulePath, cpaPinnedVersion)
+	}
+	if module.Sum != cpaPinnedModuleSum || module.GoModSum != cpaPinnedGoModSum {
+		t.Fatalf("resolved CPA checksums = module %q go.mod %q, want module %q go.mod %q",
+			module.Sum, module.GoModSum, cpaPinnedModuleSum, cpaPinnedGoModSum)
+	}
+	t.Logf("pinned CPA module: %s@%s sum=%s go_mod_sum=%s", module.Path, module.Version, module.Sum, module.GoModSum)
+	return goBinary, moduleArguments, module
 }
 
 func runGoCommand(t *testing.T, goBinary string, arguments ...string) string {
 	t.Helper()
+	return runGoCommandInDir(t, "", goBinary, arguments...)
+}
+
+func runGoJSONCommand(t *testing.T, goBinary string, arguments ...string) string {
+	t.Helper()
+	command := exec.Command(goBinary, arguments...)
+	command.Env = append(os.Environ(), "GOWORK=off")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	command.Stdout = &stdout
+	command.Stderr = &stderr
+	if errRun := command.Run(); errRun != nil {
+		t.Fatalf("%s %s failed: %v\nstdout:\n%s\nstderr:\n%s",
+			goBinary, strings.Join(arguments, " "), errRun, stdout.String(), stderr.String())
+	}
+	if stderr.Len() > 0 {
+		t.Logf("%s", stderr.String())
+	}
+	return stdout.String()
+}
+
+func runGoCommandInDir(t *testing.T, directory, goBinary string, arguments ...string) string {
+	t.Helper()
 
 	command := exec.Command(goBinary, arguments...)
+	command.Dir = directory
 	command.Env = append(os.Environ(), "GOWORK=off")
 	var output bytes.Buffer
 	command.Stdout = &output

@@ -32,7 +32,7 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache: true
       - name: Install native verification dependencies
-        run: sudo apt-get update && sudo apt-get install -y build-essential binutils file zip unzip
+        run: sudo apt-get update && sudo apt-get install -y build-essential binutils file zip unzip nginx
       - name: Install pinned security and SBOM tools
         run: |
           mkdir -p "$RUNNER_TEMP/bin"
@@ -45,6 +45,8 @@ jobs:
         run: make git-diff-check
       - name: module-verify
         run: make module-verify
+      - name: CPA-v7.2.72-host-source-and-fail-open-contract
+        run: make cpa-host-fixture-contract
       - name: unit-test
         run: make unit-test
       - name: race
@@ -55,39 +57,25 @@ jobs:
         run: make fuzz-smoke
       - name: operational-script-security
         run: make script-test
+      - name: management-proxy-413
+        run: make management-proxy-413-test
       - name: corpus-regression
         run: make corpus-regression
-      - name: independent-evaluation-v6-frozen-integrity
-        run: >-
-          go test -tags=sqlite_omit_load_extension ./internal/classifier
-          -run='^TestEvaluationV6(Integrity|ProductionSnapshotIntegrity)$' -count=1 -v
-      - name: independent-evaluation-v7-frozen-integrity
-        run: >-
-          go test -tags=sqlite_omit_load_extension ./internal/classifier
-          -run='^TestEvaluationV7(Integrity|ProductionSnapshotIntegrity)$' -count=1 -v
-      - name: independent-evaluation-v8-frozen-integrity
-        run: >-
-          go test -tags=sqlite_omit_load_extension ./internal/classifier
-          -run='^TestEvaluationV8(Integrity|ProductionSnapshotIntegrity)$' -count=1 -v
-      - name: independent-evaluation-v9-frozen-integrity
-        run: >-
-          go test -tags=sqlite_omit_load_extension ./internal/classifier
-          -run='^TestEvaluationV9(Integrity|HistoricalSnapshotRecordIntegrity|ConsumedRerunRejected)$' -count=1 -v
-      - name: independent-evaluation-v10-frozen-integrity
-        run: >-
-          go test -tags=sqlite_omit_load_extension ./internal/classifier
-          -run='^TestEvaluationV10(Integrity|HistoricalSnapshotRecordIntegrity|ConsumedRerunRejected)$' -count=1 -v
+      - name: consumed-evaluation-v10-aggregate-boundary
+        run: make consumed-boundary-test
       - name: benchmark-acceptance
         run: make benchmark
       - name: dependency-vulnerability-gate
         run: make vulncheck
-      - name: build-linux-amd64 and CPA-integration
+      - name: build-linux-amd64-and-CPA-v7.2.72-store-installed-host
         env:
           ALLOW_DIRTY_BUILD: '1'
+          CYBER_ABUSE_GUARD_REQUIRE_HOST_INTEGRATION: '1'
         run: make integration-test
       - name: SBOM, package, and verify-release
         env:
           ALLOW_DIRTY_BUILD: '1'
+          REQUIRE_DIST_ARTIFACTS: '1'
         run: make sbom package-release verify-release cpa-store-contract verification-fault-test
       - name: artifact-hash
         env:
