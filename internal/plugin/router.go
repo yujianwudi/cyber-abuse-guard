@@ -108,6 +108,13 @@ func (p *Plugin) route(state *runtimeState, request pluginapi.ModelRouteRequest)
 		extracted, extractErr = extract.ExtractUntrustedText(request.Body, limits)
 	} else {
 		extracted, extractErr = extract.ExtractText(request.Body, limits)
+		if extractErr == nil && !extracted.RoleAware && !extracted.Truncated {
+			// A supported source label does not prove that the body follows the
+			// provider's role schema. When role proof fails, the provider-aware
+			// pass may have ignored text below a future or forged top-level field.
+			// Re-run the bounded conservative extractor before classification.
+			extracted, extractErr = extract.ExtractUntrustedText(request.Body, limits)
+		}
 	}
 	requestHash := audit.HashRequest(request.Body)
 	if extractErr != nil {

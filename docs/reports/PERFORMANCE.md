@@ -2,14 +2,16 @@
 
 ## Status
 
-The v0.1.2 engineering performance preflight is **PASS** on the recorded WSL2
-host. This does not approve release: methodologically valid evaluation v10 is
-`CONSUMED / FAIL`, so no clean release tag or production artifact may be
-created.
+**PRE-PROMPT-INJECTION-CHANGE BASELINE — CURRENT DIFF NOT BENCHMARKED.** The
+recorded v0.1.2 engineering performance preflight passed on the recorded WSL2
+host before the current classifier/extractor changes. The values below are
+historical regression context, not current-diff performance evidence. This does
+not approve release: methodologically valid evaluation v10 is `CONSUMED / FAIL`,
+so no clean release tag or production artifact may be created.
 
 The release acceptance targets are:
 
-| Metric/case | Release target | Final result |
+| Metric/case | Release target | Pre-change baseline result |
 |---|---:|---|
 | Ordinary decision P95 | `< 2 ms` | **PASS — 124.682 us** |
 | Ordinary decision P99 | `< 5 ms` | **PASS — 216.869 us** |
@@ -45,7 +47,7 @@ The historical near-budget allocation exceeded the v0.1.2 aspirational
 URL/HTML/Base64 decoding also adds work and therefore requires a fresh
 measurement.
 
-## v0.1.2 candidate measurements
+## Pre-change v0.1.2 candidate measurements
 
 Recorded on Go 1.26.4, Linux amd64 under WSL2, 20 logical CPUs, 13th Gen
 Intel(R) Core(TM) i7-13650HX:
@@ -124,5 +126,5 @@ candidate_rich_benchmark: 76.693716-80.439013 ms/op; 78360 B/op; 174 allocs/op
 near_budget_acceptance: 14.970291 ms/op
 near_budget_bytes_op: 293906
 race_result: PASS
-overall_performance_gate: PASS (engineering preflight only); RELEASE GATE remains FAIL
+overall_performance_gate: PASS PRE-CHANGE BASELINE; CURRENT DIFF NOT RUN; RELEASE GATE remains FAIL
 ```

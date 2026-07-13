@@ -44,3 +44,19 @@ implemented behavior.
 12. Qualify newer CPA releases and architectures one at a time with the full
     Mock Upstream/Auth Selector/Usage isolation suite. Do not infer compatibility
     from ABI numbers alone.
+13. Add a privacy-safe cross-request control-plane state model that stores only
+    bounded semantic flags and expiry, never prompt fragments. Alternatively,
+    require and verify complete caller-supplied history for continuation cases.
+14. Add launcher/deployment attestation for local instruction files: trusted
+    owner, restrictive mode, allowlisted path, pinned hash, and visible drift
+    status without exposing file contents.
+15. Give code-level classifier policies a canonical version and hash included
+    in build metadata, authenticated status, verification, and release
+    evidence, or migrate `META-OVERRIDE-001` into versioned embedded rule assets.
+16. Consider additional strongly marked bounded decoders (for example selected
+    Base32, hex, or quoted-printable forms) only with strict source/size/layer
+    signals, adversarial resource tests, and benign multilingual contrasts. Do
+    not add general-purpose decompression or arbitrary transform execution.
+17. Add schema-aware handling for provider safety-control fields and suspicious
+    key-only tool controls without treating every JSON property name as prompt
+    text.

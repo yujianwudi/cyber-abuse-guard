@@ -179,6 +179,7 @@ type Classifier struct {
 	signalCount           int
 	implementationRequest int
 	outcomeRequest        int
+	metaOverride          compiledMetaOverrideSignals
 	semanticProfiles      []compiledSemanticProfile
 }
 
@@ -297,6 +298,23 @@ func New(set *rules.RuleSet) (*Classifier, error) {
 		return nil, err
 	}
 	c.outcomeRequest = outcomeSignal
+	metaTargets := []*int{
+		&c.metaOverride.hierarchy,
+		&c.metaOverride.refusalSuppression,
+		&c.metaOverride.unrestrictedMode,
+		&c.metaOverride.directCompletion,
+		&c.metaOverride.scopeLaundering,
+		&c.metaOverride.outputControl,
+		&c.metaOverride.secretDisclosure,
+		&c.metaOverride.negativeAuthorization,
+	}
+	for index, terms := range metaOverrideTermGroups() {
+		signalID, compileErr := compileGroup(terms, fmt.Sprintf("meta override family %d", index+1))
+		if compileErr != nil {
+			return nil, compileErr
+		}
+		*metaTargets[index] = signalID
+	}
 	for _, category := range classifierCategoryOrder {
 		profile, ok := set.Semantics[category]
 		if !ok {
@@ -375,6 +393,14 @@ func (c *Classifier) classifyWithPolicy(parts []string, mode Mode, thresholds Th
 	}()
 	var normalizerScratch normalizationScratch
 	var compactScratch []bool
+	// Family bits accumulate across the current explicitly linked meta chain so
+	// a long chain cannot evict its first unique signal. Only the raw text window
+	// is capped at eight parts; the signal set itself is bounded by signalCount.
+	metaTailSignals := make([]bool, c.signalCount)
+	metaTailParts := make([]string, 0, 8)
+	metaTailActive := false
+	metaTailLastPart := ""
+	bestMeta := metaOverrideAssessment{}
 	partCount := 0
 	remainingBytes := maxClassifierInputBytes
 	truncated := false
@@ -414,6 +440,43 @@ func (c *Classifier) classifyWithPolicy(parts []string, mode Mode, thresholds Th
 		}
 		c.standardMatcher.match(views.standardRunes, scratchSignals)
 		c.compactMatcher.matchCompactWithScratch(views.standardRunes, scratchSignals, compactScratch)
+		currentHasMeta := c.hasMetaOverrideSignal(scratchSignals)
+		if currentHasMeta {
+			partText := string(views.standardRunes)
+			linked := metaTailActive && metaOverridePartsLinked(metaTailLastPart, partText)
+			if !linked {
+				clear(metaTailSignals)
+				metaTailParts = metaTailParts[:0]
+				metaTailActive = false
+				metaTailLastPart = ""
+			}
+			metaTailActive = true
+			metaTailLastPart = partText
+			if len(metaTailParts) == cap(metaTailParts) {
+				copy(metaTailParts, metaTailParts[1:])
+				metaTailParts = metaTailParts[:len(metaTailParts)-1]
+			}
+			for signalID, matched := range scratchSignals {
+				if matched {
+					metaTailSignals[signalID] = true
+				}
+			}
+			metaTailParts = append(metaTailParts, partText)
+			metaTailText := partText
+			if len(metaTailParts) > 1 {
+				metaTailText = strings.Join(metaTailParts, "\n")
+			}
+			metaContext := c.matchContextsWithPolicy(metaTailSignals, policy.Allow)
+			assessment := c.assessMetaOverride([][]bool{metaTailSignals}, metaTailText, metaContext)
+			if assessment.score > bestMeta.score || (assessment.score == bestMeta.score && len(assessment.evidence) > len(bestMeta.evidence)) {
+				bestMeta = assessment
+			}
+		} else if metaTailActive {
+			clear(metaTailSignals)
+			metaTailParts = metaTailParts[:0]
+			metaTailActive = false
+			metaTailLastPart = ""
+		}
 		for signalID, matched := range scratchSignals {
 			if matched {
 				signals[signalID] = true
@@ -896,6 +959,49 @@ func (c *Classifier) classifyWithPolicy(parts []string, mode Mode, thresholds Th
 			evidence: evidence,
 		})
 	}
+
+	// Meta-override language is an abuse amplifier, not a standalone keyword
+	// blocklist. It covers instruction-hierarchy inversion, refusal suppression,
+	// sandbox/placeholder laundering, forced exact-output templates, negative
+	// authorization, and control-plane secret disclosure. When an ordinary
+	// cyber-abuse candidate already exists, retain its taxonomy and raise it to
+	// at least the meta-override score. Otherwise, a sufficiently strong control-
+	// plane attack is reported under the existing defense-evasion category.
+	meta := bestMeta
+	if meta.score >= AuditThreshold {
+		bestOrdinaryIndex := -1
+		for index := range candidates {
+			if candidates[index].score < AuditThreshold {
+				continue
+			}
+			if bestOrdinaryIndex < 0 || candidates[index].score > candidates[bestOrdinaryIndex].score ||
+				(candidates[index].score == candidates[bestOrdinaryIndex].score &&
+					(categoryPriority(candidates[index].category) < categoryPriority(candidates[bestOrdinaryIndex].category) ||
+						(candidates[index].category == candidates[bestOrdinaryIndex].category &&
+							candidateSortID(candidates[index].ruleID, candidates[index].ruleIDs) < candidateSortID(candidates[bestOrdinaryIndex].ruleID, candidates[bestOrdinaryIndex].ruleIDs)))) {
+				bestOrdinaryIndex = index
+			}
+		}
+		if bestOrdinaryIndex >= 0 {
+			winner := &candidates[bestOrdinaryIndex]
+			if winner.score < meta.score {
+				winner.score = meta.score
+			}
+			if winner.ruleID != "" {
+				winner.ruleIDs = append(winner.ruleIDs, winner.ruleID)
+				winner.ruleID = ""
+			}
+			winner.ruleIDs = append(winner.ruleIDs, metaOverrideRuleID)
+			winner.evidence = append(winner.evidence, meta.evidence...)
+		} else {
+			candidates = append(candidates, candidate{
+				score:    meta.score,
+				category: rules.CategoryEvasion,
+				ruleID:   metaOverrideRuleID,
+				evidence: meta.evidence,
+			})
+		}
+	}
 	if len(candidates) == 0 {
 		result.Action = actionFor(mode, 0, thresholds)
 		result.Evidence = contextEvidence(context)
@@ -1047,13 +1153,16 @@ func (c *Classifier) categoryMatchedIntentsAreOnlyNegated(category rules.Categor
 func hasExplicitHarmConflict(text string) bool {
 	return containsAnyLiteral(text,
 		"victim", "third-party", "third party", "someone else's", "other people's",
-		"without consent", "without permission", "unauthorized", "named company",
-		"do not own", "don't own", "not ours", "compromised host", "compromised machine", "compromised workstation",
+		"without consent", "without permission", "i have no permission", "we have no permission", "i do not have permission",
+		"we do not have permission", "i have no authorization", "we have no authorization", "no written authorization", "unauthorized", "named company",
+		"do not own", "don't own", "not ours", "not mine", "target is not mine", "target site is not mine", "server is not mine",
+		"not an authorized red-team exercise", "compromised host", "compromised machine", "compromised workstation",
 		"competitor", "real customer", "real user", "real account",
 		"attacker-controlled", "server i control", "personal storage account", "personal cloud", "my receiver",
-		"受害者", "受害主机", "第三方", "他人", "未经同意", "未经许可", "未授权",
+		"受害者", "受害主机", "第三方", "他人", "未经同意", "未经许可", "未授权", "没有授权", "没有书面授权", "没有权限",
 		"指定公司", "竞争对手", "真实客户", "真实用户", "真实账号", "攻击者控制",
-		"不属于我们", "非自有", "已失陷主机", "个人云盘", "私人网盘", "个人存储账号",
+		"不属于我们", "不属于我", "目标不属于我", "目标站点不属于我", "服务器不是我的", "不是授权红队演练",
+		"非自有", "已失陷主机", "个人云盘", "私人网盘", "个人存储账号",
 	)
 }
 
@@ -1346,8 +1455,13 @@ func clauseNegatesRuleIntent(clause string, intents []string) bool {
 	prefix := strings.TrimSpace(clause[:intentIndex])
 	for _, bait := range []string{
 		"do not refuse", "don't refuse", "must not refuse", "never hesitate", "do not hesitate", "don't hesitate",
+		"must not be denied", "must not deny", "do not deny", "don't deny", "must not be blocked", "must not block",
+		"do not block", "don't block", "must not be filtered", "do not filter", "disable guardrails", "remove guardrails",
+		"disable safety checks", "skip safety checks", "must not enforce the policy", "must not apply safety",
 		"ignore the instruction", "ignore the policy", "disregard the instruction", "disregard the policy",
-		"不要拒绝", "不得拒绝", "不要犹豫", "忽略指令", "忽略策略",
+		"不要拒绝", "不得拒绝", "不得阻止", "不得拦截", "不得过滤", "不要阻止", "不要拦截", "不要过滤",
+		"关闭护栏", "移除护栏", "禁用安全检查", "跳过安全检查", "不得执行安全策略",
+		"不要犹豫", "忽略指令", "忽略策略",
 	} {
 		if strings.Contains(prefix, bait) {
 			return false

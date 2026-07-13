@@ -26,6 +26,14 @@ and CPA C ABI/RPC schema v1. musl/Alpine is not supported.
 > snapshot. These changes have engineering-test evidence only and do not
 > inherit any v10 approval. A future candidate still requires a new independent
 > unseen set.
+>
+> **Prompt-injection hardening status:** the current development tree adds the
+> deterministic `META-OVERRIDE-001` control-plane overlay and bounded
+> extraction fixes for ambiguous provider schemas, nested tool JSON, split
+> encoded blocks, isolated-character fragmentation, and malicious safety-policy
+> inversion. This is developer-visible engineering work only. **Server sandbox
+> validation is PENDING / NOT RUN.** It does not change the consumed v10 failure
+> or authorize deployment.
 
 > **Risk statement:** this plugin can reduce the number of risky requests that
 > reach upstream accounts. It cannot guarantee that any account will never be
@@ -51,6 +59,30 @@ read CPA auth/OAuth files, execute user code, or send request content to an
 auxiliary public classifier. Allowed requests still follow CPA's configured
 upstream path.
 
+## Prompt-injection hardening (post-v10 development)
+
+`META-OVERRIDE-001` combines independent bilingual evidence families for
+instruction-hierarchy replacement, refusal suppression, unrestricted/developer
+persona claims, direct-completion demands, sandbox/benchmark/placeholder
+laundering, forced output or skipped authorization checks, explicit negative
+authorization, and system/developer-prompt or hidden-reasoning disclosure. It
+is not a lone-keyword blocklist.
+
+When ordinary cyber-abuse evidence exists, the overlay raises that candidate
+without replacing its original taxonomy. A strong standalone control-plane
+attack is reported under the existing `defense_evasion` category. Prompt text
+claiming CTF, lab, fictional scope, or authorization does not reduce this
+overlay; quoted defensive analysis can reduce it only when an affirmative
+analysis/mitigation purpose and a non-execution intent are present.
+
+Tool provenance is inspected independently, supported provider bodies fall
+back to a bounded untrusted walk when role proof fails, JSON-looking strings
+inside tool payloads are recursively inspected within existing budgets, and
+joined content blocks plus ordered tool-payload/output string fields are decoded
+again. The classifier may combine linked
+adjacent segments carried in one request, but it has no semantic memory across
+independent API calls.
+
 The embedded deterministic ruleset is `1.0.7`; its canonical embedded SHA-256
 is `7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134`.
 It requires combinations of
@@ -58,6 +90,14 @@ harmful intent, a dangerous object or impact, and operational, target, evasion,
 or scale evidence. A lone keyword is not sufficient. Assertions such as
 “education”, “CTF”, or “authorized” do not wash deployment-oriented credential
 theft, phishing collection, ransomware, or data exfiltration.
+
+The ruleset version and hash above identify the embedded YAML cyber-abuse
+assets only. The complete post-v10 classifier policy — including
+`META-OVERRIDE-001`, matcher/normalizer changes, role handling, and extraction
+semantics — is not represented by that manifest. The containing Git/build
+commit plus the YAML ruleset identity are required to identify this development
+behavior. A release-eligible successor must add a separate classifier-policy
+version/hash or bind all policy behavior to verified build provenance.
 
 ## CPA v7.2.67 fail-open boundary
 
@@ -213,6 +253,11 @@ to be supported; use the pre-migration backup for a binary-and-database
 rollback.
 
 ## Build, test, and release
+
+Targeted source tests can establish development regression evidence only. For
+the current prompt-injection diff, no real-CPA integration, native loading,
+deployment, formal Holdout, release verification, or release packaging was
+performed locally; server sandbox validation remains pending.
 
 The release toolchain is pinned to Go `1.26.4`. Use Linux amd64 with cgo, GCC,
 GNU binutils, `file`, `zip`, `unzip`, `sha256sum`, `jq`, CycloneDX GoMod

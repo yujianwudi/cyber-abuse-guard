@@ -37,6 +37,12 @@ func (c *Classifier) ClassifyUntrustedPartsWithPolicy(parts []string, mode Mode,
 		segments[index] = extract.Segment{Role: extract.Role("untrusted"), Text: part}
 	}
 	result := c.ClassifySegmentsWithPolicy(segments, mode, thresholds, policy)
+	for _, reconstructed := range reconstructedIsolatedPartRuns(parts[start:]) {
+		candidate := c.ClassifyWithPolicy([]string{reconstructed}, mode, thresholds, policy)
+		if roleResultBetter(candidate, result) {
+			result = candidate
+		}
+	}
 	result.Truncated = result.Truncated || start > 0
 	return result
 }
@@ -84,8 +90,23 @@ func (c *Classifier) ClassifySegmentsWithPolicy(segments []extract.Segment, mode
 	previousUser := ""
 	hasPreviousUser := false
 	recentUsers := make([]string, 0, 3)
+	linkedMetaUsers := make([]string, 0, 8)
+	lastMetaUser := ""
+	pendingNonUserControl := ""
+	lastUserControl := ""
+	considerControlPair := func(nonUser, user string) {
+		if nonUser == "" || user == "" || !metaOverridePartsLinked(nonUser, user) {
+			return
+		}
+		controlCandidate := c.ClassifyWithPolicy([]string{nonUser, user}, mode, thresholds, policy)
+		truncated = truncated || controlCandidate.Truncated
+		if resultContainsRuleID(controlCandidate, metaOverrideRuleID) && roleResultBetter(controlCandidate, best) {
+			best = controlCandidate
+		}
+	}
 	for _, segment := range segments {
-		if shouldClassifyRoleSegment(segment) {
+		classifySegment := shouldClassifyRoleSegment(segment)
+		if classifySegment {
 			candidate := c.classifyWithPolicy(
 				[]string{segment.Text}, mode, thresholds, policy,
 				segment.Provenance == extract.ProvenanceToolPayload,
@@ -93,6 +114,14 @@ func (c *Classifier) ClassifySegmentsWithPolicy(segments []extract.Segment, mode
 			truncated = truncated || candidate.Truncated
 			if roleResultBetter(candidate, best) {
 				best = candidate
+			}
+		}
+		if segment.Role != extract.RoleUser || segment.Provenance != extract.ProvenanceContent {
+			if classifySegment {
+				considerControlPair(segment.Text, lastUserControl)
+				pendingNonUserControl = segment.Text
+			} else {
+				pendingNonUserControl = ""
 			}
 		}
 		if segment.Provenance == extract.ProvenanceContent && (segment.Role == extract.RoleAssistant || segment.Role == extract.RoleSystem) {
@@ -106,6 +135,26 @@ func (c *Classifier) ClassifySegmentsWithPolicy(segments []extract.Segment, mode
 		}
 		if segment.Role != extract.RoleUser || segment.Provenance != extract.ProvenanceContent {
 			continue
+		}
+		considerControlPair(pendingNonUserControl, segment.Text)
+		pendingNonUserControl = ""
+		lastUserControl = segment.Text
+		if len(linkedMetaUsers) == 0 || metaOverridePartsLinked(lastMetaUser, segment.Text) {
+			linkedMetaUsers = append(linkedMetaUsers, segment.Text)
+			if len(linkedMetaUsers) > maxRoleClassifierSegments {
+				copy(linkedMetaUsers, linkedMetaUsers[len(linkedMetaUsers)-maxRoleClassifierSegments:])
+				linkedMetaUsers = linkedMetaUsers[:maxRoleClassifierSegments]
+			}
+		} else {
+			linkedMetaUsers = append(linkedMetaUsers[:0], segment.Text)
+		}
+		lastMetaUser = segment.Text
+		if len(linkedMetaUsers) > 1 {
+			metaCandidate := c.ClassifyWithPolicy(linkedMetaUsers, mode, thresholds, policy)
+			truncated = truncated || metaCandidate.Truncated
+			if roleResultBetter(metaCandidate, best) {
+				best = metaCandidate
+			}
 		}
 		if hasPreviousUser {
 			followUp := c.ClassifyWithPolicy([]string{previousUser, segment.Text}, mode, thresholds, policy)
@@ -138,6 +187,13 @@ func (c *Classifier) ClassifySegmentsWithPolicy(segments []extract.Segment, mode
 		}
 		previousUser = segment.Text
 		hasPreviousUser = true
+	}
+	for _, reconstructed := range reconstructedIsolatedUserRuns(segments) {
+		candidate := c.ClassifyWithPolicy([]string{reconstructed}, mode, thresholds, policy)
+		truncated = truncated || candidate.Truncated
+		if roleResultBetter(candidate, best) {
+			best = candidate
+		}
 	}
 	best.Truncated = best.Truncated || truncated
 	return best
@@ -214,56 +270,162 @@ func isClearNonUserSafetyContent(role extract.Role, value string) bool {
 	text := strings.ToLower(strings.TrimSpace(value))
 	text = roleSafetyPunctuation.Replace(text)
 	text = strings.TrimLeft(text, " \t\r\n-*#>")
-	if text == "" || hasNonUserSafetyOverride(text) || hasUnscopedSafetyContinuation(role, text) {
+	if text == "" || hasUnscopedNonUserSafetyOverride(role, text) || hasUnscopedSafetyContinuation(role, text) {
 		return false
 	}
 
 	switch role {
 	case extract.RoleAssistant:
-		return hasAnyPrefix(text,
-			"i cannot ", "i can't ", "i will not ", "i won't ", "i refuse ", "i must refuse",
-			"i am unable ", "i'm unable ", "sorry, i cannot ", "sorry, i can't ",
-			"sorry, but i cannot ", "sorry, but i can't ", "cannot assist with ", "can't assist with ",
-			"i'm sorry, but i cannot ", "i'm sorry, but i can't ", "i am sorry, but i cannot ", "i am sorry, but i can't ",
-			"apologies, but i cannot ", "apologies, but i can't ", "as an ai, i cannot ", "as an ai, i can't ",
-			"我不能", "我无法", "我不会", "我拒绝", "抱歉，我不能", "抱歉，我无法", "无法协助", "不能协助",
-		)
+		return hasClearAssistantRefusal(text)
 	case extract.RoleSystem:
-		policyFraming := containsAnyRolePhrase(text,
-			"system policy", "safety policy", "security policy", "content policy", "moderation policy", "abuse policy",
-			"system safety", "safe system policy", "安全策略", "安全政策", "内容策略", "审核策略", "滥用策略",
-		) || hasAnyPrefix(text,
-			"you must not ", "you must never ", "never assist ", "do not assist ", "don't assist ",
-			"never provide ", "do not provide ", "don't provide ", "you must refuse ", "always refuse ",
-			"refuse requests ", "reject requests ", "block requests ",
-			"不得协助", "不要协助", "严禁协助", "拒绝处理", "阻止请求",
-		)
-		prohibition := containsAnyRolePhrase(text,
-			"must refuse", "should refuse", "refuse any", "refuse requests", "reject any", "reject requests",
-			"block any", "block requests", "prevent ", "never ", "do not ", "don't ", "must not ",
-			"prohibit", "forbid", "not allowed", "禁止", "不得", "严禁", "拒绝", "阻止", "防止", "不要",
-		)
-		return policyFraming && prohibition
+		return hasClearSystemSafetyPolicy(text)
 	default:
 		return false
 	}
+}
+
+func hasClearAssistantRefusal(text string) bool {
+	return hasAnyPrefix(text,
+		"i cannot ", "i can't ", "i will not ", "i won't ", "i refuse ", "i must refuse",
+		"i am unable ", "i'm unable ", "sorry, i cannot ", "sorry, i can't ",
+		"sorry, but i cannot ", "sorry, but i can't ", "cannot assist with ", "can't assist with ",
+		"i'm sorry, but i cannot ", "i'm sorry, but i can't ", "i am sorry, but i cannot ", "i am sorry, but i can't ",
+		"apologies, but i cannot ", "apologies, but i can't ", "as an ai, i cannot ", "as an ai, i can't ",
+		"我不能", "我无法", "我不会", "我拒绝", "抱歉，我不能", "抱歉，我无法", "无法协助", "不能协助",
+	)
+}
+
+func hasClearSystemSafetyPolicy(text string) bool {
+	policyFraming := containsAnyRolePhrase(text,
+		"system policy", "safety policy", "security policy", "content policy", "moderation policy", "abuse policy",
+		"system safety", "safe system policy", "安全策略", "安全政策", "内容策略", "审核策略", "滥用策略",
+	) || hasAnyPrefix(text,
+		"you must not ", "you must never ", "never assist ", "do not assist ", "don't assist ",
+		"never provide ", "do not provide ", "don't provide ", "you must refuse ", "always refuse ",
+		"refuse requests ", "reject requests ", "block requests ",
+		"不得协助", "不要协助", "严禁协助", "拒绝处理", "阻止请求",
+	)
+	prohibition := containsAnyRolePhrase(text,
+		"must refuse", "should refuse", "refuse any", "refuse requests", "reject any", "reject requests",
+		"block any", "block requests", "prevent ", "never ", "do not ", "don't ", "must not ",
+		"prohibit", "forbid", "not allowed", "禁止", "不得", "严禁", "拒绝", "阻止", "防止", "不要",
+	)
+	return policyFraming && prohibition
+}
+
+func scopedSafetyContinuationIsInert(role extract.Role, fullText, clause string) bool {
+	if !isScopedSafetyContinuation(role, clause) {
+		return false
+	}
+	if !hasCoordinatedOperationalContinuation(clause) {
+		return true
+	}
+	_, _, explicitlyQuoted := explicitQuotedSafetyState(role, fullText, clause)
+	if !explicitlyQuoted {
+		return false
+	}
+	switch role {
+	case extract.RoleAssistant:
+		return hasClearAssistantRefusal(fullText)
+	case extract.RoleSystem:
+		return hasClearSystemSafetyPolicy(fullText)
+	default:
+		return false
+	}
+}
+
+func isExplicitQuotedSafetyContinuation(role extract.Role, clause string) bool {
+	_, ok := explicitQuotedSafetyPayload(role, clause)
+	return ok
+}
+
+func explicitQuotedSafetyPayload(role extract.Role, clause string) (string, bool) {
+	clause = strings.TrimLeft(strings.TrimSpace(clause), "-*#> ")
+	var prefixes []string
+	switch role {
+	case extract.RoleAssistant:
+		prefixes = []string{
+			"the blocked prompt was", "the forbidden prompt was", "the quoted prompt was", "the blocked prompt said",
+			"the forbidden prompt said", "the quoted prompt said", "the quoted request was", "the forbidden request was",
+			"the blocked request was", "被禁止的请求是", "被拦截的请求是", "引用的请求是", "引用提示词是",
+		}
+	case extract.RoleSystem:
+		prefixes = []string{
+			"the blocked prompt was", "the forbidden prompt was", "the quoted prompt was", "the blocked prompt said",
+			"the forbidden prompt said", "the quoted prompt said", "the quoted request was", "the forbidden request was",
+			"the blocked request was", "被禁止的请求是", "被拦截的请求是", "引用的请求是", "引用提示词是",
+		}
+	default:
+		return "", false
+	}
+	for _, prefix := range prefixes {
+		if !strings.HasPrefix(clause, prefix) {
+			continue
+		}
+		payload := strings.TrimLeft(clause[len(prefix):], " \t:：=-")
+		return payload, true
+	}
+	return "", false
 }
 
 func hasNonUserSafetyOverride(text string) bool {
 	if containsAnyRolePhrase(text,
 		"do not refuse", "don't refuse", "must not refuse", "never refuse", "ignore the safety", "ignore safety",
 		"ignore the policy", "disregard the policy", "bypass the policy", "bypass safety", "policy is irrelevant",
+		"must not be denied", "must not deny", "do not deny", "don't deny", "must not be blocked", "must not block",
+		"do not block", "don't block", "must not be filtered", "do not filter", "disable guardrails", "remove guardrails",
+		"disable safety checks", "skip safety checks", "must not enforce the policy", "must not apply safety",
 		"but here is the code", "however, here is the code", "instead, here is the code", "here's the working code",
 		"use the following code", "run the following code", "execute the following code", "nevertheless", "nonetheless",
 		"even so", "that said", "having said that", "all the same", "regardless", "despite that", "despite this",
 		"separately", "independently", "in any case", "anyway", "however", "instead", "but then", "and then",
-		"不要拒绝", "不得拒绝", "忽略安全", "忽略策略", "绕过策略", "策略无关", "但以下是代码", "不过以下是代码",
+		"不要拒绝", "不得拒绝", "不得阻止", "不得拦截", "不得过滤", "不要阻止", "不要拦截", "不要过滤",
+		"关闭护栏", "移除护栏", "禁用安全检查", "跳过安全检查", "不得执行安全策略",
+		"忽略安全", "忽略策略", "绕过策略", "策略无关", "但以下是代码", "不过以下是代码",
 		"使用以下代码", "运行以下代码", "执行以下代码", "尽管如此", "话虽如此", "无论如何", "然而", "另外",
 		"另行", "分别", "接下来", "然后照做", "照样执行",
 	) {
 		return true
 	}
 	return hasCoordinatedOperationalContinuation(text)
+}
+
+func hasUnscopedNonUserSafetyOverride(role extract.Role, text string) bool {
+	if !hasNonUserSafetyOverride(text) {
+		return false
+	}
+	var quotedScope rune
+	for _, clause := range splitStrongSafetyClauses(text) {
+		clause = strings.TrimSpace(clause)
+		if clause == "" {
+			continue
+		}
+		if quotedScope != 0 {
+			suffix, closed := closeQuotedSafetyScope(clause, quotedScope)
+			if !closed {
+				continue
+			}
+			quotedScope = 0
+			clause = suffix
+			if clause == "" {
+				continue
+			}
+		}
+		if !hasNonUserSafetyOverride(clause) {
+			continue
+		}
+		if scopedSafetyContinuationIsInert(role, text, clause) {
+			if suffix, quote, quoted := explicitQuotedSafetyState(role, text, clause); quoted {
+				quotedScope = quote
+				if suffix != "" && hasNonUserSafetyOverride(suffix) {
+					return true
+				}
+			}
+			continue
+		}
+		return true
+	}
+	return false
 }
 
 // hasCoordinatedOperationalContinuation catches a second operational predicate
@@ -285,9 +447,11 @@ func hasCoordinatedOperationalContinuation(text string) bool {
 			continuation := strings.TrimSpace(remaining)
 			if hasOperationalContinuationPrefix(continuation) || hasAnyPrefix(continuation,
 				"writing ", "creating ", "generating ", "building ", "providing ", "giving ", "showing ",
-				"running ", "executing ", "deploying ", "sending ", "stealing ", "exfiltrating ",
+				"running ", "executing ", "deploying ", "sending ", "stealing ", "exfiltrating ", "answering ",
+				"following ", "obeying ", "complying ",
 				"bypassing ", "exploiting ", "installing ",
-				"编写", "创建", "生成", "构建", "提供", "运行", "执行", "部署", "发送", "窃取", "绕过", "利用", "安装",
+				"编写", "创建", "生成", "构建", "提供", "运行", "执行", "部署", "发送", "窃取", "回答", "遵循", "服从", "照做",
+				"绕过", "利用", "安装",
 			) {
 				return true
 			}
@@ -310,12 +474,30 @@ func hasUnscopedSafetyContinuation(role extract.Role, text string) bool {
 // refusal cannot cause the core negation detector to suppress the new request.
 func unscopedSafetyContinuation(role extract.Role, text string) string {
 	clauses := splitStrongSafetyClauses(text)
+	var quotedScope rune
 	for index, clause := range clauses {
 		clause = strings.TrimSpace(clause)
 		if clause == "" || index == 0 {
 			continue
 		}
-		if isScopedSafetyContinuation(role, clause) && !hasNonUserSafetyOverride(clause) {
+		if quotedScope != 0 {
+			suffix, closed := closeQuotedSafetyScope(clause, quotedScope)
+			if !closed {
+				continue
+			}
+			quotedScope = 0
+			if suffix == "" {
+				continue
+			}
+			return suffix
+		}
+		if scopedSafetyContinuationIsInert(role, text, clause) {
+			if suffix, quote, quoted := explicitQuotedSafetyState(role, text, clause); quoted {
+				quotedScope = quote
+				if suffix != "" {
+					return suffix
+				}
+			}
 			continue
 		}
 		return clause
@@ -341,6 +523,41 @@ func unscopedSafetyContinuation(role extract.Role, text string) string {
 		}
 	}
 	return ""
+}
+
+// explicitQuotedSafetyState returns any text after a quote that closes in the
+// current clause, or the balanced quote delimiter whose span continues into a
+// later clause. This keeps only the actual quoted bytes inert; text after the
+// closing delimiter is always classified again.
+func explicitQuotedSafetyState(role extract.Role, fullText, clause string) (string, rune, bool) {
+	payload, ok := explicitQuotedSafetyPayload(role, clause)
+	if !ok {
+		return "", 0, false
+	}
+	for _, quote := range []rune{'"', '`'} {
+		quoteText := string(quote)
+		if !strings.HasPrefix(payload, quoteText) {
+			continue
+		}
+		remainder := payload[len(quoteText):]
+		if closeIndex := strings.Index(remainder, quoteText); closeIndex >= 0 {
+			return strings.TrimSpace(remainder[closeIndex+len(quoteText):]), 0, true
+		}
+		count := strings.Count(fullText, quoteText)
+		if count >= 2 && count%2 == 0 {
+			return "", quote, true
+		}
+	}
+	return "", 0, false
+}
+
+func closeQuotedSafetyScope(clause string, quote rune) (string, bool) {
+	quoteText := string(quote)
+	closeIndex := strings.Index(clause, quoteText)
+	if closeIndex < 0 {
+		return "", false
+	}
+	return strings.TrimSpace(clause[closeIndex+len(quoteText):]), true
 }
 
 // splitStrongSafetyClauses treats Unicode punctuation, symbols, and
@@ -418,6 +635,8 @@ func isScopedSafetyContinuation(role extract.Role, clause string) bool {
 	case extract.RoleAssistant:
 		return hasAnyPrefix(clause,
 			"the request was", "the forbidden request was", "the blocked request was", "the request says",
+			"the blocked prompt was", "the forbidden prompt was", "the quoted prompt was", "the blocked prompt said",
+			"the forbidden prompt said", "the quoted prompt said",
 			"the user asked", "you asked", "that request was", "this request was", "the quoted request was",
 			"被禁止的请求是", "被拦截的请求是", "该请求是", "这个请求是", "用户要求", "你要求",
 		)
@@ -437,9 +656,10 @@ func hasOperationalContinuationPrefix(clause string) bool {
 	return hasAnyPrefix(clause,
 		"write ", "create ", "generate ", "build ", "provide ", "give ", "show ", "tell ", "return ",
 		"run ", "execute ", "deploy ", "send ", "steal ", "exfiltrate ", "bypass ", "exploit ", "install ",
+		"answer ", "follow ", "obey ", "comply ",
 		"now ", "next ", "then ", "also ", "still ", "yet ",
 		"编写", "写出", "创建", "生成", "构建", "提供", "给出", "展示", "运行", "执行", "部署", "发送", "窃取",
-		"绕过", "利用", "安装", "现在", "接下来", "然后", "另外", "同时", "仍然",
+		"绕过", "利用", "安装", "回答", "遵循", "服从", "照做", "现在", "接下来", "然后", "另外", "同时", "仍然",
 	)
 }
 
@@ -461,6 +681,72 @@ func containsAnyRolePhrase(text string, phrases ...string) bool {
 	return false
 }
 
+const (
+	minIsolatedRuneRun = 4
+	maxIsolatedRuneRun = 64
+)
+
+func reconstructedIsolatedPartRuns(parts []string) []string {
+	runs := make([]string, 0, 2)
+	var builder strings.Builder
+	runeCount := 0
+	flush := func() {
+		if runeCount >= minIsolatedRuneRun {
+			runs = append(runs, builder.String())
+		}
+		builder.Reset()
+		runeCount = 0
+	}
+	for _, part := range parts {
+		r, ok := isolatedCompactRune(part)
+		if !ok {
+			flush()
+			continue
+		}
+		if runeCount == maxIsolatedRuneRun {
+			flush()
+		}
+		if runeCount > 0 {
+			builder.WriteByte(' ')
+		}
+		builder.WriteRune(r)
+		runeCount++
+	}
+	flush()
+	return runs
+}
+
+func reconstructedIsolatedUserRuns(segments []extract.Segment) []string {
+	parts := make([]string, 0, len(segments))
+	runs := make([]string, 0, 2)
+	flush := func() {
+		runs = append(runs, reconstructedIsolatedPartRuns(parts)...)
+		parts = parts[:0]
+	}
+	for _, segment := range segments {
+		if segment.Role != extract.RoleUser || segment.Provenance != extract.ProvenanceContent {
+			flush()
+			continue
+		}
+		if _, ok := isolatedCompactRune(segment.Text); !ok {
+			flush()
+			continue
+		}
+		parts = append(parts, segment.Text)
+	}
+	flush()
+	return runs
+}
+
+func isolatedCompactRune(value string) (rune, bool) {
+	trimmed := strings.TrimSpace(value)
+	runes := []rune(trimmed)
+	if len(runes) != 1 || !isCompactRune(runes[0]) {
+		return 0, false
+	}
+	return runes[0], true
+}
+
 func roleResultBetter(candidate, current Result) bool {
 	if candidate.Score != current.Score {
 		return candidate.Score > current.Score
@@ -470,6 +756,15 @@ func roleResultBetter(candidate, current Result) bool {
 	}
 	if candidate.Category != current.Category {
 		return categoryPriority(candidate.Category) < categoryPriority(current.Category)
+	}
+	return false
+}
+
+func resultContainsRuleID(result Result, want string) bool {
+	for _, ruleID := range result.RuleIDs {
+		if ruleID == want {
+			return true
+		}
 	}
 	return false
 }

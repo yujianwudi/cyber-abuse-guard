@@ -23,7 +23,15 @@ trusted with request text.
 | Explicit malicious request reaches an upstream account | ModelRouter runs before provider/auth selection; handled decisions target only the local executor; integration test asserts mock call count remains zero. |
 | Another router handles the request first | Install at priority 300, verify effective ordering, disable the obsolete identity-rewrite filter, and document that any higher-priority handled router can bypass this guard. |
 | Keyword-only false positive blocks legitimate security work | Multi-evidence rules, explicit defensive/lab/remediation contexts, bilingual benign corpus, balanced threshold. |
+| Instruction-hierarchy or unrestricted-persona replacement controls the model | Multi-family `META-OVERRIDE-001` evidence; no lone `jailbreak`, `benchmark`, or `developer` token is sufficient. |
+| Refusal/safety-disable inversion is presented as a safety policy | Policy wording that negates refusal, blocking, filtering, guardrails, or safety checks is treated as hostile control rather than benign policy suppression. |
+| Fake sandbox, benchmark, placeholder, or authorization scope washes a real target | Prompt-derived CTF/lab/fictional/authorization claims do not reduce the meta-override overlay; explicit negative authorization increases risk. |
+| System/developer prompt or hidden-reasoning disclosure is forced through exact-output controls | Protected-disclosure evidence composes with hierarchy/output-control signals and emits only fixed evidence IDs, never the requested secret text. |
 | Caller hides intent with casing, spaces, punctuation, zero-width characters, light leetspeak, URL/HTML/Base64/text-data encoding, or nested tool JSON | Bounded Unicode normalization, compact matching, at most two decode layers/eight variants, and explicit byte budgets; no claim of resistance to arbitrary adversarial encoding. |
+| Supported `SourceFormat` carries a forged or future schema | Failure to prove a recognized role envelope triggers the bounded untrusted-text walker instead of trusting the source label. |
+| Tool output or a double-stringified payload carries an indirect instruction | Tool provenance is inspected separately and valid JSON-looking strings inside established tool payloads recurse under the shared budget. |
+| Base64 or high-risk words are split across provider blocks, ordered tool fields, or isolated characters | Same-message content and ordered tool-payload/output strings are re-decoded after pristine joining, and a tightly bounded isolated-character reconstruction path closes simple fragmentation. |
+| Public adversarial material contaminates later evaluation | External repositories are reviewed read-only, sanitized into mechanism-level development tests, never executed, and never reused as a blind Holdout. |
 | JSON/decode/media resource exhaustion | Token walk, depth/part/byte budgets, 128 KiB encoded-source and 64 KiB decoded-variant caps, no decompression/archive expansion/network fetch, separate opaque-media policy, fuzz tests. |
 | Artificial scan boundary inside a JSON escape or UTF-8 sequence becomes a router-error bypass | Boundary decode errors are classified as truncation rather than malformed complete JSON; enforcing modes fail closed, with escape and multibyte regression tests. |
 | Base64-expanded plugin RPC exceeds the native copy cap before extraction | The native boundary recognizes oversized model-route/executor methods without copying the payload; Balanced/Strict self-route to a local scan-limit 403, and the real CPA test proves zero auth selection/upstream usage for a raw request above 6 MiB. |
@@ -67,3 +75,9 @@ independently authored unseen set for a materially new implementation and must
 not reuse v10. Upstream providers independently enforce their own policies.
 Therefore the plugin reduces risk but cannot guarantee that an account will
 never be warned, suspended, or deactivated.
+
+The classifier remains stateless across separate API calls, cannot attest to
+the owner, permissions, or hash of a local instruction file before a request
+reaches CPA, and does not claim arbitrary-transform or opaque-media semantic
+coverage. Server-side sandbox validation of the current post-v10 hardening is
+**PENDING / NOT RUN**.
