@@ -4,14 +4,15 @@ set -euo pipefail
 root="$(cd "${BASH_SOURCE[0]%/*}/.." && pwd -P)"
 # shellcheck source=release-common.sh
 source "$root/scripts/release-common.sh"
-release_require_commands cp mkdir mktemp rm sha256sum zip unzip find chmod env cat git sed awk sort
+release_require_commands cp mkdir mktemp rm sha256sum zip unzip find chmod env cat git sed awk sort ln
 release_init
 
 dist="${DIST_DIR:-$root/dist}"
 verify="$root/scripts/verify-release.sh"
 real_cyclonedx="$(command -v "${CYCLONEDX_GOMOD:-cyclonedx-gomod}")"
 so="cyber-abuse-guard-v${RELEASE_ARTIFACT_VERSION}.so"
-zip_name="cyber-abuse-guard_${RELEASE_ARTIFACT_VERSION}_linux_amd64.zip"
+store_zip="cyber-abuse-guard_${RELEASE_ARTIFACT_VERSION}_linux_amd64.zip"
+bundle_zip="cyber-abuse-guard-v${RELEASE_ARTIFACT_VERSION}-audit-bundle.zip"
 work="$(mktemp -d)"
 trap 'rm -rf -- "$work"' EXIT
 
@@ -38,13 +39,34 @@ copy_case() {
   cp -a "$dist/." "$work/$name/"
 }
 
+write_checksums() {
+  local directory="$1"
+  (
+    cd "$directory"
+    sha256sum "$so" "$so.sha256" "$store_zip" "$bundle_zip" \
+      build-metadata.json ruleset-manifest.json ruleset.sha256 sbom.cdx.json \
+      >checksums.txt
+  )
+}
+
+repack_bundle() {
+  local name="$1"
+  local case_dir="$work/$name"
+  rm -f "$case_dir/$bundle_zip"
+  (
+    cd "$case_dir/repack"
+    find . -mindepth 1 -printf '%P\n' | LC_ALL=C sort | \
+      zip -X -q "$case_dir/$bundle_zip" -@
+  )
+  write_checksums "$case_dir"
+}
+
 # A PATH with no verification commands must fail before any positive result.
 mkdir -p "$work/empty-path"
 run_must_fail missing-command env PATH="$work/empty-path" /bin/bash "$verify"
 
 # A substring such as v11.9.0 must never satisfy the pinned v1.9.0 tool
-# identity check. The wrapper is not allowed to reach SBOM generation because
-# verification must reject it at the version boundary.
+# identity check.
 cat >"$work/cyclonedx-wrong-version" <<EOF
 #!/usr/bin/env bash
 if [[ "\${1:-}" == version ]]; then
@@ -66,171 +88,169 @@ printf 'not an ELF shared object\n' >"$work/architecture-mismatch/$so"
 (
   cd "$work/architecture-mismatch"
   sha256sum "$so" >"$so.sha256"
-  sha256sum "$so" "$so.sha256" "$zip_name" build-metadata.json ruleset-manifest.json \
-    ruleset.sha256 sbom.cdx.json >checksums.txt
 )
+write_checksums "$work/architecture-mismatch"
 run_must_fail architecture-mismatch env DIST_DIR="$work/architecture-mismatch" "$verify"
 
-copy_case zip-allowlist-mismatch
-printf 'forbidden\n' >"$work/zip-allowlist-mismatch/unexpected.txt"
+# CPA store ZIP faults are isolated from the full audit bundle faults.
+copy_case store-unexpected-root-entry
+printf 'forbidden\n' >"$work/store-unexpected-root-entry/unexpected.txt"
 (
-  cd "$work/zip-allowlist-mismatch"
-  zip -q "$zip_name" unexpected.txt
+  cd "$work/store-unexpected-root-entry"
+  zip -q "$store_zip" unexpected.txt
   rm -f unexpected.txt
-  sha256sum "$so" "$so.sha256" "$zip_name" build-metadata.json ruleset-manifest.json \
-    ruleset.sha256 sbom.cdx.json >checksums.txt
 )
-run_must_fail zip-allowlist-mismatch env DIST_DIR="$work/zip-allowlist-mismatch" "$verify"
+write_checksums "$work/store-unexpected-root-entry"
+run_must_fail store-unexpected-root-entry env \
+  DIST_DIR="$work/store-unexpected-root-entry" "$verify"
 
-copy_case zip-readme-content-mismatch
-mkdir -p "$work/zip-readme-content-mismatch/repack"
-unzip -q "$work/zip-readme-content-mismatch/$zip_name" \
-  -d "$work/zip-readme-content-mismatch/repack"
+copy_case store-nested-target
+mkdir -p "$work/store-nested-target/repack/plugins/linux/amd64"
+cp "$work/store-nested-target/$so" \
+  "$work/store-nested-target/repack/plugins/linux/amd64/$so"
+chmod 0755 "$work/store-nested-target/repack/plugins/linux/amd64/$so"
+rm -f "$work/store-nested-target/$store_zip"
+(
+  cd "$work/store-nested-target/repack"
+  zip -X -q "$work/store-nested-target/$store_zip" "plugins/linux/amd64/$so"
+)
+write_checksums "$work/store-nested-target"
+run_must_fail store-nested-target env DIST_DIR="$work/store-nested-target" "$verify"
+
+copy_case store-extra-dynamic-library
+cp "$work/store-extra-dynamic-library/$so" \
+  "$work/store-extra-dynamic-library/cyber-abuse-guard-extra.so"
+(
+  cd "$work/store-extra-dynamic-library"
+  zip -q "$store_zip" cyber-abuse-guard-extra.so
+  rm -f cyber-abuse-guard-extra.so
+)
+write_checksums "$work/store-extra-dynamic-library"
+run_must_fail store-extra-dynamic-library env \
+  DIST_DIR="$work/store-extra-dynamic-library" "$verify"
+
+copy_case store-missing-target
+printf 'not the target\n' >"$work/store-missing-target/unexpected.txt"
+rm -f "$work/store-missing-target/$store_zip"
+(
+  cd "$work/store-missing-target"
+  zip -X -q "$store_zip" unexpected.txt
+  rm -f unexpected.txt
+)
+write_checksums "$work/store-missing-target"
+run_must_fail store-missing-target env DIST_DIR="$work/store-missing-target" "$verify"
+
+copy_case store-mode-mismatch
+mkdir -p "$work/store-mode-mismatch/repack"
+cp "$work/store-mode-mismatch/$so" "$work/store-mode-mismatch/repack/$so"
+chmod 0644 "$work/store-mode-mismatch/repack/$so"
+rm -f "$work/store-mode-mismatch/$store_zip"
+(
+  cd "$work/store-mode-mismatch/repack"
+  zip -X -q "$work/store-mode-mismatch/$store_zip" "$so"
+)
+write_checksums "$work/store-mode-mismatch"
+run_must_fail store-mode-mismatch env DIST_DIR="$work/store-mode-mismatch" "$verify"
+
+copy_case store-symlink-entry
+mkdir -p "$work/store-symlink-entry/repack"
+ln -s "$work/store-symlink-entry/$so" "$work/store-symlink-entry/repack/$so"
+rm -f "$work/store-symlink-entry/$store_zip"
+(
+  cd "$work/store-symlink-entry/repack"
+  zip -X -y -q "$work/store-symlink-entry/$store_zip" "$so"
+)
+write_checksums "$work/store-symlink-entry"
+run_must_fail store-symlink-entry env DIST_DIR="$work/store-symlink-entry" "$verify"
+
+copy_case bundle-allowlist-mismatch
+printf 'forbidden\n' >"$work/bundle-allowlist-mismatch/unexpected.txt"
+(
+  cd "$work/bundle-allowlist-mismatch"
+  zip -q "$bundle_zip" unexpected.txt
+  rm -f unexpected.txt
+)
+write_checksums "$work/bundle-allowlist-mismatch"
+run_must_fail bundle-allowlist-mismatch env \
+  DIST_DIR="$work/bundle-allowlist-mismatch" "$verify"
+
+copy_case bundle-readme-content-mismatch
+mkdir -p "$work/bundle-readme-content-mismatch/repack"
+unzip -q "$work/bundle-readme-content-mismatch/$bundle_zip" \
+  -d "$work/bundle-readme-content-mismatch/repack"
 printf '\nTampered release documentation.\n' \
-  >>"$work/zip-readme-content-mismatch/repack/README.md"
-chmod 0644 "$work/zip-readme-content-mismatch/repack/README.md"
-rm -f "$work/zip-readme-content-mismatch/$zip_name"
-(
-  cd "$work/zip-readme-content-mismatch/repack"
-  find . -mindepth 1 -printf '%P\n' | LC_ALL=C sort | \
-    zip -X -q "$work/zip-readme-content-mismatch/$zip_name" -@
-)
-(
-  cd "$work/zip-readme-content-mismatch"
-  sha256sum "$so" "$so.sha256" "$zip_name" build-metadata.json ruleset-manifest.json \
-    ruleset.sha256 sbom.cdx.json >checksums.txt
-)
-run_must_fail zip-readme-content-mismatch env \
-  DIST_DIR="$work/zip-readme-content-mismatch" "$verify"
+  >>"$work/bundle-readme-content-mismatch/repack/README.md"
+chmod 0644 "$work/bundle-readme-content-mismatch/repack/README.md"
+repack_bundle bundle-readme-content-mismatch
+run_must_fail bundle-readme-content-mismatch env \
+  DIST_DIR="$work/bundle-readme-content-mismatch" "$verify"
 
-copy_case zip-script-content-mismatch
-mkdir -p "$work/zip-script-content-mismatch/repack"
-unzip -q "$work/zip-script-content-mismatch/$zip_name" \
-  -d "$work/zip-script-content-mismatch/repack"
+copy_case bundle-script-content-mismatch
+mkdir -p "$work/bundle-script-content-mismatch/repack"
+unzip -q "$work/bundle-script-content-mismatch/$bundle_zip" \
+  -d "$work/bundle-script-content-mismatch/repack"
 printf '\n# Tampered operational script.\n' \
-  >>"$work/zip-script-content-mismatch/repack/scripts/check-production-health.sh"
-chmod 0755 \
-  "$work/zip-script-content-mismatch/repack/scripts/check-production-health.sh"
-rm -f "$work/zip-script-content-mismatch/$zip_name"
+  >>"$work/bundle-script-content-mismatch/repack/scripts/check-production-health.sh"
+chmod 0755 "$work/bundle-script-content-mismatch/repack/scripts/check-production-health.sh"
+repack_bundle bundle-script-content-mismatch
+run_must_fail bundle-script-content-mismatch env \
+  DIST_DIR="$work/bundle-script-content-mismatch" "$verify"
+
+for missing_case in \
+  'bundle-missing-v10:docs/reports/EVALUATION_V10_REPORT.md' \
+  'bundle-missing-v5:docs/reports/EVALUATION_V5_REPORT.md' \
+  'bundle-missing-v4:docs/reports/EVALUATION_V4_REPORT.md' \
+  'bundle-missing-v3:docs/reports/HOLDOUT_V3_REPORT.md' \
+  'bundle-missing-v2:docs/reports/HOLDOUT_V2_REPORT.md' \
+  'bundle-missing-audit-handoff:docs/AUDIT_HANDOFF.md' \
+  'bundle-missing-phase0-contract:docs/reports/PHASE0_CPA_CONTRACT.md' \
+  'bundle-missing-prompt-injection-review:docs/reports/PROMPT_INJECTION_REVIEW.md'; do
+  name="${missing_case%%:*}"
+  path="${missing_case#*:}"
+  copy_case "$name"
+  (
+    cd "$work/$name"
+    zip -q -d "$bundle_zip" "$path"
+  )
+  write_checksums "$work/$name"
+  run_must_fail "$name" env DIST_DIR="$work/$name" "$verify"
+done
+
+copy_case bundle-mode-mismatch
+mkdir -p "$work/bundle-mode-mismatch/repack"
+unzip -q "$work/bundle-mode-mismatch/$bundle_zip" \
+  -d "$work/bundle-mode-mismatch/repack"
+chmod 0644 "$work/bundle-mode-mismatch/repack/scripts/check-production-health.sh"
+repack_bundle bundle-mode-mismatch
+run_must_fail bundle-mode-mismatch env DIST_DIR="$work/bundle-mode-mismatch" "$verify"
+
+copy_case bundle-symlink-entry
+mkdir -p "$work/bundle-symlink-entry/repack"
+unzip -q "$work/bundle-symlink-entry/$bundle_zip" \
+  -d "$work/bundle-symlink-entry/repack"
+rm -f "$work/bundle-symlink-entry/repack/README.md"
+ln -s README_CN.md "$work/bundle-symlink-entry/repack/README.md"
+rm -f "$work/bundle-symlink-entry/$bundle_zip"
 (
-  cd "$work/zip-script-content-mismatch/repack"
+  cd "$work/bundle-symlink-entry/repack"
   find . -mindepth 1 -printf '%P\n' | LC_ALL=C sort | \
-    zip -X -q "$work/zip-script-content-mismatch/$zip_name" -@
+    zip -X -y -q "$work/bundle-symlink-entry/$bundle_zip" -@
 )
-(
-  cd "$work/zip-script-content-mismatch"
-  sha256sum "$so" "$so.sha256" "$zip_name" build-metadata.json ruleset-manifest.json \
-    ruleset.sha256 sbom.cdx.json >checksums.txt
-)
-run_must_fail zip-script-content-mismatch env \
-  DIST_DIR="$work/zip-script-content-mismatch" "$verify"
-
-copy_case zip-missing-required
-(
-  cd "$work/zip-missing-required"
-  zip -q -d "$zip_name" docs/reports/EVALUATION_V10_REPORT.md
-  sha256sum "$so" "$so.sha256" "$zip_name" build-metadata.json ruleset-manifest.json \
-    ruleset.sha256 sbom.cdx.json >checksums.txt
-)
-run_must_fail zip-missing-required env DIST_DIR="$work/zip-missing-required" "$verify"
-
-copy_case zip-missing-v5-history
-(
-  cd "$work/zip-missing-v5-history"
-  zip -q -d "$zip_name" docs/reports/EVALUATION_V5_REPORT.md
-  sha256sum "$so" "$so.sha256" "$zip_name" build-metadata.json ruleset-manifest.json \
-    ruleset.sha256 sbom.cdx.json >checksums.txt
-)
-run_must_fail zip-missing-v5-history env DIST_DIR="$work/zip-missing-v5-history" "$verify"
-
-copy_case zip-missing-v4-history
-(
-  cd "$work/zip-missing-v4-history"
-  zip -q -d "$zip_name" docs/reports/EVALUATION_V4_REPORT.md
-  sha256sum "$so" "$so.sha256" "$zip_name" build-metadata.json ruleset-manifest.json \
-    ruleset.sha256 sbom.cdx.json >checksums.txt
-)
-run_must_fail zip-missing-v4-history env DIST_DIR="$work/zip-missing-v4-history" "$verify"
-
-copy_case zip-missing-v3-history
-(
-  cd "$work/zip-missing-v3-history"
-  zip -q -d "$zip_name" docs/reports/HOLDOUT_V3_REPORT.md
-  sha256sum "$so" "$so.sha256" "$zip_name" build-metadata.json ruleset-manifest.json \
-    ruleset.sha256 sbom.cdx.json >checksums.txt
-)
-run_must_fail zip-missing-v3-history env DIST_DIR="$work/zip-missing-v3-history" "$verify"
-
-copy_case zip-missing-v2-history
-(
-  cd "$work/zip-missing-v2-history"
-  zip -q -d "$zip_name" docs/reports/HOLDOUT_V2_REPORT.md
-  sha256sum "$so" "$so.sha256" "$zip_name" build-metadata.json ruleset-manifest.json \
-    ruleset.sha256 sbom.cdx.json >checksums.txt
-)
-run_must_fail zip-missing-v2-history env DIST_DIR="$work/zip-missing-v2-history" "$verify"
-
-copy_case zip-missing-audit-handoff
-(
-  cd "$work/zip-missing-audit-handoff"
-  zip -q -d "$zip_name" docs/AUDIT_HANDOFF.md
-  sha256sum "$so" "$so.sha256" "$zip_name" build-metadata.json ruleset-manifest.json \
-    ruleset.sha256 sbom.cdx.json >checksums.txt
-)
-run_must_fail zip-missing-audit-handoff env DIST_DIR="$work/zip-missing-audit-handoff" "$verify"
-
-copy_case zip-mode-mismatch
-mkdir -p "$work/zip-mode-mismatch/repack"
-unzip -q "$work/zip-mode-mismatch/$zip_name" -d "$work/zip-mode-mismatch/repack"
-chmod 0644 "$work/zip-mode-mismatch/repack/scripts/check-production-health.sh"
-rm -f "$work/zip-mode-mismatch/$zip_name"
-(
-  cd "$work/zip-mode-mismatch/repack"
-  find . -mindepth 1 -printf '%P\n' | LC_ALL=C sort | \
-    zip -X -q "$work/zip-mode-mismatch/$zip_name" -@
-)
-(
-  cd "$work/zip-mode-mismatch"
-  sha256sum "$so" "$so.sha256" "$zip_name" build-metadata.json ruleset-manifest.json \
-    ruleset.sha256 sbom.cdx.json >checksums.txt
-)
-run_must_fail zip-mode-mismatch env DIST_DIR="$work/zip-mode-mismatch" "$verify"
-
-copy_case zip-symlink-entry
-mkdir -p "$work/zip-symlink-entry/repack"
-unzip -q "$work/zip-symlink-entry/$zip_name" -d "$work/zip-symlink-entry/repack"
-rm -f "$work/zip-symlink-entry/repack/README.md"
-ln -s README_CN.md "$work/zip-symlink-entry/repack/README.md"
-rm -f "$work/zip-symlink-entry/$zip_name"
-(
-  cd "$work/zip-symlink-entry/repack"
-  find . -mindepth 1 -printf '%P\n' | LC_ALL=C sort | \
-    zip -X -y -q "$work/zip-symlink-entry/$zip_name" -@
-)
-(
-  cd "$work/zip-symlink-entry"
-  sha256sum "$so" "$so.sha256" "$zip_name" build-metadata.json ruleset-manifest.json \
-    ruleset.sha256 sbom.cdx.json >checksums.txt
-)
-run_must_fail zip-symlink-entry env DIST_DIR="$work/zip-symlink-entry" "$verify"
+write_checksums "$work/bundle-symlink-entry"
+run_must_fail bundle-symlink-entry env DIST_DIR="$work/bundle-symlink-entry" "$verify"
 
 copy_case ruleset-mismatch
 printf ' ' >>"$work/ruleset-mismatch/ruleset-manifest.json"
 (
   cd "$work/ruleset-mismatch"
   sha256sum ruleset-manifest.json >ruleset.sha256
-  sha256sum "$so" "$so.sha256" "$zip_name" build-metadata.json ruleset-manifest.json \
-    ruleset.sha256 sbom.cdx.json >checksums.txt
 )
+write_checksums "$work/ruleset-mismatch"
 run_must_fail ruleset-mismatch env DIST_DIR="$work/ruleset-mismatch" "$verify"
 
 copy_case sbom-mismatch
 printf ' ' >>"$work/sbom-mismatch/sbom.cdx.json"
-(
-  cd "$work/sbom-mismatch"
-  sha256sum "$so" "$so.sha256" "$zip_name" build-metadata.json ruleset-manifest.json \
-    ruleset.sha256 sbom.cdx.json >checksums.txt
-)
+write_checksums "$work/sbom-mismatch"
 run_must_fail sbom-mismatch env DIST_DIR="$work/sbom-mismatch" "$verify"
 
 copy_case version-mismatch

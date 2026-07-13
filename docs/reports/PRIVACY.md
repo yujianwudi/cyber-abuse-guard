@@ -90,8 +90,8 @@ After clean shutdown, search the complete artifact set:
 4. Management Status, Events, Stats, Test, Health Probe, Unblock, and Delete
    responses;
 5. panic/recovery error envelopes and host log callbacks;
-6. release `.so`, ZIP, `checksums.txt`, build metadata, ruleset manifest, SBOM,
-   and release-test summary;
+6. release `.so`, CPA store ZIP, audit bundle, `checksums.txt`, build metadata,
+   ruleset manifest, SBOM, and release-test summary;
 7. temporary integration/build directories before disposal.
 
 Representative repository test command:
@@ -136,8 +136,8 @@ mode-0600 non-symlink file. On Linux the plugin opens with `O_NOFOLLOW`, then
 validates and reads through the same descriptor. The generator creates the file
 atomically and prints only success/path metadata, never secret content.
 
-The secret is excluded from Git, Docker build context, release ZIP, SBOM, and
-logs. It should normally survive binary rollback/upgrade. Deleting it is an
+The secret is excluded from Git, Docker build context, both release ZIPs, SBOM,
+and logs. It should normally survive binary rollback/upgrade. Deleting it is an
 explicit destructive operation that breaks correlation with retained HMAC
 subject IDs.
 
@@ -152,7 +152,8 @@ subject IDs.
 | Management responses | all synthetic canaries absent | **PASS** |
 | Panic/recovery output | all synthetic canaries absent | **PASS** |
 | Subject persistence | plaintext key/prompt absent; typed HMAC state only | **PASS** |
-| `.so` and release ZIP | secret-like paths absent; strict allowlist/modes | **PASS (candidate artifact)** |
+| `.so` and pre-Phase0 release ZIP | secret-like paths absent; strict allowlist/modes | **PASS (historical candidate artifact)** |
+| Phase 0 store ZIP and audit bundle | source allowlists implemented; real built artifacts not produced locally | **PENDING SERVER BUILD** |
 | Build metadata/rules manifest | no secret/request text | **PASS** |
 | CycloneDX SBOM | no secret/request text | **PASS** |
 | Network capture | no guard-originated classifier/media fetch | **PASS** |

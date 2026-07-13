@@ -57,6 +57,7 @@ jobs:
             dist/cyber-abuse-guard-v0.1.2.so
             dist/cyber-abuse-guard-v0.1.2.so.sha256
             dist/cyber-abuse-guard_0.1.2_linux_amd64.zip
+            dist/cyber-abuse-guard-v0.1.2-audit-bundle.zip
             dist/build-metadata.json
             dist/checksums.txt
             dist/ruleset-manifest.json
@@ -77,6 +78,7 @@ jobs:
             dist/cyber-abuse-guard-v0.1.2.so
             dist/cyber-abuse-guard-v0.1.2.so.sha256
             dist/cyber-abuse-guard_0.1.2_linux_amd64.zip
+            dist/cyber-abuse-guard-v0.1.2-audit-bundle.zip
             dist/build-metadata.json
             dist/checksums.txt
             dist/ruleset-manifest.json

@@ -106,7 +106,7 @@ go tool pprof -top build/profiles/classifier-mem.pprof \
 ```
 
 Profiles may contain function/file names but must not use production requests.
-Use repository fixtures only, do not ship `.pprof` files in the release ZIP,
+Use repository fixtures only, do not ship `.pprof` files in either release ZIP,
 and record only aggregate findings in this report.
 
 ## Final result block

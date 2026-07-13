@@ -20,8 +20,9 @@ trusted with request text.
 
 | Threat | Control |
 |---|---|
-| Explicit malicious request reaches an upstream account | ModelRouter runs before provider/auth selection; handled decisions target only the local executor; integration test asserts mock call count remains zero. |
-| Another router handles the request first | Install at priority 300, verify effective ordering, disable the obsolete identity-rewrite filter, and document that any higher-priority handled router can bypass this guard. |
+| Explicit malicious request reaches an upstream account | ModelRouter is designed to run before provider/auth selection; handled decisions target only the local executor. The earlier v7.2.67 integration baseline recorded zero Mock Upstream/Auth/Usage calls, but the current Phase 0 diff still requires the four-protocol zero-call matrix in the owner-operated server sandbox. |
+| Another router handles the request first | Install at priority 300, verify effective ordering, disable the obsolete identity-rewrite filter, and document that any higher-priority handled Router can bypass this guard. At equal priority CPA orders by plugin ID ascending, so a lexicographically earlier handled Router can also win. |
+| Plugin is absent, registration fails, it is fused, or its self executor is unusable | Treat load/registration/fuse state, Router errors or pre-result panics, invalid/empty targets, and executor-not-ready as CPA host fail-open conditions that may continue other Routers or native routing. `enforcement_ready` is internal plugin state only; external load/order/readiness monitoring remains required. |
 | Keyword-only false positive blocks legitimate security work | Multi-evidence rules, explicit defensive/lab/remediation contexts, bilingual benign corpus, balanced threshold. |
 | Instruction-hierarchy or unrestricted-persona replacement controls the model | Multi-family `META-OVERRIDE-001` evidence; no lone `jailbreak`, `benchmark`, or `developer` token is sufficient. |
 | Refusal/safety-disable inversion is presented as a safety policy | Policy wording that negates refusal, blocking, filtering, guardrails, or safety checks is treated as hostile control rather than benign policy suppression. |
@@ -35,6 +36,7 @@ trusted with request text.
 | JSON/decode/media resource exhaustion | Token walk, depth/part/byte budgets, 128 KiB encoded-source and 64 KiB decoded-variant caps, no decompression/archive expansion/network fetch, separate opaque-media policy, fuzz tests. |
 | Artificial scan boundary inside a JSON escape or UTF-8 sequence becomes a router-error bypass | Boundary decode errors are classified as truncation rather than malformed complete JSON; enforcing modes fail closed, with escape and multibyte regression tests. |
 | Base64-expanded plugin RPC exceeds the native copy cap before extraction | The native boundary recognizes oversized model-route/executor methods without copying the payload; Balanced/Strict self-route to a local scan-limit 403, and the real CPA test proves zero auth selection/upstream usage for a raw request above 6 MiB. |
+| Token counting bypasses a policy self-route | `executor.execute`, `executor.execute_stream`, and `executor.count_tokens` all use the same policy 403 path; `executor.http_request` remains unsupported with 405. Current real-host protocol behavior remains a server-sandbox assertion. |
 | Tool input hides abuse under a metadata-named key or reordered Anthropic block | Transport metadata remains excluded, but all textual fields inside tool payloads, including order-independent `tool_use.input` and `name`/`url`/`type`/`model`, are scanned under the shared budget. |
 | Appended history or forged role labels hide earlier abuse | Standard role segments are each classified independently plus adjacent user follow-ups; role-less shapes use a conservative part fallback, unsupported roles fail closed, and history-cap truncation is never silent. |
 | Regex denial of service | Default rules use normalized literal terms; validation rejects unsupported/oversized rule constructs. |
@@ -50,6 +52,8 @@ trusted with request text.
 | Plugin panic crashes CPA or bypasses enforcement | ABI entrypoints recover. A recovered `model.route` panic self-routes in a validated Balanced/Strict runtime and increments counters; other methods preserve a non-zero ABI failure signal. CPA may still fuse a plugin, so monitoring remains required. |
 | Router error silently weakens enforcement | Known scan-boundary, oversized-RPC, recovered panic, and guarded Router failures self-route in enforcing modes. Status exposes readiness/error/panic counters; the watchdog alarms on deltas. CPA v7.2.67 still owns a host-level fail-open policy that the plugin cannot change. |
 | Management test/unblock exposed to normal API keys | Routes registered exclusively through CPA Management API; no public resource routes. |
+| Oversized management HTTP body is fully buffered by CPA before plugin limits run | CPA currently uses `io.ReadAll` in `ServeManagementHTTP`, so plugin 1 MiB body / 2 MiB envelope checks are not a host memory ceiling. The deployment proxy sets `client_max_body_size 1m`; the server sandbox must prove Nginx returns 413 before CPA receives the request. |
+| CPA store rejects or misinstalls the release archive | Keep the store ZIP separate from the audit bundle. The store ZIP root contains exactly one executable `.so`; the isolated CPA v7.2.72 source-contract module calls official `pluginstore.InstallArchive` with synthetic bytes to verify naming, checksum, install path, repeat install, and legacy nested-layout rejection. This does not claim v7.2.72 host compatibility. |
 | SSRF or prompt/media exfiltration via classifier or URL inspection | v0.1.2 rejects classifier activation, never fetches media URLs, and performs no outbound classification/telemetry call. |
 | Identity spoofing to evade upstream policy | Plugin never changes model, system prompt, client name, headers that claim identity, or upstream safety declarations. |
 
@@ -67,8 +71,10 @@ Deterministic local rules cannot infer intent perfectly, can be evaded by novel
 language or encoding, and can produce false positives/negatives. Decoding is
 bounded, images/audio/video are not semantically inspected, and public media
 URLs are never fetched. `observe` and `audit` deliberately do not block. CPA or
-upstream behavior outside the pinned ABI may change, and CPA v7.2.67 retains a
-host-level Router fail-open boundary. Holdout/evaluation generations v1-v9 are
+upstream behavior outside the pinned ABI may change. The repository root still
+targets CPA v7.2.67; the isolated v7.2.72 source contracts are not compatibility
+evidence. CPA retains the host-level Router fail-open conditions described
+above. Holdout/evaluation generations v1-v9 are
 retired, consumed, or methodology-invalid history; methodologically valid v10
 was consumed and failed. Any future release attempt requires a new
 independently authored unseen set for a materially new implementation and must
@@ -80,4 +86,5 @@ The classifier remains stateless across separate API calls, cannot attest to
 the owner, permissions, or hash of a local instruction file before a request
 reaches CPA, and does not claim arbitrary-transform or opaque-media semantic
 coverage. Server-side sandbox validation of the current post-v10 hardening is
-**PENDING / NOT RUN**.
+**PENDING / NOT RUN**, including the current Phase 0 four-protocol 403 and zero
+Auth/Usage/Provider/Upstream matrix.

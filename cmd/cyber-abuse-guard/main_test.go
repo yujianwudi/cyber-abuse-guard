@@ -112,22 +112,24 @@ func TestABIEnvelopeRegistrationAndFailClosedExecutor(t *testing.T) {
 		t.Fatalf("oversized native route envelope=%s err=%v", raw, err)
 	}
 
-	raw, code = handlePluginCall(pluginabi.MethodExecutorExecuteStream, []byte(`{"OriginalRequest":"e30="}`))
-	if code != 0 {
-		t.Fatalf("executor.execute_stream controlled block code=%d envelope=%s", code, raw)
-	}
-	var blockEnvelope struct {
-		OK    bool `json:"ok"`
-		Error struct {
-			Code       string `json:"code"`
-			HTTPStatus int    `json:"http_status"`
-		} `json:"error"`
-	}
-	if err := json.Unmarshal(raw, &blockEnvelope); err != nil {
-		t.Fatalf("decode block envelope: %v", err)
-	}
-	if blockEnvelope.OK || blockEnvelope.Error.Code != "cyber_abuse_guard_blocked" || blockEnvelope.Error.HTTPStatus != http.StatusForbidden {
-		t.Fatalf("block envelope = %s", raw)
+	for _, method := range []string{pluginabi.MethodExecutorExecuteStream, pluginabi.MethodExecutorCountTokens} {
+		raw, code = handlePluginCall(method, []byte(`{"OriginalRequest":"e30="}`))
+		if code != 0 {
+			t.Fatalf("%s controlled block code=%d envelope=%s", method, code, raw)
+		}
+		var blockEnvelope struct {
+			OK    bool `json:"ok"`
+			Error struct {
+				Code       string `json:"code"`
+				HTTPStatus int    `json:"http_status"`
+			} `json:"error"`
+		}
+		if err := json.Unmarshal(raw, &blockEnvelope); err != nil {
+			t.Fatalf("decode block envelope: %v", err)
+		}
+		if blockEnvelope.OK || blockEnvelope.Error.Code != "cyber_abuse_guard_blocked" || blockEnvelope.Error.HTTPStatus != http.StatusForbidden {
+			t.Fatalf("%s block envelope = %s", method, raw)
+		}
 	}
 }
 

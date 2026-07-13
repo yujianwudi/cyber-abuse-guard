@@ -88,7 +88,7 @@ jobs:
       - name: SBOM, package, and verify-release
         env:
           ALLOW_DIRTY_BUILD: '1'
-        run: make sbom package-release verify-release verification-fault-test
+        run: make sbom package-release verify-release cpa-store-contract verification-fault-test
       - name: artifact-hash
         env:
           ALLOW_DIRTY_BUILD: '1'
@@ -103,6 +103,7 @@ jobs:
             dist/cyber-abuse-guard-v0.1.2-dirty.so
             dist/cyber-abuse-guard-v0.1.2-dirty.so.sha256
             dist/cyber-abuse-guard_0.1.2-dirty_linux_amd64.zip
+            dist/cyber-abuse-guard-v0.1.2-dirty-audit-bundle.zip
             dist/build-metadata.json
             dist/checksums.txt
             dist/ruleset-manifest.json

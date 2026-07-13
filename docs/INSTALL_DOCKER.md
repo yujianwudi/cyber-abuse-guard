@@ -24,6 +24,10 @@ in a production plugin directory.
 - CPA is exactly `v7.2.67` at commit
   `2075f77c8ebe9ec872759965661936fb1ac2931f` and was built with
   `CGO_ENABLED=1`. Assets labelled `_no-plugin` cannot load native plugins.
+  The repository root `go.mod` still pins this version. The isolated CPA
+  `v7.2.72` module under `integration/pluginstorecontract` validates the
+  official store installer and host-routing source contracts; it is not Guard
+  native-host compatibility or deployment evidence for v7.2.72.
 - The container is Linux amd64 with glibc 2.34 or newer. Debian Bookworm is the
   intended base; musl/Alpine is unsupported.
 - The deployment host has `curl`, `jq`, `unzip`, `sha256sum`, and `openssl`.
@@ -33,7 +37,9 @@ in a production plugin directory.
   plugins before changing anything.
 - Inspect Router priorities manually. `cyber-abuse-guard` should use priority
   300; no higher-priority Router may handle the same request first. Disable the
-  obsolete `antigravity-coding-filter` after verifying this plugin.
+  obsolete `antigravity-coding-filter` after verifying this plugin. Routers at
+  the same priority run by plugin ID ascending, so also inspect same-priority
+  IDs for a lexicographically earlier handler.
 - Only one `cyber-abuse-guard` `.so` may exist in the active plugin directory.
   CPA ABI v1 cannot enumerate ordering or detect duplicate versions for the
   plugin itself.
@@ -51,27 +57,39 @@ formal GitHub Release exists for a release-eligible version:
 ```bash
 set -eu
 VERSION=0.1.2
-ARCHIVE="cyber-abuse-guard_${VERSION}_linux_amd64.zip"
+STORE_ARCHIVE="cyber-abuse-guard_${VERSION}_linux_amd64.zip"
+AUDIT_BUNDLE="cyber-abuse-guard-v${VERSION}-audit-bundle.zip"
 EVIDENCE="release-evidence-final.md"
 SOURCE="cyber-abuse-guard-v${VERSION}-source.tar.gz"
 RELEASE_BASE="${CYBER_ABUSE_GUARD_RELEASE_BASE:-https://github.com/yujianwudi/cyber-abuse-guard/releases/download/v${VERSION}}"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
-curl -fL "$RELEASE_BASE/$ARCHIVE" -o "$work/$ARCHIVE"
+curl -fL "$RELEASE_BASE/$STORE_ARCHIVE" -o "$work/$STORE_ARCHIVE"
+curl -fL "$RELEASE_BASE/$AUDIT_BUNDLE" -o "$work/$AUDIT_BUNDLE"
 curl -fL "$RELEASE_BASE/checksums.txt" -o "$work/checksums.txt"
 curl -fL "$RELEASE_BASE/$EVIDENCE" -o "$work/$EVIDENCE"
 curl -fL "$RELEASE_BASE/$EVIDENCE.sha256" -o "$work/$EVIDENCE.sha256"
 curl -fL "$RELEASE_BASE/$SOURCE" -o "$work/$SOURCE"
 curl -fL "$RELEASE_BASE/$SOURCE.sha256" -o "$work/$SOURCE.sha256"
 (cd "$work" && sha256sum -c "$EVIDENCE.sha256" && sha256sum -c "$SOURCE.sha256")
-(cd "$work" && grep -F "  $ARCHIVE" checksums.txt | sha256sum -c -)
-unzip -q "$work/$ARCHIVE" -d "$work/release"
-(cd "$work/release/plugins/linux/amd64" && \
+(cd "$work" && grep -F "  $STORE_ARCHIVE" checksums.txt | sha256sum -c -)
+(cd "$work" && grep -F "  $AUDIT_BUNDLE" checksums.txt | sha256sum -c -)
+mkdir -p "$work/store" "$work/audit"
+unzip -q "$work/$STORE_ARCHIVE" -d "$work/store"
+unzip -q "$work/$AUDIT_BUNDLE" -d "$work/audit"
+test "$(find "$work/store" -mindepth 1 -maxdepth 1 -type f -name '*.so' | wc -l)" -eq 1
+test "$(find "$work/store" -mindepth 1 -maxdepth 1 | wc -l)" -eq 1
+(cd "$work/audit/plugins/linux/amd64" && \
   sha256sum -c "cyber-abuse-guard-v${VERSION}.so.sha256")
+cmp "$work/store/cyber-abuse-guard-v${VERSION}.so" \
+  "$work/audit/plugins/linux/amd64/cyber-abuse-guard-v${VERSION}.so"
 ```
 
-Inspect `$work/release/build-metadata.json` and require:
+The store ZIP is deliberately minimal: its root contains exactly one `.so`.
+The audit bundle is separate and must not be passed to CPA's plugin store.
+
+Inspect `$work/audit/build-metadata.json` and require:
 
 - `source_version` equals `0.1.2`;
 - `dirty` is `false`;
@@ -80,11 +98,12 @@ Inspect `$work/release/build-metadata.json` and require:
 - `$work/release-evidence-final.md` identifies the same commit, annotated tag,
   rules snapshot, source archive, command-log digest, and artifact hashes.
 
-`checksums.txt` intentionally covers the seven reproducible core files: the
-shared object, its sidecar, the ZIP, build metadata, ruleset manifest, ruleset
-sidecar, and SBOM. Run-specific command logs, final evidence, and the source
-archive are outside the reproducible ZIP and each has its own SHA-256 sidecar;
-their hashes are also bound by the verified final evidence document.
+`checksums.txt` intentionally covers the eight reproducible core files: the
+shared object, its sidecar, the CPA store ZIP, the audit bundle, build metadata,
+ruleset manifest, ruleset sidecar, and SBOM. Run-specific command logs, final
+evidence, and the source archive are outside both reproducible ZIPs and each has
+its own SHA-256 sidecar; their hashes are also bound by the verified final
+evidence document.
 
 Do not bypass checksum validation for an internal mirror; set
 `CYBER_ABUSE_GUARD_RELEASE_BASE` to the mirror directory that contains the same
@@ -162,7 +181,7 @@ Continue in the same shell where `$work` and `$VERSION` exist:
 install -d -m 0755 plugins/linux/amd64
 install -d -m 0700 plugin-data/cyber-abuse-guard
 install -m 0755 \
-  "$work/release/plugins/linux/amd64/cyber-abuse-guard-v${VERSION}.so" \
+  "$work/store/cyber-abuse-guard-v${VERSION}.so" \
   "plugins/linux/amd64/cyber-abuse-guard-v${VERSION}.so"
 
 test "$(find plugins/linux/amd64 -maxdepth 1 -type f \
@@ -189,6 +208,27 @@ services:
 Some Compose secret mechanisms force mode 0444; this plugin intentionally
 rejects that. Use a regular mode-0600 bind-mounted file or a secret runtime that
 preserves the required permissions.
+
+### Management request-body limit at the reverse proxy
+
+CPA currently performs `io.ReadAll` in `ServeManagementHTTP` before invoking a
+plugin management handler. The plugin's 1 MiB body limit and 2 MiB RPC-envelope
+limit therefore do not bound CPA's HTTP-side memory use. Put the management
+prefix behind a reverse-proxy limit, for example:
+
+```nginx
+location /v0/management/plugins/cyber-abuse-guard/ {
+    client_max_body_size 1m;
+    proxy_request_buffering on;
+    proxy_pass http://cli-proxy-api:8317;
+}
+```
+
+This is a deployment control, not a source-level proof. In the owner-operated
+server sandbox, send a body slightly above 1 MiB and verify that Nginx returns
+HTTP 413 before CPA access logs, plugin counters, or the management handler show
+the request. Do not apply a 1 MiB limit indiscriminately to model-request routes
+that intentionally support larger bodies.
 
 ## 5. Configure Observe first
 
@@ -264,6 +304,12 @@ identity, degradation, router/panic counters, and two built-in local probes. The
 malicious probe never enters a provider route, auth selector, usage queue, or
 upstream.
 
+`enforcement_ready` is plugin-internal state only. It does not prove the binary
+was loaded/registered, was not fused, won Router ordering, or passed CPA's
+per-request self-executor readiness checks. A missing plugin, registration
+failure, fused plugin, Router error/panic, invalid or empty target, not-ready
+executor, or earlier handled Router can cause CPA to continue routing.
+
 Also verify from the deployment environment:
 
 ```bash
@@ -275,6 +321,12 @@ test "$(curl -sS -o /dev/null -w '%{http_code}' \
 Verify New API → CPA using an ordinary harmless request, confirm other plugins
 still behave normally, and compare the current CPA auth-file list with the saved
 inventory. Installation must not create, delete, or modify auth files.
+
+For the current Phase 0 development diff, server verification is still required
+for OpenAI Chat, OpenAI Responses, Claude, and Gemini. For each protocol, prove
+that `execute`, `execute_stream`, and `count_tokens` policy paths return HTTP 403,
+that `http_request` returns 405, and that blocked requests leave Auth Selector,
+Provider, Usage, and Mock Upstream counters at zero.
 
 ## 8. Observe → Audit → Balanced rollout
 

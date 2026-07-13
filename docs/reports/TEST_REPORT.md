@@ -1,10 +1,16 @@
 # Test Report — v0.1.2 candidate
 
-Last updated: 2026-07-13 (Asia/Shanghai)
+Last updated: 2026-07-14 (Asia/Shanghai)
 
 Target: CLIProxyAPI `v7.2.67`, commit
 `2075f77c8ebe9ec872759965661936fb1ac2931f`, C ABI/RPC schema v1, Linux amd64,
 glibc 2.34+, pinned Go `1.26.4`.
+
+The root `go.mod` and current runtime/development baseline remain on CPA
+v7.2.67. The isolated `integration/pluginstorecontract` module pins v7.2.72
+for official `pluginstore.InstallArchive` and host-routing source-contract tests
+with synthetic opaque bytes; it is not v7.2.72 native-load, executor,
+management, or deployment compatibility evidence.
 
 ## Release status
 
@@ -56,6 +62,34 @@ evidence, real-CPA integration evidence, or release approval.
 | Formal Holdout | prohibited; v10 is consumed | **NOT RUN** |
 | Release packaging/tag/GitHub Release | prohibited by failed gate | **NOT RUN / NOT CREATED** |
 
+## Phase 0 CPA store and executor contract
+
+This table intentionally distinguishes source state from executed evidence. At
+the time of this documentation update, no unrecorded command is promoted to
+PASS:
+
+| Gate | Command or evidence | Phase 0 result |
+|---|---|---|
+| Root CPA dependency remains v7.2.67 | inspect root `go.mod` | **SOURCE CONFIRMED** |
+| Isolated CPA v7.2.72 module integrity | `go -C integration/pluginstorecontract mod verify` / `tidy -diff` | **PASS** |
+| Synthetic root-only store ZIP and published-shape contract | `GO=/tmp/go1.26/bin/go ./scripts/create-store-archive-test.sh` | **PASS — official `InstallArchive` used; no `.so` load** |
+| Official v7.2.72 installer and host-routing source contracts | `go -C integration/pluginstorecontract test ./... -count=1 -v` | **PASS — real built artifact case skipped when `DIST_DIR` was absent; synthetic artifact case passed separately** |
+| Store ZIP exact root entry and separate audit bundle verifier | `make sbom package-release verify-release` on a development artifact | **SOURCE IMPLEMENTED; REAL BUILD/PACKAGING NOT RUN LOCALLY** |
+| `execute`, `execute_stream`, `count_tokens` policy 403; `http_request` 405 | `go test -tags=sqlite_omit_load_extension ./internal/plugin ./cmd/cyber-abuse-guard -count=1` | **PASS** |
+| Phase 0 targeted race | `CGO_ENABLED=1 go test -race -tags=sqlite_omit_load_extension ./internal/plugin ./cmd/cyber-abuse-guard -count=1` | **PASS** |
+| Phase 0 targeted vet | `go vet -tags=sqlite_omit_load_extension ./internal/plugin ./cmd/cyber-abuse-guard` | **PASS** |
+| Four-protocol real HTTP 403/405 compatibility | owner-operated server sandbox | **PENDING / NOT RUN** |
+| Blocked Auth Selector, Provider, Usage, and Mock Upstream calls remain zero | owner-operated real CPA + counting fixtures | **PENDING / NOT RUN** |
+| Nginx rejects >1 MiB management body before CPA `io.ReadAll` | server proxy test expecting 413 | **PENDING / NOT RUN** |
+| Native `.so` load/deployment | prohibited locally | **NOT RUN** |
+
+The two future release ZIPs are distinct:
+
+- `cyber-abuse-guard_<version>_linux_amd64.zip`: CPA store ZIP, exactly one
+  root `.so`;
+- `cyber-abuse-guard-v<version>-audit-bundle.zip`: separate reports, metadata,
+  SBOM, documentation, and operator material.
+
 ## Pre-change candidate command matrix
 
 This matrix records the broader candidate baseline before the current
@@ -85,8 +119,8 @@ current-diff verification or converted into a tagged-release matrix.
 | Linux amd64 build | `make build-linux-amd64` | **PASS (dirty-suffixed candidate)** |
 | Real CPA integration | `make integration-test` | **PASS** |
 | Formal clean-tag release | `make release` | **NOT RUN / BLOCKED by v10 FAIL** |
-| Candidate release packaging | `make sbom package-release` | **PASS — dirty development ZIP/SO/SBOM regenerated after dependency upgrade** |
-| Strict release verification | `make verify-release` | **PASS (candidate artifact)** |
+| Candidate release packaging | historical `make sbom package-release` | **PASS PRE-PHASE0 — old single/nested development ZIP; not evidence for the new store/audit split** |
+| Strict release verification | historical `make verify-release` | **PASS PRE-PHASE0 candidate artifact; current two-ZIP verifier not yet recorded here** |
 | Verifier fault injection | `make verification-fault-test` | **PASS — all 14 faults rejected** |
 | Artifact hashes | `make artifact-hash` | **PASS (candidate artifact)** |
 | Two-clone formal reproducibility | `make reproducibility-test` | **NOT FINALIZED — release blocked** |
@@ -119,6 +153,8 @@ The final test log must prove every item below:
 - blocked raw content leaves Mock Upstream calls at zero;
 - blocked requests leave CPA Auth Selector calls at zero;
 - blocked requests create no real-upstream usage record;
+- `execute`, `execute_stream`, and `count_tokens` each return policy HTTP 403,
+  while `http_request` returns unsupported HTTP 405;
 - safe OpenAI Chat, Responses, Anthropic, Gemini, tool, and stream requests
   preserve the original model, content, tool arguments, and client behavior;
 - there is no System Prompt injection, identity spoofing, model rewrite, or
@@ -134,6 +170,11 @@ The final test log must prove every item below:
   pure text is unaffected and no media URL is fetched;
 - Router panics/errors update counters and an active Balanced/Strict runtime
   self-routes known/recovered failure paths instead of entering auth/upstream;
+- tests and documentation retain host fail-open for plugin-not-loaded,
+  registration failure, fused plugin, Router error/pre-result panic,
+  invalid/empty target, executor-not-ready, and an earlier handled Router;
+  same-priority ordering is plugin ID ascending, and `enforcement_ready` is not
+  treated as proof of those host conditions;
 - invalid reconfigure preserves the last valid runtime and reports the error;
 - SQLite unavailable/locked, queue full, and persistence failure do not disable
   local classification/blocking;
@@ -144,8 +185,13 @@ The final test log must prove every item below:
 - management routes reject missing/wrong/normal client keys at the CPA host,
   reject oversized bodies and unsupported queries/methods, and withstand
   injection, traversal, deletion, and concurrency probes;
+- the deployment proxy returns HTTP 413 for a management body above 1 MiB before
+  CPA's pre-plugin `io.ReadAll`; plugin body/envelope limits are not claimed as a
+  host HTTP memory ceiling;
+- the CPA store ZIP contains exactly one root `.so`, passes official
+  `pluginstore.InstallArchive`, and remains separate from the audit bundle;
 - privacy canaries are absent from DB, WAL, SHM, logs, management responses,
-  panic output, release ZIP, and SBOM metadata;
+  panic output, the store ZIP, the audit bundle, and SBOM metadata;
 - the local watchdog probes never invoke `/v1`, Auth Selector, usage, provider,
   or upstream and never mutate account/configuration state.
 
@@ -189,6 +235,12 @@ formal_evaluation_result: v10 CONSUMED / FAIL; FP 28/320; blocked 49/320; exact 
 server_sandbox_validation: PENDING / NOT RUN
 current_diff_real_cpa_integration: NOT RUN
 current_diff_native_loading_or_deployment: NOT RUN
+root_cpa_development_baseline: v7.2.67
+phase0_v7.2.72_scope: official installer and host-routing source contracts only
+phase0_store_zip_contract: SYNTHETIC PUBLISHED-SHAPE PASS; REAL BUILD ARTIFACT NOT CREATED
+phase0_audit_bundle_contract: SOURCE IMPLEMENTED; REAL BUILD/PACKAGING NOT RUN LOCALLY
+phase0_four_protocol_403_zero_call_matrix: SERVER SANDBOX PENDING / NOT RUN
+phase0_management_413_before_cpa: SERVER SANDBOX PENDING / NOT RUN
 test_log_sha256: no formal tagged release log — release blocked
 overall_release_gate: FAIL / NOT PRODUCTION-READY
 ```

@@ -1,18 +1,25 @@
-# CPA v7.2.67 Integration Report — v0.1.2 candidate
+# CPA Integration and Store-Contract Report — v0.1.2 candidate
 
 ## Status
 
-**PRE-PROMPT-INJECTION-CHANGE BASELINE — CURRENT DIFF NOT RUN.** The recorded
+**PRE-PROMPT-INJECTION-CHANGE BASELINE — CURRENT PROMPT-INJECTION/PHASE 0 DIFF
+NOT RUN THROUGH A REAL HOST.** The recorded
 v0.1.2 candidate integration run passed against an earlier dirty-suffixed
 development artifact through the real CPA v7.2.67 Plugin Host. It was not rerun
-for the current prompt-injection/extraction diff and must not be presented as
-current-diff CPA, native-load, or deployment evidence. Methodologically valid
-evaluation v10 is `CONSUMED / FAIL`, so no clean `v0.1.2` release tag or
-production artifact may be created. The historical integration PASS cannot
-override the failed release gate.
+for the current prompt-injection/extraction and Phase 0 contract diff and must
+not be presented as current-diff CPA, native-load, or deployment evidence.
+Methodologically valid evaluation v10 is `CONSUMED / FAIL`, so no clean
+`v0.1.2` release tag or production artifact may be created. The historical
+integration PASS cannot override the failed release gate.
 
 Target host: CLIProxyAPI `v7.2.67` at commit
 `2075f77c8ebe9ec872759965661936fb1ac2931f`, CPA C ABI/RPC schema v1.
+
+The repository root `go.mod` and runtime baseline remain on CPA v7.2.67. The
+isolated `integration/pluginstorecontract` module pins CPA v7.2.72 only to call
+the official `internal/pluginstore` implementation and official plugin-host
+routing tests. It treats the shared library as opaque synthetic bytes and does
+not load, register, execute, or claim host compatibility with CPA v7.2.72.
 
 Final command:
 
@@ -23,6 +30,31 @@ make integration-test
 The test must build/load the exact release-candidate `.so`, start the real CPA
 Plugin Host and native loader, use a local counting Mock Upstream, inject a
 counting CPA auth selector and usage-queue probe, and avoid all real providers.
+
+## Phase 0 source-contract status
+
+The current Phase 0 tree contains the following source changes. No result is
+promoted to PASS here unless a command result is separately recorded:
+
+| Source assertion | Current status |
+|---|---|
+| Root `go.mod` remains CPA v7.2.67 | **SOURCE CONFIRMED** |
+| Isolated CPA v7.2.72 official installer and host-routing contract module | **PASS — source-level only** |
+| Store ZIP name `cyber-abuse-guard_<version>_linux_amd64.zip` | **SOURCE IMPLEMENTED** |
+| Store ZIP root contains exactly one versioned executable `.so` | **PASS WITH SYNTHETIC PUBLISHED-SHAPE ARTIFACT; REAL BUILD NOT CREATED** |
+| Legacy nested `plugins/linux/amd64/...` store layout rejected | **PASS — official `InstallArchive` rejection** |
+| Separate `cyber-abuse-guard-v<version>-audit-bundle.zip` | **SOURCE IMPLEMENTED** |
+| `execute`, `execute_stream`, and `count_tokens` use policy 403; `http_request` uses 405 | **UNIT TEST PASS; REAL-HOST MATRIX PENDING** |
+| Current-diff OpenAI Chat/Responses/Claude/Gemini HTTP status and zero Auth/Usage/Provider/Upstream calls | **SERVER SANDBOX PENDING / NOT RUN** |
+
+The source-level contracts can be exercised without native loading:
+
+```bash
+go -C integration/pluginstorecontract test ./... -count=1
+```
+
+After a server build populates `dist/`, `make cpa-store-contract` additionally
+checks that real artifact; it still does not load the `.so`.
 
 ## Mandatory assertions
 
@@ -46,6 +78,8 @@ counting CPA auth selector and usage-queue probe, and avoid all real providers.
 | Risky Anthropic and tool input return local 403 | **PASS** |
 | Risky Gemini returns local 403 | **PASS** |
 | Risky streaming request is rejected before stream establishment | **PASS** |
+| Risky token-count request returns the same policy 403 | **NOT PART OF PRE-CHANGE BASELINE; CURRENT SERVER SANDBOX PENDING** |
+| Executor HTTP forwarding request returns 405 unsupported | **CURRENT SOURCE CONTRACT; SERVER SANDBOX PENDING** |
 | Multi-turn follow-up/history padding/unknown role cannot hide risk | **PASS** |
 | URL/HTML/Base64/JSON/tool double encoding uses bounded production path | **PASS** |
 | Every blocked case leaves Mock Upstream call count at zero | **PASS** |
@@ -92,8 +126,12 @@ request has already entered auth scheduling, usage accounting, or upstream.
 
 ## Health and fail-open verification
 
-CPA v7.2.67 may continue native routing after a Router error, and a panic can
-fuse a plugin. The test must exercise the plugin's mode-aware recovery:
+CPA may continue other Routers or native routing when the plugin is not loaded,
+registration fails, it is fused, a Router returns an error, a panic occurs
+before a valid handled result is accepted, a target is invalid/empty, or the
+self executor is not ready. A higher-priority handled Router also wins; at equal
+priority, CPA orders by plugin ID ascending. The test must exercise the plugin's
+mode-aware recovery while retaining these host-level facts:
 
 - in a validated Balanced/Strict runtime, known Router failures and recovered
   `model.route` panics return `Handled=true, TargetKind=self` with ABI return
@@ -106,6 +144,10 @@ fuse a plugin. The test must exercise the plugin's mode-aware recovery:
 
 This mitigation cannot change CPA's host-level fail-open policy and is not a
 guarantee against every future host or ABI failure.
+
+`enforcement_ready` is an internal plugin runtime signal. It does not prove
+host load/registration, favorable ordering, non-fused state, valid target
+acceptance, or per-request executor readiness.
 
 The test must also call the authenticated built-in benign/malicious health
 probes and verify `local_only=true`, `upstream_attempted=false`. Those routes
@@ -123,7 +165,32 @@ zero auth/upstream/usage, not identical JSON across protocols.
 CPA ABI v1 cannot enumerate Router ordering or the active plugin directory.
 Integration can validate the controlled fixture, but production still requires
 manual confirmation that no higher-priority Router bypasses this plugin and
-that only one `cyber-abuse-guard` `.so` is active.
+that only one `cyber-abuse-guard` `.so` is active. Same-priority Router IDs must
+also be compared because lexicographically smaller plugin IDs run first.
+
+The policy executor method matrix is:
+
+| Method | Required policy result |
+|---|---|
+| `executor.execute` | synchronous RPC error carrying HTTP 403 |
+| `executor.execute_stream` | synchronous RPC error carrying HTTP 403 before SSE/headers commit |
+| `executor.count_tokens` | synchronous RPC error carrying HTTP 403 |
+| `executor.http_request` | unsupported HTTP 405 |
+
+Real HTTP status and response-shape compatibility must be checked separately for
+OpenAI Chat, OpenAI Responses, Claude, and Gemini. For the current diff, all four
+protocols and zero Auth Selector, Provider, Usage, and Mock Upstream calls remain
+**PENDING / NOT RUN** in the server sandbox.
+
+## Management HTTP buffering boundary
+
+CPA currently invokes `io.ReadAll` inside `ServeManagementHTTP` before the
+plugin receives the management request. The plugin's 1 MiB body bound and 2 MiB
+RPC-envelope bound therefore do not cap CPA's HTTP memory allocation. The
+deployment reverse proxy must enforce its own limit; the Docker/Nginx example
+uses `client_max_body_size 1m`. The server sandbox must prove that a request
+slightly above the limit returns HTTP 413 at Nginx before CPA/plugin counters or
+handlers observe it.
 
 ## Final evidence block
 
@@ -133,7 +200,9 @@ ruleset_version: 1.0.7
 ruleset_sha256: 7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134
 cpa_version: v7.2.67
 cpa_commit: 2075f77c8ebe9ec872759965661936fb1ac2931f
-command_exit_status: 0
-integration_log_sha256: candidate evidence only; no formal tagged release log
-overall_cpa_integration_gate: PASS PRE-CHANGE BASELINE; CURRENT DIFF NOT RUN; RELEASE GATE remains FAIL
+phase0_store_contract_target: isolated CPA v7.2.72 installer and host-routing source contracts only; no host compatibility claim
+phase0_store_contract_command_exit_status: 0 (synthetic/source-level only)
+current_diff_real_cpa_command_exit_status: NOT RUN
+integration_log_sha256: pre-change candidate evidence only; no current-diff or formal tagged release log
+overall_cpa_integration_gate: PASS PRE-CHANGE BASELINE; CURRENT PROMPT-INJECTION/PHASE0 DIFF NOT RUN; RELEASE GATE remains FAIL
 ```

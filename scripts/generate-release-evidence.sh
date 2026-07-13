@@ -11,14 +11,16 @@ release_assert_tag
 
 dist="${DIST_DIR:-$root/dist}"
 so="cyber-abuse-guard-v${RELEASE_ARTIFACT_VERSION}.so"
-zip_name="cyber-abuse-guard_${RELEASE_ARTIFACT_VERSION}_linux_amd64.zip"
+store_zip="cyber-abuse-guard_${RELEASE_ARTIFACT_VERSION}_linux_amd64.zip"
+bundle_zip="cyber-abuse-guard-v${RELEASE_ARTIFACT_VERSION}-audit-bundle.zip"
 source_name="cyber-abuse-guard-v${RELEASE_SOURCE_VERSION}-source.tar.gz"
 tag="v$RELEASE_SOURCE_VERSION"
 
 required=(
   "$so"
   "$so.sha256"
-  "$zip_name"
+  "$store_zip"
+  "$bundle_zip"
   "checksums.txt"
   "build-metadata.json"
   "ruleset-manifest.json"
@@ -67,7 +69,7 @@ trap cleanup EXIT
 {
   printf '# CPA Cyber Abuse Guard v%s final release evidence\n\n' "$RELEASE_SOURCE_VERSION"
   printf 'This standalone provenance record was generated only after the complete formal gate command returned zero. '
-  printf 'The immutable command log is bound below by SHA-256. The reproducible ZIP does not contain this run-specific file.\n\n'
+  printf 'The immutable command log is bound below by SHA-256. Neither reproducible ZIP contains this run-specific file.\n\n'
   printf '## Release identity\n\n'
   printf -- '- Commit: `%s`\n' "$RELEASE_GIT_COMMIT"
   printf -- '- Annotated tag: `%s`\n' "$tag"
@@ -80,7 +82,7 @@ trap cleanup EXIT
 
   printf '## Verified artifacts\n\n'
   printf '| Artifact | SHA-256 |\n|---|---|\n'
-  for name in "$so" "$so.sha256" "$zip_name" checksums.txt build-metadata.json \
+  for name in "$so" "$so.sha256" "$store_zip" "$bundle_zip" checksums.txt build-metadata.json \
     ruleset-manifest.json ruleset.sha256 sbom.cdx.json release-test-summary.txt \
     release-test-summary.txt.sha256 "$source_name" "$source_name.sha256"; do
     printf '| `%s` | `%s` |\n' "$name" "$(hash_file "$dist/$name")"
