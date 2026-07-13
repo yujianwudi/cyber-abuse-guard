@@ -1,344 +1,242 @@
-# CPA Cyber Abuse Guard 本地封控插件
+# CPA Cyber Abuse Guard
 
-CPA Cyber Abuse Guard 是面向
-[CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)（CPA）的本地原生安全插件。
-它在 Provider 解析和账号认证调度之前检查请求，把明确的操作性 Cyber Abuse 请求在
-本地拒绝，同时尽量保留防御分析、漏洞修复、事件响应、CTF/靶场和明确授权测试。
+[![CI](https://github.com/yujianwudi/cyber-abuse-guard/actions/workflows/ci.yml/badge.svg)](https://github.com/yujianwudi/cyber-abuse-guard/actions/workflows/ci.yml)
+[![Go](https://img.shields.io/badge/Go-1.26.4-00ADD8?logo=go&logoColor=white)](go.mod)
+[![Platform](https://img.shields.io/badge/platform-Linux%20amd64-lightgrey)](docs/LIMITATIONS.md)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Release](https://img.shields.io/badge/release-BLOCKED-critical)](docs/reports/RELEASE_EVIDENCE.md)
 
-v0.1.2 源码目标为 CPA `v7.2.67`、commit
-`2075f77c8ebe9ec872759965661936fb1ac2931f`、Linux amd64、glibc 2.34 或更高版本、
-CPA C ABI/RPC schema v1。不支持 musl/Alpine。
+**面向 [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)（CPA）的本地、
+确定性、前置 Cyber Abuse 请求风控插件。**
 
-仓库根 `go.mod` 和当前开发/运行基线仍固定在 CPA `v7.2.67`。独立目录
-`integration/pluginstorecontract` 单独固定 CPA `v7.2.72`，唯一用途是用官方
-`pluginstore.InstallArchive` 与官方 Host Router 测试验证商店归档、安装行为、Router
-排序和回退；测试只使用不透明的合成字节，不加载 `.so`。这不是 CPA `v7.2.72`
-宿主兼容、可部署或已完成集成测试的证据。
+[English](README.md) | 简体中文
 
-> **发布状态：** v0.1.2 是**被门禁阻断的候选版本**，不是生产发布。盲测 v1-v8
-> 均为退役或已消耗失败；v9 因缺失固定 Taxonomy Enum 校验器而冻结为
-> `CONSUMED / METHODOLOGY INVALID / FAIL`。方法学有效的 v10 首次且唯一正式运行
-> 也失败：合法误报 28/320、恶意阻断 49/320、精确分类 33/320。v10 已消耗，
-> `make holdout-test` 现在会拒绝重跑。不得创建 `v0.1.2` Tag 或 GitHub Release，
-> 不得部署此候选版本。未来只能在新实现完成后，用全新独立盲集重新评审，禁止复用 v10。
->
-> **v10 之后的开发状态：** 当前开发工作树已包含审计驱动的加固和依赖升级，晚于 v10
-> 所绑定的实现快照。这些修改只有工程测试证据，不继承任何 v10 发布结论；未来候选仍必须
-> 使用全新、独立、未见盲集重新评审。
->
-> **提示注入加固状态：** 当前开发工作树新增确定性的 `META-OVERRIDE-001`
-> 控制面叠加层，并加固了伪造 Provider 结构、Tool 二次 JSON、分块编码、逐字符拆分及
-> 恶意“安全策略”反转。当前只有开发态工程证据；**服务器沙盒验证仍为 PENDING /
-> NOT RUN**。这些修改不能改变 v10 已消耗失败的正式结论，也不授权部署。
+> [!WARNING]
+> 本仓库当前是**未发布的开发候选版本**。v0.1.2 的发布结论仍为
+> **BLOCKED**；唯一方法学有效的 v10 正式评估为
+> `CONSUMED / FAIL`；当前代码尚未完成服务器沙盒验证。不得创建 v0.1.2
+> Tag 或 GitHub Release，也不得把当前候选部署到生产环境。
 
-> **能力边界：** 本插件只能减少到达上游账号的高风险请求，不能保证账号永不收到
-> 警告、永不暂停、永不限流或永不封禁。上游平台仍会独立执行自己的安全策略。
+当 CPA 已加载并注册插件、Router 顺序能够到达本插件且自路由 Executor 已就绪时，
+CPA Cyber Abuse Guard 会在 Provider 解析和账号认证调度之前检查受支持的模型请求。
+它的目标是在本地拒绝明确的操作性 Cyber Abuse，同时尽量保留防御分析、漏洞修复、
+事件响应、CTF/靶场和明确授权测试。请求内容只在进程内分析，不会发送到公网分类器。
 
-## 安全链路
+## 当前状态
 
-插件注册 CPA `ModelRouter` 和本地 Executor：
+| 项目 | 当前状态 |
+|---|---|
+| 仓库状态 | v10 之后的未发布开发工作树；候选版本谱系为 v0.1.2 |
+| 发布结论 | **BLOCKED / NOT PRODUCTION-READY** |
+| 正式评估 | v10 `CONSUMED / FAIL`：合法误报 28/320、恶意阻断 49/320、精确分类 33/320 |
+| 运行基线 | CPA `v7.2.67`，commit `2075f77c8ebe9ec872759965661936fb1ac2931f` |
+| CPA v7.2.72 用途 | 仅用于隔离的源码契约测试；不声明宿主兼容 |
+| 文档化构建目标 | Linux amd64、glibc 2.34 或更高、CPA C ABI/RPC schema v1 |
+| 不支持平台 | musl/Alpine |
+| 内置 YAML 规则集 | `1.0.7`，SHA-256 `7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134` |
+| 当前验证 | 已有源码、CI 和 Phase 0 契约证据；仍需项目所有者执行服务器沙盒验证 |
+
+仓库根 `go.mod` 仍固定在 CPA v7.2.67。
+`integration/pluginstorecontract` 隔离模块单独固定 CPA v7.2.72，仅用于验证官方
+源码契约。归档测试把不透明的合成插件字节交给 `pluginstore.InstallArchive`；
+Host Router 测试运行 CPA 官方内存 Fake。两类测试都不加载本插件，也不能证明本项目
+可运行在 CPA v7.2.72 宿主上。
+
+## 这个项目是什么
+
+- CPA 原生 `ModelRouter` 与本地自路由 Executor。
+- 面向操作性 Cyber Abuse 证据的确定性、中英文规则分类器。
+- 当 CPA 接受自路由且 Executor 已就绪时，可在 Provider、认证、Usage 和真实上游
+  之前停止拒绝请求的前置控制。
+- 带有有界 SQLite 持久化的隐私最小化审计与管理能力。
+- 对测试证据、打包契约和可复现性保持明确边界的工程与审计项目。
+
+## 这个项目不是什么
+
+- 不是通用内容、NSFW、版权或软件许可审核器。
+- 不是账号调度、额度管理、OAuth 管理、Provider 代理或 429 恢复组件。
+- 不能替代上游平台自己的安全策略。
+- 不能保证上游账号永不警告、永不限流、永不暂停或永不封禁。
+- 不是远程 AI 分类器、遥测收集器、URL 抓取器、媒体扫描器或用户代码执行环境。
+- 当前状态不是可投入生产的正式版本。
+
+v10 之后的开发代码包含一个范围较窄的 `META-OVERRIDE-001` 控制面叠加层，用于
+识别恶意指令层级反转和安全策略压制。强烈的独立控制面攻击当前可能被记录为
+`defense_evasion`；这是开发态的已知范围扩展，不代表本插件已经成为完整的通用
+模型安全过滤器。
+
+## 工作链路
 
 ```text
 下游请求
   -> CPA ModelRouter
-    -> 放行：Handled=false，原请求不变，继续 CPA 原生链路
+    -> 放行：Handled=false
+       -> 原始 CPA Provider/Auth/上游链路不变
     -> 阻断：Handled=true, TargetKind=self
-       -> execute / execute_stream / count_tokens 返回策略 HTTP 403
-       -> http_request 仍不支持并返回 HTTP 405
-       -> 不进入 Provider 解析、Auth Selector、Usage 或真实上游
+       -> 如果 CPA 接受自路由且 Executor 就绪：
+          -> execute / execute_stream / count_tokens 返回请求 HTTP 403 的
+             RPC Error Envelope
+          -> http_request 返回请求 HTTP 405 的 Unsupported Method Envelope
+          -> 不进入 Provider 解析、Auth Selector、Usage 或真实上游
 ```
 
-插件不修改模型名、客户端身份、System Prompt 或安全声明；不伪装教育/研究用途；
-不读取 CPA Auth/OAuth 文件；不执行用户代码；不把请求内容发送到公网分类器或第三方。
-被放行的请求仍会按 CPA 配置正常进入上游。
+插件不改写请求模型、客户端身份、System Prompt、安全声明或被放行的请求内容；
+不读取 CPA Auth/OAuth 文件；不伪装恶意意图；不执行请求携带的代码；也不把 Prompt
+发送到辅助公网分类器。
 
-## 提示注入加固（v10 之后的开发态实现）
+## 检测范围
 
-`META-OVERRIDE-001` 会组合多个相互独立的中英文证据族：指令层级替换、禁止拒绝、
-无限制/开发者人格、要求直接完成、Sandbox/Benchmark/占位符洗白、固定输出或跳过权限
-检查、明确的负授权，以及索取 System/Developer Prompt 或隐藏推理。它不是依靠单个
-`jailbreak`、`benchmark`、`developer` 关键词阻断。
+内置策略覆盖八类操作性 Cyber Abuse：
 
-如果请求同时存在普通 Cyber Abuse 证据，叠加层只提高风险，不替换原有分类；强烈但
-独立的控制面攻击暂归入 `defense_evasion`。Prompt 自述 CTF、靶场、虚构目标或已授权
-不能降低该叠加层；只有同时具备明确分析/防护目的和非执行意图的引用材料才可减分。
+- 凭证窃取；
+- 钓鱼；
+- 恶意软件；
+- 勒索软件；
+- 漏洞利用；
+- 数据外传；
+- 服务破坏；
+- 防御规避。
 
-Tool provenance 会独立扫描；受支持 Provider 的请求体如果无法证明 Role 结构，会退回
-有界的不可信文本遍历；Tool Payload 中合法的 JSON 字符串继续在共享预算内递归；同一
-消息的分块内容以及有序的 Tool Payload/Output 字符串字段合并后会再次解码。分类器可以
-组合当前请求携带的相邻片段，但独立 API 调用之间没有语义记忆。
+单个关键词不足以触发阻断。分类器会组合伤害意图、危险对象或影响，以及操作化、
+真实目标、规避或规模证据。“教育”“CTF”“Benchmark”“已授权”等标签不能自动洗白
+部署型滥用；明确的防御分析目的和非执行意图则可以保留合法安全工作。
 
-内置确定性规则集版本为 `1.0.7`，canonical embedded SHA-256 为
-`7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134`。阻断必须同时具备伤害意图、危险对象/影响，以及
-操作化、真实目标、规避或规模证据；单个关键词不足以阻断。“教育”“CTF”“已授权”
-等标签不能洗白部署型凭证窃取、钓鱼收集、勒索软件或数据外传。
+源码提取器覆盖 OpenAI Chat、OpenAI Responses、Anthropic Claude 和 Google Gemini
+请求结构。当前仓库具备这些路径的源码测试，但四协议真实 HTTP 行为和阻断后的零下游
+调用矩阵仍需项目所有者在服务器沙盒验证。
 
-上述 ruleset 版本和哈希只标识嵌入的 YAML Cyber Abuse 规则资产；完整的 v10 后分类
-策略还包括 `META-OVERRIDE-001`、Matcher/Normalizer、Role 和 Extractor 语义，不在该
-manifest/hash 内。当前开发行为必须由“包含本差异的 Git/Build Commit + YAML ruleset
-身份”共同标识。未来若要成为可发布候选，必须增加独立的分类策略版本/哈希，或把全部
-策略行为绑定到可验证构建来源。
+文本处理有明确上限：
 
-## CPA Host 的 Fail Open 边界
+- 最多两层解码、八个唯一变体；
+- 编码源最多 128 KiB，解码文本合计最多 64 KiB；
+- 支持 URL Percent、HTML Entity、可检查 Base64、文本型 Data URL、JSON Escape
+  和有界嵌套 Tool JSON；
+- 不解压、不展开归档、不联网抓取，也没有跨请求语义记忆。
 
-仓库根开发基线仍是 CPA v7.2.67。若插件未加载、注册失败、被 fuse、Router 返回错误、
-在宿主接受有效 handled result 前 panic、返回无效/空 target，或 self executor 未 ready，
-CPA Host 都可能继续其他 Router 或原生路由。更高优先级 Router 若先 Handle，请求也不会
-到达本插件；同优先级按插件 ID 升序执行。v0.1.2 通过有界解析、入口 panic recovery、
-已知超大 RPC 的模式化本地处理、原子热更新和健康计数器降低已知风险，但 ABI v1 插件
-无法把这些宿主条件变成全局 fail closed。
+图片、音频、视频和文档附件属于不透明内容，可配置为 `block`、`audit` 或
+`allow`。`allow` 只表示“未检查后放行”，不代表安全批准。
 
-生产环境必须监控：`loaded`、`enforcement_ready`、`router_errors`、
-`panics_recovered`、`audit_degraded`、`hmac_stable`、`persistence_degraded`、
-`last_reconfigure_error` 以及构建/规则身份。使用只读 Watchdog：
-
-`enforcement_ready` 只表示插件内部 runtime/readiness，不能证明 CPA 已加载并注册插件、
-插件未被 fuse、Router 顺序有利，或 CPA 对具体请求格式判定 self executor ready。
-
-```bash
-CPA_MANAGEMENT_KEY_FILE=/run/secrets/cpa-management.key \
-EXPECTED_MODE=balanced \
-./scripts/check-production-health.sh
-```
-
-Watchdog 只接受回环地址；它校验 runtime/build/rules 身份与健康，拒绝 Router Error 或
-Recovered Panic 差量，报告未知 SourceFormat，并可用 `MAX_NEW_UNKNOWN_SOURCE_FORMATS`
-限制探针窗口内的增量。无害和固定恶意探针内置于插件，经鉴权后的 Management API
-在本地判断，不会把探针正文发送到 `/v1`、Auth Selector、Provider 或上游账号；脚本
-不会修改 CPA 配置、删除账号或删除其他插件。
-
-CPA ABI v1 也不能枚举 Router 顺序或检查插件目录。管理员必须人工确认：
-
-- `priority: 300` 实际生效，且没有更高优先级 Router 提前 Handle 请求；
-- 同优先级时已按插件 ID 升序核对，字典序更小的 Router 不会抢先 Handle；
-- 旧 `antigravity-coding-filter` 已禁用；
-- 插件目录中只保留一个生效版本的 `.so`，不存在 v0.1.1/v0.1.2 并存歧义。
-
-## 模式与灰度上线
+## 运行模式
 
 | 模式 | 请求行为 | 事件行为 |
 |---|---|---|
 | `off` | 不提取、不分类、不阻断 | 不保存事件 |
-| `observe` | 分类但永不阻断 | 只更新内存聚合统计 |
-| `audit` | 分类但永不阻断 | SQLite 保存最小化事件 |
-| `balanced` | 在均衡阈值阻断明确操作性滥用 | 最小事件和主体控制 |
-| `strict` | 在更低的 audit 阈值阻断 | 最保守；没有 challenge 流程 |
+| `observe` | 分类但永不阻断 | 只保留内存聚合 |
+| `audit` | 分类但永不阻断 | SQLite 保存隐私最小化事件 |
+| `balanced` | 阻断明确的操作性滥用 | 最小事件和主体控制 |
+| `strict` | 使用更低的执行阈值 | 最保守；没有 Challenge 流程 |
 
-新部署必须分三阶段：
+这些模式只描述已经实现的行为，不构成部署授权。当前候选不得安装到生产环境。
+[INSTALL_DOCKER.md](docs/INSTALL_DOCKER.md) 中的灰度、回滚与清理资料仅供未来
+满足发布门禁的构建和受控服务器沙盒使用。
 
-1. **Observe，24–48 小时。** 不保存逐请求事件，不阻断；检查分类数量、延迟、
-   CPU/内存、Router Error、Panic、HMAC 和审计健康。
-2. **Audit，24–48 小时。** 审核隐私最小化的“如果开启封控会阻断”事件；任何阈值
-   或策略调整都要留记录；禁止把生产危险测试发送给真实上游。
-3. **Balanced。** 初始窗口内至少每小时检查阻断量、合法用户投诉、CPA 5xx、插件
-   loaded/registered、审计库和 Watchdog 差量，并保持一键禁用回滚可用。
+## 安全与隐私不变量
 
-不要从未安装或 `off` 直接跳到 `strict`。完整晋级/中止/回滚标准见
-[Docker 安装与运维](docs/INSTALL_DOCKER.md)。
+- 原始 Prompt、Messages、Tool Payload、Authorization Header、明文 API Key/IP、
+  Cookie、OAuth Token、上传代码和上游账号身份不会写入审计库，也不会由管理接口返回。
+- `audit.log_original_text: true` 会被拒绝，不存在 Debug 绕过开关。
+- 稳定主体身份使用 HMAC；主体持久化可选、有容量上限，并要求稳定 Secret File。
+- 永不抓取媒体 URL，也不把请求内容发送到公网分类服务。
+- 审计、主体、查询、请求体、解码和 RPC 路径均有明确大小或容量限制。
 
-## 隐私
+CPA Host 边界仍存在插件无法消除的 Fail Open 条件：插件未加载、被 Fuse、Router
+报错、在有效 Handled 结果被接收前 Panic、返回无效 Target，或自路由到宿主认为未就绪
+的 Executor 时，CPA 可能继续其他 Router 或原生路由。更高优先级 Router 也可能先处理
+请求；相同优先级按插件 ID 升序执行。
 
-原始 Prompt、Messages、Tool Payload、Authorization Header、明文 API Key/IP、
-Cookie、OAuth Token、上传代码和上游账号身份不会写入审计库，也不会通过管理接口
-返回。`audit.log_original_text: true` 会被拒绝，且不存在 Debug 例外。
+`loaded` 与 `enforcement_ready` 只表示 CPA 已经分派的管理回调所读取到的插件
+内部状态，不能独立证明宿主发现并注册了插件、Router 顺序有利、插件未被 Fuse、
+目录中不存在重复动态库，或某种请求格式的 Executor 已被宿主接受。运维人员必须单独
+确认这些宿主条件。详见 [LIMITATIONS.md](docs/LIMITATIONS.md) 与
+[THREAT_MODEL.md](docs/THREAT_MODEL.md)。
 
-审计只允许时间、动作、模式、粗粒度类别、分数、稳定规则 ID、请求 SHA-256、主体
-HMAC、RequestedModel 的域分离摘要、固定来源枚举（`openai`、`openai-response`、
-`claude`、`gemini` 或 `unknown`）、Stream 标志、扫描字节数和延迟。启用主体持久化时也只保存
-HMAC Subject 及有界风险/Cooldown/Manual Block 状态。隐私验证方案见
-[PRIVACY.md](docs/reports/PRIVACY.md)。
+审计到的 CPA v7.2.72 Management 源码会在调用插件 Handler 前执行 `io.ReadAll`，
+因此面向部署的反向代理必须自行限制 Body；服务器沙盒需证明超限请求在到达 CPA 前
+收到 HTTP 413。
 
-## 编码文本与不透明媒体
+## 验证状态
 
-文本解码有严格上限：最多 2 层、8 个唯一变体；编码源最多 128 KiB，解码文本合计
-最多 64 KiB。支持 URL Percent、HTML Entity、可检查 Base64 文本、文本型 Data URL、
-JSON Escape 和有界二次 Tool JSON。插件不解压、不展开归档、不联网抓取。
-完整但无法识别或仅表现为高熵的字符串仍按原始文本扫描，不会仅因“看起来像编码”就自动
-封控；已识别编码若在预算边界内不完整则标记为 Truncated，Balanced/Strict 会失败关闭。
-加密内容和新型未知编码仍是明确的检测限制。
-
-图片、音频、视频和文档附件字节属于不透明内容；HTTPS 媒体 URL 永远不会被抓取。
-`opaque_media_policy` 可取 `block|audit|allow`。未显式配置时：
-
-| 模式 | 默认不透明媒体策略 |
+| 证据 | 状态 |
 |---|---|
-| `off` | `allow` |
-| `observe`、`audit`、`balanced` | `audit` |
-| `strict` | `block` |
+| 根模块 Unit、Race、Vet、Fuzz Smoke、回归、构建与打包流程 | 已在 CI 实现 |
+| CPA Store ZIP 命名、布局与安装源码契约 | 已使用 CPA v7.2.72 官方源码实现 |
+| CPA Router 排序与回退源码契约 | 已使用 CPA v7.2.72 官方源码实现 |
+| 本地 Executor 拒绝契约 | `execute`、`execute_stream`、`count_tokens` 的 RPC Error Envelope 请求 403；`http_request` 请求 405 |
+| 当前差异的原生插件加载 | 未在本地执行 |
+| OpenAI Chat / Responses / Claude / Gemini 服务器矩阵 | 需要服务器沙盒 |
+| 阻断后 Auth Selector / Usage / Provider / 上游零调用 | 需要服务器沙盒 |
+| 独立发布评估 | v10 已消耗且失败；必须使用全新未见盲集 |
+| 生产发布 | 已阻断 |
 
-`audit` 只记录粗粒度“不透明媒体”动作，不保存媒体内容或 URL 内容；`allow` 仅表示
-插件无法判断并放行，不代表安全批准。
+Phase 0 证据和剩余服务器用例记录在
+[PHASE0_CPA_CONTRACT.md](docs/reports/PHASE0_CPA_CONTRACT.md)。历史评估数据属于
+冻结证据，不得重跑，也不得针对 v10 单条记录调参。
 
-## HMAC 主体与可选持久化
+## 开发与审计检查
 
-生产环境必须使用稳定 Secret File。以下命令不会把密钥打印到终端：
-
-```bash
-sudo install -d -m 0700 -o root -g root /opt/cliproxyapi/secrets
-sudo ./scripts/generate-hmac-key.sh \
-  /opt/cliproxyapi/secrets/cyber-abuse-guard-hmac.key
-sudo chown root:root \
-  /opt/cliproxyapi/secrets/cyber-abuse-guard-hmac.key
-```
-
-生成器要求输出目录归当前用户所有、路径中没有符号链接，且目录不可被 group/world
-写入。它拒绝覆盖，使用私有临时文件，同步密钥内容，经 no-overwrite 身份校验发布
-mode-0600 普通文件，并同步所在目录。
-
-以只读方式挂载这个普通 0600 文件，并设置
-`CYBER_ABUSE_GUARD_HMAC_KEY_FILE`。密钥不得进入 Git、Docker Image、发布包、日志
-或状态响应。没有稳定密钥时，重启后主体关联会退化。
-
-`subject_control.persistence` 默认 `false`。关闭时，风险累计、Cooldown 和 Manual Block
-仅存在于进程内，CPA 重启会清空。开启时必须同时开启 Audit，`max_subjects` 不得超过
-10,000，并提供稳定 HMAC Key。恢复过程应用过期、衰减和容量上限；HMAC Key 不匹配
-会明确降级并禁止覆盖旧快照，但内存规则封控继续运行。
-
-v0.1.2 尚未实现双密钥轮换。设计目标是：一个 Active Key + 一个只读 Previous Key；
-状态只暴露指纹；旧 HMAC 在有限过渡表中恢复；新写入只用 Active Key；设置明确过渡
-截止时间，并由管理员显式 finalize。在此状态机落地前，普通升级应保留当前密钥。
-详见[设计说明](docs/DESIGN.md)。
-
-## SQLite 迁移
-
-审计库包含 `schema_version` 与 `migration_history`。Schema v2 增加可选 Subject State
-表。启动时严格校验列名、顺序、类型、约束、索引、schema 单例行和完整迁移序列。
-迁移在单个事务内完成；v0.1.1 旧库会识别为 schema v1，可在迁移前用 SQLite
-`VACUUM INTO` 生成只读备份。`audit.max_migration_backups` 默认最多保留 3 份，避免
-无限堆积。
-
-升级通过本地健康检查前不要删除旧库和备份。v0.1.1 是否可直接读取 schema v2 不作
-保证；二进制与数据库一起回滚时应使用迁移前备份。
-
-## 构建、测试与发布
-
-定向源码测试只能形成开发态回归证据。本轮提示注入差异没有在本地执行真实 CPA 集成、
-原生加载、部署、正式 Holdout、发布校验或发布打包；服务器沙盒验证仍待项目所有者完成。
-
-Phase 0 新增 CPA 商店归档源码契约并统一本地 Executor 方法语义，但没有把仓库根 CPA
-依赖升级到 v7.2.72。当前差异下 OpenAI Chat、OpenAI Responses、Claude、Gemini 的真实
-HTTP 行为，以及 Auth Selector、Usage、Provider、Mock Upstream 零调用证据，仍必须在
-项目所有者的服务器沙盒中验证。
-精确源码证据和剩余服务器矩阵见
-[Phase 0 CPA 契约报告](docs/reports/PHASE0_CPA_CONTRACT.md)。
-
-正式工具链锁定 Go `1.26.4`。需要 Linux amd64、cgo、GCC、GNU binutils、`file`、
-`zip`、`unzip`、`sha256sum`、`jq`、CycloneDX GoMod `v1.9.0` 和
-`govulncheck v1.6.0`。
-
-v9/v10 历史来源门禁必须在包含固定历史 Commit 的完整 Git Clone 中运行。源码 `tar.gz`
-会按设计排除 `.git`，可用于源码审阅和普通构建，但不能执行或声称通过该历史完整性门禁；
-完整测试矩阵必须从 full-history Clone 运行。
+以下命令只进行源码检查，不部署 CPA，也不加载 `.so`：
 
 ```bash
 make format-check git-diff-check module-verify
-make test race vet fuzz-smoke corpus-regression
-make benchmark integration-test
-make vulncheck
+make test vet race fuzz-smoke corpus-regression
+make script-test
 
-# 仅用于确认历史冻结状态；v10 已消耗，因此应明确失败：
-make holdout-test
+# 明确的源码级 CPA v7.2.72 Store 与 Host 契约。
+go -C integration/pluginstorecontract test ./... -count=1
 ```
 
-`make formal-release` 是完整的本地正式发布入口，但当前被阻断候选不得执行。它只允许从版本匹配、工作树干净且真实
-Annotated Tag `v0.1.2` 指向 `HEAD` 的 Commit 执行。它会运行全部发布门禁、严格校验、
-故障注入、双 Clone 可复现性、源码打包和最终证据生成。`ALLOW_DIRTY_BUILD=1` 只用于
-开发验证，文件名和链接元数据会带 `-dirty`，不得当作正式发布产物。普通分支 CI 使用
-`REPRODUCIBILITY_MODE=development`：两次 commit-bound 构建只存在于临时 Clone，产物
-带 `-dirty`，不会写入仓库根目录的 `dist/`。
+发布工具链要求 Go `1.26.4`。Linux 原生构建、集成、SBOM、漏洞、产物和可复现性命令
+见 [TEST_REPORT.md](docs/reports/TEST_REPORT.md) 与
+[RELEASE_EVIDENCE.md](docs/reports/RELEASE_EVIDENCE.md)。
 
-预期正式产物：
+`make holdout-test` 不是普通开发检查。v10 已消耗，其门禁会主动拒绝重跑。
+当前被阻断候选不得执行 `make formal-release`。
 
-```text
-dist/cyber-abuse-guard-v0.1.2.so
-dist/cyber-abuse-guard-v0.1.2.so.sha256
-dist/cyber-abuse-guard_0.1.2_linux_amd64.zip
-dist/cyber-abuse-guard-v0.1.2-audit-bundle.zip
-dist/build-metadata.json
-dist/checksums.txt
-dist/ruleset-manifest.json
-dist/ruleset.sha256
-dist/sbom.cdx.json
-dist/release-test-summary.txt
-dist/release-test-summary.txt.sha256
-dist/release-evidence-final.md
-dist/release-evidence-final.md.sha256
-dist/cyber-abuse-guard-v0.1.2-source.tar.gz
-dist/cyber-abuse-guard-v0.1.2-source.tar.gz.sha256
-```
+## 产物契约
 
-两个 ZIP 的契约不同：
+开发态 CI 可以生成带 `-dirty` 后缀的证据产物；当前不存在正式 v0.1.2 发布产物。
 
-- `cyber-abuse-guard_<version>_linux_amd64.zip` 是 CPA 商店安装 ZIP，根目录只能有一个
-  普通可执行 `.so`，不得包含嵌套资料或第二个动态库；
-- `cyber-abuse-guard-v<version>-audit-bundle.zip` 是独立的文档、元数据、SBOM、验证与
-  运维资料包，不能作为 CPA 商店安装包。
+| 产物 | 契约 |
+|---|---|
+| `cyber-abuse-guard_<version>_linux_amd64.zip` | CPA Store ZIP；根目录只能有一个普通可执行 `.so` |
+| `cyber-abuse-guard-v<version>-audit-bundle.zip` | 独立的文档、元数据、SBOM、验证与运维资料包；不能交给 CPA Store 安装 |
+| `cyber-abuse-guard-v<version>-source.tar.gz` | 源码审查/构建包；排除 `.git`，因此不能满足历史 Git 来源门禁 |
 
-正式分发渠道是 GitHub Repository/Release、源码 `tar.gz`、CPA 商店 ZIP 和审计资料包；
-RAR 不作为正式源码或二进制发布格式。
+RAR 不是受支持的源码或二进制发布格式。
 
-缺少命令、哈希不一致、ELF/架构不符、ABI Symbol 缺失、glibc 超过 2.34、构建身份
-不一致、规则/SBOM 不一致、ZIP 多余文件或权限不符，`verify-release` 都必须非零退出。
-正式可复现性只接受真实 Annotated Release Tag，并把已发布的 `.so`、商店 ZIP、审计
-资料包和 SBOM 与两个干净 Clone 对比；不会合成 Tag，也不会回填缺失的根目录产物。
+## 仓库结构
 
-项目内 Regression Corpus 不能代替盲测。v1-v8 均为退役或已消耗失败，v9 是已消耗的
-方法学无效失败，方法学有效的 v10 是已消耗的正式门禁失败。冻结的聚合报告保存在
-`docs/reports/`，当前结论见
-[RELEASE_EVIDENCE.md](docs/reports/RELEASE_EVIDENCE.md)。这些集合都不得重跑，也不得用于逐条调参。
+| 路径 | 用途 |
+|---|---|
+| `cmd/cyber-abuse-guard/` | 原生插件入口与 CPA ABI Bridge |
+| `internal/classifier/` | 确定性策略评估与历史门禁 |
+| `internal/extract/` | Provider 感知的有界请求提取与解码 |
+| `internal/plugin/` | Router、Executor、管理接口、运行健康与热配置 |
+| `internal/audit/` | 隐私最小化 SQLite 事件、迁移、保留和主体状态 |
+| `rules/` | 内嵌、版本化的 YAML Cyber Abuse 规则资产 |
+| `integration/` | CPA 集成与隔离的官方源码契约模块 |
+| `scripts/` | 构建、打包、验证、可复现性、健康检查与发布工具 |
+| `testdata/` | 回归与冻结评估证据；不是调参数据集 |
+| `docs/` | 设计、运维、限制、威胁模型、审计交接与报告 |
 
-## 安装、回滚与完整清理
+本地被忽略的 `dist/`、`coverage.out`、数据库、日志和 Secret File 不属于仓库源码，
+也不是正式发布证据。
 
-请按 [docs/INSTALL_DOCKER.md](docs/INSTALL_DOCKER.md) 完成：下载哈希校验、单版本
-`.so` 安装、Secret File 挂载、数据库迁移、Observe → Audit → Balanced 灰度、Watchdog、
-回滚上一 `.so`、恢复数据库以及显式完整清理。
+## 文档入口
 
-最短禁用回滚：
+| 读者 | 建议入口 |
+|---|---|
+| 项目评估者 | [设计说明](docs/DESIGN.md)、[能力限制](docs/LIMITATIONS.md)、[威胁模型](docs/THREAT_MODEL.md) |
+| 安全审计者 | [审计交接](docs/AUDIT_HANDOFF.md)、[发布证据](docs/reports/RELEASE_EVIDENCE.md)、[测试报告](docs/reports/TEST_REPORT.md) |
+| CPA 集成人员 | [CPA 集成报告](docs/reports/CPA_INTEGRATION.md)、[Phase 0 契约](docs/reports/PHASE0_CPA_CONTRACT.md)、[Docker 运维](docs/INSTALL_DOCKER.md) |
+| 策略审核人员 | [规则说明](docs/RULES.md)、[隐私报告](docs/reports/PRIVACY.md)、[提示注入复审](docs/reports/PROMPT_INJECTION_REVIEW.md) |
+| 后续维护人员 | [下一版本建议](docs/NEXT_VERSION.md)、[变更记录](CHANGELOG.md) |
 
-```yaml
-plugins:
-  configs:
-    cyber-abuse-guard:
-      enabled: false
-```
+## 安全问题报告
 
-```bash
-docker compose restart cli-proxy-api
-```
+请遵循 [SECURITY.md](SECURITY.md)。Issue 中不得包含真实凭证、私有 Prompt、OAuth
+材料或生产账号标识。
 
-随后必须确认插件未 loaded/registered、CPA 根路径正常、`/v1/models` 无 Key 仍为 401、
-New API 到 CPA 连通、其他插件正常、Auth 文件数量不变。审计库和 HMAC Secret 默认
-保留，只有管理员显式确认后才删除。
+## 许可证
 
-## 管理接口
-
-以下精确路由先由 CPA Management Key 鉴权：
-
-```text
-GET    /v0/management/plugins/cyber-abuse-guard/status
-GET    /v0/management/plugins/cyber-abuse-guard/events
-GET    /v0/management/plugins/cyber-abuse-guard/stats
-POST   /v0/management/plugins/cyber-abuse-guard/test
-POST   /v0/management/plugins/cyber-abuse-guard/health/probe
-POST   /v0/management/plugins/cyber-abuse-guard/subjects/unblock
-DELETE /v0/management/plugins/cyber-abuse-guard/events
-```
-
-CPA v7.2.67 的插件路由不能安全使用动态路径参数，因此 Unblock 使用固定路径和有界
-JSON Body：
-
-```json
-{"subject_hash":"hmac-sha256:<64 个小写十六进制字符>"}
-```
-
-普通下游 API Key 无权访问这些接口；响应不包含原始 Prompt 或明文凭证。
-
-CPA 当前会在调用插件处理器前，由 `ServeManagementHTTP` 执行 `io.ReadAll`。因此插件的
-1 MiB Management Body 限制和 2 MiB RPC Envelope 限制并不是宿主 HTTP 内存上限。
-面向部署的反向代理必须自行限制请求体；Docker/Nginx 示例使用
-`client_max_body_size 1m`，服务器沙盒还必须证明超限请求在进入 CPA 前由 Nginx 返回
-HTTP 413。
-
-更多资料：[DESIGN.md](docs/DESIGN.md)、[RULES.md](docs/RULES.md)、
-[LIMITATIONS.md](docs/LIMITATIONS.md)、[THREAT_MODEL.md](docs/THREAT_MODEL.md) 和
-[SECURITY.md](SECURITY.md)。
+[MIT](LICENSE)

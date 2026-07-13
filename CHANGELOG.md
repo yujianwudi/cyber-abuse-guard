@@ -12,6 +12,23 @@ Release, or production deployment may be created from this candidate. A future
 release attempt requires a new implementation and a new independently authored
 unseen set.
 
+- Complete the Phase 0 CPA contract alignment without changing the root runtime
+  baseline from CPA v7.2.67. Local `execute`, `execute_stream`, and
+  `count_tokens` refusals now emit policy RPC error envelopes requesting HTTP
+  403, while unsupported `http_request` remains an envelope requesting 405.
+- Split the CPA Store archive from the audit/operator bundle. The Store ZIP
+  contains exactly one executable `.so` at its root; documentation, build
+  metadata, SBOM, and verification material are packaged separately in the
+  Audit Bundle. The root `checksums.txt` remains a separate release asset that
+  covers both the Store ZIP and Audit Bundle.
+- Add an isolated CPA v7.2.72 source-contract module for the official
+  `pluginstore.InstallArchive` naming/layout/install behavior and official
+  Host Router ordering/fallback tests. These tests do not load this plugin and
+  are not CPA v7.2.72 runtime-compatibility evidence.
+- Document that the audited CPA v7.2.72 management path calls `io.ReadAll`
+  before the plugin handler, so plugin body limits are not host HTTP memory
+  limits and an external reverse-proxy limit still requires server evidence.
+
 - Add the development-only deterministic `META-OVERRIDE-001` classifier
   overlay for instruction-hierarchy inversion, refusal suppression,
   unrestricted persona claims, sandbox/placeholder laundering, forced-output
