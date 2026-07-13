@@ -237,6 +237,10 @@ func behaviorReasonCodes(graph *BehaviorGraph) []string {
 	}
 	add(graph.BaseBehavior, "base_behavior_present")
 	add(graph.Operationalization, "operationalization_present")
+	add(graph.DeliveryExecution, "delivery_execution_present")
+	add(graph.CredentialAccess, "credential_access_present")
+	add(graph.Persistence, "persistence_present")
+	add(graph.Technique, "technique_present")
 	add(graph.Target, "target_present")
 	add(graph.Destination, "destination_present")
 	add(graph.Evasion, "evasion_present")

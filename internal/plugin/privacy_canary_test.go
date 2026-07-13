@@ -39,11 +39,15 @@ func TestEndToEndPrivacyCanariesStayOutOfAllowedOutputs(t *testing.T) {
 	var logMu sync.Mutex
 	var logOutput [][]byte
 	p.SetLogger(func(level, message string, fields map[string]any) {
-		raw, _ := json.Marshal(struct {
+		raw, errMarshal := json.Marshal(struct {
 			Level   string         `json:"level"`
 			Message string         `json:"message"`
 			Fields  map[string]any `json:"fields"`
 		}{Level: level, Message: message, Fields: fields})
+		if errMarshal != nil {
+			t.Errorf("encode operational log: %v", errMarshal)
+			return
+		}
 		logMu.Lock()
 		logOutput = append(logOutput, raw)
 		logMu.Unlock()

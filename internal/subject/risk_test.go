@@ -392,6 +392,10 @@ func TestControllerNeverStoresPlaintextSubject(t *testing.T) {
 	if decision.Blocked || decision.Reason != ReasonInvalidHash || decision.SubjectHash != "" {
 		t.Fatal("plaintext subject was reflected in a decision")
 	}
+	requestDecision := controller.EvaluateRequest("plaintext-api-key-canary", "not-a-request-digest", 1000)
+	if requestDecision.Blocked || requestDecision.Reason != ReasonInvalidHash || requestDecision.SubjectHash != "" {
+		t.Fatal("plaintext subject was reflected when the request digest was invalid")
+	}
 	if controller.Count() != 0 {
 		t.Fatal("controller retained a plaintext subject")
 	}

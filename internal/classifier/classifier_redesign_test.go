@@ -81,6 +81,17 @@ func TestWrapperBaseBehaviorMinimalContrasts(t *testing.T) {
 			}
 		})
 	}
+
+	structuredContext := c.classifyWithPolicy(
+		[]string{"For defensive analysis, summarize the applicable safeguards."},
+		ModeBalanced,
+		DefaultThresholds(),
+		DefaultPolicy(),
+		true,
+	)
+	if structuredContext.Behavior == nil || structuredContext.Behavior.Carrier != "structured_tool_payload" {
+		t.Fatalf("structured context carrier was lost: %+v", structuredContext)
+	}
 }
 
 func TestWrapperOnlyNeverBlocksAnyMode(t *testing.T) {
@@ -169,6 +180,26 @@ func TestBehaviorGraphCoversEightCyberAbuseCategories(t *testing.T) {
 			}
 			if malicious.Behavior == nil || !malicious.Behavior.BaseBehavior || len(malicious.Behavior.Relations) == 0 || len(malicious.Behavior.ReasonCodes) == 0 {
 				t.Fatalf("malicious behavior graph is incomplete: %+v", malicious)
+			}
+			requiredReasons := map[rules.Category]string{
+				rules.CategoryCredentialTheft: "credential_access_present",
+				rules.CategoryPhishing:        "delivery_execution_present",
+				rules.CategoryMalware:         "persistence_present",
+				rules.CategoryRansomware:      "technique_present",
+				rules.CategoryExploitation:    "credential_access_present",
+				rules.CategoryDisruption:      "impact_present",
+				rules.CategoryExfiltration:    "exfiltration_relation_present",
+				rules.CategoryEvasion:         "evasion_present",
+			}
+			foundReason := false
+			for _, reason := range malicious.Behavior.ReasonCodes {
+				if reason == requiredReasons[testCase.category] {
+					foundReason = true
+					break
+				}
+			}
+			if !foundReason {
+				t.Fatalf("malicious behavior graph lacks %q: %+v", requiredReasons[testCase.category], malicious)
 			}
 			if malicious.PolicyVersion != ClassifierPolicyVersion || malicious.PolicySHA256 != ClassifierPolicySHA256 {
 				t.Fatalf("classifier policy identity missing from result: %+v", malicious)

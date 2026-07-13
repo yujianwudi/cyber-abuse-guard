@@ -1019,7 +1019,11 @@ func (c *Classifier) classifyWithPolicy(parts []string, mode Mode, thresholds Th
 		}
 		result.Action = actionFor(mode, 0, thresholds)
 		result.Evidence = contextEvidence(context)
-		attachBehaviorGraph(&result, "parts", "text")
+		carrier := "text"
+		if structuredToolPayload {
+			carrier = "structured_tool_payload"
+		}
+		attachBehaviorGraph(&result, "parts", carrier)
 		return result
 	}
 	sort.Slice(candidates, func(i, j int) bool {

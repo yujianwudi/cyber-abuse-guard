@@ -167,7 +167,7 @@ func (c *Controller) Evaluate(subjectHash string, riskScore int) Decision {
 // second hit or advancing the repeat multiplier.
 func (c *Controller) EvaluateRequest(subjectHash, requestHash string, riskScore int) Decision {
 	if !validDigest(requestHash, "sha256:") {
-		return Decision{SubjectHash: subjectHash, Reason: ReasonInvalidHash}
+		return Decision{Reason: ReasonInvalidHash}
 	}
 	return c.evaluate(subjectHash, requestHash, riskScore)
 }
