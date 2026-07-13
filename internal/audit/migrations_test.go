@@ -9,6 +9,141 @@ import (
 	"time"
 )
 
+func TestMigrationRejectsPrivacyUnsafeLegacyRowsBeforePublishingBackup(t *testing.T) {
+	t.Parallel()
+	testCases := []struct {
+		name   string
+		canary string
+		field  string
+	}{
+		{name: "request hash", canary: "MIGRATION_PROMPT_CANARY_9e788c12", field: "request_hash"},
+		{name: "subject hash", canary: "MIGRATION_CREDENTIAL_CANARY_a6f3c102", field: "subject_hash"},
+		{name: "model", canary: "MIGRATION_MODEL_CANARY_2d509c87", field: "model"},
+		{name: "source format", canary: "MIGRATION_SOURCE_CANARY_80742b91", field: "source_format"},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			directory := t.TempDir()
+			path := filepath.Join(directory, "audit.db")
+			legacy, err := sql.Open("sqlite3", path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := legacy.Exec(schema); err != nil {
+				t.Fatal(err)
+			}
+			requestHash := "sha256:" + strings.Repeat("a", 64)
+			subjectHash := "hmac-sha256:" + strings.Repeat("b", 64)
+			model := HashModel("legacy-safe-model")
+			sourceFormat := "openai"
+			switch testCase.field {
+			case "request_hash":
+				requestHash = testCase.canary
+			case "subject_hash":
+				subjectHash = testCase.canary
+			case "model":
+				model = testCase.canary
+			case "source_format":
+				sourceFormat = testCase.canary
+			}
+			if _, err := legacy.Exec(`INSERT INTO audit_events VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				"privacy-migration-event", fixedMigrationTime().UnixNano(), "block", "balanced", "credential_theft", 90, "[]",
+				requestHash, subjectHash, model, sourceFormat, 0, 32, "privacy-rules", 5); err != nil {
+				t.Fatal(err)
+			}
+			if err := legacy.Close(); err != nil {
+				t.Fatal(err)
+			}
+
+			store, openErr := Open(Config{
+				Path:                  path,
+				Now:                   fixedMigrationTime,
+				BackupBeforeMigration: true,
+				MaxMigrationBackups:   1,
+			})
+			if openErr == nil {
+				_ = store.Close()
+				t.Fatal("migration accepted a privacy-unsafe legacy correlation field")
+			}
+			if store == nil || !store.Status().Degraded {
+				t.Fatal("privacy-contract failure did not return a degraded audit store")
+			}
+			_ = store.Close()
+			if strings.Contains(openErr.Error(), testCase.canary) {
+				t.Fatal("migration error reflected a legacy privacy canary")
+			}
+			backups, err := filepath.Glob(path + ".pre-v*.bak")
+			if err != nil || len(backups) != 0 {
+				t.Fatalf("migration backup count = %d", len(backups))
+			}
+			check, err := sql.Open("sqlite3", path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if exists, err := sqliteTableExists(check, "subject_state"); err != nil || exists {
+				_ = check.Close()
+				t.Fatalf("rejected migration changed the v1 schema: exists=%t", exists)
+			}
+			if err := check.Close(); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestMigrationBackupPublishCollisionBlocksMigrationWithoutChangingSchema(t *testing.T) {
+	t.Parallel()
+	directory := t.TempDir()
+	path := filepath.Join(directory, "audit.db")
+	legacy, err := sql.Open("sqlite3", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := legacy.Exec(schema); err != nil {
+		t.Fatal(err)
+	}
+	if err := legacy.Close(); err != nil {
+		t.Fatal(err)
+	}
+	stamp := fixedMigrationTime().UTC().Format("20060102T150405.000000000Z")
+	backupPath := path + ".pre-v2-" + stamp + ".bak"
+	const sentinel = "operator-owned collision sentinel"
+	if err := os.WriteFile(backupPath, []byte(sentinel), 0o400); err != nil {
+		t.Fatal(err)
+	}
+
+	store, openErr := Open(Config{
+		Path:                  path,
+		Now:                   fixedMigrationTime,
+		BackupBeforeMigration: true,
+		MaxMigrationBackups:   1,
+	})
+	if openErr == nil {
+		_ = store.Close()
+		t.Fatal("migration succeeded despite a backup publish collision")
+	}
+	if store == nil || !store.Status().Degraded {
+		t.Fatal("backup publication failure did not return a degraded audit store")
+	}
+	_ = store.Close()
+	data, err := os.ReadFile(backupPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != sentinel {
+		t.Fatal("backup collision overwrote the existing operator file")
+	}
+
+	check, err := sql.Open("sqlite3", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer check.Close()
+	if exists, err := sqliteTableExists(check, "subject_state"); err != nil || exists {
+		t.Fatalf("failed migration changed the v1 schema: exists=%t", exists)
+	}
+}
+
 func TestFreshDatabaseAppliesAllMigrations(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "audit.db")
@@ -54,7 +189,7 @@ func TestV011DatabaseMigrationPreservesEventsAndCreatesReadonlyBackup(t *testing
 	}
 	if _, err := legacy.Exec(`INSERT INTO audit_events VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		"legacy-event", int64(1), "block", "balanced", "credential_theft", 90, "[]",
-		"sha256:legacy", "hmac-sha256:legacy", "model", "openai", 0, 10, "rules", 5); err != nil {
+		"sha256:"+strings.Repeat("a", 64), "hmac-sha256:"+strings.Repeat("b", 64), HashModel("legacy-model"), "openai", 0, 10, "rules", 5); err != nil {
 		t.Fatal(err)
 	}
 	if err := legacy.Close(); err != nil {

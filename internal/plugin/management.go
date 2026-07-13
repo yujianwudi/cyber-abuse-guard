@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -31,7 +32,7 @@ const (
 	maxManagementHeaderValues   = 64
 	maxManagementFilterBytes    = 128
 	managementHealthProbePath   = managementBasePath + "/health/probe"
-	managementAuthDocumentation = "CPA v7.2.67 management middleware is authoritative; the plugin additionally rejects callbacks without a management credential header"
+	managementAuthDocumentation = "CPA v7.2.72 management middleware is authoritative; the plugin additionally rejects callbacks without a management credential header"
 )
 
 type managementRoute struct {
@@ -196,6 +197,7 @@ func managementCredentialPresent(headers http.Header) bool {
 
 func (p *Plugin) managementStatus(state *runtimeState) []byte {
 	build := buildinfo.Current()
+	policyIdentity := classifier.CurrentPolicyIdentity()
 	loaded := state != nil && !p.shutdown.Load()
 	auditStatus := any(map[string]any{"enabled": false})
 	auditDegraded := false
@@ -204,6 +206,12 @@ func (p *Plugin) managementStatus(state *runtimeState) []byte {
 		auditStatus = map[string]any{"enabled": true, "degraded": true, "healthy": false}
 	} else if state != nil && state.audit != nil {
 		status := state.audit.Status()
+		if status.LastError != "" {
+			// SQLite/OS diagnostics can contain operator-selected filesystem
+			// paths. Management exposes a stable readiness signal while detailed
+			// diagnostics remain confined to local operational handling.
+			status.LastError = "audit storage is degraded"
+		}
 		// Degraded is a current readiness signal. Dropped/failed/rejected remain
 		// visible as cumulative forensic counters inside audit status, but a
 		// recovered historical event must not keep every future health check red.
@@ -240,38 +248,45 @@ func (p *Plugin) managementStatus(state *runtimeState) []byte {
 			subjectStatus = state.subject.Stats()
 		}
 		persistenceStatus = state.persistence.status()
+		if persistenceStatus.LastError != "" {
+			// Snapshot/decoder diagnostics can contain attacker-controlled JSON
+			// field names. Management exposes only a stable degraded signal.
+			persistenceStatus.LastError = "subject persistence is degraded"
+		}
 		persistenceDegraded = persistenceStatus.Degraded
 		enforcementReady = loaded && state.config.Enabled && state.config.Mode != config.ModeOff && state.classifier != nil && state.subject != nil && (!state.config.SubjectControl.Enabled || p.identifier != nil)
 	}
 	body := map[string]any{
-		"id":                     ID,
-		"name":                   metadata.Name,
-		"version":                build.Version,
-		"commit":                 build.Commit,
-		"ruleset_sha256":         build.RulesetSHA256,
-		"dirty":                  build.Dirty,
-		"build":                  build,
-		"loaded":                 loaded,
-		"initialized":            loaded,
-		"enforcement_ready":      enforcementReady,
-		"mode":                   mode,
-		"ruleset_version":        rulesetVersion,
-		"build_ruleset_version":  build.RulesetVersion,
-		"ruleset_version_match":  rulesetVersion != "" && rulesetVersion == build.RulesetVersion,
-		"router_errors":          p.counters.routerErrors.Load(),
-		"panics_recovered":       p.counters.panicsRecovered.Load(),
-		"audit_degraded":         auditDegraded,
-		"hmac_stable":            hmacStable,
-		"hmac_initialized":       p.identifier != nil,
-		"hmac_degraded":          hmacDegraded,
-		"persistence_degraded":   persistenceDegraded,
-		"last_reconfigure_error": p.lastReconfigureErrorMessage(),
-		"last_config_error":      p.lastConfigErrorMessage(),
-		"counters":               p.counters.snapshot(),
-		"audit":                  auditStatus,
-		"subject_identifier":     identifierStatus,
-		"subject_control":        subjectStatus,
-		"subject_persistence":    persistenceStatus,
+		"id":                        ID,
+		"name":                      metadata.Name,
+		"version":                   build.Version,
+		"commit":                    build.Commit,
+		"ruleset_sha256":            build.RulesetSHA256,
+		"dirty":                     build.Dirty,
+		"build":                     build,
+		"loaded":                    loaded,
+		"initialized":               loaded,
+		"enforcement_ready":         enforcementReady,
+		"mode":                      mode,
+		"ruleset_version":           rulesetVersion,
+		"build_ruleset_version":     build.RulesetVersion,
+		"ruleset_version_match":     rulesetVersion != "" && rulesetVersion == build.RulesetVersion,
+		"classifier_policy_version": policyIdentity.Version,
+		"classifier_policy_sha256":  policyIdentity.SHA256,
+		"router_errors":             p.counters.routerErrors.Load(),
+		"panics_recovered":          p.counters.panicsRecovered.Load(),
+		"audit_degraded":            auditDegraded,
+		"hmac_stable":               hmacStable,
+		"hmac_initialized":          p.identifier != nil,
+		"hmac_degraded":             hmacDegraded,
+		"persistence_degraded":      persistenceDegraded,
+		"last_reconfigure_error":    p.lastReconfigureErrorMessage(),
+		"last_config_error":         p.lastConfigErrorMessage(),
+		"counters":                  p.counters.snapshot(),
+		"audit":                     auditStatus,
+		"subject_identifier":        identifierStatus,
+		"subject_control":           subjectStatus,
+		"subject_persistence":       persistenceStatus,
 		"management_auth": map[string]any{
 			"verification_authority":           "cpa_host",
 			"plugin_header_presence_guard":     true,
@@ -281,7 +296,7 @@ func (p *Plugin) managementStatus(state *runtimeState) []byte {
 		"conflict_detection": map[string]any{
 			"router_enumeration_supported":           false,
 			"duplicate_plugin_binary_scan_supported": false,
-			"reason":                                 "CPA v7.2.67 plugin ABI exposes neither the loaded router ordering nor the plugin directory inventory",
+			"reason":                                 "CPA v7.2.72 plugin ABI exposes neither the loaded router ordering nor the plugin directory inventory",
 		},
 	}
 	if state != nil {
@@ -295,9 +310,10 @@ func (p *Plugin) managementStatus(state *runtimeState) []byte {
 		body["configured_at"] = state.configuredAt
 		body["subjects"] = subjects
 		body["classifier"] = map[string]any{
-			"kind":    "deterministic_local_rules",
-			"enabled": state.config.Enabled,
-			"remote":  false,
+			"kind":            "deterministic_local_rules",
+			"enabled":         state.config.Enabled,
+			"remote":          false,
+			"policy_identity": policyIdentity,
 		}
 		body["thresholds"] = state.config.Thresholds
 		body["opaque_media_policy"] = state.config.EffectiveOpaqueMediaPolicy()
@@ -570,13 +586,13 @@ func auditQuery(values url.Values) (audit.Query, error) {
 	}
 	for key, entries := range values {
 		if _, ok := allowed[key]; !ok {
-			return audit.Query{}, fmt.Errorf("unknown query parameter %q", key)
+			return audit.Query{}, errors.New("query contains an unsupported parameter")
 		}
 		if len(entries) != 1 {
-			return audit.Query{}, fmt.Errorf("query parameter %q must appear exactly once", key)
+			return audit.Query{}, errors.New("query parameters must appear exactly once")
 		}
 		if len(entries[0]) > maxManagementFilterBytes {
-			return audit.Query{}, fmt.Errorf("query parameter %q exceeds the size limit", key)
+			return audit.Query{}, errors.New("query parameter exceeds the size limit")
 		}
 	}
 	query := audit.Query{Action: values.Get("action"), Category: values.Get("category"), SubjectHash: values.Get("subject_hash")}

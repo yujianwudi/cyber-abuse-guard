@@ -111,7 +111,7 @@ func TestStoreRoundTripPrivacyAndSafeExports(t *testing.T) {
 	}
 	var exported []Event
 	if err := json.Unmarshal(jsonExport.Bytes(), &exported); err != nil {
-		t.Fatalf("JSON export is invalid: %v\n%s", err, jsonExport.String())
+		t.Fatalf("JSON export is invalid: %v", err)
 	}
 	if len(exported) != 1 || exported[0].ID != event.ID {
 		t.Fatalf("JSON export = %#v", exported)
@@ -123,7 +123,7 @@ func TestStoreRoundTripPrivacyAndSafeExports(t *testing.T) {
 	}
 	records, err := csv.NewReader(bytes.NewReader(csvExport.Bytes())).ReadAll()
 	if err != nil {
-		t.Fatalf("CSV export is invalid: %v\n%s", err, csvExport.String())
+		t.Fatalf("CSV export is invalid: %v", err)
 	}
 	if len(records) != 2 || records[1][0] != event.ID {
 		t.Fatalf("CSV export = %#v", records)
@@ -165,9 +165,9 @@ func TestStoreRoundTripPrivacyAndSafeExports(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ReadFile(%q): %v", name, err)
 		}
-		for _, canary := range []string{rawPrompt, rawAPIKey, "Authorization: Bearer " + rawAPIKey} {
+		for index, canary := range []string{rawPrompt, rawAPIKey, "Authorization: Bearer " + rawAPIKey} {
 			if bytes.Contains(data, []byte(canary)) {
-				t.Fatalf("privacy canary %q found in %s", canary, filepath.Base(name))
+				t.Fatalf("SQLite artifact %s retained privacy canary index %d", filepath.Base(name), index)
 			}
 		}
 	}

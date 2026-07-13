@@ -90,6 +90,7 @@ func TestManagementUnblockAuthenticationAndBodyContract(t *testing.T) {
 }
 
 func TestManagementBoundsAndQueryWhitelist(t *testing.T) {
+	const queryKeyCanary = "MANAGEMENT_QUERY_KEY_CANARY_2f64a9b1"
 	p := New()
 	t.Cleanup(p.Shutdown)
 	register(t, p, "audit:\n  enabled: false\n")
@@ -100,6 +101,7 @@ func TestManagementBoundsAndQueryWhitelist(t *testing.T) {
 		request    pluginapi.ManagementRequest
 		wantStatus int
 		wantCode   string
+		forbidden  string
 	}{
 		{
 			name: "oversized body",
@@ -129,9 +131,10 @@ func TestManagementBoundsAndQueryWhitelist(t *testing.T) {
 		{
 			name: "unknown query key",
 			request: pluginapi.ManagementRequest{Method: http.MethodGet, Path: managementBasePath + "/events", Headers: auth,
-				Query: url.Values{"sort": []string{"timestamp"}}},
+				Query: url.Values{queryKeyCanary: []string{"timestamp"}}},
 			wantStatus: http.StatusBadRequest,
 			wantCode:   "invalid_query",
+			forbidden:  queryKeyCanary,
 		},
 		{
 			name: "SQL injection style category",
@@ -168,6 +171,9 @@ func TestManagementBoundsAndQueryWhitelist(t *testing.T) {
 			response, body := callManagementResponse(t, p, testCase.request)
 			if response.StatusCode != testCase.wantStatus || bodyErrorCode(body) != testCase.wantCode {
 				t.Fatalf("response status=%d body=%s, want %d/%s", response.StatusCode, body, testCase.wantStatus, testCase.wantCode)
+			}
+			if testCase.forbidden != "" && strings.Contains(string(body), testCase.forbidden) {
+				t.Fatal("management error reflected a caller-controlled query key")
 			}
 		})
 	}

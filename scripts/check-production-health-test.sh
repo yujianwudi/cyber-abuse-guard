@@ -249,6 +249,19 @@ if proxy_connections != 0:
     raise SystemExit("hostile proxy received %d connection(s)" % proxy_connections)
 if management_key.encode("utf-8") in proxy_bytes:
     raise SystemExit("hostile proxy captured the management key")
+for index, result in enumerate((
+    completed,
+    historical,
+    leading_zero_budgets,
+    leading_zero_budget_exceeded,
+    final_status_drift,
+    probe_identity_drift,
+    unknown_delta_budget,
+    strict_budget,
+)):
+    combined = (result.stdout + result.stderr).encode("utf-8", errors="replace")
+    if management_key.encode("utf-8") in combined:
+        raise SystemExit("watchdog output retained management-key canary in result %d" % index)
 
 print("check-production-health proxy isolation test: PASS")
 PY

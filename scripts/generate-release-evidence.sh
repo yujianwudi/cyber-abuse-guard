@@ -103,12 +103,25 @@ trap cleanup EXIT
   printf -- '- GitHub Release: %s\n\n' "$release_url"
 
   printf '## Accepted limitations\n\n'
-  printf -- '- CPA v7.2.67 retains a host-level Router fail-open boundary and exposes no router-order or plugin-directory inventory to ABI v1.\n'
+  printf -- '- CPA v7.2.72 retains a host-level Router fail-open boundary and exposes no router-order or plugin-directory inventory to ABI v1.\n'
   printf -- '- HMAC dual-key rotation is design-only in v0.1.2.\n'
   printf -- '- Persisted subject-state completeness is protected by filesystem trust, not a keyed whole-snapshot MAC.\n'
   printf -- '- Unknown, novel, or encrypted encodings can evade semantic detection.\n'
   printf -- '- The plugin reduces risk; it cannot guarantee that an upstream account will never be warned, suspended, or deactivated.\n'
 } >"$temporary"
+
+release_assert_no_sensitive_env_values "$temporary" \
+  CPA_MANAGEMENT_KEY \
+  CYBER_ABUSE_GUARD_HMAC_KEY \
+  CYBER_ABUSE_GUARD_HMAC_KEY_FILE \
+  GITHUB_TOKEN \
+  GH_TOKEN \
+  OPENAI_API_KEY \
+  ANTHROPIC_API_KEY \
+  GOOGLE_API_KEY \
+  AZURE_OPENAI_API_KEY \
+  AWS_SECRET_ACCESS_KEY \
+  DATABASE_URL
 
 chmod 0644 "$temporary"
 mv -f -- "$temporary" "$evidence"

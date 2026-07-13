@@ -217,6 +217,9 @@ func readSecretFile(path string) ([]byte, error) {
 	if !info.Mode().IsRegular() {
 		return nil, errors.New("subject: HMAC secret file must be a regular file")
 	}
+	if err := validateSecretFileOwner(info); err != nil {
+		return nil, err
+	}
 	if info.Mode().Perm() != 0o600 {
 		return nil, fmt.Errorf("subject: HMAC secret file permissions must be 0600, got %04o", info.Mode().Perm())
 	}
@@ -253,6 +256,12 @@ func validDigest(value, prefix string) bool {
 	if !strings.HasPrefix(value, prefix) || len(value) != len(prefix)+sha256.Size*2 {
 		return false
 	}
-	_, err := hex.DecodeString(value[len(prefix):])
-	return err == nil
+	for index := len(prefix); index < len(value); index++ {
+		character := value[index]
+		if (character >= '0' && character <= '9') || (character >= 'a' && character <= 'f') || (character >= 'A' && character <= 'F') {
+			continue
+		}
+		return false
+	}
+	return true
 }

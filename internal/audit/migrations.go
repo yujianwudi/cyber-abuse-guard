@@ -94,6 +94,15 @@ func migrateDatabase(db *sql.DB, cfg Config, databasePath string) error {
 	if err := validateSchemaContract(db, version); err != nil {
 		return fmt.Errorf("audit: schema version %d contract is invalid: %w", version, err)
 	}
+	if version > 0 && version < currentSchemaVersion {
+		// A pre-migration backup is an additional persistent copy. Refuse to
+		// create it (or advance the schema) when legacy correlation columns do
+		// not already satisfy the privacy-minimal digest/canonical contracts.
+		// The original database remains untouched for operator-directed repair.
+		if err := validateLegacyAuditPrivacy(db); err != nil {
+			return fmt.Errorf("audit: legacy privacy contract is invalid: %w", err)
+		}
+	}
 	if cfg.BackupBeforeMigration && version > 0 && version < currentSchemaVersion {
 		if err := createMigrationBackup(db, cfg, databasePath); err != nil {
 			return fmt.Errorf("audit: create pre-migration backup: %w", err)
@@ -150,6 +159,36 @@ ON CONFLICT(singleton) DO UPDATE SET version=excluded.version, updated_at_ns=exc
 	}
 	if err := validateSchemaContract(db, currentSchemaVersion); err != nil {
 		return fmt.Errorf("audit: migrated schema contract is invalid: %w", err)
+	}
+	return nil
+}
+
+func validateLegacyAuditPrivacy(db *sql.DB) error {
+	rows, err := db.Query(`SELECT request_hash, subject_hash, model, source_format FROM audit_events`)
+	if err != nil {
+		return fmt.Errorf("inspect legacy audit privacy fields: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var requestHash, subjectHash, model, sourceFormat string
+		if err := rows.Scan(&requestHash, &subjectHash, &model, &sourceFormat); err != nil {
+			return fmt.Errorf("scan legacy audit privacy fields: %w", err)
+		}
+		if requestHash != "" && !validDigest(requestHash, "sha256:") {
+			return errors.New("request_hash is not a SHA-256 correlation value")
+		}
+		if subjectHash != "" && !validDigest(subjectHash, "hmac-sha256:") {
+			return errors.New("subject_hash is not an HMAC-SHA256 correlation value")
+		}
+		if model != "" && !validDigest(model, modelHashPrefix) {
+			return errors.New("model is not a domain-separated SHA-256 correlation value")
+		}
+		if sourceFormat != "" && !oneOf(sourceFormat, "openai", "openai-response", "claude", "anthropic", "gemini", SourceFormatUnknown) {
+			return errors.New("source_format is not a fixed provider value")
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate legacy audit privacy fields: %w", err)
 	}
 	return nil
 }
