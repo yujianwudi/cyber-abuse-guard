@@ -44,6 +44,7 @@ func (c *Classifier) ClassifyUntrustedPartsWithPolicy(parts []string, mode Mode,
 		}
 	}
 	result.Truncated = result.Truncated || start > 0
+	attachBehaviorGraph(&result, "untrusted_parts", "")
 	return result
 }
 
@@ -83,6 +84,7 @@ func (c *Classifier) ClassifySegmentsWithPolicy(segments []extract.Segment, mode
 			}
 		}
 		best.Truncated = best.Truncated || truncated
+		attachBehaviorGraph(&best, "unknown_role_fallback", "")
 		return best
 	}
 
@@ -196,6 +198,7 @@ func (c *Classifier) ClassifySegmentsWithPolicy(segments []extract.Segment, mode
 		}
 	}
 	best.Truncated = best.Truncated || truncated
+	attachBehaviorGraph(&best, "role_aware", "")
 	return best
 }
 
