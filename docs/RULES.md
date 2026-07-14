@@ -146,7 +146,7 @@ policy is separately identified as:
 
 ```text
 classifier_policy_version: classifier-policy-v2
-classifier_policy_sha256: dc9a174099cb2f621e5333a508d4645604f96f470a6d9ae12a1acfb363d29cf2
+classifier_policy_sha256: bd55065bc3f1fd350148ad8f2f440c8f606aeb02fabd0024d7a350fe23ee4585
 ```
 
 The policy digest test binds the deterministic classifier, matcher,

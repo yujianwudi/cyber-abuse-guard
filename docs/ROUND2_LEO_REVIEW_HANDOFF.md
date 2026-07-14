@@ -12,6 +12,8 @@ P0 源码修复、单元测试、race、vet、fuzz、benchmark 和 CPA Host fixt
 - 本轮起点 `origin/main`：`9422087b5381bd06be9bc02a32ecdecffceef705`
 - 工作分支：`agent/multimodal-incomplete-inspection-round2`
 - 当前候选 HEAD：`1e7fdc41892de72938336cc922391570e4028051`
+- 分类器/提取器策略身份（不覆盖 plugin disposition 映射）：`classifier-policy-v2` /
+  `bd55065bc3f1fd350148ad8f2f440c8f606aeb02fabd0024d7a350fe23ee4585`
 - Draft PR：<https://github.com/yujianwudi/cyber-abuse-guard/pull/5>
 
 ## 2. 分阶段 commits
@@ -204,4 +206,3 @@ CPA v7.2.72 源码确认：
   reference 行以及少量受限路径行；发现后立即停止。没有主动打开、恢复或重跑
   evaluation-v10/retired holdout JSONL，没有把意外输出用于任何实现判断。该方法学例外
   必须保留给 Leo 审计，不应改写为“零触及”。
-

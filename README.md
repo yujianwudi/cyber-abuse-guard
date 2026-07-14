@@ -39,7 +39,7 @@ is not sent to a public classifier.
 | Documented build target | Linux amd64, glibc 2.34 or newer, CPA C ABI/RPC schema v1 |
 | Unsupported platform | musl/Alpine |
 | Embedded YAML ruleset | `1.0.7`, SHA-256 `7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134` |
-| Classifier policy identity | `classifier-policy-v2`, SHA-256 `dc9a174099cb2f621e5333a508d4645604f96f470a6d9ae12a1acfb363d29cf2` |
+| Classifier policy identity | `classifier-policy-v2`, SHA-256 `bd55065bc3f1fd350148ad8f2f440c8f606aeb02fabd0024d7a350fe23ee4585` |
 | Current validation | Source/build/artifact and real-Host matrices **GITHUB CI PASS** on implementation freeze `61536f9`; Leo verification **NOT RUN**; final official Guard client HTTP 405 unavailable |
 
 The root `go.mod` and `integration/pluginstorecontract` module both pin CPA
