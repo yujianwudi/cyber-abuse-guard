@@ -146,13 +146,13 @@ func TestRouterUsesRoleAwareConversationClassification(t *testing.T) {
 			wantHandled: true,
 		},
 		{
-			name:   "unknown role cannot hide older abuse",
+			name:   "unknown role marks inspection incomplete and balanced allows",
 			format: "openai",
 			body: `{"messages":[` +
 				`{"role":"unknown","content":"` + malicious + `"},` +
 				`{"role":"user","content":"` + safe + `"},` +
 				`{"role":"user","content":"ordinary football note"}]}`,
-			wantHandled: true,
+			wantHandled: false,
 		},
 		{
 			name:        "older abuse cannot be aged out by safe turns",
@@ -161,10 +161,10 @@ func TestRouterUsesRoleAwareConversationClassification(t *testing.T) {
 			wantHandled: true,
 		},
 		{
-			name:        "role history capacity is fail closed",
+			name:        "role history capacity marks incomplete and balanced allows",
 			format:      "openai",
 			body:        overLimitHistory,
-			wantHandled: true,
+			wantHandled: false,
 		},
 	}
 	for _, testCase := range tests {

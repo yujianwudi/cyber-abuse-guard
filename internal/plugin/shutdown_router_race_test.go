@@ -14,7 +14,7 @@ import (
 
 func TestParseFailureAdmittedBeforeShutdownRetainsFailClosedPolicy(t *testing.T) {
 	p := New()
-	register(t, p, "mode: balanced\naudit:\n  enabled: false\nsubject_control:\n  enabled: false\n")
+	register(t, p, "mode: strict\naudit:\n  enabled: false\nsubject_control:\n  enabled: false\n")
 
 	failureEntered := make(chan struct{})
 	releaseFailure := make(chan struct{})

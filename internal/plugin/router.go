@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -12,7 +13,6 @@ import (
 	"github.com/yujianwudi/cyber-abuse-guard/internal/classifier"
 	"github.com/yujianwudi/cyber-abuse-guard/internal/config"
 	"github.com/yujianwudi/cyber-abuse-guard/internal/extract"
-	guardrules "github.com/yujianwudi/cyber-abuse-guard/internal/rules"
 )
 
 type modelRouteFailure struct {
@@ -75,7 +75,6 @@ func (p *Plugin) callModelRoute(raw []byte) (response []byte, returnCode int) {
 }
 
 func (p *Plugin) route(state *runtimeState, request pluginapi.ModelRouteRequest) ([]byte, *modelRouteFailure) {
-
 	if !state.config.Enabled || state.config.Mode == config.ModeOff {
 		return okEnvelope(pluginapi.ModelRouteResponse{Handled: false}), nil
 	}
@@ -99,53 +98,63 @@ func (p *Plugin) route(state *runtimeState, request pluginapi.ModelRouteRequest)
 
 	limits := extract.Limits{
 		MaxScanBytes: state.config.MaxScanBytes,
+		MaxRawBytes:  maxRPCRequestBytes,
 		MaxJSONDepth: state.config.MaxJSONDepth,
 		MaxTextParts: state.config.MaxTextParts,
 	}
 	var extracted extract.Result
 	var extractErr error
 	if unknownSourceFormat {
-		extracted, extractErr = extract.ExtractUntrustedText(request.Body, limits)
+		extracted, extractErr = extract.ExtractUntrustedRequest(request.Body, request.Headers, limits)
 	} else {
-		extracted, extractErr = extract.ExtractText(request.Body, limits)
-		if extractErr == nil && !extracted.RoleAware && !extracted.Truncated {
-			// A supported source label does not prove that the body follows the
-			// provider's role schema. When role proof fails, the provider-aware
-			// pass may have ignored text below a future or forged top-level field.
-			// Re-run the bounded conservative extractor before classification.
-			extracted, extractErr = extract.ExtractUntrustedText(request.Body, limits)
-		}
+		extracted, extractErr = extract.ExtractRequest(request.Body, request.Headers, limits)
 	}
 	requestHash := audit.HashRequest(request.Body)
-	if extractErr != nil {
-		p.counters.parseErrors.Add(1)
-		p.recordParseError(state, request, requestHash, extracted.BytesScanned, time.Since(started))
-		if state.config.Mode == config.ModeBalanced || state.config.Mode == config.ModeStrict {
-			p.counters.blocked.Add(1)
-			p.pending.put(requestHash, "parse_error")
-			return nil, &modelRouteFailure{code: "parse_error", reason: "cyber_abuse_guard_parse_error"}
+	if extractErr != nil && len(extracted.IncompleteReasons) == 0 {
+		// Invalid limits or an extractor invariant failure is operational. It is
+		// deliberately kept on the existing mode-aware runtime-failure path and
+		// is never confused with request-content incompleteness.
+		if errors.Is(extractErr, extract.ErrInvalidLimits) {
+			return nil, &modelRouteFailure{code: "invalid_extractor_limits", reason: "cyber_abuse_guard_inspection_failure"}
 		}
-		p.counters.allowed.Add(1)
-		return okEnvelope(pluginapi.ModelRouteResponse{Handled: false}), nil
+		return nil, &modelRouteFailure{code: "inspection_failure", reason: "cyber_abuse_guard_inspection_failure"}
+	}
+	incompleteReasons := append([]extract.IncompleteReason(nil), extracted.IncompleteReasons...)
+	if !extracted.IsComplete() && len(incompleteReasons) == 0 {
+		// Defensive invariant fallback. The category remains bounded and no raw
+		// parser diagnostic is logged or persisted.
+		incompleteReasons = append(incompleteReasons, extract.IncompleteParseError)
 	}
 
-	mode := classifierMode(state.config.Mode)
-	thresholds := classifier.Thresholds{
-		Audit:         state.config.Thresholds.Audit,
-		BalancedBlock: state.config.Thresholds.BalancedBlock,
-		HardBlock:     state.config.Thresholds.HardBlock,
+	result := classifier.Result{
+		Action:         classifier.ActionAllow,
+		RuleSetVersion: state.rulesVersion,
 	}
-	policy := classifierPolicy(state.config)
-	var result classifier.Result
-	if extracted.RoleAware {
-		result = state.classifier.ClassifySegmentsWithPolicy(extracted.Segments, mode, thresholds, policy)
-	} else {
-		result = state.classifier.ClassifyUntrustedPartsWithPolicy(extracted.Parts, mode, thresholds, policy)
+	if len(incompleteReasons) == 0 {
+		mode := classifierMode(state.config.Mode)
+		thresholds := classifier.Thresholds{
+			Audit:         state.config.Thresholds.Audit,
+			BalancedBlock: state.config.Thresholds.BalancedBlock,
+			HardBlock:     state.config.Thresholds.HardBlock,
+		}
+		policy := classifierPolicy(state.config)
+		if extracted.RoleAware {
+			result = state.classifier.ClassifySegmentsWithPolicy(extracted.Segments, mode, thresholds, policy)
+		} else {
+			result = state.classifier.ClassifyUntrustedPartsWithPolicy(extracted.Parts, mode, thresholds, policy)
+		}
+		if result.Truncated {
+			// Decoder/classifier budget exhaustion is still incomplete content
+			// inspection. Discard the prefix score before policy or subject state
+			// sees it; balanced must allow+audit and strict alone may enforce.
+			incompleteReasons = append(incompleteReasons, extract.IncompleteScanByteLimit)
+			result = classifier.Result{
+				Action:         classifier.ActionAllow,
+				RuleSetVersion: state.rulesVersion,
+			}
+		}
 	}
-	result.Truncated = result.Truncated || extracted.Truncated
-	if result.Truncated {
-		p.counters.truncated.Add(1)
-	}
+
 	opaqueAudit, opaqueBlock := opaqueMediaDisposition(state.config, extracted.OpaqueMedia)
 	if extracted.OpaqueMedia {
 		p.counters.opaqueMedia.Add(1)
@@ -179,67 +188,58 @@ func (p *Plugin) route(state *runtimeState, request pluginapi.ModelRouteRequest)
 		}
 	}
 
-	if state.config.Mode == config.ModeObserve {
-		if result.Score >= state.config.Thresholds.Audit || opaqueAudit || opaqueBlock {
-			p.counters.observed.Add(1)
-		} else {
-			p.counters.allowed.Add(1)
-		}
-		return okEnvelope(pluginapi.ModelRouteResponse{Handled: false}), nil
+	outcome := inspectionOutcome{
+		Classification: result,
+		Incomplete:     incompleteReasons,
+		OpaqueMedia:    extracted.OpaqueMedia,
 	}
-
+	decision := inspectionDisposition(state.config.Mode, outcome, state.config.EffectiveOpaqueMediaPolicy())
 	subjectHash := ""
-	if p.identifier != nil {
-		subjectHash = p.identifier.FromHeaders(request.Headers).Hash
-	}
-	decision := state.subject.EvaluateRequest(subjectHash, requestHash, result.Score)
-	state.markSubjectPersistenceDirty()
-	truncationBlock := result.Truncated && (state.config.Mode == config.ModeBalanced || state.config.Mode == config.ModeStrict)
-	blocked := state.config.Mode != config.ModeAudit && (result.Action == classifier.ActionBlock || truncationBlock || opaqueBlock)
-	if state.config.Mode != config.ModeAudit && decision.Blocked {
-		blocked = true
+	subjectReason := ""
+	if decision.EvaluateSubject {
+		if p.identifier != nil {
+			subjectHash = p.identifier.FromHeaders(request.Headers).Hash
+		}
+		subjectDecision := state.subject.EvaluateRequest(subjectHash, requestHash, result.Score)
+		state.markSubjectPersistenceDirty()
+		subjectReason = string(subjectDecision.Reason)
+		outcome.SubjectBlocked = subjectDecision.Blocked
+		decision = inspectionDisposition(state.config.Mode, outcome, state.config.EffectiveOpaqueMediaPolicy())
 	}
 
-	if blocked {
+	if len(incompleteReasons) != 0 {
+		p.recordIncompleteCounters(incompleteReasons, decision)
+	}
+
+	switch {
+	case decision.Block:
 		p.counters.blocked.Add(1)
-	} else if opaqueAudit || result.Action == classifier.ActionAudit || (state.config.Mode == config.ModeAudit && result.Score >= state.config.Thresholds.Audit) {
+	case decision.Audit:
 		p.counters.audited.Add(1)
-	} else {
+	case decision.Observe:
+		p.counters.observed.Add(1)
+	default:
 		p.counters.allowed.Add(1)
 	}
 
-	auditResult := result
-	if state.config.Mode == config.ModeAudit && auditResult.Score >= state.config.Thresholds.Audit {
-		auditResult.Action = classifier.ActionAudit
+	if decision.Block || decision.Audit {
+		p.recordDecision(state, request, requestHash, subjectHash, extracted.TextBytesScanned, result, decision, subjectReason, time.Since(started))
 	}
-	if result.Truncated {
-		auditResult.Category = guardrules.Category("scan_limit")
-	} else if extracted.OpaqueMedia && (opaqueAudit || opaqueBlock) && result.Action == classifier.ActionAllow {
-		auditResult.Category = guardrules.Category("opaque_media")
-		auditResult.Action = classifier.ActionAudit
-	}
-	if result.Action != classifier.ActionAllow || decision.Blocked || result.Truncated || opaqueAudit || opaqueBlock {
-		p.recordDecision(state, request, requestHash, subjectHash, extracted.BytesScanned, auditResult, string(decision.Reason), blocked, time.Since(started))
-	}
-	if !blocked {
+	if !decision.Block {
 		return okEnvelope(pluginapi.ModelRouteResponse{Handled: false}), nil
 	}
 
-	category := string(result.Category)
-	if truncationBlock {
-		category = "scan_limit"
-	} else if opaqueBlock && result.Action != classifier.ActionBlock {
-		category = "opaque_media"
+	category := decision.Category
+	if category == "" {
+		category = string(result.Category)
 	}
 	p.pending.put(requestHash, category)
-	reason := "cyber_abuse_guard_policy"
-	if result.Score >= state.config.Thresholds.HardBlock {
-		reason = "cyber_abuse_guard_hard_policy"
+	reason := decision.RouteReason
+	if reason == "" {
+		reason = "cyber_abuse_guard_policy"
 	}
-	if truncationBlock {
-		reason = "cyber_abuse_guard_scan_limit"
-	} else if opaqueBlock && result.Action != classifier.ActionBlock {
-		reason = "cyber_abuse_guard_opaque_media"
+	if decision.Code == "block_malicious_text" && result.Score >= state.config.Thresholds.HardBlock {
+		reason = "cyber_abuse_guard_hard_policy"
 	}
 	return blockedRouteEnvelope(reason), nil
 }
@@ -348,39 +348,82 @@ func (p *Plugin) recordUnknownSourceBlock(state *runtimeState, requestHash strin
 	p.recordAuditEvent(state, event)
 }
 
-func (p *Plugin) recordParseError(state *runtimeState, request pluginapi.ModelRouteRequest, requestHash string, scanned int, latency time.Duration) {
-	if state == nil || state.audit == nil || !state.config.Audit.Enabled || state.config.Mode == config.ModeObserve || state.config.Mode == config.ModeOff {
-		return
+func (p *Plugin) recordIncompleteCounters(reasons []extract.IncompleteReason, decision inspectionDecision) {
+	p.counters.incompleteInspections.Add(1)
+	if decision.Block {
+		p.counters.incompleteBlocked.Add(1)
+	} else {
+		p.counters.incompleteAllowed.Add(1)
 	}
-	action := "audit"
-	if state.config.Mode == config.ModeBalanced || state.config.Mode == config.ModeStrict {
-		action = "block"
+
+	var parseError, scanLimit, jsonDepth, textPart, multipartLimit, unsupported, rpcBody bool
+	var truncated bool
+	for _, reason := range reasons {
+		switch reason {
+		case extract.IncompleteParseError:
+			parseError = true
+		case extract.IncompleteScanByteLimit,
+			extract.IncompleteJSONTokenLimit,
+			extract.IncompleteJSONNodeLimit,
+			extract.IncompleteTextPartByteLimit,
+			extract.IncompleteRawBodyLimit:
+			scanLimit = true
+			truncated = true
+		case extract.IncompleteJSONDepthLimit:
+			jsonDepth = true
+			truncated = true
+		case extract.IncompleteTextPartLimit:
+			textPart = true
+			truncated = true
+		case extract.IncompleteMultipartBoundaryLimit,
+			extract.IncompleteMultipartPartLimit,
+			extract.IncompleteMultipartHeaderLimit,
+			extract.IncompleteMultipartTextLimit,
+			extract.IncompleteMultipartParseError:
+			multipartLimit = true
+			if reason != extract.IncompleteMultipartParseError {
+				truncated = true
+			}
+		case extract.IncompleteUnsupportedMediaType, extract.IncompleteUnsupportedContentEncoding:
+			unsupported = true
+		case extract.IncompleteRPCBodyLimit:
+			rpcBody = true
+			truncated = true
+		}
 	}
-	event := audit.Event{
-		ID:               newEventID(),
-		Timestamp:        time.Now().UTC(),
-		Action:           action,
-		Mode:             string(state.config.Mode),
-		Category:         "parse_error",
-		Model:            audit.HashModel(request.RequestedModel),
-		SourceFormat:     audit.CanonicalSourceFormat(request.SourceFormat),
-		Stream:           request.Stream,
-		TextBytesScanned: scanned,
-		Classifier:       "parse_error",
-		LatencyUS:        latency.Microseconds(),
+	if parseError {
+		p.counters.incompleteParseError.Add(1)
+		p.counters.parseErrors.Add(1)
 	}
-	if state.config.Audit.LogRequestHash {
-		event.RequestHash = requestHash
+	if scanLimit {
+		p.counters.incompleteScanLimit.Add(1)
 	}
-	p.recordAuditEvent(state, event)
+	if jsonDepth {
+		p.counters.incompleteJSONDepthLimit.Add(1)
+	}
+	if textPart {
+		p.counters.incompleteTextPartLimit.Add(1)
+	}
+	if multipartLimit {
+		p.counters.incompleteMultipartLimit.Add(1)
+	}
+	if unsupported {
+		p.counters.incompleteUnsupportedContentType.Add(1)
+	}
+	if rpcBody {
+		p.counters.incompleteRPCBodyLimit.Add(1)
+	}
+	if truncated {
+		p.counters.truncated.Add(1)
+	}
 }
 
-func (p *Plugin) recordDecision(state *runtimeState, request pluginapi.ModelRouteRequest, requestHash, subjectHash string, scanned int, result classifier.Result, subjectReason string, blocked bool, latency time.Duration) {
+func (p *Plugin) recordDecision(state *runtimeState, request pluginapi.ModelRouteRequest, requestHash, subjectHash string, scanned int, result classifier.Result, decision inspectionDecision, subjectReason string, latency time.Duration) {
 	if state == nil || state.audit == nil || !state.config.Audit.Enabled {
 		return
 	}
-	action := string(result.Action)
-	if blocked {
+	action := "audit"
+	if decision.Block {
 		action = "block"
 		if subjectReason == "cooldown" {
 			action = "cooldown"
@@ -400,7 +443,7 @@ func (p *Plugin) recordDecision(state *runtimeState, request pluginapi.ModelRout
 		LatencyUS:        latency.Microseconds(),
 	}
 	if state.config.Audit.LogCategory {
-		event.Category = string(result.Category)
+		event.Category = decision.Category
 	}
 	if state.config.Audit.LogRuleIDs {
 		event.RuleIDs = append([]string(nil), result.RuleIDs...)

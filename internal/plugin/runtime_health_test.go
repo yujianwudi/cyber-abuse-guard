@@ -77,7 +77,7 @@ func TestProductionStatusExposesThreadSafeReadinessSignals(t *testing.T) {
 	}
 }
 
-func TestMalformedModelRouteFailsClosedInEnforcingModes(t *testing.T) {
+func TestMalformedOuterRPCRemainsOperationalWhileBodyParseUsesIncompleteContract(t *testing.T) {
 	for _, mode := range []string{"balanced", "strict"} {
 		t.Run(mode, func(t *testing.T) {
 			p := New()
@@ -105,11 +105,15 @@ func TestMalformedModelRouteFailsClosedInEnforcingModes(t *testing.T) {
 			}
 			var body pluginapi.ModelRouteResponse
 			decodeOKResult(t, raw, &body)
-			if !body.Handled || body.TargetKind != pluginapi.ModelRouteTargetSelf || body.Reason != "cyber_abuse_guard_parse_error" {
-				t.Fatalf("malformed request body failed open: %+v", body)
+			wantBodyHandled := mode == "strict"
+			if body.Handled != wantBodyHandled {
+				t.Fatalf("mode=%s malformed request body handled=%t, want %t: %+v", mode, body.Handled, wantBodyHandled, body)
 			}
-			if got := p.counters.routerErrors.Load(); got != 2 {
-				t.Fatalf("router_errors=%d, want 2", got)
+			if wantBodyHandled && (body.TargetKind != pluginapi.ModelRouteTargetSelf || body.Reason != "cyber_abuse_guard_parse_error") {
+				t.Fatalf("strict malformed request body did not self-route: %+v", body)
+			}
+			if got := p.counters.routerErrors.Load(); got != 1 {
+				t.Fatalf("router_errors=%d, want only the outer RPC failure", got)
 			}
 			if got := p.counters.parseErrors.Load(); got != 1 {
 				t.Fatalf("parse_errors=%d, want 1", got)
@@ -125,7 +129,7 @@ func TestParseErrorAuditActionMatchesEnforcement(t *testing.T) {
 		wantAction  string
 	}{
 		{mode: "audit", wantHandled: false, wantAction: "audit"},
-		{mode: "balanced", wantHandled: true, wantAction: "block"},
+		{mode: "balanced", wantHandled: false, wantAction: "audit"},
 		{mode: "strict", wantHandled: true, wantAction: "block"},
 	} {
 		t.Run(testCase.mode, func(t *testing.T) {
