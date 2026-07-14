@@ -1441,6 +1441,42 @@ func round4JSONMemberOrderCases(mediaPayload, visibleText string) []round4HostJS
 				imageURL, visibleText, modelName)),
 		},
 		{
+			id:   "openai-input-audio-marker-first",
+			path: "/v1/chat/completions",
+			body: []byte(fmt.Sprintf(`{"model":%q,"messages":[{"role":"user","content":[{"type":"input_audio","input_audio":{"data":%q,"format":"wav"}},{"type":"text","text":%q}]}]}`,
+				modelName, mediaPayload, visibleText)),
+		},
+		{
+			id:   "openai-input-audio-marker-middle",
+			path: "/v1/chat/completions",
+			body: []byte(fmt.Sprintf(`{"model":%q,"messages":[{"role":"user","content":[{"input_audio":{"data":%q,"format":"wav"},"type":"input_audio"},{"text":%q,"type":"text"}]}]}`,
+				modelName, mediaPayload, visibleText)),
+		},
+		{
+			id:   "openai-input-audio-marker-last",
+			path: "/v1/chat/completions",
+			body: []byte(fmt.Sprintf(`{"messages":[{"content":[{"input_audio":{"format":"wav","data":%q},"type":"input_audio"},{"text":%q,"type":"text"}],"role":"user"}],"model":%q}`,
+				mediaPayload, visibleText, modelName)),
+		},
+		{
+			id:   "openai-input-file-marker-first",
+			path: "/v1/responses",
+			body: []byte(fmt.Sprintf(`{"model":%q,"input":[{"role":"user","content":[{"type":"input_file","file_data":%q,"filename":"round4-fixture.txt"},{"type":"input_text","text":%q}]}]}`,
+				modelName, mediaPayload, visibleText)),
+		},
+		{
+			id:   "openai-input-file-marker-middle",
+			path: "/v1/responses",
+			body: []byte(fmt.Sprintf(`{"model":%q,"input":[{"role":"user","content":[{"file_data":%q,"type":"input_file","filename":"round4-fixture.txt"},{"text":%q,"type":"input_text"}]}]}`,
+				modelName, mediaPayload, visibleText)),
+		},
+		{
+			id:   "openai-input-file-marker-last",
+			path: "/v1/responses",
+			body: []byte(fmt.Sprintf(`{"input":[{"content":[{"filename":"round4-fixture.txt","file_data":%q,"type":"input_file"},{"text":%q,"type":"input_text"}],"role":"user"}],"model":%q}`,
+				mediaPayload, visibleText, modelName)),
+		},
+		{
 			id:   "gemini-inline-data-marker-first",
 			path: "/v1beta/models/" + modelName + ":generateContent",
 			body: []byte(fmt.Sprintf(`{"contents":[{"role":"user","parts":[{"inline_data":{"mime_type":"image/png","display_name":"round4-fixture","data":%q}},{"text":%q}]}]}`,
