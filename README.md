@@ -39,8 +39,8 @@ is not sent to a public classifier.
 | Documented build target | Linux amd64, glibc 2.34 or newer, CPA C ABI/RPC schema v1 |
 | Unsupported platform | musl/Alpine |
 | Embedded YAML ruleset | `1.0.7`, SHA-256 `7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134` |
-| Classifier policy identity | `classifier-policy-v2`, SHA-256 `dc9a174099cb2f621e5333a508d4645604f96f470a6d9ae12a1acfb363d29cf2` |
-| Current validation | Source/build/artifact and real-Host matrices **GITHUB CI PASS** on implementation freeze `61536f9`; Leo verification **NOT RUN**; final official Guard client HTTP 405 unavailable |
+| Classifier policy identity | `classifier-policy-v2`, SHA-256 `bd55065bc3f1fd350148ad8f2f440c8f606aeb02fabd0024d7a350fe23ee4585` |
+| Current validation | Round-two source/build/artifact and CPA Store-installed Host fixture **GITHUB CI PASS** on implementation freeze `c27294d`; Leo/Tencent isolated-Host verification **NOT RUN**; status remains **PARTIAL / NOT PRODUCTION-READY** |
 
 The root `go.mod` and `integration/pluginstorecontract` module both pin CPA
 v7.2.72. Source contracts enumerate and run 16 exact official Host tests, while
@@ -128,10 +128,14 @@ execution, credential/access, persistence, evasion, exfiltration, impact,
 scale, authorization/defensive scope, wrapper/amplifier, role scope, carrier,
 composition mode, and reason codes. It contains no prompt fragments.
 
-Supported source extractors cover OpenAI Chat, OpenAI Responses, Anthropic
-Claude, and Google Gemini request shapes. The four-protocol HTTP and
-zero-downstream-call matrix passed authorized GitHub CI on the implementation
-freeze; Leo's isolated verification remains not run.
+Supported request inspection covers OpenAI Chat, OpenAI Responses, Anthropic
+Claude, Google Gemini, and OpenAI image request shapes. JSON and bounded
+`multipart/form-data` use one Content-Type-aware entry point. Multipart prompt
+fields are inspected while image, audio, video, and file parts are skipped as
+opaque media without being converted to classifier text. The earlier
+four-protocol HTTP and zero-downstream-call matrix passed authorized GitHub CI
+on implementation freeze `61536f9`; the second-round multimodal candidate and
+Leo's isolated verification remain separate gates.
 
 Recognized roles keep system safety policy and assistant refusals separate from
 user intent. User-authored adjacent turns and one explicitly linked bounded
@@ -147,11 +151,23 @@ Text handling is deliberately bounded:
 - URL percent, HTML entity, inspectable Base64, textual data URL, JSON escape,
   and bounded nested tool-JSON handling;
 - provider-aware role, content-part, tool-argument, and tool-output carriers;
+- independent raw-request and extracted-text budgets, so uploaded media does
+  not consume the ordinary text-classification budget;
+- bounded multipart boundary, part, header, field, and aggregate-text limits,
+  with no temporary-file parsing and no remote media fetch;
 - no decompression, archive expansion, network fetch, or cross-request semantic
   memory.
 
 Images, audio, video, and document attachments are opaque. Their policy can be
 `block`, `audit`, or `allow`; `allow` means “not inspected”, not “safe”.
+
+Content inspection completeness is a separate policy input. Malformed JSON,
+scan/depth/part limits, unsupported Content-Type, multipart resource limits,
+and plugin RPC body limits are `incomplete_inspection`, not runtime crashes.
+`balanced` passes such requests through and emits an audit decision; `strict`
+locally blocks them. A partially inspected prefix can never trigger a
+`balanced` block. See
+[MULTIMODAL_INSPECTION_CONTRACT.md](docs/MULTIMODAL_INSPECTION_CONTRACT.md).
 
 ## Modes
 

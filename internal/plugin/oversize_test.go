@@ -10,13 +10,13 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
 )
 
-func TestOversizedModelRouteIsModeAwareAndFailClosed(t *testing.T) {
+func TestOversizedModelRouteUsesIncompleteInspectionContract(t *testing.T) {
 	oversized := make([]byte, maxRPCRequestBytes+1)
 	for _, testCase := range []struct {
 		mode        string
 		wantHandled bool
 	}{
-		{mode: "balanced", wantHandled: true},
+		{mode: "balanced", wantHandled: false},
 		{mode: "strict", wantHandled: true},
 		{mode: "audit", wantHandled: false},
 		{mode: "observe", wantHandled: false},
@@ -35,36 +35,55 @@ func TestOversizedModelRouteIsModeAwareAndFailClosed(t *testing.T) {
 			if route.Handled != testCase.wantHandled {
 				t.Fatalf("mode=%s oversized route Handled=%v, want %v; route=%+v", testCase.mode, route.Handled, testCase.wantHandled, route)
 			}
-			if testCase.wantHandled && route.Reason != "cyber_abuse_guard_scan_limit" {
+			if testCase.wantHandled && route.Reason != "cyber_abuse_guard_rpc_body_limit" {
 				t.Fatalf("mode=%s oversized route reason=%q", testCase.mode, route.Reason)
+			}
+			if testCase.mode != "off" {
+				if got := p.counters.incompleteInspections.Load(); got != 1 {
+					t.Fatalf("mode=%s incomplete_inspections=%d, want 1", testCase.mode, got)
+				}
+				if got := p.counters.incompleteRPCBodyLimit.Load(); got != 1 {
+					t.Fatalf("mode=%s incomplete_rpc_body_limit=%d, want 1", testCase.mode, got)
+				}
 			}
 		})
 	}
 }
 
-func TestOversizedExecutorReturnsLocalPolicyRefusal(t *testing.T) {
-	p := New()
-	defer p.Shutdown()
-	register(t, p, "mode: balanced\naudit:\n  enabled: false\nsubject_control:\n  enabled: false\n")
-	for _, method := range []string{pluginabi.MethodExecutorExecute, pluginabi.MethodExecutorExecuteStream, pluginabi.MethodExecutorCountTokens} {
-		raw, code := p.CallOversized(method)
-		if code != 0 {
-			t.Fatalf("%s code=%d envelope=%s", method, code, raw)
-		}
-		var envelope struct {
-			OK    bool `json:"ok"`
-			Error struct {
-				Code       string `json:"code"`
-				HTTPStatus int    `json:"http_status"`
-				Category   string `json:"category"`
-			} `json:"error"`
-		}
-		if err := json.Unmarshal(raw, &envelope); err != nil {
-			t.Fatal(err)
-		}
-		if envelope.OK || envelope.Error.Code != blockedErrorCode || envelope.Error.HTTPStatus != 403 || envelope.Error.Category != "scan_limit" {
-			t.Fatalf("%s oversized refusal=%s", method, raw)
-		}
+func TestOversizedExecutorDoesNotTurnBalancedPassThroughIntoPolicy403(t *testing.T) {
+	for _, testCase := range []struct {
+		mode       string
+		wantCode   string
+		wantStatus int
+	}{
+		{mode: "balanced", wantCode: "request_too_large", wantStatus: http.StatusRequestEntityTooLarge},
+		{mode: "strict", wantCode: blockedErrorCode, wantStatus: http.StatusForbidden},
+	} {
+		t.Run(testCase.mode, func(t *testing.T) {
+			p := New()
+			defer p.Shutdown()
+			register(t, p, "mode: "+testCase.mode+"\naudit:\n  enabled: false\nsubject_control:\n  enabled: false\n")
+			for _, method := range []string{pluginabi.MethodExecutorExecute, pluginabi.MethodExecutorExecuteStream, pluginabi.MethodExecutorCountTokens} {
+				raw, code := p.CallOversized(method)
+				if code != 0 {
+					t.Fatalf("%s code=%d envelope=%s", method, code, raw)
+				}
+				var envelope struct {
+					OK    bool `json:"ok"`
+					Error struct {
+						Code       string `json:"code"`
+						HTTPStatus int    `json:"http_status"`
+						Category   string `json:"category"`
+					} `json:"error"`
+				}
+				if err := json.Unmarshal(raw, &envelope); err != nil {
+					t.Fatal(err)
+				}
+				if envelope.OK || envelope.Error.Code != testCase.wantCode || envelope.Error.HTTPStatus != testCase.wantStatus || envelope.Error.Category != "rpc_body_limit" {
+					t.Fatalf("%s oversized refusal=%s", method, raw)
+				}
+			}
+		})
 	}
 }
 
@@ -91,7 +110,7 @@ func TestOversizedRouteWritesPrivacyMinimalAuditEvent(t *testing.T) {
 		mode       string
 		wantAction string
 	}{
-		{mode: "balanced", wantAction: "block"},
+		{mode: "balanced", wantAction: "audit"},
 		{mode: "audit", wantAction: "audit"},
 	} {
 		t.Run(testCase.mode, func(t *testing.T) {
@@ -108,7 +127,7 @@ func TestOversizedRouteWritesPrivacyMinimalAuditEvent(t *testing.T) {
 				t.Fatalf("oversized audit events=%#v", events)
 			}
 			event := items[0].(map[string]any)
-			if event["action"] != testCase.wantAction || event["category"] != "scan_limit" {
+			if event["action"] != testCase.wantAction || event["category"] != "rpc_body_limit" {
 				t.Fatalf("oversized event=%#v", event)
 			}
 			for _, key := range []string{"request_hash", "model", "source_format"} {

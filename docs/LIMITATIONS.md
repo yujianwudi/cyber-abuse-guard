@@ -235,7 +235,7 @@
 
 37. **Classifier-policy identity is source-bound but not yet artifact-bound.**
     The Go-level behavior is identified as `classifier-policy-v2` / SHA-256
-    `dc9a174099cb2f621e5333a508d4645604f96f470a6d9ae12a1acfb363d29cf2`,
+    `bd55065bc3f1fd350148ad8f2f440c8f606aeb02fabd0024d7a350fe23ee4585`,
     while ruleset `1.0.7` separately identifies YAML assets. A digest test binds
     the reviewed source list, and authenticated status exposes the policy
     identity. Current build metadata and artifact verification do not yet carry

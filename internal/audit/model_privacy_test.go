@@ -57,6 +57,8 @@ func TestCanonicalSourceFormatNeverRetainsUnknownCallerText(t *testing.T) {
 	tests := map[string]string{
 		"openai":                     "openai",
 		" OPENAI-RESPONSE ":          "openai-response",
+		"OpenAI-Image":               "openai-image",
+		"OpenAI-Video":               "openai-video",
 		"anthropic":                  "claude",
 		"Claude":                     "claude",
 		"gemini":                     "gemini",

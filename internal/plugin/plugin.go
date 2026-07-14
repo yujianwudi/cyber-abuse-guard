@@ -21,6 +21,7 @@ import (
 	"github.com/yujianwudi/cyber-abuse-guard/internal/buildinfo"
 	"github.com/yujianwudi/cyber-abuse-guard/internal/classifier"
 	"github.com/yujianwudi/cyber-abuse-guard/internal/config"
+	"github.com/yujianwudi/cyber-abuse-guard/internal/extract"
 	"github.com/yujianwudi/cyber-abuse-guard/internal/rules"
 	"github.com/yujianwudi/cyber-abuse-guard/internal/subject"
 )
@@ -44,7 +45,7 @@ var metadata = pluginapi.Metadata{
 		{Name: "enabled", Type: pluginapi.ConfigFieldTypeBoolean, Description: "Enable local cyber-abuse classification."},
 		{Name: "mode", Type: pluginapi.ConfigFieldTypeEnum, EnumValues: []string{"off", "observe", "audit", "balanced", "strict"}, Description: "Select observation, auditing, or enforcement behavior."},
 		{Name: "priority", Type: pluginapi.ConfigFieldTypeInteger, Description: "Run before provider and authentication selection."},
-		{Name: "max_scan_bytes", Type: pluginapi.ConfigFieldTypeInteger, Description: "Maximum request bytes inspected before enforcing modes fail closed."},
+		{Name: "max_scan_bytes", Type: pluginapi.ConfigFieldTypeInteger, Description: "Maximum text bytes inspected before the mode-specific incomplete-inspection policy applies."},
 		{Name: "max_json_depth", Type: pluginapi.ConfigFieldTypeInteger, Description: "Maximum JSON nesting depth inspected by the bounded extractor."},
 		{Name: "max_text_parts", Type: pluginapi.ConfigFieldTypeInteger, Description: "Maximum number of text parts inspected per request."},
 		{Name: "opaque_media_policy", Type: pluginapi.ConfigFieldTypeEnum, EnumValues: []string{"block", "audit", "allow"}, Description: "Explicit policy for opaque image/audio/video content; omitted uses mode-aware defaults and never fetches remote URLs."},
@@ -225,8 +226,9 @@ func (p *Plugin) Call(method string, request []byte) (response []byte, returnCod
 
 // CallOversized handles an RPC that exceeded the boundary-copy budget without
 // parsing or copying its attacker-controlled payload. CPA treats ModelRouter
-// errors as a request to continue native routing, so enforcing modes must
-// return a successful self-route here rather than a fail-open RPC error.
+// errors as a request to continue native routing, so this content-incomplete
+// condition is returned as a successful mode-specific route: strict self-routes
+// while balanced/audit/observe/off pass through.
 func (p *Plugin) CallOversized(method string) (response []byte, returnCode int) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
@@ -250,10 +252,25 @@ func (p *Plugin) CallOversized(method string) (response []byte, returnCode int) 
 	case pluginabi.MethodModelRoute:
 		return p.callOversizedModelRoute()
 	case pluginabi.MethodExecutorExecute, pluginabi.MethodExecutorExecuteStream, pluginabi.MethodExecutorCountTokens:
-		return errorEnvelope(blockedErrorCode, refusalMessage, 403, "scan_limit"), 0
+		return p.callOversizedExecutor()
 	default:
 		return errorEnvelope("request_too_large", "plugin RPC request exceeds the size limit", 0, ""), 0
 	}
+}
+
+func (p *Plugin) callOversizedExecutor() ([]byte, int) {
+	p.opMu.RLock()
+	state := p.runtime.Load()
+	strict := state != nil && state.config.Enabled && state.config.Mode == config.ModeStrict
+	p.opMu.RUnlock()
+	if strict {
+		p.counters.executorBlocks.Add(1)
+		return errorEnvelope(blockedErrorCode, refusalMessage, 403, "rpc_body_limit"), 0
+	}
+	// Non-strict routers never self-route an oversized request. If a host calls
+	// the executor directly anyway, report the boundary failure without turning
+	// it into a cyber-abuse policy 403 or writing a duplicate decision event.
+	return errorEnvelope("request_too_large", "plugin executor RPC exceeds the size limit", 413, "rpc_body_limit"), 0
 }
 
 // recoverCallbackPanic is deliberately mode-aware for ModelRouter callbacks.
@@ -347,8 +364,9 @@ func (p *Plugin) snapshotModelRouteFailurePolicy() modelRouteFailurePolicy {
 // modelRouteFailureWithPolicy records a privacy-safe operational error and
 // uses the policy captured when the callback was admitted. This is crucial:
 // shutdown and reconfiguration may replace or remove the runtime while a
-// malformed request or recovered panic is returning. An enforcing callback
-// must retain its successful self-route response across that lifecycle race.
+// malformed outer RPC, invariant failure, or recovered panic is returning. An
+// enforcing callback must retain its successful self-route response across
+// that lifecycle race. Request-body parse errors never enter this path.
 func (p *Plugin) modelRouteFailureWithPolicy(code, reason string, policy modelRouteFailurePolicy) []byte {
 	if p == nil {
 		return errorEnvelope("plugin_unavailable", "plugin is unavailable", 0, "")
@@ -429,27 +447,32 @@ func (p *Plugin) routeOversized(state *runtimeState) []byte {
 		return okEnvelope(pluginapi.ModelRouteResponse{Handled: false})
 	}
 	p.counters.total.Add(1)
-	p.counters.truncated.Add(1)
-	if state.config.Mode != config.ModeBalanced && state.config.Mode != config.ModeStrict {
+	reasons := []extract.IncompleteReason{extract.IncompleteRPCBodyLimit}
+	decision := inspectionDisposition(state.config.Mode, inspectionOutcome{Incomplete: reasons}, state.config.EffectiveOpaqueMediaPolicy())
+	p.recordIncompleteCounters(reasons, decision)
+	switch {
+	case decision.Block:
+		p.counters.blocked.Add(1)
+	case decision.Audit:
+		p.counters.audited.Add(1)
+	case decision.Observe:
+		p.counters.observed.Add(1)
+	default:
 		p.counters.allowed.Add(1)
-		p.recordOversizedRoute(state, false)
+	}
+	p.recordOversizedRoute(state, decision)
+	if !decision.Block {
 		return okEnvelope(pluginapi.ModelRouteResponse{Handled: false})
 	}
-	p.counters.blocked.Add(1)
-	p.recordOversizedRoute(state, true)
-	return okEnvelope(pluginapi.ModelRouteResponse{
-		Handled:    true,
-		TargetKind: pluginapi.ModelRouteTargetSelf,
-		Reason:     "cyber_abuse_guard_scan_limit",
-	})
+	return blockedRouteEnvelope(decision.RouteReason)
 }
 
-func (p *Plugin) recordOversizedRoute(state *runtimeState, blocked bool) {
+func (p *Plugin) recordOversizedRoute(state *runtimeState, decision inspectionDecision) {
 	if state == nil || state.audit == nil || !state.config.Audit.Enabled || state.config.Mode == config.ModeObserve || state.config.Mode == config.ModeOff {
 		return
 	}
 	action := "audit"
-	if blocked {
+	if decision.Block {
 		action = "block"
 	}
 	event := audit.Event{
@@ -460,7 +483,7 @@ func (p *Plugin) recordOversizedRoute(state *runtimeState, blocked bool) {
 		Classifier: state.rulesVersion,
 	}
 	if state.config.Audit.LogCategory {
-		event.Category = "scan_limit"
+		event.Category = decision.Category
 	}
 	p.recordAuditEvent(state, event)
 }
@@ -696,7 +719,7 @@ func auditDatabasePath(dataDir string) (string, error) {
 }
 
 func currentRegistration() registration {
-	formats := []string{"openai", "openai-response", "claude", "gemini"}
+	formats := []string{"openai", "openai-response", "openai-image", "openai-video", "claude", "gemini"}
 	return registration{
 		SchemaVersion: pluginabi.SchemaVersion,
 		Metadata:      currentMetadata(),
@@ -806,57 +829,78 @@ func errorEnvelope(code, message string, status int, category string) []byte {
 }
 
 type counters struct {
-	total                    atomic.Uint64
-	allowed                  atomic.Uint64
-	observed                 atomic.Uint64
-	audited                  atomic.Uint64
-	blocked                  atomic.Uint64
-	parseErrors              atomic.Uint64
-	truncated                atomic.Uint64
-	executorBlocks           atomic.Uint64
-	managementTests          atomic.Uint64
-	routerErrors             atomic.Uint64
-	panicsRecovered          atomic.Uint64
-	opaqueMedia              atomic.Uint64
-	opaqueMediaAllowed       atomic.Uint64
-	opaqueMediaAudited       atomic.Uint64
-	opaqueMediaBlocked       atomic.Uint64
-	opaqueMediaHTTPSImageURL atomic.Uint64
-	opaqueMediaDataURL       atomic.Uint64
-	opaqueMediaBase64Image   atomic.Uint64
-	opaqueMediaAudio         atomic.Uint64
-	opaqueMediaVideo         atomic.Uint64
-	opaqueMediaDocument      atomic.Uint64
-	opaqueMediaRemoteURL     atomic.Uint64
-	opaqueMediaOther         atomic.Uint64
-	unknownSourceFormats     atomic.Uint64
+	total                            atomic.Uint64
+	allowed                          atomic.Uint64
+	observed                         atomic.Uint64
+	audited                          atomic.Uint64
+	blocked                          atomic.Uint64
+	parseErrors                      atomic.Uint64
+	truncated                        atomic.Uint64
+	incompleteInspections            atomic.Uint64
+	incompleteAllowed                atomic.Uint64
+	incompleteBlocked                atomic.Uint64
+	incompleteParseError             atomic.Uint64
+	incompleteScanLimit              atomic.Uint64
+	incompleteJSONDepthLimit         atomic.Uint64
+	incompleteTextPartLimit          atomic.Uint64
+	incompleteMultipartLimit         atomic.Uint64
+	incompleteUnsupportedContentType atomic.Uint64
+	incompleteRPCBodyLimit           atomic.Uint64
+	executorBlocks                   atomic.Uint64
+	managementTests                  atomic.Uint64
+	routerErrors                     atomic.Uint64
+	panicsRecovered                  atomic.Uint64
+	opaqueMedia                      atomic.Uint64
+	opaqueMediaAllowed               atomic.Uint64
+	opaqueMediaAudited               atomic.Uint64
+	opaqueMediaBlocked               atomic.Uint64
+	opaqueMediaHTTPSImageURL         atomic.Uint64
+	opaqueMediaDataURL               atomic.Uint64
+	opaqueMediaBase64Image           atomic.Uint64
+	opaqueMediaAudio                 atomic.Uint64
+	opaqueMediaVideo                 atomic.Uint64
+	opaqueMediaDocument              atomic.Uint64
+	opaqueMediaRemoteURL             atomic.Uint64
+	opaqueMediaOther                 atomic.Uint64
+	unknownSourceFormats             atomic.Uint64
 }
 
 func (c *counters) snapshot() map[string]uint64 {
 	return map[string]uint64{
-		"total":                        c.total.Load(),
-		"allowed":                      c.allowed.Load(),
-		"observed":                     c.observed.Load(),
-		"audited":                      c.audited.Load(),
-		"blocked":                      c.blocked.Load(),
-		"parse_errors":                 c.parseErrors.Load(),
-		"truncated":                    c.truncated.Load(),
-		"executor_blocks":              c.executorBlocks.Load(),
-		"management_tests":             c.managementTests.Load(),
-		"router_errors":                c.routerErrors.Load(),
-		"panics_recovered":             c.panicsRecovered.Load(),
-		"opaque_media":                 c.opaqueMedia.Load(),
-		"opaque_media_allowed":         c.opaqueMediaAllowed.Load(),
-		"opaque_media_audited":         c.opaqueMediaAudited.Load(),
-		"opaque_media_blocked":         c.opaqueMediaBlocked.Load(),
-		"opaque_media_https_image_url": c.opaqueMediaHTTPSImageURL.Load(),
-		"opaque_media_data_url":        c.opaqueMediaDataURL.Load(),
-		"opaque_media_base64_image":    c.opaqueMediaBase64Image.Load(),
-		"opaque_media_audio":           c.opaqueMediaAudio.Load(),
-		"opaque_media_video":           c.opaqueMediaVideo.Load(),
-		"opaque_media_document":        c.opaqueMediaDocument.Load(),
-		"opaque_media_remote_url":      c.opaqueMediaRemoteURL.Load(),
-		"opaque_media_other":           c.opaqueMediaOther.Load(),
-		"unknown_source_formats":       c.unknownSourceFormats.Load(),
+		"total":                               c.total.Load(),
+		"allowed":                             c.allowed.Load(),
+		"observed":                            c.observed.Load(),
+		"audited":                             c.audited.Load(),
+		"blocked":                             c.blocked.Load(),
+		"parse_errors":                        c.parseErrors.Load(),
+		"truncated":                           c.truncated.Load(),
+		"incomplete_inspections":              c.incompleteInspections.Load(),
+		"incomplete_allowed":                  c.incompleteAllowed.Load(),
+		"incomplete_blocked":                  c.incompleteBlocked.Load(),
+		"incomplete_parse_error":              c.incompleteParseError.Load(),
+		"incomplete_scan_limit":               c.incompleteScanLimit.Load(),
+		"incomplete_json_depth_limit":         c.incompleteJSONDepthLimit.Load(),
+		"incomplete_text_part_limit":          c.incompleteTextPartLimit.Load(),
+		"incomplete_multipart_limit":          c.incompleteMultipartLimit.Load(),
+		"incomplete_unsupported_content_type": c.incompleteUnsupportedContentType.Load(),
+		"incomplete_rpc_body_limit":           c.incompleteRPCBodyLimit.Load(),
+		"rpc_body_limit":                      c.incompleteRPCBodyLimit.Load(),
+		"executor_blocks":                     c.executorBlocks.Load(),
+		"management_tests":                    c.managementTests.Load(),
+		"router_errors":                       c.routerErrors.Load(),
+		"panics_recovered":                    c.panicsRecovered.Load(),
+		"opaque_media":                        c.opaqueMedia.Load(),
+		"opaque_media_allowed":                c.opaqueMediaAllowed.Load(),
+		"opaque_media_audited":                c.opaqueMediaAudited.Load(),
+		"opaque_media_blocked":                c.opaqueMediaBlocked.Load(),
+		"opaque_media_https_image_url":        c.opaqueMediaHTTPSImageURL.Load(),
+		"opaque_media_data_url":               c.opaqueMediaDataURL.Load(),
+		"opaque_media_base64_image":           c.opaqueMediaBase64Image.Load(),
+		"opaque_media_audio":                  c.opaqueMediaAudio.Load(),
+		"opaque_media_video":                  c.opaqueMediaVideo.Load(),
+		"opaque_media_document":               c.opaqueMediaDocument.Load(),
+		"opaque_media_remote_url":             c.opaqueMediaRemoteURL.Load(),
+		"opaque_media_other":                  c.opaqueMediaOther.Load(),
+		"unknown_source_formats":              c.unknownSourceFormats.Load(),
 	}
 }
