@@ -35,7 +35,7 @@ CPA Cyber Abuse Guard 会在 Provider 解析和账号认证调度之前检查受
 | 文档化构建目标 | Linux amd64、glibc 2.34 或更高、CPA C ABI/RPC schema v1 |
 | 不支持平台 | musl/Alpine |
 | 内置 YAML 规则集 | `1.0.7`，SHA-256 `7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134` |
-| 分类器策略身份 | `classifier-policy-v2`，SHA-256 `26dac943b4b995b12086482630dfba54d66aa3daf26f0f39bfcf17b5f18c8204` |
+| 分类器策略身份 | `classifier-policy-v2`，SHA-256 `6a0480acc63617b688484c81baf4991cad48b57ad4414b1a8aeab0f0d196c51c` |
 | 当前验证 | 第四轮 JSON/multipart 本地单元回归已通过；CPA v7.2.75 CI artifact 与隔离 Host 证据仍待完成，状态为 **PARTIAL / NOT PRODUCTION-READY** |
 
 仓库根 `go.mod` 与 `integration/pluginstorecontract` 隔离模块都精确固定 CPA

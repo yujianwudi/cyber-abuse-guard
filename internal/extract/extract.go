@@ -794,20 +794,25 @@ func (x *extractor) rememberOpaqueMediaCandidate(frame *jsonFrame, key, value st
 	if frame == nil {
 		return
 	}
+	canonical := canonicalKey(key)
 	if _, opaque := opaqueDataURLKind(value); opaque {
 		// processString records the exact data-URL kind independently of sibling
 		// metadata; retaining a generic direct-media candidate would double count.
 		return
 	}
-	if isHTTPURL(value) {
+	if isHTTPURL(value) && isPotentialMediaURLKeyCanonical(canonical) {
 		if hasFoldedPrefix(strings.TrimSpace(value), "https://") {
 			frame.pendingHTTPSURL = true
 		} else {
 			frame.pendingHTTPURL = true
 		}
-	} else if isDirectMediaValueKeyCanonical(canonicalKey(key)) {
+	} else if isDirectMediaValueKeyCanonical(canonical) {
 		frame.pendingDirectMedia = true
 	}
+}
+
+func isPotentialMediaURLKeyCanonical(key string) bool {
+	return key == "source" || key == "url" || key == "uri" || isMediaContainerKeyCanonical(key)
 }
 
 func (x *extractor) markPendingOpaqueMedia(frame *jsonFrame) {

@@ -13,7 +13,7 @@ CPA tag commit: e57416731aec87051ac00d0812df6aebd0e9d57a
 CPA module sum: h1:WcCCeENtQ5F2bT86FVIOZJJbWCkPqrp3idl8kyZqARM=
 CPA go.mod sum: h1:f4pcyAej8RoeRhIxJfm+OUMkCKaApiA8WzxR2XVlBh8=
 classifier policy: classifier-policy-v2
-classifier policy SHA-256: 26dac943b4b995b12086482630dfba54d66aa3daf26f0f39bfcf17b5f18c8204
+classifier policy SHA-256: 6a0480acc63617b688484c81baf4991cad48b57ad4414b1a8aeab0f0d196c51c
 ```
 
 Branch HEAD, implementation freeze, artifact source commit, CI URLs, and

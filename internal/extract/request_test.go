@@ -285,6 +285,8 @@ func TestExtractRequestMediaMetadataAloneDoesNotInventOpaquePayload(t *testing.T
 	bodies := []string{
 		`{"messages":[{"role":"user","content":[{"type":"audio","format":"wav"}]}]}`,
 		`{"messages":[{"role":"user","content":[{"format":"wav","type":"audio"}]}]}`,
+		`{"messages":[{"role":"user","content":[{"type":"audio","filename":"https://example.test/metadata.wav"}]}]}`,
+		`{"messages":[{"role":"user","content":[{"filename":"https://example.test/metadata.wav","type":"audio"}]}]}`,
 	}
 	var baseline Result
 	for index, body := range bodies {
