@@ -14,13 +14,37 @@ import (
 )
 
 const (
-	DefaultMaxScanBytes = 262144
-	DefaultMaxJSONDepth = 32
-	DefaultMaxTextParts = 512
+	DefaultMaxScanBytes     = 262144
+	DefaultMaxRawBytes      = 16 << 20
+	DefaultMaxJSONDepth     = 32
+	DefaultMaxJSONTokens    = 65536
+	DefaultMaxJSONNodes     = 32768
+	DefaultMaxTextParts     = 512
+	DefaultMaxTextPartBytes = 16 << 10
 
-	HardMaxScanBytes = 4 << 20
-	HardMaxJSONDepth = 128
-	HardMaxTextParts = 4096
+	DefaultMaxMultipartBoundaryBytes = 70
+	DefaultMaxMultipartParts         = 1024
+	DefaultMaxMultipartHeaders       = 32
+	DefaultMaxMultipartHeaderBytes   = 16 << 10
+	DefaultMaxMultipartTextFields    = 512
+	DefaultMaxMultipartTextBytes     = DefaultMaxScanBytes
+	DefaultMaxMultipartTextPartBytes = 16 << 10
+
+	HardMaxScanBytes     = 4 << 20
+	HardMaxRawBytes      = 64 << 20
+	HardMaxJSONDepth     = 128
+	HardMaxJSONTokens    = 1 << 20
+	HardMaxJSONNodes     = 1 << 20
+	HardMaxTextParts     = 4096
+	HardMaxTextPartBytes = 1 << 20
+
+	HardMaxMultipartBoundaryBytes = 256
+	HardMaxMultipartParts         = 4096
+	HardMaxMultipartHeaders       = 256
+	HardMaxMultipartHeaderBytes   = 1 << 20
+	HardMaxMultipartTextFields    = 4096
+	HardMaxMultipartTextBytes     = HardMaxScanBytes
+	HardMaxMultipartTextPartBytes = 1 << 20
 
 	// Keeping parts modest prevents a single prompt from forcing large
 	// downstream classifier allocations. This is an implementation bound, not
@@ -37,18 +61,38 @@ var (
 // uses its secure task-book default; negative or excessively large values are
 // rejected.
 type Limits struct {
-	MaxScanBytes int
-	MaxJSONDepth int
-	MaxTextParts int
+	MaxScanBytes     int
+	MaxRawBytes      int
+	MaxJSONDepth     int
+	MaxJSONTokens    int
+	MaxJSONNodes     int
+	MaxTextParts     int
+	MaxTextPartBytes int
+
+	MaxMultipartBoundaryBytes int
+	MaxMultipartParts         int
+	MaxMultipartHeaders       int
+	MaxMultipartHeaderBytes   int
+	MaxMultipartTextFields    int
+	MaxMultipartTextBytes     int
+	MaxMultipartTextPartBytes int
 }
 
 // Result contains only extracted text and bounded-processing metadata.
 // ParseError is intentionally a message rather than the source body so callers
 // can audit failures without retaining prompts.
 type Result struct {
-	Parts        []string
-	Segments     []Segment
-	RoleAware    bool
+	Parts             []string
+	Segments          []Segment
+	RoleAware         bool
+	Completeness      Completeness
+	IncompleteReasons []IncompleteReason
+	TextBytesScanned  int
+	RawBytesObserved  int64
+
+	// BytesScanned and Truncated are retained for source compatibility. New
+	// request-level callers must use TextBytesScanned, RawBytesObserved, and
+	// IncompleteReasons because BytesScanned historically counted raw JSON.
 	BytesScanned int
 	Truncated    bool
 	// OpaqueMedia reports media that was deliberately not fetched or decoded.
@@ -107,15 +151,20 @@ func extractText(body []byte, limits Limits, initial contextKind, roleIndex bool
 		scanBytes = limits.MaxScanBytes
 	}
 	result := Result{
-		Parts:        make([]string, 0, minInt(8, limits.MaxTextParts)),
-		BytesScanned: scanBytes,
-		Truncated:    len(body) > scanBytes,
+		Parts:            make([]string, 0, minInt(8, limits.MaxTextParts)),
+		Completeness:     CompletenessComplete,
+		RawBytesObserved: int64(minInt(len(body), limits.MaxRawBytes)),
+		BytesScanned:     scanBytes,
+	}
+	if len(body) > scanBytes {
+		result.addIncomplete(IncompleteScanByteLimit)
 	}
 	x := extractor{limits: limits, result: &result}
 	if err := x.walkJSON(body[:scanBytes], initial, 0, len(body) > scanBytes); err != nil {
-		wrapped := fmt.Errorf("%w: %v", ErrInvalidJSON, err)
-		result.ParseError = wrapped.Error()
-		return result, wrapped
+		result.addIncomplete(IncompleteParseError)
+		result.ParseError = ErrInvalidJSON.Error()
+		result.finish()
+		return result, ErrInvalidJSON
 	}
 	// Role indexing is attempted only for a complete JSON body. When the scan
 	// boundary cuts the request, enforcing modes already fail closed on the
@@ -127,12 +176,16 @@ func extractText(body []byte, limits Limits, initial contextKind, roleIndex bool
 	// parse and cannot make the incomplete request safe.
 	if roleIndex && scanBytes == len(body) && !result.Truncated {
 		segments, roleAware, roleTruncated := extractRoleSegments(body, limits)
-		result.Truncated = result.Truncated || roleTruncated
+		if roleTruncated {
+			result.addIncomplete(IncompleteTextPartLimit)
+		}
 		if roleAware {
 			result.Segments = segments
 			result.RoleAware = true
 		}
 	}
+	result.TextBytesScanned = totalPartBytesUnbounded(result.Parts)
+	result.finish()
 	return result, nil
 }
 
@@ -140,20 +193,86 @@ func (l Limits) normalized() (Limits, error) {
 	if l.MaxScanBytes == 0 {
 		l.MaxScanBytes = DefaultMaxScanBytes
 	}
+	if l.MaxRawBytes == 0 {
+		l.MaxRawBytes = DefaultMaxRawBytes
+	}
 	if l.MaxJSONDepth == 0 {
 		l.MaxJSONDepth = DefaultMaxJSONDepth
+	}
+	if l.MaxJSONTokens == 0 {
+		l.MaxJSONTokens = DefaultMaxJSONTokens
+	}
+	if l.MaxJSONNodes == 0 {
+		l.MaxJSONNodes = DefaultMaxJSONNodes
 	}
 	if l.MaxTextParts == 0 {
 		l.MaxTextParts = DefaultMaxTextParts
 	}
+	if l.MaxTextPartBytes == 0 {
+		l.MaxTextPartBytes = DefaultMaxTextPartBytes
+	}
+	if l.MaxMultipartBoundaryBytes == 0 {
+		l.MaxMultipartBoundaryBytes = DefaultMaxMultipartBoundaryBytes
+	}
+	if l.MaxMultipartParts == 0 {
+		l.MaxMultipartParts = DefaultMaxMultipartParts
+	}
+	if l.MaxMultipartHeaders == 0 {
+		l.MaxMultipartHeaders = DefaultMaxMultipartHeaders
+	}
+	if l.MaxMultipartHeaderBytes == 0 {
+		l.MaxMultipartHeaderBytes = DefaultMaxMultipartHeaderBytes
+	}
+	if l.MaxMultipartTextFields == 0 {
+		l.MaxMultipartTextFields = DefaultMaxMultipartTextFields
+	}
+	if l.MaxMultipartTextBytes == 0 {
+		l.MaxMultipartTextBytes = DefaultMaxMultipartTextBytes
+	}
+	if l.MaxMultipartTextPartBytes == 0 {
+		l.MaxMultipartTextPartBytes = DefaultMaxMultipartTextPartBytes
+	}
 	if l.MaxScanBytes < 1 || l.MaxScanBytes > HardMaxScanBytes {
 		return Limits{}, fmt.Errorf("%w: MaxScanBytes must be between 1 and %d", ErrInvalidLimits, HardMaxScanBytes)
+	}
+	if l.MaxRawBytes < 1 || l.MaxRawBytes > HardMaxRawBytes {
+		return Limits{}, fmt.Errorf("%w: MaxRawBytes must be between 1 and %d", ErrInvalidLimits, HardMaxRawBytes)
 	}
 	if l.MaxJSONDepth < 1 || l.MaxJSONDepth > HardMaxJSONDepth {
 		return Limits{}, fmt.Errorf("%w: MaxJSONDepth must be between 1 and %d", ErrInvalidLimits, HardMaxJSONDepth)
 	}
+	if l.MaxJSONTokens < 1 || l.MaxJSONTokens > HardMaxJSONTokens {
+		return Limits{}, fmt.Errorf("%w: MaxJSONTokens must be between 1 and %d", ErrInvalidLimits, HardMaxJSONTokens)
+	}
+	if l.MaxJSONNodes < 1 || l.MaxJSONNodes > HardMaxJSONNodes {
+		return Limits{}, fmt.Errorf("%w: MaxJSONNodes must be between 1 and %d", ErrInvalidLimits, HardMaxJSONNodes)
+	}
 	if l.MaxTextParts < 1 || l.MaxTextParts > HardMaxTextParts {
 		return Limits{}, fmt.Errorf("%w: MaxTextParts must be between 1 and %d", ErrInvalidLimits, HardMaxTextParts)
+	}
+	if l.MaxTextPartBytes < 1 || l.MaxTextPartBytes > HardMaxTextPartBytes {
+		return Limits{}, fmt.Errorf("%w: MaxTextPartBytes must be between 1 and %d", ErrInvalidLimits, HardMaxTextPartBytes)
+	}
+	if l.MaxMultipartBoundaryBytes < 1 || l.MaxMultipartBoundaryBytes > HardMaxMultipartBoundaryBytes {
+		return Limits{}, fmt.Errorf("%w: MaxMultipartBoundaryBytes must be between 1 and %d", ErrInvalidLimits, HardMaxMultipartBoundaryBytes)
+	}
+	if l.MaxMultipartParts < 1 || l.MaxMultipartParts > HardMaxMultipartParts {
+		return Limits{}, fmt.Errorf("%w: MaxMultipartParts must be between 1 and %d", ErrInvalidLimits, HardMaxMultipartParts)
+	}
+	if l.MaxMultipartHeaders < 1 || l.MaxMultipartHeaders > HardMaxMultipartHeaders {
+		return Limits{}, fmt.Errorf("%w: MaxMultipartHeaders must be between 1 and %d", ErrInvalidLimits, HardMaxMultipartHeaders)
+	}
+	if l.MaxMultipartHeaderBytes < 1 || l.MaxMultipartHeaderBytes > HardMaxMultipartHeaderBytes {
+		return Limits{}, fmt.Errorf("%w: MaxMultipartHeaderBytes must be between 1 and %d", ErrInvalidLimits, HardMaxMultipartHeaderBytes)
+	}
+	if l.MaxMultipartTextFields < 1 || l.MaxMultipartTextFields > HardMaxMultipartTextFields {
+		return Limits{}, fmt.Errorf("%w: MaxMultipartTextFields must be between 1 and %d", ErrInvalidLimits, HardMaxMultipartTextFields)
+	}
+	if l.MaxMultipartTextBytes < 1 || l.MaxMultipartTextBytes > HardMaxMultipartTextBytes {
+		return Limits{}, fmt.Errorf("%w: MaxMultipartTextBytes must be between 1 and %d", ErrInvalidLimits, HardMaxMultipartTextBytes)
+	}
+	if l.MaxMultipartTextPartBytes < 1 || l.MaxMultipartTextPartBytes > HardMaxMultipartTextPartBytes {
+		return Limits{}, fmt.Errorf("%w: MaxMultipartTextPartBytes must be between 1 and %d", ErrInvalidLimits, HardMaxMultipartTextPartBytes)
 	}
 	return l, nil
 }
@@ -191,10 +310,13 @@ const (
 )
 
 type extractor struct {
-	limits     Limits
-	result     *Result
-	stop       bool
-	skipDecode bool
+	limits      Limits
+	result      *Result
+	stop        bool
+	skipDecode  bool
+	requestMode bool
+	jsonTokens  int
+	jsonNodes   int
 }
 
 // walkJSON uses Decoder.Token and an explicit stack. Consequently, semantic
@@ -238,6 +360,26 @@ func (x *extractor) walkJSON(data []byte, initial contextKind, baseDepth int, bo
 
 		if rootDone {
 			return errors.New("multiple JSON values")
+		}
+
+		isClosing := false
+		if delim, ok := token.(json.Delim); ok {
+			isClosing = delim == '}' || delim == ']'
+		}
+		isObjectKey := len(stack) > 0 && stack[len(stack)-1].kind == '{' && stack[len(stack)-1].expectKey && !isClosing
+		x.jsonTokens++
+		if x.jsonTokens > x.limits.MaxJSONTokens {
+			x.result.addIncomplete(IncompleteJSONTokenLimit)
+			x.stop = true
+			return nil
+		}
+		if !isClosing && !isObjectKey {
+			x.jsonNodes++
+			if x.jsonNodes > x.limits.MaxJSONNodes {
+				x.result.addIncomplete(IncompleteJSONNodeLimit)
+				x.stop = true
+				return nil
+			}
 		}
 
 		if delim, ok := token.(json.Delim); ok && (delim == '}' || delim == ']') {
@@ -288,7 +430,7 @@ func (x *extractor) walkJSON(data []byte, initial contextKind, baseDepth int, bo
 		if delim, ok := token.(json.Delim); ok && (delim == '{' || delim == '[') {
 			depth := baseDepth + len(stack) + 1
 			if depth > x.limits.MaxJSONDepth {
-				x.result.Truncated = true
+				x.result.addIncomplete(IncompleteJSONDepthLimit)
 				x.stop = true
 				// Do not keep walking or growing a frame stack past the
 				// configured semantic depth. A deeply nested JSON bomb must
@@ -353,7 +495,7 @@ func (x *extractor) rememberOpaqueMediaCandidate(frame *jsonFrame, key, value st
 		return
 	}
 	if isHTTPURL(value) {
-		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(value)), "https://") {
+		if hasFoldedPrefix(strings.TrimSpace(value), "https://") {
 			frame.pendingHTTPSURL = true
 		} else {
 			frame.pendingHTTPURL = true
@@ -433,10 +575,6 @@ func (x *extractor) processString(text, key string, ctx contextKind, media bool,
 		x.markOpaqueMedia(kind)
 		return
 	}
-	if containsBinaryControl(text) {
-		x.result.Truncated = true
-		return
-	}
 	if media {
 		if isHTTPURL(text) {
 			x.markOpaqueMedia(remoteOpaqueKind(mediaKind, text))
@@ -449,6 +587,12 @@ func (x *extractor) processString(text, key string, ctx contextKind, media bool,
 		if isMediaMetadataKeyCanonical(canonical) {
 			return
 		}
+	}
+	if containsBinaryControl(text) {
+		x.result.addIncomplete(IncompleteTextPartByteLimit)
+		return
+	}
+	if media {
 		if ctx == contextNone {
 			x.addText(text, key)
 			return
@@ -465,12 +609,15 @@ func (x *extractor) processString(text, key string, ctx contextKind, media bool,
 		return
 	}
 	x.addText(text, key)
+	if x.stop {
+		return
+	}
 	if x.skipDecode {
 		return
 	}
 	decoded, encoded, incomplete := decodeBoundedText(text)
 	if encoded && incomplete {
-		x.result.Truncated = true
+		x.result.addIncomplete(IncompleteTextPartByteLimit)
 	}
 	for _, variant := range decoded {
 		if nestedToolString && x.processNestedToolJSON(strings.TrimSpace(variant), semanticDepth) {
@@ -504,7 +651,7 @@ func (x *extractor) processNestedToolJSON(trimmed string, semanticDepth int) boo
 		return false
 	}
 	if semanticDepth >= x.limits.MaxJSONDepth {
-		x.result.Truncated = true
+		x.result.addIncomplete(IncompleteJSONDepthLimit)
 		x.stop = true
 		return true
 	}
@@ -518,9 +665,13 @@ func (x *extractor) addText(text, key string) {
 	if strings.TrimSpace(text) == "" {
 		return
 	}
+	if x.requestMode {
+		x.addRequestText(text)
+		return
+	}
 	for len(text) > maxTextPartBytes {
 		if len(x.result.Parts) >= x.limits.MaxTextParts {
-			x.result.Truncated = true
+			x.result.addIncomplete(IncompleteTextPartLimit)
 			x.stop = true
 			return
 		}
@@ -538,11 +689,47 @@ func (x *extractor) addText(text, key string) {
 		return
 	}
 	if len(x.result.Parts) >= x.limits.MaxTextParts {
-		x.result.Truncated = true
+		x.result.addIncomplete(IncompleteTextPartLimit)
 		x.stop = true
 		return
 	}
 	x.result.Parts = append(x.result.Parts, text)
+}
+
+func (x *extractor) addRequestText(text string) {
+	if len(x.result.Parts) >= x.limits.MaxTextParts {
+		x.result.addIncomplete(IncompleteTextPartLimit)
+		x.stop = true
+		return
+	}
+
+	allowedBytes := len(text)
+	partLimited := allowedBytes > x.limits.MaxTextPartBytes
+	if partLimited {
+		allowedBytes = x.limits.MaxTextPartBytes
+	}
+	remaining := x.limits.MaxScanBytes - x.result.TextBytesScanned
+	scanLimited := allowedBytes > remaining || (remaining <= 0 && len(text) > 0)
+	if allowedBytes > remaining {
+		allowedBytes = remaining
+	}
+	if allowedBytes < 0 {
+		allowedBytes = 0
+	}
+	allowedText := utf8Prefix(text, allowedBytes)
+	if allowedText != "" {
+		x.result.Parts = append(x.result.Parts, allowedText)
+		x.result.TextBytesScanned += len(allowedText)
+	}
+	if partLimited {
+		x.result.addIncomplete(IncompleteTextPartByteLimit)
+	}
+	if scanLimited || len(allowedText) < len(text) && !partLimited {
+		x.result.addIncomplete(IncompleteScanByteLimit)
+	}
+	if partLimited || scanLimited || len(allowedText) < len(text) {
+		x.stop = true
+	}
 }
 
 func canonicalKey(key string) string {
@@ -567,7 +754,7 @@ func canonicalKey(key string) string {
 
 func isTextKeyCanonical(key string) bool {
 	switch key {
-	case "content", "text", "input", "inputtext", "outputtext", "system", "instructions", "systeminstruction", "prompt", "query":
+	case "content", "text", "input", "inputtext", "outputtext", "system", "instructions", "systeminstruction", "prompt", "negativeprompt", "message", "caption", "query":
 		return true
 	default:
 		return false
@@ -625,13 +812,13 @@ func isMediaContainerKeyCanonical(key string) bool {
 
 func mediaContextForKey(key string) mediaContextKind {
 	switch key {
-	case "image", "imageurl", "imagedata", "inputimage", "outputimage":
+	case "image", "images", "mask", "imageurl", "imagedata", "inputimage", "outputimage":
 		return mediaContextImage
-	case "audio", "inputaudio", "inlineaudio":
+	case "audio", "audiourl", "inputaudio", "inlineaudio":
 		return mediaContextAudio
-	case "video", "inputvideo", "outputvideo":
+	case "video", "videourl", "inputvideo", "outputvideo":
 		return mediaContextVideo
-	case "file", "filedata", "document", "attachment":
+	case "file", "fileid", "fileurl", "fileuri", "filedata", "inputfile", "outputfile", "document", "documenturl", "attachment":
 		return mediaContextDocument
 	case "inlinedata":
 		return mediaContextOther
@@ -677,7 +864,7 @@ func marksMediaContext(key, value string) (bool, mediaContextKind) {
 			return true, mediaContextAudio
 		case "video", "inputvideo", "outputvideo":
 			return true, mediaContextVideo
-		case "file", "document", "attachment":
+		case "file", "inputfile", "outputfile", "document", "attachment":
 			return true, mediaContextDocument
 		case "inlinedata":
 			return true, mediaContextOther
@@ -712,15 +899,14 @@ func mediaContextForMIME(value string) mediaContextKind {
 
 func opaqueDataURLKind(value string) (OpaqueMediaKind, bool) {
 	trimmed := strings.TrimSpace(value)
-	lower := strings.ToLower(trimmed)
-	if !strings.HasPrefix(lower, "data:") {
+	if len(trimmed) < len("data:") || !strings.EqualFold(trimmed[:len("data:")], "data:") {
 		return "", false
 	}
-	comma := strings.IndexByte(lower, ',')
+	comma := strings.IndexByte(trimmed, ',')
 	if comma < 0 {
 		return OpaqueMediaDataURL, true
 	}
-	header := lower[len("data:"):comma]
+	header := strings.ToLower(trimmed[len("data:"):comma])
 	mimeType := header
 	if semicolon := strings.IndexByte(mimeType, ';'); semicolon >= 0 {
 		mimeType = mimeType[:semicolon]
@@ -747,7 +933,7 @@ func opaqueDataURLKind(value string) (OpaqueMediaKind, bool) {
 func remoteOpaqueKind(kind mediaContextKind, value string) OpaqueMediaKind {
 	switch kind {
 	case mediaContextImage:
-		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(value)), "https://") {
+		if hasFoldedPrefix(strings.TrimSpace(value), "https://") {
 			return OpaqueMediaHTTPSImageURL
 		}
 		return OpaqueMediaRemoteURL
@@ -778,8 +964,12 @@ func directOpaqueKind(kind mediaContextKind) OpaqueMediaKind {
 }
 
 func isHTTPURL(value string) bool {
-	value = strings.ToLower(strings.TrimSpace(value))
-	return strings.HasPrefix(value, "https://") || strings.HasPrefix(value, "http://")
+	value = strings.TrimSpace(value)
+	return hasFoldedPrefix(value, "https://") || hasFoldedPrefix(value, "http://")
+}
+
+func hasFoldedPrefix(value, prefix string) bool {
+	return len(value) >= len(prefix) && strings.EqualFold(value[:len(prefix)], prefix)
 }
 
 func containsBinaryControl(value string) bool {
@@ -796,4 +986,15 @@ func minInt(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func totalPartBytesUnbounded(parts []string) int {
+	total := 0
+	for _, part := range parts {
+		if len(part) > int(^uint(0)>>1)-total {
+			return int(^uint(0) >> 1)
+		}
+		total += len(part)
+	}
+	return total
 }
