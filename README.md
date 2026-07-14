@@ -128,10 +128,14 @@ execution, credential/access, persistence, evasion, exfiltration, impact,
 scale, authorization/defensive scope, wrapper/amplifier, role scope, carrier,
 composition mode, and reason codes. It contains no prompt fragments.
 
-Supported source extractors cover OpenAI Chat, OpenAI Responses, Anthropic
-Claude, and Google Gemini request shapes. The four-protocol HTTP and
-zero-downstream-call matrix passed authorized GitHub CI on the implementation
-freeze; Leo's isolated verification remains not run.
+Supported request inspection covers OpenAI Chat, OpenAI Responses, Anthropic
+Claude, Google Gemini, and OpenAI image request shapes. JSON and bounded
+`multipart/form-data` use one Content-Type-aware entry point. Multipart prompt
+fields are inspected while image, audio, video, and file parts are skipped as
+opaque media without being converted to classifier text. The earlier
+four-protocol HTTP and zero-downstream-call matrix passed authorized GitHub CI
+on implementation freeze `61536f9`; the second-round multimodal candidate and
+Leo's isolated verification remain separate gates.
 
 Recognized roles keep system safety policy and assistant refusals separate from
 user intent. User-authored adjacent turns and one explicitly linked bounded
@@ -147,11 +151,23 @@ Text handling is deliberately bounded:
 - URL percent, HTML entity, inspectable Base64, textual data URL, JSON escape,
   and bounded nested tool-JSON handling;
 - provider-aware role, content-part, tool-argument, and tool-output carriers;
+- independent raw-request and extracted-text budgets, so uploaded media does
+  not consume the ordinary text-classification budget;
+- bounded multipart boundary, part, header, field, and aggregate-text limits,
+  with no temporary-file parsing and no remote media fetch;
 - no decompression, archive expansion, network fetch, or cross-request semantic
   memory.
 
 Images, audio, video, and document attachments are opaque. Their policy can be
 `block`, `audit`, or `allow`; `allow` means “not inspected”, not “safe”.
+
+Content inspection completeness is a separate policy input. Malformed JSON,
+scan/depth/part limits, unsupported Content-Type, multipart resource limits,
+and plugin RPC body limits are `incomplete_inspection`, not runtime crashes.
+`balanced` passes such requests through and emits an audit decision; `strict`
+locally blocks them. A partially inspected prefix can never trigger a
+`balanced` block. See
+[MULTIMODAL_INSPECTION_CONTRACT.md](docs/MULTIMODAL_INSPECTION_CONTRACT.md).
 
 ## Modes
 

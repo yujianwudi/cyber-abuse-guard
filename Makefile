@@ -72,6 +72,8 @@ race:
 
 fuzz-smoke:
 	$(GO) test ./internal/extract -run='^$$' -fuzz=FuzzExtractText -fuzztime=5s
+	$(GO) test ./internal/extract -run='^$$' -fuzz=FuzzExtractRequestContentType -fuzztime=5s
+	$(GO) test ./internal/extract -run='^$$' -fuzz=FuzzExtractRequestMultipart -fuzztime=5s
 	$(GO) test ./internal/classifier -run='^$$' -fuzz=FuzzClassifier -fuzztime=5s
 	$(GO) test ./internal/config -run='^$$' -fuzz=FuzzConfigParser -fuzztime=5s
 
@@ -103,6 +105,7 @@ benchmark:
 	$(GO) test ./internal/classifier \
 		-run='^TestClassifier(Adversarial)?PerformanceAcceptance$$' -count=1 -v
 	$(GO) test ./internal/classifier -run='^$$' -bench=. -benchmem -count=3
+	$(GO) test ./internal/extract -run='^$$' -bench='^BenchmarkExtractRequestMultipart' -benchmem -benchtime=3x
 
 build-linux-amd64:
 	GO=$(GO) VERSION=$(VERSION) ./scripts/build-linux-amd64.sh
