@@ -17,7 +17,7 @@ now recorded for implementation freeze `61536f9`; this is still not a release
 approval or independent quality PASS.
 
 No tag, GitHub Release, formal artifact publication, or production deployment is
-authorized. Even a future passing engineering matrix cannot guarantee that an
+authorized. Even a future-passing engineering matrix cannot guarantee that an
 upstream account will never be warned, rate-limited, suspended, or deactivated.
 
 Methodology incident: three incorrectly scoped WSL source-search commands
@@ -26,6 +26,13 @@ corpus. All three were stopped immediately; the rows were not analyzed or used
 for tuning or conclusions. Evaluation v10 content was not accessed. The retired
 holdout-v3 corpus is no longer eligible as independent evidence, and the
 incident independently blocks handoff.
+
+The emitted rows appeared only in interactive command output captured by the
+task transcript. None of the three commands redirected that output to a
+repository or workspace file, and no separate emitted-output copy was retained
+locally. There was therefore no local output file to remove before handoff; the
+task transcript remains retained as the audit record and is permanently
+excluded from evaluation evidence.
 
 Independent Host audit also found a separate handoff blocker. Guard
 `executor.http_request` returns an RPC error carrying status 405 and the official
@@ -58,6 +65,11 @@ ruleset_sha256: 7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134
 classifier_policy_version: classifier-policy-v2
 classifier_policy_sha256: dc9a174099cb2f621e5333a508d4645604f96f470a6d9ae12a1acfb363d29cf2
 ```
+
+The final resolution-only follow-up commit changes only the `SELF` evidence
+identity fields to this substantive evidence snapshot's immutable parent
+commit. The commit plus repository path independently identifies each exact
+evidence document without a self-referential file hash.
 
 The classifier-policy digest is source-bound and exposed through classifier
 results/authenticated status. Current build metadata and artifact verification
