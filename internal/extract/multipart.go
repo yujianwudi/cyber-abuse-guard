@@ -12,7 +12,7 @@ import (
 
 const multipartDiscardBufferBytes = 32 << 10
 
-func extractMultipart(body []byte, boundary string, limits Limits) Result {
+func extractMultipart(body []byte, boundary string, profile RequestProfile, limits Limits) Result {
 	result := newRequestResult(body, limits)
 	if reason := preflightMultipart(body, boundary, limits); reason != "" {
 		result.addIncomplete(reason)
@@ -21,7 +21,6 @@ func extractMultipart(body []byte, boundary string, limits Limits) Result {
 	}
 	reader := multipart.NewReader(bytes.NewReader(body), boundary)
 	discardBuffer := make([]byte, multipartDiscardBufferBytes)
-	jsonExtractor := extractor{limits: limits, result: &result, requestMode: true}
 	partCount := 0
 	textFieldCount := 0
 	multipartTextBytes := 0
@@ -67,7 +66,22 @@ func extractMultipart(body []byte, boundary string, limits Limits) Result {
 			_ = part.Close()
 			break
 		}
-		if isMultipartFilePart(name, disposition, hasFilename, partMediaType) {
+		fieldClass := classifyMultipartField(profile.Source, name)
+		fileEvidence := hasMultipartFileEvidence(disposition, hasFilename, partMediaType)
+		textTypeMismatch := fieldClass == multipartFieldText && partMediaType != "" && !strings.HasPrefix(partMediaType, "text/")
+		if fieldClass == multipartFieldText && (fileEvidence || textTypeMismatch) {
+			result.OpaqueMedia = true
+			markMultipartOpaque(&result, name, partMediaType)
+			result.addIncomplete(IncompleteMultipartTextFieldTypeMismatch)
+			if _, err := io.CopyBuffer(io.Discard, part, discardBuffer); err != nil {
+				result.addIncomplete(IncompleteMultipartParseError)
+				_ = part.Close()
+				break
+			}
+			_ = part.Close()
+			continue
+		}
+		if fileEvidence || fieldClass == multipartFieldFile {
 			result.OpaqueMedia = true
 			markMultipartOpaque(&result, name, partMediaType)
 			if _, err := io.CopyBuffer(io.Discard, part, discardBuffer); err != nil {
@@ -78,7 +92,17 @@ func extractMultipart(body []byte, boundary string, limits Limits) Result {
 			_ = part.Close()
 			continue
 		}
-		if isMultipartMetadataField(name) {
+		if fieldClass == multipartFieldMetadata {
+			if _, err := io.CopyBuffer(io.Discard, part, discardBuffer); err != nil {
+				result.addIncomplete(IncompleteMultipartParseError)
+				_ = part.Close()
+				break
+			}
+			_ = part.Close()
+			continue
+		}
+		if fieldClass == multipartFieldUnknown {
+			result.addIncomplete(IncompleteMultipartUnknownField)
 			if _, err := io.CopyBuffer(io.Discard, part, discardBuffer); err != nil {
 				result.addIncomplete(IncompleteMultipartParseError)
 				_ = part.Close()
@@ -118,16 +142,6 @@ func extractMultipart(body []byte, boundary string, limits Limits) Result {
 			break
 		}
 		multipartTextBytes += len(value)
-		if isMultipartJSONField(name) && obviousJSON(value) {
-			if err := jsonExtractor.walkJSON(value, contextText, 0, false); err != nil {
-				result.addIncomplete(IncompleteMultipartParseError)
-				break
-			}
-			if jsonExtractor.stop {
-				break
-			}
-			continue
-		}
 		if !appendMultipartText(&result, string(value), limits, &multipartTextBytes) {
 			break
 		}
@@ -305,8 +319,8 @@ func mimeHeaderValues(header textproto.MIMEHeader, name string) []string {
 	return result
 }
 
-func isMultipartFilePart(name, disposition string, hasFilename bool, mediaType string) bool {
-	if disposition == "attachment" || hasFilename || isMultipartFileField(name) {
+func hasMultipartFileEvidence(disposition string, hasFilename bool, mediaType string) bool {
+	if disposition == "attachment" || hasFilename {
 		return true
 	}
 	switch {
@@ -321,35 +335,6 @@ func isMultipartFilePart(name, disposition string, hasFilename bool, mediaType s
 		return true
 	}
 	return mediaType != "" && !strings.HasPrefix(mediaType, "text/") && !isJSONMediaType(mediaType)
-}
-
-func isMultipartFileField(name string) bool {
-	canonical := canonicalMultipartField(name)
-	switch canonical {
-	case "image", "images", "mask", "file", "files", "audio", "video", "document", "attachment":
-		return true
-	default:
-		return false
-	}
-}
-
-func isMultipartMetadataField(name string) bool {
-	canonical := canonicalMultipartField(name)
-	switch canonical {
-	case "model", "size", "quality", "n", "responseformat", "style", "user", "stream", "seed", "format", "outputformat":
-		return true
-	default:
-		return false
-	}
-}
-
-func isMultipartJSONField(name string) bool {
-	switch canonicalMultipartField(name) {
-	case "messages", "message", "input", "instructions", "system", "contents", "parts":
-		return true
-	default:
-		return false
-	}
 }
 
 func canonicalMultipartField(name string) string {

@@ -45,8 +45,10 @@ jobs:
         run: make git-diff-check
       - name: module-verify
         run: make module-verify
-      - name: CPA-v7.2.72-host-source-and-fail-open-contract
+      - name: CPA-v7.2.75-host-source-and-fail-open-contract
         run: make cpa-host-fixture-contract
+      - name: round4-regression
+        run: make round4-regression
       - name: unit-test
         run: make unit-test
       - name: race
@@ -67,7 +69,7 @@ jobs:
         run: make benchmark
       - name: dependency-vulnerability-gate
         run: make vulncheck
-      - name: build-linux-amd64-and-CPA-v7.2.72-store-installed-host
+      - name: build-linux-amd64-and-CPA-v7.2.75-store-installed-host
         env:
           ALLOW_DIRTY_BUILD: '1'
           CYBER_ABUSE_GUARD_REQUIRE_HOST_INTEGRATION: '1'
@@ -81,6 +83,29 @@ jobs:
         env:
           ALLOW_DIRTY_BUILD: '1'
         run: make artifact-hash
+      - name: safe-evidence-summary
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          metadata = json.loads(Path("dist/build-metadata.json").read_text(encoding="utf-8"))
+          print("artifact_commit=" + str(metadata.get("commit", "unknown")))
+          print("artifact_version=" + str(metadata.get("version", "unknown")))
+          PY
+          for artifact in \
+            dist/cyber-abuse-guard-v0.1.2-dirty.so \
+            dist/cyber-abuse-guard-v0.1.2-dirty.so.sha256 \
+            dist/cyber-abuse-guard_0.1.2-dirty_linux_amd64.zip \
+            dist/cyber-abuse-guard-v0.1.2-dirty-audit-bundle.zip \
+            dist/build-metadata.json \
+            dist/checksums.txt \
+            dist/ruleset-manifest.json \
+            dist/ruleset.sha256 \
+            dist/sbom.cdx.json; do
+            printf 'artifact_path=%s artifact_bytes=%s ' "$artifact" "$(stat -c %s "$artifact")"
+            sha256sum "$artifact"
+          done
+          echo 'host_matrix_summary=CPA v7.2.75 source contract and Store-installed Host steps completed'
       - name: clean-tree-check
         run: make clean-tree-check
       - name: Upload development verification artifacts
@@ -127,7 +152,6 @@ jobs:
         run: make clean-tree-check
 
   fuzz-long:
-    if: github.event_name == 'push'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -138,6 +162,7 @@ jobs:
       - run: |
           go test ./internal/extract -run='^$' -fuzz=FuzzExtractText -fuzztime=30s
           go test ./internal/extract -run='^$' -fuzz=FuzzExtractRequestContentType -fuzztime=30s
-          go test ./internal/extract -run='^$' -fuzz=FuzzExtractRequestMultipart -fuzztime=30s
+          go test ./internal/extract -run='^$' -fuzz=FuzzExtractRequestMediaMemberOrder -fuzztime=60s
+          go test ./internal/extract -run='^$' -fuzz=FuzzExtractRequestMultipart -fuzztime=60s
           go test ./internal/classifier -run='^$' -fuzz=FuzzClassifier -fuzztime=30s
           go test ./internal/config -run='^$' -fuzz=FuzzConfigParser -fuzztime=30s

@@ -1,4 +1,4 @@
-// Package plugin implements the CPA v7.2.72 schema-v1 RPC surface for the
+// Package plugin implements the CPA v7.2.75 schema-v1 RPC surface for the
 // cyber-abuse guard. The native C boundary in cmd/cyber-abuse-guard is kept
 // deliberately thin; policy state and lifecycle semantics live here so they
 // can be race-tested without loading a shared object.
@@ -54,7 +54,7 @@ var metadata = pluginapi.Metadata{
 		{Name: "hard_block_even_if_authorized", Type: pluginapi.ConfigFieldTypeObject, Description: "Categories whose operational abuse remains protected from authorization score reductions."},
 		{Name: "subject_control", Type: pluginapi.ConfigFieldTypeObject, Description: "Rolling subject-risk, cooldown, and manual-block settings."},
 		{Name: "audit", Type: pluginapi.ConfigFieldTypeObject, Description: "Privacy-minimal SQLite audit retention and field settings; original text is never supported."},
-		{Name: "trusted_proxy", Type: pluginapi.ConfigFieldTypeObject, Description: "Reserved for a future verified-peer API; enabling it is rejected on CPA v7.2.72."},
+		{Name: "trusted_proxy", Type: pluginapi.ConfigFieldTypeObject, Description: "Reserved for a future verified-peer API; enabling it is rejected on CPA v7.2.75."},
 		{Name: "classifier", Type: pluginapi.ConfigFieldTypeObject, Description: "Reserved local-classifier interface; enabling it is unsupported in v0.1 and rejected."},
 	},
 }
@@ -274,7 +274,7 @@ func (p *Plugin) callOversizedExecutor() ([]byte, int) {
 }
 
 // recoverCallbackPanic is deliberately mode-aware for ModelRouter callbacks.
-// CPA v7.2.72 continues native routing after a router error, so an enforcing
+// CPA v7.2.75 continues native routing after a router error, so an enforcing
 // runtime must turn a recovered panic into a successful local self-route. The
 // recovered value is never logged because it can contain attacker-controlled
 // data. Other RPC methods retain the ABI-level non-zero failure signal.
@@ -560,7 +560,7 @@ func (p *Plugin) reportABICapabilityLimits() {
 	if !p.abiLimitLogged.CompareAndSwap(false, true) {
 		return
 	}
-	p.log("warn", "cyber-abuse-guard cannot verify router ordering or duplicate plugin binaries through the CPA v7.2.72 plugin ABI", map[string]any{
+	p.log("warn", "cyber-abuse-guard cannot verify router ordering or duplicate plugin binaries through the CPA v7.2.75 plugin ABI", map[string]any{
 		"plugin":                                 ID,
 		"code":                                   "cpa_abi_conflict_detection_unavailable",
 		"router_enumeration_supported":           false,
@@ -609,7 +609,7 @@ func (p *Plugin) buildRuntime(rawConfig []byte) (*runtimeState, error) {
 		return nil, fmt.Errorf("classifier.enabled is not supported in v%s; use deterministic local rules", buildinfo.Current().Version)
 	}
 	if cfg.TrustedProxy.Enabled {
-		return nil, fmt.Errorf("trusted_proxy.enabled is not supported because CPA v7.2.72 does not provide a verified direct peer address")
+		return nil, fmt.Errorf("trusted_proxy.enabled is not supported because CPA v7.2.75 does not provide a verified direct peer address")
 	}
 	if cfg.Audit.LogOriginalText {
 		return nil, fmt.Errorf("audit.log_original_text is not supported; prompts and request bodies are never persisted")
@@ -787,7 +787,7 @@ func (p *Plugin) Shutdown() {
 		p.lifecycleMu.Unlock()
 		return
 	}
-	// Publish a terminal router policy before publishing shutdown. CPA v7.2.72
+	// Publish a terminal router policy before publishing shutdown. CPA v7.2.75
 	// continues upstream routing on router RPC errors, so late callbacks must
 	// receive a successful response. A runtime that was enforcing remains
 	// fail-closed; observe/audit/off remains an intentional pass-through.
@@ -844,6 +844,8 @@ type counters struct {
 	incompleteJSONDepthLimit         atomic.Uint64
 	incompleteTextPartLimit          atomic.Uint64
 	incompleteMultipartLimit         atomic.Uint64
+	incompleteMultipartSchema        atomic.Uint64
+	incompleteDeferredTextLimit      atomic.Uint64
 	incompleteUnsupportedContentType atomic.Uint64
 	incompleteRPCBodyLimit           atomic.Uint64
 	executorBlocks                   atomic.Uint64
@@ -882,6 +884,8 @@ func (c *counters) snapshot() map[string]uint64 {
 		"incomplete_json_depth_limit":         c.incompleteJSONDepthLimit.Load(),
 		"incomplete_text_part_limit":          c.incompleteTextPartLimit.Load(),
 		"incomplete_multipart_limit":          c.incompleteMultipartLimit.Load(),
+		"incomplete_multipart_schema":         c.incompleteMultipartSchema.Load(),
+		"incomplete_deferred_text_limit":      c.incompleteDeferredTextLimit.Load(),
 		"incomplete_unsupported_content_type": c.incompleteUnsupportedContentType.Load(),
 		"incomplete_rpc_body_limit":           c.incompleteRPCBodyLimit.Load(),
 		"rpc_body_limit":                      c.incompleteRPCBodyLimit.Load(),

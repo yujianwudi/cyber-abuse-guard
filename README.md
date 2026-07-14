@@ -14,10 +14,10 @@ English | [简体中文](README_CN.md)
 > [!WARNING]
 > This repository is an **unreleased development candidate**. The v0.1.2
 > release decision is **BLOCKED**, the only methodologically valid v10
-> evaluation is `CONSUMED / FAIL`. CPA v7.2.72 real-Host automation passed the
-> authorized GitHub CI job; Leo's isolated verification remains not run. Do not
-> create a v0.1.2 tag or GitHub Release, and do not deploy this candidate to
-> production.
+> evaluation is `CONSUMED / FAIL`. The fourth-round candidate targets CPA
+> v7.2.75; its new GitHub CI artifact, isolated Host matrix, and Leo verification
+> remain pending. Do not create a v0.1.2 tag or GitHub Release, and do not deploy
+> this candidate to production.
 
 When CPA has loaded and registered the plugin, Router ordering reaches it, and
 the self-executor is ready, CPA Cyber Abuse Guard inspects supported model
@@ -34,20 +34,21 @@ is not sent to a public classifier.
 | Repository state | Unreleased post-v10 development tree; candidate lineage v0.1.2 |
 | Release decision | **BLOCKED / NOT PRODUCTION-READY** |
 | Formal evaluation | v10 `CONSUMED / FAIL`: benign FP 28/320, policy blocked 49/320, exact 33/320 |
-| Runtime baseline | CPA `v7.2.72`, commit `6279bb8a4c2835ff6ed99c6b85083b2afbefa681`, C ABI/RPC schema v1 |
-| CPA v7.2.72 checksums | module `h1:ppce0MLsz2xJi2yi3/A60zu03cM7bMWBAEJ6eC29E5Y=`; go.mod `h1:f4pcyAej8RoeRhIxJfm+OUMkCKaApiA8WzxR2XVlBh8=` |
+| Runtime baseline | CPA `v7.2.75`, commit `e57416731aec87051ac00d0812df6aebd0e9d57a`, C ABI/RPC schema v1 |
+| CPA v7.2.75 checksums | module `h1:WcCCeENtQ5F2bT86FVIOZJJbWCkPqrp3idl8kyZqARM=`; go.mod `h1:f4pcyAej8RoeRhIxJfm+OUMkCKaApiA8WzxR2XVlBh8=` |
 | Documented build target | Linux amd64, glibc 2.34 or newer, CPA C ABI/RPC schema v1 |
 | Unsupported platform | musl/Alpine |
 | Embedded YAML ruleset | `1.0.7`, SHA-256 `7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134` |
-| Classifier policy identity | `classifier-policy-v2`, SHA-256 `bd55065bc3f1fd350148ad8f2f440c8f606aeb02fabd0024d7a350fe23ee4585` |
-| Current validation | Round-two source/build/artifact and CPA Store-installed Host fixture **GITHUB CI PASS** on implementation freeze `c27294d`; Leo/Tencent isolated-Host verification **NOT RUN**; status remains **PARTIAL / NOT PRODUCTION-READY** |
+| Classifier policy identity | `classifier-policy-v2`, SHA-256 `ac8c30a6367762a21c6ea81234678390b50cfcf00b793c5115f557074741adf9` |
+| Current validation | Fourth-round JSON/multipart unit regressions pass locally; CPA v7.2.75 CI artifact and isolated Host evidence are pending; status remains **PARTIAL / NOT PRODUCTION-READY** |
 
 The root `go.mod` and `integration/pluginstorecontract` module both pin CPA
-v7.2.72. Source contracts enumerate and run 16 exact official Host tests, while
+v7.2.75. Source contracts enumerate and run 16 exact official Host tests, while
 the native harness installs the real Store ZIP, loads the real Guard `.so`, and
 uses a pure-C second Router/executor fixture. Source or compile-only results do
-not prove native compatibility: the authorized GitHub CI Linux job now records
-the development evidence, and Leo must repeat it independently in isolation.
+not prove native compatibility: the fourth-round GitHub CI Linux run, artifact,
+and CPA v7.2.75 isolated-Host matrix are still pending, and Leo must repeat the
+frozen result independently in isolation.
 
 ## What this project is
 
@@ -130,12 +131,22 @@ composition mode, and reason codes. It contains no prompt fragments.
 
 Supported request inspection covers OpenAI Chat, OpenAI Responses, Anthropic
 Claude, Google Gemini, and OpenAI image request shapes. JSON and bounded
-`multipart/form-data` use one Content-Type-aware entry point. Multipart prompt
-fields are inspected while image, audio, video, and file parts are skipped as
-opaque media without being converted to classifier text. The earlier
-four-protocol HTTP and zero-downstream-call matrix passed authorized GitHub CI
-on implementation freeze `61536f9`; the second-round multimodal candidate and
-Leo's isolated verification remain separate gates.
+`multipart/form-data` use one Content-Type-aware entry point. JSON media
+semantics are independent of object-member order: payload-adjacent values such
+as `data`, `bytes`, `blob`, `binary`, `filename`, `format`, `detail`, `width`,
+`height`, and `duration` are deferred until their object is known to be media
+or ordinary text. Media candidates never enter `Parts`, role-aware `Segments`,
+decoding, or the text budget; tool-payload `data` and non-media `data` remain
+inspectable. Multipart text is selected by a fixed `SourceProfile`, not a
+denylist or HTTP path. The current `openai-image` profile admits only `prompt`
+and `negative_prompt` (including its two bounded spelling variants), skips
+reviewed metadata and file fields, and treats every unknown non-file field as
+incomplete schema rather than classifier text.
+
+The earlier v7.2.72 four-protocol HTTP and zero-downstream-call matrix remains
+historical evidence for implementation freeze `61536f9`. It does not validate
+the fourth-round CPA v7.2.75 candidate; its CI artifact, real-Host matrix, audit
+privacy check, and Leo isolated verification are separate pending gates.
 
 Recognized roles keep system safety policy and assistant refusals separate from
 user intent. User-authored adjacent turns and one explicitly linked bounded
@@ -151,10 +162,13 @@ Text handling is deliberately bounded:
 - URL percent, HTML entity, inspectable Base64, textual data URL, JSON escape,
   and bounded nested tool-JSON handling;
 - provider-aware role, content-part, tool-argument, and tool-output carriers;
+- object-level deferred media candidates with fixed count/byte bounds and
+  stable opaque-kind ordering across JSON member permutations;
 - independent raw-request and extracted-text budgets, so uploaded media does
   not consume the ordinary text-classification budget;
-- bounded multipart boundary, part, header, field, and aggregate-text limits,
-  with no temporary-file parsing and no remote media fetch;
+- SourceFormat-bound multipart field allowlists plus bounded boundary, part,
+  header, field, and aggregate-text limits, with no Guard-created temporary
+  files and no remote media fetch;
 - no decompression, archive expansion, network fetch, or cross-request semantic
   memory.
 
@@ -163,10 +177,11 @@ Images, audio, video, and document attachments are opaque. Their policy can be
 
 Content inspection completeness is a separate policy input. Malformed JSON,
 scan/depth/part limits, unsupported Content-Type, multipart resource limits,
-and plugin RPC body limits are `incomplete_inspection`, not runtime crashes.
+deferred-text candidate overflow, multipart unknown/type-mismatched fields, and
+plugin RPC body limits are `incomplete_inspection`, not runtime crashes.
 `balanced` passes such requests through and emits an audit decision; `strict`
 locally blocks them. A partially inspected prefix can never trigger a
-`balanced` block. See
+`balanced` block, update subject risk, or persist partial rule IDs. See
 [MULTIMODAL_INSPECTION_CONTRACT.md](docs/MULTIMODAL_INSPECTION_CONTRACT.md).
 
 ## Modes
@@ -205,6 +220,10 @@ behavior.
 - Authenticated status exposes both the YAML ruleset identity and the complete
   classifier-policy version/hash without exposing request text.
 
+These no-plaintext and no-tempfile claims apply to the Guard extractor,
+management surfaces, metrics, and plugin audit. They are not an end-to-end CPA
+logging guarantee.
+
 CPA's host boundary remains fail-open in conditions the plugin cannot control.
 CPA may continue another Router or native routing if this plugin is not loaded,
 is fused, errors, panics before an accepted handled result, returns an invalid
@@ -220,24 +239,27 @@ conditions separately.
 See [LIMITATIONS.md](docs/LIMITATIONS.md) and
 [THREAT_MODEL.md](docs/THREAT_MODEL.md).
 
-The audited CPA v7.2.72 management source calls `io.ReadAll` before invoking
-the plugin handler. The deployment-facing reverse proxy must therefore enforce
-its own body limit; the server sandbox must prove oversized requests receive
-HTTP 413 before reaching CPA.
+The audited CPA v7.2.75 Host still buffers management bodies before invoking
+the plugin handler, so a deployment-facing reverse proxy must enforce its own
+body limit and prove HTTP 413 before CPA. CPA v7.2.75 request logging may also
+spool a non-multipart body temporarily and persist a raw body for an HTTP error.
+The isolated sandbox must use a temporary log directory, and production review
+must separately cover commercial mode, retention, permissions, and deletion.
 
 ## Verification status
 
 | Evidence | Status |
 |---|---|
-| Safe unit/race boundary, vet, fuzz-smoke, regression, build, packaging, and reproducibility workflows | **GITHUB CI PASS** on implementation freeze `61536f9`; push run [29312969925](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29312969925) and PR run [29312971717](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29312971717) |
+| Fourth-round JSON order, multipart profile, race/vet/fuzz/benchmark, artifact, and CPA v7.2.75 Host gates | **PENDING** — no fourth-round CI run, artifact hash, implementation freeze, or isolated-Host conclusion is recorded yet |
+| Historical safe unit/race boundary, vet, fuzz-smoke, regression, build, packaging, and reproducibility workflows | **GITHUB CI PASS** on earlier implementation freeze `61536f9`; push run [29312969925](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29312969925) and PR run [29312971717](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29312971717); not fourth-round evidence |
 | Safe Go development scripts | `test`, `race`, and `boundary` **DEVELOPMENT SELF-CHECK PASS** on the pre-review implementation tree, WSL Ubuntu 26.04 / Go 1.26.4; exact-freeze coverage is provided by GitHub CI |
-| CPA Store ZIP naming/layout/install source contract | Implemented against official CPA v7.2.72 source |
-| CPA Router ordering/fallback source contract | Implemented against official CPA v7.2.72 source |
+| CPA Store ZIP naming/layout/install source contract | Updated to official CPA v7.2.75 source; fourth-round CI execution pending |
+| CPA Router ordering/fallback source contract | Updated to official CPA v7.2.75 source; fourth-round CI execution pending |
 | Local executor refusal contract | RPC error envelopes request 403 for `execute`, `execute_stream`, and `count_tokens`; `http_request` has a SOURCE/ADAPTER status-error 405 check with no response only |
-| Native plugin loading on the implementation freeze | **GITHUB CI PASS** — real Store ZIP installed through CPA v7.2.72 and the installed `.so` loaded by the Host |
-| OpenAI Chat / Responses / Claude / Gemini server matrix | **GITHUB CI PASS** — allow controls, non-stream/stream 403, pre-SSE, and token-count 403 |
-| Zero Auth Selector / Usage / Provider / upstream calls on blocked requests | **GITHUB CI PASS** |
-| Multi-Router/fail-open and management proxy 413 matrices | **GITHUB CI PASS** — 15 native Router scenarios and proxy rejection before the counted CPA handler |
+| Historical native plugin loading | **GITHUB CI PASS** for the earlier v7.2.72 freeze; current CPA v7.2.75 Store artifact/load is **PENDING** |
+| Historical OpenAI Chat / Responses / Claude / Gemini server matrix | **GITHUB CI PASS** on the earlier v7.2.72 freeze; fourth-round order/profile cases are pending |
+| Historical zero Auth Selector / Usage / Provider / upstream calls on blocked requests | **GITHUB CI PASS** on the earlier freeze; current exact-artifact proof is pending |
+| Historical Multi-Router/fail-open and management proxy 413 matrices | **GITHUB CI PASS** on the earlier freeze — 15 native Router scenarios and proxy rejection before the counted CPA handler |
 | Final official CPA client HTTP 405 for `executor.http_request` | **NOT AVAILABLE / NOT RUN** — `/v1/alpha/search` is provider-specific, normally selects `codex`, and maps every executor error to 502; no current official route maps Guard's 405 error to final 405 |
 | Independent release evaluation | v10 consumed and failed; a new unseen set is required |
 | Production release | Blocked |
@@ -270,11 +292,13 @@ was not accessed. The retired holdout-v3 corpus is no longer eligible as
 independent evidence, and this incident independently keeps the handoff status
 `BLOCKED FOR HANDOFF`.
 
-Current v7.2.72 source/native evidence boundaries are recorded in
+Historical v7.2.72 source/native evidence boundaries are recorded in
 [CPA_INTEGRATION.md](docs/reports/CPA_INTEGRATION.md) and
 [LEO_VERIFICATION_HANDOFF.md](docs/LEO_VERIFICATION_HANDOFF.md). The older
 [PHASE0_CPA_CONTRACT.md](docs/reports/PHASE0_CPA_CONTRACT.md) remains historical
-Phase 0 evidence. Historical evaluation datasets are frozen; do not rerun or
+Phase 0 evidence. The current candidate is tracked separately in
+[ROUND4_LEO_REVIEW_HANDOFF.md](docs/ROUND4_LEO_REVIEW_HANDOFF.md), whose status
+remains pending. Historical evaluation datasets are frozen; do not rerun or
 tune against individual v10 rows.
 
 ## Developer and auditor checks
@@ -293,7 +317,7 @@ make vet fuzz-smoke corpus-regression script-test
 go test ./cmd/development-adversarial-v11-prep-validator \
   -run '^TestDevelopmentAdversarialV11PrepCorpus$' -count=1
 
-# Explicit source-only CPA v7.2.72 store and host contracts.
+# Explicit source-only CPA v7.2.75 store and host contracts.
 go -C integration/pluginstorecontract test ./... -count=1
 ```
 
@@ -348,7 +372,7 @@ not repository source or formal release evidence.
 | Audience | Start here |
 |---|---|
 | Project evaluator | [Design](docs/DESIGN.md), [Limitations](docs/LIMITATIONS.md), [Threat model](docs/THREAT_MODEL.md) |
-| Security auditor | [Audit handoff](docs/AUDIT_HANDOFF.md), [Release evidence](docs/reports/RELEASE_EVIDENCE.md), [Test report](docs/reports/TEST_REPORT.md) |
+| Security auditor | [Round-four handoff](docs/ROUND4_LEO_REVIEW_HANDOFF.md), [Audit handoff](docs/AUDIT_HANDOFF.md), [Release evidence](docs/reports/RELEASE_EVIDENCE.md), [Test report](docs/reports/TEST_REPORT.md) |
 | CPA integrator | [CPA integration](docs/reports/CPA_INTEGRATION.md), [Phase 0 contract](docs/reports/PHASE0_CPA_CONTRACT.md), [Docker operations](docs/INSTALL_DOCKER.md) |
 | Policy reviewer | [Rules](docs/RULES.md), [Classifier redesign baseline](docs/reports/CLASSIFIER_REDESIGN_BASELINE.md), [Privacy](docs/reports/PRIVACY.md), [Prompt-injection review](docs/reports/PROMPT_INJECTION_REVIEW.md) |
 | Future maintainer | [Next-version recommendations](docs/NEXT_VERSION.md), [Changelog](CHANGELOG.md) |

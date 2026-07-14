@@ -182,6 +182,9 @@ func incompleteCategory(reasons []extract.IncompleteReason) string {
 		return "rpc_body_limit"
 	case contains(extract.IncompleteUnsupportedMediaType, extract.IncompleteUnsupportedContentEncoding):
 		return "unsupported_content_type"
+	case contains(extract.IncompleteMultipartUnknownField,
+		extract.IncompleteMultipartTextFieldTypeMismatch):
+		return "multipart_schema"
 	case contains(extract.IncompleteMultipartBoundaryLimit,
 		extract.IncompleteMultipartPartLimit,
 		extract.IncompleteMultipartHeaderLimit,
@@ -194,6 +197,8 @@ func incompleteCategory(reasons []extract.IncompleteReason) string {
 		return "json_depth_limit"
 	case contains(extract.IncompleteTextPartLimit):
 		return "text_part_limit"
+	case contains(extract.IncompleteDeferredTextCandidateLimit):
+		return "deferred_text_limit"
 	case contains(extract.IncompleteScanByteLimit,
 		extract.IncompleteJSONTokenLimit,
 		extract.IncompleteJSONNodeLimit,
@@ -219,6 +224,10 @@ func incompleteRouteReason(category string) string {
 		return "cyber_abuse_guard_text_part_limit"
 	case "multipart_limit":
 		return "cyber_abuse_guard_multipart_limit"
+	case "multipart_schema":
+		return "cyber_abuse_guard_multipart_schema"
+	case "deferred_text_limit":
+		return "cyber_abuse_guard_deferred_text_limit"
 	case "unsupported_content_type":
 		return "cyber_abuse_guard_unsupported_content_type"
 	default:

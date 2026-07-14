@@ -110,11 +110,29 @@ Only printable valid UTF-8 text is accepted. The plugin performs no
 decompression, archive expansion, document parsing, binary-media decoding, or
 network fetch. It does not claim Base32, arbitrary hex, quoted-printable,
 encryption, or unbounded transform coverage. An incomplete recognized text
-envelope sets `Truncated`;
-Balanced/Strict handle that conservatively.
+envelope becomes incomplete inspection. Balanced allows+audits it without using
+a prefix score; Strict blocks for the fixed incomplete reason.
 
 Image/audio/video is not converted into text. It is governed separately by
 `opaque_media_policy`, and HTTPS media URLs are never fetched.
+
+JSON media recognition is independent of object-member order. Payload-adjacent
+`data`/`bytes`/`blob`/`binary`/`filename`/`format`/`detail`/`width`/`height`/
+`duration` strings are deferred within fixed bounds until a later marker proves
+media or the object closes as non-media. Proven media never
+enters decoding, `Parts`, role-aware `Segments`, or the text budget; non-media
+and tool-payload `data` are committed as inspectable text. Crossing a tool
+boundary cuts inherited media meaning, and overflow classifies no retained
+prefix.
+
+Multipart does not expose an open-ended text surface. A fixed `SourceProfile`
+derived from canonical `SourceFormat` selects fields. `openai-image` admits only
+`prompt` and `negative_prompt` (plus `negative-prompt` and `negative prompt`)
+as text. Reviewed metadata and file fields are discarded; unknown non-file
+fields become `multipart_unknown_field`, and text fields with file evidence
+become `multipart_text_field_type_mismatch`. These reasons take precedence over
+partial classification: Balanced allows+audits as `multipart_schema`, Strict
+blocks locally, and no partial score/rule IDs or subject-risk update survives.
 
 ## Decision output and privacy
 
@@ -123,6 +141,11 @@ classifier-policy version/hash, stable rule/evidence IDs, aggregate context
 flags, and the privacy-safe behavior graph. It never returns or persists a
 matched prompt fragment. Audit configuration cannot enable original-text
 logging.
+
+This privacy statement covers classifier output and Guard/plugin audit. It does
+not override CPA v7.2.75 Host behavior: request logging may temporarily spool a
+non-multipart body and persist a raw body in an HTTP error log. Host log mode,
+directory, retention, permissions, and cleanup require separate review.
 
 ## Version and identity
 
@@ -146,7 +169,7 @@ policy is separately identified as:
 
 ```text
 classifier_policy_version: classifier-policy-v2
-classifier_policy_sha256: bd55065bc3f1fd350148ad8f2f440c8f606aeb02fabd0024d7a350fe23ee4585
+classifier_policy_sha256: ac8c30a6367762a21c6ea81234678390b50cfcf00b793c5115f557074741adf9
 ```
 
 The policy digest test binds the deterministic classifier, matcher,

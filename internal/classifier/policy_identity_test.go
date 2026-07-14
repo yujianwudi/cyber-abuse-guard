@@ -26,6 +26,7 @@ var classifierPolicySourceFiles = []string{
 	"internal/extract/decoding.go",
 	"internal/extract/extract.go",
 	"internal/extract/multipart.go",
+	"internal/extract/profile.go",
 	"internal/extract/request.go",
 	"internal/extract/roles.go",
 	"internal/extract/state.go",

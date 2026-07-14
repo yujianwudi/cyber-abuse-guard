@@ -32,7 +32,7 @@ CPA_ROUTER_FIXTURE_SCENARIOS := guard-priority-higher fixture-priority-higher \
 
 .PHONY: all format-check git-diff-check module-verify test unit-test vet race \
 	fuzz-smoke script-test corpus-regression consumed-boundary-test holdout-test benchmark build-linux-amd64 \
-	integration-test cpa-v7272-host-blackbox cpa-router-fixture-blackbox cpa-host-fixture-contract management-proxy-413-test ruleset-manifest sbom vulncheck release-preflight \
+	integration-test cpa-v7275-host-blackbox cpa-v7272-host-blackbox cpa-router-fixture-blackbox cpa-host-fixture-contract round4-regression management-proxy-413-test ruleset-manifest sbom vulncheck release-preflight \
 	package-release package-source-release release release-evidence formal-release release-doc-consistency release-doc-consistency-test verify-release verification-fault-test cpa-store-contract artifact-hash \
 	reproducibility-test clean-tree-check tools clean
 
@@ -72,6 +72,7 @@ race:
 
 fuzz-smoke:
 	$(GO) test ./internal/extract -run='^$$' -fuzz=FuzzExtractText -fuzztime=5s
+	$(GO) test ./internal/extract -run='^$$' -fuzz=FuzzExtractRequestMediaMemberOrder -fuzztime=5s
 	$(GO) test ./internal/extract -run='^$$' -fuzz=FuzzExtractRequestContentType -fuzztime=5s
 	$(GO) test ./internal/extract -run='^$$' -fuzz=FuzzExtractRequestMultipart -fuzztime=5s
 	$(GO) test ./internal/classifier -run='^$$' -fuzz=FuzzClassifier -fuzztime=5s
@@ -105,14 +106,24 @@ benchmark:
 	$(GO) test ./internal/classifier \
 		-run='^TestClassifier(Adversarial)?PerformanceAcceptance$$' -count=1 -v
 	$(GO) test ./internal/classifier -run='^$$' -bench=. -benchmem -count=3
-	$(GO) test ./internal/extract -run='^$$' -bench='^BenchmarkExtractRequestMultipart' -benchmem -benchtime=3x
+	$(GO) test ./internal/extract -run='^$$' -bench='^BenchmarkExtractRequest(ReverseOrderedMedia|Multipart)' -benchmem -benchtime=3x
+
+round4-regression:
+	@listed="$$($(GO) test ./internal/extract ./internal/plugin -list='^(TestExtractRequestMediaObjectMemberOrderInvariant|TestExtractRequestMultipartUnknownFieldIsIncompleteAndPrivate|TestBalancedMultipartUnknownFieldAllowsWithoutClassification|TestStrictMultipartUnknownFieldBlocksWithoutClassification)$$')" || exit $$?; \
+	for test_name in TestExtractRequestMediaObjectMemberOrderInvariant TestExtractRequestMultipartUnknownFieldIsIncompleteAndPrivate TestBalancedMultipartUnknownFieldAllowsWithoutClassification TestStrictMultipartUnknownFieldBlocksWithoutClassification; do \
+		printf '%s\n' "$$listed" | grep -Fxq "$$test_name" || { echo "required round-four regression $$test_name is missing" >&2; exit 1; }; \
+	done
+	$(GO) test ./internal/extract -count=1 -v \
+		-run='^(TestExtractRequestMediaObjectMemberOrderInvariant|TestExtractRequestMultipartUnknownFieldIsIncompleteAndPrivate)$$'
+	$(GO) test -tags=$(TEST_TAGS) ./internal/plugin -count=1 -v \
+		-run='^(TestBalancedMultipartUnknownFieldAllowsWithoutClassification|TestStrictMultipartUnknownFieldBlocksWithoutClassification)$$'
 
 build-linux-amd64:
 	GO=$(GO) VERSION=$(VERSION) ./scripts/build-linux-amd64.sh
 
-integration-test: cpa-v7272-host-blackbox cpa-router-fixture-blackbox
+integration-test: cpa-v7275-host-blackbox cpa-router-fixture-blackbox
 
-cpa-v7272-host-blackbox: build-linux-amd64
+cpa-v7275-host-blackbox: build-linux-amd64
 	@listed="$$($(GO) test -tags=integration,$(TEST_TAGS) -list='^TestCPAPluginHostBlocksBeforeUpstream$$' ./integration)" || exit $$?; \
 	printf '%s\n' "$$listed" | grep -Fxq 'TestCPAPluginHostBlocksBeforeUpstream' || { \
 		echo 'required Host blackbox test TestCPAPluginHostBlocksBeforeUpstream is missing' >&2; exit 1; \
@@ -131,6 +142,9 @@ cpa-v7272-host-blackbox: build-linux-amd64
 	CYBER_ABUSE_GUARD_REQUIRE_HOST_INTEGRATION=1 \
 	CGO_ENABLED=1 $(GO) test -tags=integration,$(TEST_TAGS) -v -count=1 \
 		-run='^TestCPAPluginHostBlocksBeforeUpstream$$' ./integration
+
+cpa-v7272-host-blackbox: cpa-v7275-host-blackbox
+	@echo 'cpa-v7272-host-blackbox is a compatibility alias; current Host pin is CPA v7.2.75'
 
 cpa-router-fixture-blackbox: build-linux-amd64
 	@listed="$$($(GO) test -tags=integration,$(TEST_TAGS) -list='^TestCPAPluginHostRouterFixtureMatrix$$' ./integration)" || exit $$?; \

@@ -290,6 +290,39 @@ func TestFreshDatabaseAppliesAllMigrations(t *testing.T) {
 	}
 }
 
+func TestMigrationAcceptsCanonicalMediaSourceFormats(t *testing.T) {
+	t.Parallel()
+	for _, sourceFormat := range []string{"openai-image", "openai-video"} {
+		t.Run(sourceFormat, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "audit.db")
+			legacy, err := sql.Open("sqlite3", path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := legacy.Exec(schema); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := legacy.Exec(`INSERT INTO audit_events VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				"media-source-event", fixedMigrationTime().UnixNano(), "audit", "balanced", "opaque_media", 0, "[]",
+				"sha256:"+strings.Repeat("a", 64), "hmac-sha256:"+strings.Repeat("b", 64), HashModel("safe-model"),
+				sourceFormat, 0, 0, "rules", 5); err != nil {
+				t.Fatal(err)
+			}
+			if err := legacy.Close(); err != nil {
+				t.Fatal(err)
+			}
+
+			store, err := Open(Config{Path: path, Now: fixedMigrationTime})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := store.Close(); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
 func TestV011DatabaseMigrationPreservesEventsAndCreatesReadonlyBackup(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
