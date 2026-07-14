@@ -17,9 +17,9 @@ immutable `CONSUMED / FAIL`: benign false positives 28/320, policy blocked
 49/320, and exact classification 33/320. This post-v10 development work does not
 replace or revise that result.
 
-Methodology incident: two incorrectly scoped WSL source-search commands
+Methodology incident: three incorrectly scoped WSL source-search commands
 unexpectedly emitted several rows from the retired `testdata/holdout-v3`
-corpus. Both searches were stopped immediately; the emitted rows were not
+corpus. All three searches were stopped immediately; the emitted rows were not
 analyzed and were not used for classifier tuning or any conclusion. Evaluation
 v10 content was not accessed. The retired holdout-v3 corpus is nevertheless no
 longer eligible as independent evidence, and this incident independently keeps
@@ -30,7 +30,7 @@ the handoff status `BLOCKED FOR HANDOFF`.
 ```text
 starting_baseline: a121a444cb0d82cba4e27754914a1f88258e1d7b
 reliability_checkpoint_commit: 573def2649d164161e2dfdfeb3f59b1e1b38ebbc
-implementation_freeze_commit: 9c8114e22841f9a19b15b1f4b3c48531aa2453a0
+implementation_freeze_commit: 61536f9f02c47a4d79031a47dc8a284f040e41c1
 evidence_document_commit: SELF (resolve with git log -1 -- this file)
 ```
 
@@ -52,9 +52,9 @@ commit and all evidence files are intentionally included or excluded.
 
 ```text
 branch: agent/complete-classifier-cpa-v7272-handoff
-pull_request: https://github.com/yujianwudi/cyber-abuse-guard/pull/4 (Draft)
-github_ci_push: PASS — https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29292693070
-github_ci_pull_request: PASS — https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29292695293
+pull_request: https://github.com/yujianwudi/cyber-abuse-guard/pull/4
+github_ci_push: PASS — https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29312969925
+github_ci_pull_request: PASS — https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29312971717
 ```
 
 Three WSL commands were mistakenly executed outside the authorized evidence
@@ -262,7 +262,7 @@ Review-closure commit `8814dbf` was rerun locally on WSL/Linux amd64 with Go
 1.26.4. Median-of-three results were: Classifier 92,070 ns/op; LargeBenign
 15,612,625 ns/op; LargePunctuation 15,395,706 ns/op;
 CandidateRichMaxParts 88,235,463 ns/op; RoleAwareConversation 333,250 ns/op.
-The exact implementation freeze `9c8114e` separately passed GitHub CI benchmark
+The exact implementation freeze `61536f9` separately passed GitHub CI benchmark
 acceptance; its median Classifier result was 94,050 ns/op. Full bytes/allocation
 data and acceptance percentiles are in `reports/PERFORMANCE.md`.
 
@@ -274,7 +274,7 @@ RERUN NOT RUN**.
 Unique synthetic prompt/key/auth/cookie/OAuth/domain/model/subject canaries are
 exercised across DB/WAL/SHM, migration backup, subject snapshot, JSON/CSV,
 management/executor response, panic/logger output, watchdog, and release
-evidence. Recorded WSL/script targeted tests: **DEVELOPMENT SELF-CHECK PASS**.
+evidence. Recorded WSL/script-targeted tests: **DEVELOPMENT SELF-CHECK PASS**.
 
 Real Host management authentication, proxy 413, and development-candidate
 artifact/SBOM scans: **GITHUB CI PASS**. Leo independent review: **NOT RUN**.
@@ -303,19 +303,20 @@ cyber-abuse-guard_0.1.2-dirty_linux_amd64.zip
 ```
 
 Development-candidate artifact: `cyber-abuse-guard-linux-amd64-dirty`, artifact
-ID `8295799031`, 10,240,174 uploaded bytes. These are not formal release
-artifacts.
+ID `8303051476`, 10,276,537 uploaded bytes, container digest
+`sha256:1d134b2c211665faab3478bd3c9cc2badc2f7ace7c76780f2d662c0b72d171d8`.
+These are not formal release artifacts.
 
 | Candidate file | SHA-256 |
 |---|---|
-| `cyber-abuse-guard-v0.1.2-dirty.so` | `e7562d3993e69ec3b0bbb052b1cb472aa6b7e527afce7ca36342b90aeec869b9` |
-| `cyber-abuse-guard_0.1.2-dirty_linux_amd64.zip` | `544406fbf246f4989f1e4275cce69f0d112d0ff68a5c720d4ecf5113d4a87121` |
-| `cyber-abuse-guard-v0.1.2-dirty-audit-bundle.zip` | `4ada1c9a802f68390f03ed0ac672497fbb6e70e638e689d27a68c57203d55a8d` |
-| `build-metadata.json` | `01ba04cac4058c008a3790626f02a7b545ce92c31afd1423a9f5316c9b6e2fb8` |
-| `checksums.txt` | `ccc17d139a3a9e74b9f021998c1c7151adb177303c18a14b1b93ad53061dbb10` |
+| `cyber-abuse-guard-v0.1.2-dirty.so` | `61ca7324b647efe1fc264878b712827982c636518896f7e9b4d6797e52e4edda` |
+| `cyber-abuse-guard_0.1.2-dirty_linux_amd64.zip` | `16c5e089b7d7e0cf07f837b70ec745a2dcae73acfd60e3e18ab0118303b6959e` |
+| `cyber-abuse-guard-v0.1.2-dirty-audit-bundle.zip` | `7592938325fd0e879139ba96f11c33c400ad3d8019e2c7ffb1b53742d6188a21` |
+| `build-metadata.json` | `10fe6f16663667dbfda18001e131ea1383a2b687777ae68091da478edd2f7d16` |
+| `checksums.txt` | `b79fb5e9a608d0d8bc2c949c4dac159f23a3a36e529a74761d912b52e7663618` |
 | `ruleset-manifest.json` | `486a4dfad49b4e96a600f908cbea47376baab5c8875324999ae50b6251f1af7e` |
 | `ruleset.sha256` | `a8ff687340617dc18832047f841979a0bd06ff8c50a4bc3c15dd7da37b6fbee2` |
-| `sbom.cdx.json` | `72ab91ed1b0ee8cb461b8847a18c759f324b34299b2bb6a5d854e467954690c0` |
+| `sbom.cdx.json` | `da6e6caec7dce7e0daa33be67e488a47318b8404509a03f79d7ad052264c7169` |
 
 ## 18. Official InstallArchive result and path
 
@@ -441,7 +442,7 @@ independent rerun is **NOT RUN**.
 ## 26. Items not yet run
 
 ```text
-implementation freeze: 9c8114e22841f9a19b15b1f4b3c48531aa2453a0
+implementation freeze: 61536f9f02c47a4d79031a47dc8a284f040e41c1
 evidence document commit: SELF (resolve with git log -1 -- this file)
 safe development quality matrix: DEVELOPMENT SELF-CHECK PASS
 GitHub CI on exact implementation commit: PASS (push + PR runs)
@@ -527,7 +528,7 @@ BLOCKED FOR HANDOFF
 
 Reason: all runnable implemented engineering and authorized GitHub CI gates
 pass, but Leo independent verification is not run and a new independent blind
-evaluation is neither created nor run; the two accidental retired holdout-v3
+evaluation is neither created nor run; the three accidental retired holdout-v3
 source-search exposures invalidate that corpus as independent evidence; and
 official CPA final client HTTP 405 is unavailable. The status may change only
 after the remaining independent verification and the 405 requirement are

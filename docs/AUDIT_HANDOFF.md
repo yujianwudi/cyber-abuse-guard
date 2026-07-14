@@ -11,15 +11,15 @@ BLOCKED FOR HANDOFF
 ```
 
 这不是最终质量 PASS，也不是生产批准。实际起始基线为
-`a121a444cb0d82cba4e27754914a1f88258e1d7b`；实现冻结为 `9c8114e`，两条精确 SHA 的
+`a121a444cb0d82cba4e27754914a1f88258e1d7b`；实现冻结为 `61536f9`，两条精确 SHA 的
 GitHub CI 均已通过。证据文档单独提交；最终交接时已核对工作树清洁。
 
 方法学有效的 v10 首次且唯一正式运行仍为 `CONSUMED / FAIL`：合法误报 28/320，恶意
 阻断 49/320，精确分类 33/320。该结论不变。不得读取、打印、执行、通过 Git 历史获取或
 逐条分析 v10 样本，也不得用开发集冒充新盲测。
 
-方法学事件：两条作用域错误的 WSL 源码搜索命令意外输出了已退役
-`testdata/holdout-v3` 的若干行。两次搜索都被立即停止；输出内容没有被分析，也没有用于
+方法学事件：三条作用域错误的 WSL 源码搜索命令意外输出了已退役
+`testdata/holdout-v3` 的若干行。三次搜索都被立即停止；输出内容没有被分析，也没有用于
 分类器调优或任何结论。Evaluation v10 内容未被访问。即便如此，已退役 holdout-v3 不再
 具备独立证据资格；该事件本身也使交接状态保持 `BLOCKED FOR HANDOFF`。
 
@@ -65,7 +65,7 @@ repository: https://github.com/yujianwudi/cyber-abuse-guard
 starting_baseline: a121a444cb0d82cba4e27754914a1f88258e1d7b
 branch: agent/complete-classifier-cpa-v7272-handoff
 reliability_checkpoint_commit: 573def2649d164161e2dfdfeb3f59b1e1b38ebbc
-implementation_freeze_commit: 9c8114e22841f9a19b15b1f4b3c48531aa2453a0
+implementation_freeze_commit: 61536f9f02c47a4d79031a47dc8a284f040e41c1
 evidence_document_commit: SELF (resolve with git log -1 -- this file)
 root_cpa_version: v7.2.72
 cpa_upstream_tag_commit: 6279bb8a4c2835ff6ed99c6b85083b2afbefa681
@@ -148,7 +148,7 @@ Multi-turn、Tool、Carrier、Placeholder 和边界。其 Manifest 明确
 | Prompt Injection/Tool/Encoding 定向 Plugin 测试 | **DEVELOPMENT SELF-CHECK PASS** |
 | Classifier Validator `go vet`、gofmt、根 module verify/tidy、当时 diff check | **DEVELOPMENT SELF-CHECK PASS** |
 | WSL `-race` Subject/Config/Audit 及定向 Plugin 生命周期/隐私测试 | **DEVELOPMENT SELF-CHECK PASS** |
-| `go-safe-development-test.sh test|race|boundary` | **DEVELOPMENT SELF-CHECK PASS** — WSL Ubuntu 26.04 / Go 1.26.4；test/race 未运行 Evaluation/Holdout 测试名；boundary 只运行 3 个 v10 聚合/报告标记/拒绝重跑测试且日志确认 fixture 未访问 |
+| `go-safe-development-test.sh test`、`go-safe-development-test.sh race`、`go-safe-development-test.sh boundary` | **DEVELOPMENT SELF-CHECK PASS** — WSL Ubuntu 26.04 / Go 1.26.4；test/race 未运行 Evaluation/Holdout 测试名；boundary 只运行 3 个 v10 聚合/报告标记/拒绝重跑测试且日志确认 fixture 未访问 |
 | WSL reliability `go vet`、Health Script、Release Evidence Privacy Script | **DEVELOPMENT SELF-CHECK PASS** |
 | 同机 Classifier Benchmark 对比 | **DEVELOPMENT SELF-CHECK PASS / NOT FINAL EVIDENCE** |
 | CPA 16 个精确官方 Host Source Tests | **SOURCE OVERLAY PASS** |
@@ -159,8 +159,8 @@ Multi-turn、Tool、Carrier、Placeholder 和边界。其 Manifest 明确
 | Auth/Provider/Usage/Mock Upstream 零调用 | **GITHUB CI PASS**；本地误执行仍排除 |
 | Multi-Router/fail-open Native Fixture | **GITHUB CI PASS** — 15 个隔离原生场景；panic/fuse 另有官方源码 overlay |
 | Management Proxy 413 | **GITHUB CI PASS** — 超限请求在计数 CPA Handler Stub 前返回 413 |
-| GitHub CI | **PASS** — Push `29292693070`，PR `29292695293`；Push 长 Fuzz PASS，两条可复现性 PASS |
-| CodeRabbit CLI | **0 issues** — CLI 0.6.5 agent review，base `8814dbf`、reviewed HEAD `9c8114e` 及证据文档；PR Bot 因 Draft 跳过，不作为该结论来源 |
+| GitHub CI | **PASS** — Push `29312969925`，PR `29312971717`；Push 长 Fuzz PASS，两条可复现性 PASS |
+| CodeRabbit Ready Review | 首轮对 `8719c7f` 提出 8 个线程和 2 个 nitpick；有效问题由 `61536f9` 修复，`cmd` 缺失符号项经定向编译证伪；对 `8719c7f..61536f9` 的后续复审为 **NO ACTIONABLE COMMENTS** |
 | 开发候选产物与哈希 | **GITHUB CI PASS / RECORDED**；不是正式发布产物 |
 
 完整命令和矩阵见 `docs/reports/TEST_REPORT.md`，性能与隐私分别见
@@ -229,11 +229,11 @@ Lifecycle、真实 Host 四协议和零副作用、Proxy 413 以及隐私 Canary
 ## 10. 交接字段
 
 ```text
-implementation_freeze_commit: 9c8114e22841f9a19b15b1f4b3c48531aa2453a0
+implementation_freeze_commit: 61536f9f02c47a4d79031a47dc8a284f040e41c1
 evidence_document_commit: SELF (resolve with git log -1 -- this file)
-pull_request: https://github.com/yujianwudi/cyber-abuse-guard/pull/4 (Draft)
+pull_request: https://github.com/yujianwudi/cyber-abuse-guard/pull/4
 clean_tree: YES AT FINAL HANDOFF
-github_ci: PASS — push 29292693070; pull_request 29292695293
+github_ci: PASS — push 29312969925; pull_request 29312971717
 real_host_matrix: GITHUB CI PASS — 32 Host subtests; 15 Router scenarios
 management_proxy_413: GITHUB CI PASS
 http_request_adapter_405: SOURCE / ADAPTER STATUS-ERROR CHECK (response=nil)

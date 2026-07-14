@@ -40,7 +40,7 @@ is not sent to a public classifier.
 | Unsupported platform | musl/Alpine |
 | Embedded YAML ruleset | `1.0.7`, SHA-256 `7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134` |
 | Classifier policy identity | `classifier-policy-v2`, SHA-256 `dc9a174099cb2f621e5333a508d4645604f96f470a6d9ae12a1acfb363d29cf2` |
-| Current validation | Source/build/artifact and real-Host matrices **GITHUB CI PASS** on implementation freeze `9c8114e`; Leo verification **NOT RUN**; final official Guard client HTTP 405 unavailable |
+| Current validation | Source/build/artifact and real-Host matrices **GITHUB CI PASS** on implementation freeze `61536f9`; Leo verification **NOT RUN**; final official Guard client HTTP 405 unavailable |
 
 The root `go.mod` and `integration/pluginstorecontract` module both pin CPA
 v7.2.72. Source contracts enumerate and run 16 exact official Host tests, while
@@ -213,8 +213,8 @@ HTTP 413 before reaching CPA.
 
 | Evidence | Status |
 |---|---|
-| Safe unit/race boundary, vet, fuzz-smoke, regression, build, packaging, and reproducibility workflows | **GITHUB CI PASS** on implementation freeze `9c8114e`; push run [29292693070](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29292693070) and PR run [29292695293](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29292695293) |
-| Safe Go development scripts | `test`, `race`, and `boundary` **DEVELOPMENT SELF-CHECK PASS** on implementation freeze `9c8114e`, WSL Ubuntu 26.04 / Go 1.26.4 |
+| Safe unit/race boundary, vet, fuzz-smoke, regression, build, packaging, and reproducibility workflows | **GITHUB CI PASS** on implementation freeze `61536f9`; push run [29312969925](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29312969925) and PR run [29312971717](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29312971717) |
+| Safe Go development scripts | `test`, `race`, and `boundary` **DEVELOPMENT SELF-CHECK PASS** on the pre-review implementation tree, WSL Ubuntu 26.04 / Go 1.26.4; exact-freeze coverage is provided by GitHub CI |
 | CPA Store ZIP naming/layout/install source contract | Implemented against official CPA v7.2.72 source |
 | CPA Router ordering/fallback source contract | Implemented against official CPA v7.2.72 source |
 | Local executor refusal contract | RPC error envelopes request 403 for `execute`, `execute_stream`, and `count_tokens`; `http_request` has a SOURCE/ADAPTER status-error 405 check with no response only |
@@ -246,10 +246,10 @@ No result from those local commands is a delivery PASS.
 The separately authorized GitHub CI results above are the applicable remote
 evidence; Leo's independent verification remains not run.
 
-A separate methodology incident involved two incorrectly scoped WSL
+A separate methodology incident involved three incorrectly scoped WSL
 source-search commands that unexpectedly emitted several rows from the retired
-`testdata/holdout-v3` corpus. Both searches were stopped immediately; the rows
-were not analyzed or used for tuning or conclusions, and evaluation v10 content
+`testdata/holdout-v3` corpus. All three searches were stopped immediately; the
+rows were not analyzed or used for tuning or conclusions, and evaluation v10 content
 was not accessed. The retired holdout-v3 corpus is no longer eligible as
 independent evidence, and this incident independently keeps the handoff status
 `BLOCKED FOR HANDOFF`.

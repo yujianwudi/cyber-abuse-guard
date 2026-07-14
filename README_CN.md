@@ -179,8 +179,8 @@ CPA Host 边界仍存在插件无法消除的 Fail Open 条件：插件未加载
 
 | 证据 | 状态 |
 |---|---|
-| 根模块 Unit、Race、Vet、Fuzz Smoke、回归、构建、打包与可复现性流程 | Implementation Freeze `9c8114e` 的 Push Run [29292693070](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29292693070) 和 PR Run [29292695293](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29292695293) 均 **GITHUB CI PASS** |
-| 安全 Go 开发脚本 | `test`、`race`、`boundary` 已在 Implementation Freeze `9c8114e`、WSL Ubuntu 26.04 / Go 1.26.4 **DEVELOPMENT SELF-CHECK PASS** |
+| 根模块 Unit、Race、Vet、Fuzz Smoke、回归、构建、打包与可复现性流程 | Implementation Freeze `61536f9` 的 Push Run [29312969925](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29312969925) 和 PR Run [29312971717](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29312971717) 均 **GITHUB CI PASS** |
+| 安全 Go 开发脚本 | `test`、`race`、`boundary` 已在审查修复前的实现树、WSL Ubuntu 26.04 / Go 1.26.4 **DEVELOPMENT SELF-CHECK PASS**；精确冻结覆盖由 GitHub CI 提供 |
 | CPA Store ZIP 命名、布局与安装源码契约 | 已使用 CPA v7.2.72 官方源码实现 |
 | CPA Router 排序与回退源码契约 | 已使用 CPA v7.2.72 官方源码实现 |
 | 本地 Executor 拒绝契约 | `execute`、`execute_stream`、`count_tokens` 请求 403；`http_request` 只有 SOURCE/ADAPTER status-error 405（response=nil）检查 |
@@ -210,8 +210,8 @@ LOCAL MIS-EXECUTION RECORDED / EXCLUDED; NOT AUTHORITATIVE
 这些本地结果绝不能写成交付 PASS。
 上表中的授权 GitHub CI 是独立的远端证据；里奥独立验证仍未运行。
 
-另有一次独立的方法学事件：两条作用域错误的 WSL 源码搜索命令意外输出了 retired
-`testdata/holdout-v3` 的若干行。两次搜索均立即停止，输出内容未被分析，也未用于调参
+另有一次独立的方法学事件：三条作用域错误的 WSL 源码搜索命令意外输出了 retired
+`testdata/holdout-v3` 的若干行。三次搜索均立即停止，输出内容未被分析，也未用于调参
 或结论；evaluation v10 内容未被访问。retired holdout-v3 已不再具备独立证据资格，
 该事件也独立使交接状态保持 `BLOCKED FOR HANDOFF`。
 

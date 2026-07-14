@@ -2,9 +2,10 @@
 
 Last updated: 2026-07-14 (Asia/Shanghai)
 
-> Historical Phase 0 snapshot. Its v7.2.67/root-module statements describe the
-> earlier baseline and are superseded by implementation freeze `9c8114e`, whose
-> root dependency is CPA v7.2.72. See `CPA_INTEGRATION.md` and
+> Historical Phase 0 snapshot. At that time the root module used CPA v7.2.67
+> while `integration/pluginstorecontract` used v7.2.72. Those statements are
+> superseded by implementation freeze `61536f9`, whose root dependency is CPA
+> v7.2.72. See `CPA_INTEGRATION.md` and
 > `LEO_VERIFICATION_HANDOFF.md` for current evidence. The historical findings
 > below are intentionally retained rather than rewritten.
 

@@ -7,9 +7,10 @@ Last updated: 2026-07-14 (Asia/Shanghai)
 **BLOCKED FOR HANDOFF.** The actual starting baseline is
 `a121a444cb0d82cba4e27754914a1f88258e1d7b`. Classifier reference commit
 `a1be19f` is followed by idempotency/reliability commits `b84ed2a` and
-`573def2`, Host/isolation commit `1973083`, review-closure commit `8814dbf`, and
-provider-probe lifecycle implementation freeze
-`9c8114e22841f9a19b15b1f4b3c48531aa2453a0`. Evidence documents are
+`573def2`, Host/isolation commit `1973083`, review-closure commit `8814dbf`,
+provider-probe lifecycle commit `9c8114e`, evidence reconciliation commit
+`8719c7f`, and final review-correctness implementation freeze
+`61536f9f02c47a4d79031a47dc8a284f040e41c1`. Evidence documents are
 committed separately and identify themselves through their containing commit.
 
 The root dependency is CLIProxyAPI v7.2.72 at upstream tag commit
@@ -28,10 +29,10 @@ No consumed v10 sample was opened, printed, classified, extracted, inspected
 through Git history, or emitted by a helper. Only the frozen aggregate report
 was used. v10 remains `CONSUMED / FAIL`.
 
-Methodology incident: two incorrectly scoped WSL source-search commands
+Methodology incident: three incorrectly scoped WSL source-search commands
 unexpectedly emitted several rows from the retired `testdata/holdout-v3`
-corpus. Both searches were stopped immediately; those rows were not analyzed
-or used for tuning or conclusions. Evaluation v10 content was not accessed.
+corpus. All three searches were stopped immediately; those rows were not
+analyzed or used for tuning or conclusions. Evaluation v10 content was not accessed.
 The retired holdout-v3 corpus is no longer eligible as independent evidence,
 and this incident independently keeps the handoff `BLOCKED FOR HANDOFF`.
 
@@ -69,17 +70,17 @@ LOCAL MIS-EXECUTION RECORDED / EXCLUDED; NOT AUTHORITATIVE
 
 | Evidence class | Command | Result |
 |---|---|---|
-| DEVELOPMENT SELF-CHECK | `go test ./internal/classifier -run '^(TestWrapper|TestBehaviorGraph|TestMetaOverride|TestAssistant|TestSystem|TestNoPermission|TestExplicitNoPermission|TestNegativeAuthorization|TestMaliciousSystemPolicy|TestClassifierPolicyIdentity|TestEvaluationV10)' -count=1` | **PASS**; v10 cases here are aggregate/consumed-boundary checks only, not sample classification |
+| DEVELOPMENT SELF-CHECK | `go test ./internal/classifier -run '^(TestWrapper\|TestBehaviorGraph\|TestMetaOverride\|TestAssistant\|TestSystem\|TestNoPermission\|TestExplicitNoPermission\|TestNegativeAuthorization\|TestMaliciousSystemPolicy\|TestClassifierPolicyIdentity\|TestEvaluationV10)' -count=1` | **PASS**; v10 cases here are aggregate/consumed-boundary checks only, not sample classification |
 | DEVELOPMENT SELF-CHECK | `go test ./cmd/development-adversarial-v11-prep-validator -run '^TestDevelopmentAdversarialV11PrepCorpus$' -count=1` | **PASS — 35 visible development cases** |
-| DEVELOPMENT SELF-CHECK | `CGO_ENABLED=0 go test ./internal/plugin -run '^TestPromptInjection(ControlPlaneRegression|NestedToolAndSplitEncodingRegression)$' -count=1` | **PASS** |
+| DEVELOPMENT SELF-CHECK | `CGO_ENABLED=0 go test ./internal/plugin -run '^TestPromptInjection(ControlPlaneRegression\|NestedToolAndSplitEncodingRegression)$' -count=1` | **PASS** |
 | DEVELOPMENT SELF-CHECK | `go vet ./internal/classifier ./cmd/development-adversarial-v11-prep-validator` | **PASS** |
 | DEVELOPMENT SELF-CHECK | classifier-related `gofmt -l` | **PASS — empty output** |
 | DEVELOPMENT SELF-CHECK | `git diff --check` at time of classifier review | **PASS** |
 | DEVELOPMENT SELF-CHECK | root `go mod verify` | **PASS — all modules verified** |
 | DEVELOPMENT SELF-CHECK | root `go mod tidy -diff` | **PASS — empty output** |
-| Safe broad Go test/race/boundary | `scripts/go-safe-development-test.sh test|race|boundary` | **DEVELOPMENT SELF-CHECK PASS** on WSL Ubuntu 26.04 / Go 1.26.4; test/race ran no Evaluation/Holdout test name; boundary ran only 3 v10 aggregate/report-marker/rerun-rejection tests and logged fixture not accessed |
-| GITHUB CI | implementation freeze `9c8114e` | **PASS** — push run [29292693070](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29292693070), PR run [29292695293](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29292695293); push long fuzz PASS, both reproducibility jobs PASS |
-| CodeRabbit CLI | base `8814dbf`, reviewed HEAD `9c8114e` plus evidence-doc worktree | **0 issues**; the GitHub bot skipped because PR #4 is Draft, so the bot status is not used as review evidence |
+| Safe broad Go test/race/boundary | `scripts/go-safe-development-test.sh test`, `scripts/go-safe-development-test.sh race`, `scripts/go-safe-development-test.sh boundary` | **DEVELOPMENT SELF-CHECK PASS** on WSL Ubuntu 26.04 / Go 1.26.4; test/race ran no Evaluation/Holdout test name; boundary ran only 3 v10 aggregate/report-marker/rerun-rejection tests and logged fixture not accessed |
+| GITHUB CI | implementation freeze `61536f9` | **PASS** — push run [29312969925](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29312969925), PR run [29312971717](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29312971717); push long fuzz PASS, both reproducibility jobs PASS |
+| CodeRabbit Ready review | Initial review of `8719c7f`, followed by delta review through `61536f9` | Initial review posted 8 actionable threads and 2 nitpicks; valid findings were fixed in `61536f9`, the missing `cmd` symbols finding was disproved by targeted compilation, and the follow-up review reported no actionable comments |
 
 The development corpus contains 16 block, 14 allow, 2 audit, and 3 resource-
 boundary fixtures. It covers all eight taxonomies, four protocols, English,
@@ -209,7 +210,7 @@ development cases.
 ```text
 starting_baseline: a121a444cb0d82cba4e27754914a1f88258e1d7b
 reliability_checkpoint_commit: 573def2649d164161e2dfdfeb3f59b1e1b38ebbc
-implementation_freeze_commit: 9c8114e22841f9a19b15b1f4b3c48531aa2453a0
+implementation_freeze_commit: 61536f9f02c47a4d79031a47dc8a284f040e41c1
 evidence_document_commit: SELF (resolve with git log -1 -- this file)
 branch: agent/complete-classifier-cpa-v7272-handoff
 root_cpa_version: v7.2.72
@@ -220,7 +221,7 @@ ruleset_sha256: 7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134
 classifier_policy_version: classifier-policy-v2
 classifier_policy_sha256: dc9a174099cb2f621e5333a508d4645604f96f470a6d9ae12a1acfb363d29cf2
 development_corpus: 35 visible cases; never future holdout
-github_ci: PASS — push 29292693070; pull_request 29292695293
+github_ci: PASS — push 29312969925; pull_request 29312971717
 real_host_matrix: GITHUB CI PASS — 32 Host subtests; 15 Router scenarios
 http_request_adapter_405: SOURCE / ADAPTER STATUS-ERROR CHECK (response=nil)
 official_cpa_final_client_http_405: NOT AVAILABLE / NOT RUN — BLOCKED FOR HANDOFF

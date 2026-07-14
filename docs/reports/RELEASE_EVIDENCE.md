@@ -13,17 +13,17 @@ aggregate result is immutable; it was not read or rerun during this work. The
 post-v10 implementation may be prepared for independent Leo verification only
 after its final commit, clean tree, GitHub CI, real CPA v7.2.72 Host matrix,
 proxy check, and artifact identities are recorded. Those engineering fields are
-now recorded for implementation freeze `9c8114e`; this is still not a release
+now recorded for implementation freeze `61536f9`; this is still not a release
 approval or independent quality PASS.
 
 No tag, GitHub Release, formal artifact publication, or production deployment is
 authorized. Even a future passing engineering matrix cannot guarantee that an
 upstream account will never be warned, rate-limited, suspended, or deactivated.
 
-Methodology incident: two incorrectly scoped WSL source-search commands
+Methodology incident: three incorrectly scoped WSL source-search commands
 unexpectedly emitted several rows from the retired `testdata/holdout-v3`
-corpus. Both were stopped immediately; the rows were not analyzed or used for
-tuning or conclusions. Evaluation v10 content was not accessed. The retired
+corpus. All three were stopped immediately; the rows were not analyzed or used
+for tuning or conclusions. Evaluation v10 content was not accessed. The retired
 holdout-v3 corpus is no longer eligible as independent evidence, and the
 incident independently blocks handoff.
 
@@ -43,7 +43,7 @@ repository: https://github.com/yujianwudi/cyber-abuse-guard
 starting_baseline: a121a444cb0d82cba4e27754914a1f88258e1d7b
 branch: agent/complete-classifier-cpa-v7272-handoff
 reliability_checkpoint_commit: 573def2649d164161e2dfdfeb3f59b1e1b38ebbc
-implementation_freeze_commit: 9c8114e22841f9a19b15b1f4b3c48531aa2453a0
+implementation_freeze_commit: 61536f9f02c47a4d79031a47dc8a284f040e41c1
 evidence_document_commit: SELF (resolve with git log -1 -- this file)
 worktree: CLEAN AT FINAL HANDOFF
 root_cpa_version: v7.2.72
@@ -101,7 +101,7 @@ They are not delivery PASS evidence.
 | Router priority/not-ready/invalid-target/fallback | second native fixture exists | **GITHUB CI PASS — 15 isolated scenarios** |
 | Fuse/pre-result panic | official source overlay only | **SOURCE OVERLAY ONLY** |
 | Management proxy 413 before CPA `io.ReadAll` | script/fixture exists | **GITHUB CI PASS** — counted CPA-handler stub remained zero |
-| GitHub CI | workflow changes exist | **PASS** — push `29292693070`, PR `29292695293`; push long fuzz PASS; both reproducibility jobs PASS |
+| GitHub CI | workflow changes exist | **PASS** — push `29312969925`, PR `29312971717`; push long fuzz PASS; both reproducibility jobs PASS |
 | Development-candidate artifact verification | store/audit split and verifier source exist | **GITHUB CI PASS / HASHES RECORDED**; not a formal release |
 
 No row may be upgraded based on design intent, compilation, an older branch, or
@@ -170,22 +170,22 @@ These would be development candidates only, not approved release assets:
 
 | Artifact | SHA-256 | Status |
 |---|---|---|
-| `cyber-abuse-guard-v0.1.2-dirty.so` | `e7562d3993e69ec3b0bbb052b1cb472aa6b7e527afce7ca36342b90aeec869b9` | **GITHUB CI VERIFIED** |
-| `cyber-abuse-guard-v0.1.2-dirty.so.sha256` | `69f1340cb919d911645ece16f10bb9de1a165543ac7b7b24a8431c1c0bca90cf` | **GITHUB CI VERIFIED** |
-| `cyber-abuse-guard_0.1.2-dirty_linux_amd64.zip` (one root `.so`) | `544406fbf246f4989f1e4275cce69f0d112d0ff68a5c720d4ecf5113d4a87121` | **GITHUB CI VERIFIED / REAL HOST INSTALLED** |
-| `cyber-abuse-guard-v0.1.2-dirty-audit-bundle.zip` | `4ada1c9a802f68390f03ed0ac672497fbb6e70e638e689d27a68c57203d55a8d` | **GITHUB CI VERIFIED** |
-| `build-metadata.json` | `01ba04cac4058c008a3790626f02a7b545ce92c31afd1423a9f5316c9b6e2fb8` | **GITHUB CI VERIFIED** |
-| `checksums.txt` | `ccc17d139a3a9e74b9f021998c1c7151adb177303c18a14b1b93ad53061dbb10` | **DOWNLOADED CI ARTIFACT / LOCALLY REHASHED** |
+| `cyber-abuse-guard-v0.1.2-dirty.so` | `61ca7324b647efe1fc264878b712827982c636518896f7e9b4d6797e52e4edda` | **GITHUB CI VERIFIED** |
+| `cyber-abuse-guard-v0.1.2-dirty.so.sha256` | `214c3c393416c10880e1cf9320b3d7de5e540452b224dcd7f2d384dc9eaf88ea` | **GITHUB CI VERIFIED** |
+| `cyber-abuse-guard_0.1.2-dirty_linux_amd64.zip` (one root `.so`) | `16c5e089b7d7e0cf07f837b70ec745a2dcae73acfd60e3e18ab0118303b6959e` | **GITHUB CI VERIFIED / REAL HOST INSTALLED** |
+| `cyber-abuse-guard-v0.1.2-dirty-audit-bundle.zip` | `7592938325fd0e879139ba96f11c33c400ad3d8019e2c7ffb1b53742d6188a21` | **GITHUB CI VERIFIED** |
+| `build-metadata.json` | `10fe6f16663667dbfda18001e131ea1383a2b687777ae68091da478edd2f7d16` | **GITHUB CI VERIFIED** |
+| `checksums.txt` | `b79fb5e9a608d0d8bc2c949c4dac159f23a3a36e529a74761d912b52e7663618` | **DOWNLOADED CI ARTIFACT / LOCALLY REHASHED** |
 | `ruleset-manifest.json` | `486a4dfad49b4e96a600f908cbea47376baab5c8875324999ae50b6251f1af7e` | **GITHUB CI VERIFIED** |
 | `ruleset.sha256` | `a8ff687340617dc18832047f841979a0bd06ff8c50a4bc3c15dd7da37b6fbee2` | **GITHUB CI VERIFIED** |
-| `sbom.cdx.json` | `72ab91ed1b0ee8cb461b8847a18c759f324b34299b2bb6a5d854e467954690c0` | **GITHUB CI VERIFIED** |
+| `sbom.cdx.json` | `da6e6caec7dce7e0daa33be67e488a47318b8404509a03f79d7ad052264c7169` | **GITHUB CI VERIFIED** |
 | `release-test-summary.txt` | NOT CREATED | **FORMAL-RELEASE-ONLY; RELEASE BLOCKED** |
 
 Push artifact `cyber-abuse-guard-linux-amd64-dirty` is Actions artifact ID
-`8295799031`, uploaded size `10240174`, container digest
-`sha256:399e936956f430b607253653ee3c1a01f6073b6158b8258ec24f76d305d69b2c`.
-The PR-run artifact is ID `8295796754`, size `10240111`, container digest
-`sha256:02d2bf56f7e3024169877ac46134141316bcfe35bb9cf59292496ce4900e1622`.
+`8303051476`, uploaded size `10276537`, container digest
+`sha256:1d134b2c211665faab3478bd3c9cc2badc2f7ace7c76780f2d662c0b72d171d8`.
+The PR-run artifact is ID `8302950575`, size `10276698`, container digest
+`sha256:e90cd200df9b20201da5506a3c6440dcdb2232b12028acd9dad818aeaea40318`.
 Container digests are not substitutes for the internal-file hashes above.
 
 Store ZIP and audit bundle must remain separate. The store ZIP must contain
@@ -209,11 +209,11 @@ release and must not be uploaded as a GitHub Release.
 ## Final approval block
 
 ```text
-implementation_freeze_commit: 9c8114e22841f9a19b15b1f4b3c48531aa2453a0
+implementation_freeze_commit: 61536f9f02c47a4d79031a47dc8a284f040e41c1
 evidence_document_commit: SELF (resolve with git log -1 -- this file)
 annotated_tag: NOT CREATED — RELEASE BLOCKED
 github_release_url: NOT CREATED — RELEASE BLOCKED
-github_actions_ci_run: PASS — push 29292693070; pull_request 29292695293
+github_actions_ci_run: PASS — push 29312969925; pull_request 29312971717
 real_host_matrix: GITHUB CI PASS — 32 Host subtests; 15 Router scenarios
 management_proxy_413: GITHUB CI PASS
 http_request_adapter_405: SOURCE / ADAPTER STATUS-ERROR CHECK (response=nil)
