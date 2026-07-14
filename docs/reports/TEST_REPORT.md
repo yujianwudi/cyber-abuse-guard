@@ -44,7 +44,7 @@ and this incident independently keeps the handoff `BLOCKED FOR HANDOFF`.
 | `SOURCE OVERLAY PASS` | A pinned upstream source/contract test ran; this is not a native Guard Host run. |
 | `GITHUB CI` | A remote check on the exact pushed commit. Older/main checks are not transferable. |
 | `REAL HOST` | The real Guard `.so` loaded by CPA v7.2.72 and exercised through HTTP. |
-| `CI REQUIRED / NOT YET AUTHORITATIVE` | Only authorized GitHub CI plus Leo's isolated verification can close the native gate. |
+| `LOCAL MIS-EXECUTION / EXCLUDED` | The command ran outside the authorized evidence path; its result is permanently excluded and any GitHub CI or Leo result must be cited separately. |
 | `NOT RUN` | No result exists for the named tree/environment. |
 | `BLOCKED` | A prerequisite or final freeze is missing; never equivalent to PASS. |
 
@@ -62,7 +62,7 @@ provider or production service, and cleanup left no fixture process running.
 Their results are excluded and must never be reported as PASS:
 
 ```text
-LOCAL MIS-EXECUTION RECORDED / EXCLUDED; CI REQUIRED / NOT YET AUTHORITATIVE
+LOCAL MIS-EXECUTION RECORDED / EXCLUDED; NOT AUTHORITATIVE
 ```
 
 ## Classifier and development-corpus checks

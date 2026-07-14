@@ -14,10 +14,10 @@ English | [简体中文](README_CN.md)
 > [!WARNING]
 > This repository is an **unreleased development candidate**. The v0.1.2
 > release decision is **BLOCKED**, the only methodologically valid v10
-> evaluation is `CONSUMED / FAIL`. CPA v7.2.72 real-Host automation is
-> implemented, but authoritative native-load evidence still requires the
-> authorized GitHub CI job and Leo's isolated verification. Do not create a
-> v0.1.2 tag or GitHub Release, and do not deploy this candidate to production.
+> evaluation is `CONSUMED / FAIL`. CPA v7.2.72 real-Host automation passed the
+> authorized GitHub CI job; Leo's isolated verification remains not run. Do not
+> create a v0.1.2 tag or GitHub Release, and do not deploy this candidate to
+> production.
 
 When CPA has loaded and registered the plugin, Router ordering reaches it, and
 the self-executor is ready, CPA Cyber Abuse Guard inspects supported model
@@ -40,14 +40,14 @@ is not sent to a public classifier.
 | Unsupported platform | musl/Alpine |
 | Embedded YAML ruleset | `1.0.7`, SHA-256 `7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134` |
 | Classifier policy identity | `classifier-policy-v2`, SHA-256 `dc9a174099cb2f621e5333a508d4645604f96f470a6d9ae12a1acfb363d29cf2` |
-| Current validation | Source contracts and real-Host harness implemented; **authorized GitHub CI and Leo verification not yet authoritative** |
+| Current validation | Source/build/artifact and real-Host matrices **GITHUB CI PASS** on implementation freeze `9c8114e`; Leo verification **NOT RUN**; final official Guard client HTTP 405 unavailable |
 
 The root `go.mod` and `integration/pluginstorecontract` module both pin CPA
 v7.2.72. Source contracts enumerate and run 16 exact official Host tests, while
 the native harness installs the real Store ZIP, loads the real Guard `.so`, and
 uses a pure-C second Router/executor fixture. Source or compile-only results do
-not prove native compatibility: authoritative evidence must come from the
-authorized GitHub CI Linux job and then Leo's independent isolated run.
+not prove native compatibility: the authorized GitHub CI Linux job now records
+the development evidence, and Leo must repeat it independently in isolation.
 
 ## What this project is
 
@@ -129,9 +129,9 @@ scale, authorization/defensive scope, wrapper/amplifier, role scope, carrier,
 composition mode, and reason codes. It contains no prompt fragments.
 
 Supported source extractors cover OpenAI Chat, OpenAI Responses, Anthropic
-Claude, and Google Gemini request shapes. The current repository has source
-tests for these paths, but the four-protocol HTTP and zero-downstream-call
-matrix still requires authorized GitHub CI and Leo's isolated verification.
+Claude, and Google Gemini request shapes. The four-protocol HTTP and
+zero-downstream-call matrix passed authorized GitHub CI on the implementation
+freeze; Leo's isolated verification remains not run.
 
 Recognized roles keep system safety policy and assistant refusals separate from
 user intent. User-authored adjacent turns and one explicitly linked bounded
@@ -239,12 +239,20 @@ provider or production service, and cleanup left no fixture process running.
 Their status is strictly:
 
 ```text
-LOCAL MIS-EXECUTION RECORDED / EXCLUDED; CI REQUIRED / NOT YET AUTHORITATIVE
+LOCAL MIS-EXECUTION RECORDED / EXCLUDED; NOT AUTHORITATIVE
 ```
 
 No result from those local commands is a delivery PASS.
 The separately authorized GitHub CI results above are the applicable remote
 evidence; Leo's independent verification remains not run.
+
+A separate methodology incident involved two incorrectly scoped WSL
+source-search commands that unexpectedly emitted several rows from the retired
+`testdata/holdout-v3` corpus. Both searches were stopped immediately; the rows
+were not analyzed or used for tuning or conclusions, and evaluation v10 content
+was not accessed. The retired holdout-v3 corpus is no longer eligible as
+independent evidence, and this incident independently keeps the handoff status
+`BLOCKED FOR HANDOFF`.
 
 Current v7.2.72 source/native evidence boundaries are recorded in
 [CPA_INTEGRATION.md](docs/reports/CPA_INTEGRATION.md) and

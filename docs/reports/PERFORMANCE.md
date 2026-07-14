@@ -24,7 +24,7 @@ authorized evidence path. They used loopback/Mock components only and cleanup
 left no fixture process. Their results are excluded from this report:
 
 ```text
-LOCAL MIS-EXECUTION RECORDED / EXCLUDED; CI REQUIRED / NOT YET AUTHORITATIVE
+LOCAL MIS-EXECUTION RECORDED / EXCLUDED; NOT AUTHORITATIVE
 ```
 
 ## Classifier before/after reference

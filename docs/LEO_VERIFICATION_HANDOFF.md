@@ -12,6 +12,11 @@ Evaluation v10 was not opened, printed, classified, extracted, obtained through
 Git history, or rerun. Only its frozen aggregate report was used. Do not inspect
 or execute any consumed blind sample during this handoff.
 
+The first-and-only methodologically valid v10 result remains the authoritative,
+immutable `CONSUMED / FAIL`: benign false positives 28/320, policy blocked
+49/320, and exact classification 33/320. This post-v10 development work does not
+replace or revise that result.
+
 Methodology incident: two incorrectly scoped WSL source-search commands
 unexpectedly emitted several rows from the retired `testdata/holdout-v3`
 corpus. Both searches were stopped immediately; the emitted rows were not
@@ -66,7 +71,7 @@ provider or production service, and cleanup left no fixture process running.
 Their only permitted status is:
 
 ```text
-LOCAL MIS-EXECUTION RECORDED / EXCLUDED; CI REQUIRED / NOT YET AUTHORITATIVE
+LOCAL MIS-EXECUTION RECORDED / EXCLUDED; NOT AUTHORITATIVE
 ```
 
 ## 4. Root CPA dependency
@@ -520,9 +525,10 @@ independent_v11: NOT CREATED / NOT RUN
 BLOCKED FOR HANDOFF
 ```
 
-Reason: engineering and authorized GitHub CI gates pass, but Leo independent
-verification and a new independent blind evaluation are not run; two accidental
-retired holdout-v3 row exposures invalidate that corpus as independent evidence;
-and official CPA final client HTTP 405 is unavailable. The status may change
-only after the remaining independent verification and the 405 requirement are
+Reason: all runnable implemented engineering and authorized GitHub CI gates
+pass, but Leo independent verification is not run and a new independent blind
+evaluation is neither created nor run; the two accidental retired holdout-v3
+source-search exposures invalidate that corpus as independent evidence; and
+official CPA final client HTTP 405 is unavailable. The status may change only
+after the remaining independent verification and the 405 requirement are
 resolved without reading or rerunning consumed samples.

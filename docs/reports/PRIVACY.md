@@ -21,7 +21,7 @@ only, contacted no production service or real provider, and cleanup left no
 fixture process running. Their results are excluded:
 
 ```text
-LOCAL MIS-EXECUTION RECORDED / EXCLUDED; CI REQUIRED / NOT YET AUTHORITATIVE
+LOCAL MIS-EXECUTION RECORDED / EXCLUDED; NOT AUTHORITATIVE
 ```
 
 ## Privacy invariants

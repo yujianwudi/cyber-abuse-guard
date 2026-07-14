@@ -14,9 +14,9 @@
 > [!WARNING]
 > 本仓库当前是**未发布的开发候选版本**。v0.1.2 的发布结论仍为
 > **BLOCKED**；唯一方法学有效的 v10 正式评估为
-> `CONSUMED / FAIL`。当前代码已实现 CPA v7.2.72 Host 自动化入口，但真实 `.so`
-> 加载证据必须由 GitHub CI 和里奥独立复验产生。不得创建 v0.1.2 Tag 或 GitHub
-> Release，也不得把当前候选部署到生产环境。
+> `CONSUMED / FAIL`。CPA v7.2.72 真实 Host 自动化已通过授权 GitHub CI；里奥
+> 独立复验仍未运行。不得创建 v0.1.2 Tag 或 GitHub Release，也不得把当前候选部署到
+> 生产环境。
 
 当 CPA 已加载并注册插件、Router 顺序能够到达本插件且自路由 Executor 已就绪时，
 CPA Cyber Abuse Guard 会在 Provider 解析和账号认证调度之前检查受支持的模型请求。
@@ -113,7 +113,7 @@ wrapper/amplifier、角色范围、载体、组合方式和 reason code，不包
 请求结构。真实 Host 自动化覆盖四协议安全请求的原生透传、恶意非流式/流式同步
 403、流式 pre-SSE、Anthropic/Gemini token-count 403，以及每个本地
 阻断请求的 Auth Selector、Provider executor、Usage queue、Mock Upstream 零副作用；
-这些断言仍等待 GitHub CI 产生权威运行记录。
+这些断言已在 Implementation Freeze 的授权 GitHub CI 中通过，里奥独立复验仍未运行。
 
 已识别角色会把 System 安全策略和 Assistant 拒绝与 User 意图隔离。相邻 User 消息
 以及一个显式关联的有界三轮计划可以组合；Provider 原生 Tool Payload 会独立扫描；
@@ -204,11 +204,16 @@ scripts/management-proxy-413-test.sh
 Fixture 进程。其唯一允许状态是：
 
 ```text
-LOCAL MIS-EXECUTION RECORDED / EXCLUDED; CI REQUIRED / NOT YET AUTHORITATIVE
+LOCAL MIS-EXECUTION RECORDED / EXCLUDED; NOT AUTHORITATIVE
 ```
 
 这些本地结果绝不能写成交付 PASS。
 上表中的授权 GitHub CI 是独立的远端证据；里奥独立验证仍未运行。
+
+另有一次独立的方法学事件：两条作用域错误的 WSL 源码搜索命令意外输出了 retired
+`testdata/holdout-v3` 的若干行。两次搜索均立即停止，输出内容未被分析，也未用于调参
+或结论；evaluation v10 内容未被访问。retired holdout-v3 已不再具备独立证据资格，
+该事件也独立使交接状态保持 `BLOCKED FOR HANDOFF`。
 
 当前 v7.2.72 源码/原生证据边界记录在
 [CPA_INTEGRATION.md](docs/reports/CPA_INTEGRATION.md) 与

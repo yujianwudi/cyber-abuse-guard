@@ -72,7 +72,7 @@ contacted no production service or real provider, and cleanup left no fixture
 process running. Their status is:
 
 ```text
-LOCAL MIS-EXECUTION RECORDED / EXCLUDED; CI REQUIRED / NOT YET AUTHORITATIVE
+LOCAL MIS-EXECUTION RECORDED / EXCLUDED; NOT AUTHORITATIVE
 ```
 
 They are not delivery PASS evidence.
@@ -127,7 +127,7 @@ Leo independent review remains not run.
 
 Evaluation generations v1-v8 remain retired or consumed historical failures;
 v9 remains `CONSUMED / METHODOLOGY INVALID / FAIL`. The methodologically valid
-v10 first-and-only run remains:
+v10 first-and-only run remains the authoritative `CONSUMED / FAIL`:
 
 | Aggregate | Frozen result | Gate |
 |---|---:|---|
