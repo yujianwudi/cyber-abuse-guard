@@ -14,7 +14,8 @@ worktree, but that worktree was not yet a frozen clean commit.
 These numbers are useful regression evidence only. They are not GitHub CI
 evidence, not a real CPA Host result, not a formal release benchmark, and not a
 blind quality result. Methodologically valid evaluation v10 remains
-`CONSUMED / FAIL` and was not rerun.
+the frozen, first-and-only authoritative `FAIL`; that blind set is consumed and
+was not rerun.
 
 The WSL commands `make cpa-router-fixture-blackbox`,
 `make cpa-v7272-host-blackbox`, and
