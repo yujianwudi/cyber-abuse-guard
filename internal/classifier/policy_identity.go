@@ -7,7 +7,7 @@ const ClassifierPolicyVersion = "classifier-policy-v2"
 // ClassifierPolicySHA256 binds the deterministic classifier, role handling,
 // bounded extractor, rules schema, and embedded policy sources listed in
 // policy_identity_test.go. It is updated only when one of those sources changes.
-const ClassifierPolicySHA256 = "ac8c30a6367762a21c6ea81234678390b50cfcf00b793c5115f557074741adf9"
+const ClassifierPolicySHA256 = "26dac943b4b995b12086482630dfba54d66aa3daf26f0f39bfcf17b5f18c8204"
 
 // PolicyIdentity is safe to expose through management or audit metadata: it
 // contains only stable identifiers and never includes request text.

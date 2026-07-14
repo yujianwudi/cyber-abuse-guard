@@ -169,7 +169,7 @@ policy is separately identified as:
 
 ```text
 classifier_policy_version: classifier-policy-v2
-classifier_policy_sha256: ac8c30a6367762a21c6ea81234678390b50cfcf00b793c5115f557074741adf9
+classifier_policy_sha256: 26dac943b4b995b12086482630dfba54d66aa3daf26f0f39bfcf17b5f18c8204
 ```
 
 The policy digest test binds the deterministic classifier, matcher,

@@ -85,7 +85,7 @@ func extractRequest(body []byte, headers http.Header, profile RequestProfile, li
 		// syntactically complete object/array; malformed JSON continues through the
 		// multipart parser and can never become a complete inspection.
 		if profile.Source != SourceProfileUnknown && obviousCompleteJSON(body) {
-			return extractRequestJSON(body, normalized, initial, roleIndex), nil
+			return extractTransformedMultipartJSON(body, profile, normalized), nil
 		}
 		boundary, ok := params["boundary"]
 		if !ok || boundary == "" {

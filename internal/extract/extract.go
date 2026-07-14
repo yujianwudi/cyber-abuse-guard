@@ -514,6 +514,14 @@ func (x *extractor) walkJSON(data []byte, initial contextKind, baseDepth int, bo
 		if text, ok := token.(string); ok {
 			if len(stack) > 0 {
 				frame := &stack[len(stack)-1]
+				canonical := canonicalKey(key)
+				if isTextKeyCanonical(canonical) {
+					x.commitInspectableText(text, canonical, ctx, baseDepth+len(stack))
+					if x.stop {
+						return nil
+					}
+					continue
+				}
 				x.rememberOpaqueMediaCandidate(frame, key, text)
 				if marked, markedKind := marksMediaContext(key, text); marked && x.mayApplyMediaMarker(frame) {
 					frame.media = true
@@ -576,9 +584,12 @@ func (x *extractor) deferAmbiguousString(frame *jsonFrame, key, text string, ctx
 		return false
 	}
 
-	// A pending direct-media bit preserves content-free telemetry even when the
-	// candidate is too large to retain. No prefix is kept or classified.
-	frame.pendingDirectMedia = true
+	// A pending direct-media bit preserves content-free telemetry for actual
+	// payload keys even when the candidate is too large to retain. Deferred
+	// metadata such as filename/format must not invent an opaque payload.
+	if stableKey.isOpaquePayload() {
+		frame.pendingDirectMedia = true
+	}
 	if frame.deferredOverflow {
 		return true
 	}
@@ -766,6 +777,15 @@ func (k deferredStringKey) canonical() string {
 	}
 }
 
+func (k deferredStringKey) isOpaquePayload() bool {
+	switch k {
+	case deferredStringKeyData, deferredStringKeyBytes, deferredStringKeyBlob, deferredStringKeyBinary:
+		return true
+	default:
+		return false
+	}
+}
+
 // rememberOpaqueMediaCandidate retains constant-size evidence for values that
 // appeared before their sibling type/MIME marker. JSON object members are
 // unordered, so a later marker must classify earlier URL/data values exactly as
@@ -843,7 +863,7 @@ func childContext(parent contextKind, key string) contextKind {
 	if isToolWrapperKeyCanonical(canonical) {
 		return contextTool
 	}
-	if canonical == "data" {
+	if isDeferredPayloadKeyCanonical(canonical) {
 		if parent == contextTool || parent == contextToolPayload {
 			return contextToolPayload
 		}
@@ -856,6 +876,15 @@ func childContext(parent contextKind, key string) contextKind {
 		return contextText
 	}
 	return parent
+}
+
+func isDeferredPayloadKeyCanonical(key string) bool {
+	switch key {
+	case "data", "bytes", "blob", "binary":
+		return true
+	default:
+		return false
+	}
 }
 
 func (x *extractor) processString(text, key string, ctx contextKind, media bool, mediaKind mediaContextKind, semanticDepth int) {

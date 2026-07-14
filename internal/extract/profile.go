@@ -39,14 +39,14 @@ func classifyMultipartField(profile SourceProfile, name string) multipartFieldCl
 		return multipartFieldUnknown
 	}
 	switch canonicalMultipartField(name) {
-	case "prompt", "negativeprompt":
+	case "prompt", "negative_prompt", "negative-prompt", "negative prompt":
 		return multipartFieldText
 	case "image", "images", "mask":
 		return multipartFieldFile
-	case "model", "stream", "n", "size", "quality", "responseformat",
-		"outputformat", "background", "style", "user", "seed", "format",
-		"aspectratio", "resolution", "inputfidelity", "moderation",
-		"outputcompression", "partialimages":
+	case "model", "stream", "n", "size", "quality", "response_format",
+		"output_format", "background", "style", "user", "seed", "format",
+		"aspect_ratio", "resolution", "input_fidelity", "moderation",
+		"output_compression", "partial_images":
 		return multipartFieldMetadata
 	default:
 		return multipartFieldUnknown

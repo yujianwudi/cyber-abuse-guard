@@ -54,6 +54,32 @@ func TestStrictUnknownSourceMultipartJSONCannotBypassSchemaInspection(t *testing
 	}
 }
 
+func TestTransformedOpenAIImageJSONUnknownFieldUsesSchemaContract(t *testing.T) {
+	body := []byte(`{"prompt":"safe visible prompt","telemetry":"PRIVATE_TRANSFORMED_VALUE"}`)
+	for _, testCase := range []struct {
+		mode        string
+		wantHandled bool
+		wantReason  string
+	}{
+		{mode: "balanced"},
+		{mode: "strict", wantHandled: true, wantReason: "cyber_abuse_guard_multipart_schema"},
+	} {
+		t.Run(testCase.mode, func(t *testing.T) {
+			p := New()
+			t.Cleanup(p.Shutdown)
+			register(t, p, "mode: "+testCase.mode+"\naudit:\n  enabled: false\nsubject_control:\n  enabled: false\n")
+			disableClassifierForIncompletePath(t, p)
+			route := callMultipartRoute(t, p, "openai-image", body, "multipart/form-data; boundary=stale-cpa-boundary")
+			if route.Handled != testCase.wantHandled || route.Reason != testCase.wantReason {
+				t.Fatalf("route=%+v, want handled=%t reason=%q", route, testCase.wantHandled, testCase.wantReason)
+			}
+			if got := p.counters.incompleteMultipartSchema.Load(); got != 1 {
+				t.Fatalf("incomplete multipart schema counter=%d, want 1", got)
+			}
+		})
+	}
+}
+
 func TestMultipartIncompleteOverridesMaliciousPrompt(t *testing.T) {
 	for _, testCase := range []struct {
 		mode        string
