@@ -1,14 +1,18 @@
 package audit
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
+
+	sqlite3 "github.com/mattn/go-sqlite3"
 )
 
 const currentSchemaVersion = 2
@@ -43,6 +47,28 @@ CREATE INDEX IF NOT EXISTS idx_subject_state_updated_at
 
 type rowQueryer interface {
 	QueryRow(query string, args ...any) *sql.Row
+}
+
+type sqliteQueryer interface {
+	rowQueryer
+	Query(query string, args ...any) (*sql.Rows, error)
+}
+
+type migrationConnection struct {
+	ctx  context.Context
+	conn *sql.Conn
+}
+
+func (c migrationConnection) QueryRow(query string, args ...any) *sql.Row {
+	return c.conn.QueryRowContext(c.ctx, query, args...)
+}
+
+func (c migrationConnection) Query(query string, args ...any) (*sql.Rows, error) {
+	return c.conn.QueryContext(c.ctx, query, args...)
+}
+
+func (c migrationConnection) Exec(query string, args ...any) (sql.Result, error) {
+	return c.conn.ExecContext(c.ctx, query, args...)
 }
 
 type sqliteColumnContract struct {
@@ -84,14 +110,32 @@ var auditEventIndexContract = []sqliteIndexContract{
 }
 
 func migrateDatabase(db *sql.DB, cfg Config, databasePath string) error {
-	version, err := detectSchemaVersion(db)
+	ctx := context.Background()
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("audit: reserve migration connection: %w", err)
+	}
+	defer conn.Close()
+
+	locked := migrationConnection{ctx: ctx, conn: conn}
+	if _, err := locked.Exec("BEGIN IMMEDIATE"); err != nil {
+		return fmt.Errorf("audit: acquire migration writer lock: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_, _ = locked.Exec("ROLLBACK")
+		}
+	}()
+
+	version, err := detectSchemaVersion(locked)
 	if err != nil {
 		return fmt.Errorf("audit: detect schema version: %w", err)
 	}
 	if version > currentSchemaVersion {
 		return fmt.Errorf("audit: database schema version %d is newer than supported version %d", version, currentSchemaVersion)
 	}
-	if err := validateSchemaContract(db, version); err != nil {
+	if err := validateSchemaContract(locked, version); err != nil {
 		return fmt.Errorf("audit: schema version %d contract is invalid: %w", version, err)
 	}
 	if version > 0 && version < currentSchemaVersion {
@@ -99,7 +143,7 @@ func migrateDatabase(db *sql.DB, cfg Config, databasePath string) error {
 		// create it (or advance the schema) when legacy correlation columns do
 		// not already satisfy the privacy-minimal digest/canonical contracts.
 		// The original database remains untouched for operator-directed repair.
-		if err := validateLegacyAuditPrivacy(db); err != nil {
+		if err := validateLegacyAuditPrivacy(locked); err != nil {
 			return fmt.Errorf("audit: legacy privacy contract is invalid: %w", err)
 		}
 	}
@@ -109,21 +153,15 @@ func migrateDatabase(db *sql.DB, cfg Config, databasePath string) error {
 		}
 	}
 
-	tx, err := db.Begin()
-	if err != nil {
-		return fmt.Errorf("audit: begin schema migration: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	if _, err := tx.Exec(migrationMetadataSchema); err != nil {
+	if _, err := locked.Exec(migrationMetadataSchema); err != nil {
 		return fmt.Errorf("audit: create migration metadata: %w", err)
 	}
 	nowNS := cfg.Now().UTC().UnixNano()
 	if version > 0 {
-		if _, err := tx.Exec(`INSERT OR IGNORE INTO migration_history(version, applied_at_ns, description) VALUES(1, ?, ?)`, nowNS, "v0.1.1 audit_events baseline"); err != nil {
+		if _, err := locked.Exec(`INSERT OR IGNORE INTO migration_history(version, applied_at_ns, description) VALUES(1, ?, ?)`, nowNS, "v0.1.1 audit_events baseline"); err != nil {
 			return fmt.Errorf("audit: record baseline migration: %w", err)
 		}
-		if _, err := tx.Exec(`INSERT INTO schema_version(singleton, version, updated_at_ns) VALUES(1, ?, ?)
+		if _, err := locked.Exec(`INSERT INTO schema_version(singleton, version, updated_at_ns) VALUES(1, ?, ?)
 ON CONFLICT(singleton) DO UPDATE SET version=excluded.version, updated_at_ns=excluded.updated_at_ns`, version, nowNS); err != nil {
 			return fmt.Errorf("audit: initialize schema version: %w", err)
 		}
@@ -134,36 +172,37 @@ ON CONFLICT(singleton) DO UPDATE SET version=excluded.version, updated_at_ns=exc
 		switch next {
 		case 1:
 			description = "create audit event schema"
-			if _, err := tx.Exec(schema); err != nil {
+			if _, err := locked.Exec(schema); err != nil {
 				return fmt.Errorf("audit: apply schema migration 1: %w", err)
 			}
 		case 2:
 			description = "add version metadata and optional subject state storage"
-			if _, err := tx.Exec(subjectStateSchema); err != nil {
+			if _, err := locked.Exec(subjectStateSchema); err != nil {
 				return fmt.Errorf("audit: apply schema migration 2: %w", err)
 			}
 		default:
 			return fmt.Errorf("audit: missing schema migration %d", next)
 		}
-		if _, err := tx.Exec(`INSERT INTO migration_history(version, applied_at_ns, description) VALUES(?, ?, ?)`, next, nowNS, description); err != nil {
+		if _, err := locked.Exec(`INSERT INTO migration_history(version, applied_at_ns, description) VALUES(?, ?, ?)`, next, nowNS, description); err != nil {
 			return fmt.Errorf("audit: record schema migration %d: %w", next, err)
 		}
-		if _, err := tx.Exec(`INSERT INTO schema_version(singleton, version, updated_at_ns) VALUES(1, ?, ?)
+		if _, err := locked.Exec(`INSERT INTO schema_version(singleton, version, updated_at_ns) VALUES(1, ?, ?)
 ON CONFLICT(singleton) DO UPDATE SET version=excluded.version, updated_at_ns=excluded.updated_at_ns`, next, nowNS); err != nil {
 			return fmt.Errorf("audit: advance schema version to %d: %w", next, err)
 		}
 	}
 
-	if err := tx.Commit(); err != nil {
+	if _, err := locked.Exec("COMMIT"); err != nil {
 		return fmt.Errorf("audit: commit schema migration: %w", err)
 	}
+	committed = true
 	if err := validateSchemaContract(db, currentSchemaVersion); err != nil {
 		return fmt.Errorf("audit: migrated schema contract is invalid: %w", err)
 	}
 	return nil
 }
 
-func validateLegacyAuditPrivacy(db *sql.DB) error {
+func validateLegacyAuditPrivacy(db sqliteQueryer) error {
 	rows, err := db.Query(`SELECT request_hash, subject_hash, model, source_format FROM audit_events`)
 	if err != nil {
 		return fmt.Errorf("inspect legacy audit privacy fields: %w", err)
@@ -193,7 +232,7 @@ func validateLegacyAuditPrivacy(db *sql.DB) error {
 	return nil
 }
 
-func validateSchemaContract(db *sql.DB, version int) error {
+func validateSchemaContract(db sqliteQueryer, version int) error {
 	if version >= 1 {
 		if err := requireSQLiteTable(db, "audit_events", auditEventColumnContract); err != nil {
 			return err
@@ -265,7 +304,7 @@ func validateSchemaContract(db *sql.DB, version int) error {
 	return nil
 }
 
-func requireSQLiteTable(db *sql.DB, table string, required []sqliteColumnContract) error {
+func requireSQLiteTable(db sqliteQueryer, table string, required []sqliteColumnContract) error {
 	rows, err := db.Query(`SELECT name, type, "notnull", pk FROM pragma_table_info(?) ORDER BY cid`, table)
 	if err != nil {
 		return fmt.Errorf("inspect table %s: %w", table, err)
@@ -299,7 +338,7 @@ func requireSQLiteTable(db *sql.DB, table string, required []sqliteColumnContrac
 	return nil
 }
 
-func requireSQLiteIndex(db *sql.DB, required sqliteIndexContract) error {
+func requireSQLiteIndex(db sqliteQueryer, required sqliteIndexContract) error {
 	rows, err := db.Query(`SELECT name, "desc" FROM pragma_index_xinfo(?) WHERE key = 1 ORDER BY seqno`, required.name)
 	if err != nil {
 		return fmt.Errorf("inspect index %s: %w", required.name, err)
@@ -331,7 +370,7 @@ func requireSQLiteIndex(db *sql.DB, required sqliteIndexContract) error {
 	return nil
 }
 
-func requireSQLiteDDLFragments(db *sql.DB, table string, fragments ...string) error {
+func requireSQLiteDDLFragments(db sqliteQueryer, table string, fragments ...string) error {
 	var statement string
 	if err := db.QueryRow(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?`, table).Scan(&statement); err != nil {
 		return fmt.Errorf("inspect table %s definition: %w", table, err)
@@ -345,7 +384,7 @@ func requireSQLiteDDLFragments(db *sql.DB, table string, fragments ...string) er
 	return nil
 }
 
-func validateMigrationMetadata(db *sql.DB, version int) error {
+func validateMigrationMetadata(db sqliteQueryer, version int) error {
 	rows, err := db.Query(`SELECT singleton, version FROM schema_version ORDER BY singleton`)
 	if err != nil {
 		return fmt.Errorf("inspect schema_version rows: %w", err)
@@ -446,11 +485,10 @@ func createMigrationBackup(db *sql.DB, cfg Config, databasePath string) error {
 		}
 		return err
 	}
-	// VACUUM INTO creates its destination with SQLite/process defaults. The
-	// operator-owned data directory may legitimately be 0755, so writing the
-	// final path directly could expose a complete audit snapshot as 0644 for a
-	// short window before chmod. Build it in a same-filesystem 0700 staging
+	// Build the online-backup destination in a same-filesystem 0700 staging
 	// directory, secure and sync it, then publish with a no-overwrite hard link.
+	// migrateDatabase holds BEGIN IMMEDIATE across this call, so the snapshot and
+	// the preceding privacy validation observe the same writer-exclusive state.
 	stagingDirectory, err := os.MkdirTemp(filepath.Dir(databasePath), ".cyber-abuse-guard-migration-*")
 	if err != nil {
 		return fmt.Errorf("create private migration-backup staging directory: %w", err)
@@ -460,8 +498,8 @@ func createMigrationBackup(db *sql.DB, cfg Config, databasePath string) error {
 		return fmt.Errorf("secure migration-backup staging directory: %w", err)
 	}
 	stagedPath := filepath.Join(stagingDirectory, "audit-backup.db")
-	if _, err := db.Exec(`VACUUM INTO ?`, stagedPath); err != nil {
-		return err
+	if err := copySQLiteDatabase(db, stagedPath, cfg.BusyTimeout); err != nil {
+		return fmt.Errorf("copy migration backup: %w", err)
 	}
 	info, err := os.Lstat(stagedPath)
 	if err != nil {
@@ -510,6 +548,76 @@ func createMigrationBackup(db *sql.DB, cfg Config, databasePath string) error {
 		return fmt.Errorf("close migration-backup parent: %w", err)
 	}
 	return pruneMigrationBackups(databasePath, cfg.MaxMigrationBackups)
+}
+
+func copySQLiteDatabase(source *sql.DB, destinationPath string, timeout time.Duration) error {
+	if timeout <= 0 {
+		timeout = 2500 * time.Millisecond
+	}
+	ctx := context.Background()
+
+	destinationDSN := (&url.URL{Scheme: "file", Path: filepath.ToSlash(destinationPath)}).String()
+	destination, err := sql.Open("sqlite3", destinationDSN)
+	if err != nil {
+		return fmt.Errorf("open backup destination: %w", err)
+	}
+	destination.SetMaxOpenConns(1)
+	defer destination.Close()
+	if err := destination.PingContext(ctx); err != nil {
+		return fmt.Errorf("connect backup destination: %w", err)
+	}
+
+	sourceConn, err := source.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("reserve backup source connection: %w", err)
+	}
+	defer sourceConn.Close()
+	destinationConn, err := destination.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("reserve backup destination connection: %w", err)
+	}
+	defer destinationConn.Close()
+
+	return sourceConn.Raw(func(sourceDriver any) error {
+		sourceSQLite, ok := sourceDriver.(*sqlite3.SQLiteConn)
+		if !ok {
+			return fmt.Errorf("unexpected backup source driver %T", sourceDriver)
+		}
+		return destinationConn.Raw(func(destinationDriver any) error {
+			destinationSQLite, ok := destinationDriver.(*sqlite3.SQLiteConn)
+			if !ok {
+				return fmt.Errorf("unexpected backup destination driver %T", destinationDriver)
+			}
+			backup, err := destinationSQLite.Backup("main", sourceSQLite, "main")
+			if err != nil {
+				return fmt.Errorf("initialize SQLite online backup: %w", err)
+			}
+			closed := false
+			busyDeadline := time.Now().Add(timeout)
+			defer func() {
+				if !closed {
+					_ = backup.Close()
+				}
+			}()
+			for {
+				done, err := backup.Step(-1)
+				if err != nil {
+					return fmt.Errorf("copy SQLite backup pages: %w", err)
+				}
+				if done {
+					closed = true
+					if err := backup.Close(); err != nil {
+						return fmt.Errorf("finish SQLite online backup: %w", err)
+					}
+					return nil
+				}
+				if time.Now().After(busyDeadline) {
+					return errors.New("SQLite online backup remained busy past the configured timeout")
+				}
+				time.Sleep(5 * time.Millisecond)
+			}
+		})
+	})
 }
 
 func pruneMigrationBackups(databasePath string, keep int) error {

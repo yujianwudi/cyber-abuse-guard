@@ -2,6 +2,7 @@ package plugin
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"path/filepath"
 	"reflect"
@@ -123,6 +124,30 @@ func TestInitialInvalidConfigFailsButInvalidReconfigureKeepsRuntime(t *testing.T
 	}
 	if len(reconfigureLogs) != 1 || strings.Contains(reconfigureLogs[0], "thresholds") {
 		t.Fatalf("privacy-safe reconfigure log = %#v", logged)
+	}
+}
+
+func TestIdentifierInitializationCauseIsInternalOnly(t *testing.T) {
+	const cause = "operator-only subject identifier diagnostic"
+	p := New()
+	p.identifier = nil
+	p.identifierErr = errors.New(cause)
+	t.Cleanup(p.Shutdown)
+	var loggedCause string
+	p.SetLogger(func(level, message string, fields map[string]any) {
+		if level == "error" && message == "cyber-abuse-guard subject identifier initialization failed" {
+			loggedCause, _ = fields["error"].(string)
+		}
+	})
+
+	raw, code := p.Call(pluginabi.MethodPluginRegister, lifecyclePayload(t,
+		"audit:\n  enabled: false\nsubject_control:\n  enabled: true\n"))
+	assertEnvelopeError(t, raw, code, "invalid_config", 0)
+	if strings.Contains(string(raw), cause) {
+		t.Fatalf("plugin response exposed identifier diagnostic: %s", raw)
+	}
+	if loggedCause != cause {
+		t.Fatalf("internal identifier diagnostic = %q, want %q", loggedCause, cause)
 	}
 }
 

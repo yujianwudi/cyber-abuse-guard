@@ -1006,9 +1006,9 @@ openai-compatibility:
 	if providerChanged != scenario.wantProviderExecution {
 		t.Fatalf("Router fixture provider execution changed = %t, want %t", providerChanged, scenario.wantProviderExecution)
 	}
-	if scenario.wantStatus == http.StatusForbidden {
-		// Guard-local blocks must stop before all four downstream seams: Auth,
-		// Provider, Usage, and the counted Mock Upstream.
+	if !scenario.wantProviderExecution {
+		// Guard-local blocks and fixture-handled routes must leave the native
+		// provider's asynchronous usage queue untouched.
 		assertUsageQueueQuiet(t, baseURL)
 	}
 }

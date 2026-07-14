@@ -604,6 +604,11 @@ func (p *Plugin) buildRuntime(rawConfig []byte) (*runtimeState, error) {
 		return nil, fmt.Errorf("compile rules: %w", err)
 	}
 	if cfg.SubjectControl.Enabled && p.identifierErr != nil {
+		p.log("error", "cyber-abuse-guard subject identifier initialization failed", map[string]any{
+			"plugin": ID,
+			"code":   "subject_identifier_init_failed",
+			"error":  p.identifierErr.Error(),
+		})
 		return nil, errors.New("initialize subject identifier: HMAC key configuration is invalid")
 	}
 	if cfg.SubjectControl.Persistence {

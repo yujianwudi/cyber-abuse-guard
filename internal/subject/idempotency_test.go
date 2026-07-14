@@ -89,6 +89,33 @@ func TestEvaluateRequestReceiptSurvivesPersistenceRoundTrip(t *testing.T) {
 	}
 }
 
+func TestEvaluateRequestReceiptSurvivesRaisedAuditThreshold(t *testing.T) {
+	t.Parallel()
+	clock := &testClock{now: time.Date(2026, 7, 14, 1, 30, 0, 0, time.UTC)}
+	controller := newTestController(t, clock)
+	subjectHash := riskHash("threshold-idempotent-subject")
+	requestHash := riskRequestHash("threshold-idempotent-request")
+
+	first := controller.EvaluateRequest(subjectHash, requestHash, 60)
+	if first.Duplicate || first.AddedScore != 60 || first.Reason != ReasonRisk {
+		t.Fatalf("initial request = %#v", first)
+	}
+	updated := controller.cfg
+	updated.AuditThreshold = 80
+	if err := controller.Reconfigure(updated); err != nil {
+		t.Fatal(err)
+	}
+
+	duplicate := controller.EvaluateRequest(subjectHash, requestHash, 60)
+	if !duplicate.Duplicate || duplicate.AddedScore != 0 || duplicate.Reason != ReasonRisk || duplicate.Blocked {
+		t.Fatalf("duplicate below raised threshold = %#v", duplicate)
+	}
+	state, ok := controller.Snapshot(subjectHash)
+	if !ok || state.HitCount != 1 || state.Score != 60 {
+		t.Fatalf("state after duplicate below raised threshold = (%#v, %v)", state, ok)
+	}
+}
+
 func TestRestorePersistentRejectsInvalidOrDuplicateRequestReceipts(t *testing.T) {
 	t.Parallel()
 	clock := &testClock{now: time.Date(2026, 7, 14, 2, 0, 0, 0, time.UTC)}

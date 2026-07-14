@@ -48,8 +48,9 @@ type Stats struct {
 	RejectedCapacity uint64 `json:"rejected_capacity"`
 }
 
-// Decision describes the result for the current request. A Blocked result is
-// possible only when the current riskScore is at least AuditThreshold.
+// Decision describes the result for the current request. A new receipt can add
+// risk only at or above AuditThreshold; a duplicate returns the disposition of
+// its existing receipt even if a later policy raises that threshold.
 type Decision struct {
 	SubjectHash   string    `json:"subject_hash"`
 	Blocked       bool      `json:"blocked"`
@@ -191,7 +192,7 @@ func (c *Controller) evaluate(subjectHash, requestHash string, riskScore int) De
 	if current != nil {
 		c.prune(current, now)
 	}
-	if requestHash != "" && current != nil && riskScore >= c.cfg.AuditThreshold {
+	if requestHash != "" && current != nil {
 		for _, recorded := range current.hits {
 			if recorded.requestHash == requestHash {
 				decision := c.decision(subjectHash, current, now)

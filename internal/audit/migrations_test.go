@@ -4,7 +4,9 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -51,6 +53,7 @@ func TestMigrationRejectsPrivacyUnsafeLegacyRowsBeforePublishingBackup(t *testin
 				requestHash, subjectHash, model, sourceFormat, 0, 32, "privacy-rules", 5); err != nil {
 				t.Fatal(err)
 			}
+			before := captureV1DatabaseSnapshot(t, legacy)
 			if err := legacy.Close(); err != nil {
 				t.Fatal(err)
 			}
@@ -84,6 +87,11 @@ func TestMigrationRejectsPrivacyUnsafeLegacyRowsBeforePublishingBackup(t *testin
 				_ = check.Close()
 				t.Fatalf("rejected migration changed the v1 schema: exists=%t", exists)
 			}
+			after := captureV1DatabaseSnapshot(t, check)
+			if !reflect.DeepEqual(after, before) {
+				_ = check.Close()
+				t.Fatalf("rejected migration changed the v1 database:\nbefore=%#v\nafter=%#v", before, after)
+			}
 			if err := check.Close(); err != nil {
 				t.Fatal(err)
 			}
@@ -102,6 +110,8 @@ func TestMigrationBackupPublishCollisionBlocksMigrationWithoutChangingSchema(t *
 	if _, err := legacy.Exec(schema); err != nil {
 		t.Fatal(err)
 	}
+	insertSafeLegacyAuditRow(t, legacy, "backup-collision-event")
+	before := captureV1DatabaseSnapshot(t, legacy)
 	if err := legacy.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -141,6 +151,110 @@ func TestMigrationBackupPublishCollisionBlocksMigrationWithoutChangingSchema(t *
 	defer check.Close()
 	if exists, err := sqliteTableExists(check, "subject_state"); err != nil || exists {
 		t.Fatalf("failed migration changed the v1 schema: exists=%t", exists)
+	}
+	after := captureV1DatabaseSnapshot(t, check)
+	if !reflect.DeepEqual(after, before) {
+		t.Fatalf("backup publication failure changed the v1 database:\nbefore=%#v\nafter=%#v", before, after)
+	}
+}
+
+func TestMigrationWriterLockCoversValidationBackupAndSchemaChange(t *testing.T) {
+	t.Parallel()
+	directory := t.TempDir()
+	path := filepath.Join(directory, "audit.db")
+	legacy, err := sql.Open("sqlite3", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := legacy.Exec(schema); err != nil {
+		t.Fatal(err)
+	}
+	insertSafeLegacyAuditRow(t, legacy, "writer-lock-safe-event")
+	if err := legacy.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	lockHeld := make(chan struct{})
+	releaseMigration := make(chan struct{})
+	var signalOnce sync.Once
+	var releaseOnce sync.Once
+	release := func() { releaseOnce.Do(func() { close(releaseMigration) }) }
+	defer release()
+	type openResult struct {
+		store *Store
+		err   error
+	}
+	result := make(chan openResult, 1)
+	go func() {
+		store, err := Open(Config{
+			Path:                  path,
+			BusyTimeout:           500 * time.Millisecond,
+			BackupBeforeMigration: true,
+			MaxMigrationBackups:   1,
+			Now: func() time.Time {
+				signalOnce.Do(func() {
+					close(lockHeld)
+					<-releaseMigration
+				})
+				return fixedMigrationTime()
+			},
+		})
+		result <- openResult{store: store, err: err}
+	}()
+
+	select {
+	case <-lockHeld:
+	case <-time.After(5 * time.Second):
+		t.Fatal("migration did not reach the writer-locked backup phase")
+	}
+	writer, err := sql.Open("sqlite3", path+"?_busy_timeout=50")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, writeErr := writer.Exec(`INSERT INTO audit_events VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		"writer-race-event", fixedMigrationTime().UnixNano(), "block", "balanced", "credential_theft", 90, "[]",
+		"MIGRATION_RACE_PROMPT_CANARY", "hmac-sha256:"+strings.Repeat("b", 64), HashModel("safe-model"), "openai", 0, 32, "privacy-rules", 5)
+	_ = writer.Close()
+	if writeErr == nil {
+		t.Fatal("concurrent writer bypassed the migration writer lock")
+	}
+	release()
+
+	var opened openResult
+	select {
+	case opened = <-result:
+	case <-time.After(10 * time.Second):
+		t.Fatal("migration did not finish after releasing the test barrier")
+	}
+	if opened.err != nil {
+		if opened.store != nil {
+			_ = opened.store.Close()
+		}
+		t.Fatalf("writer-locked migration failed: %v", opened.err)
+	}
+	t.Cleanup(func() { _ = opened.store.Close() })
+	var racedRows int
+	if err := opened.store.db.QueryRow(`SELECT COUNT(*) FROM audit_events WHERE id = 'writer-race-event'`).Scan(&racedRows); err != nil {
+		t.Fatal(err)
+	}
+	if racedRows != 0 {
+		t.Fatalf("concurrent writer row count = %d, want 0", racedRows)
+	}
+	backups, err := filepath.Glob(path + ".pre-v*.bak")
+	if err != nil || len(backups) != 1 {
+		t.Fatalf("migration backups = %v, err=%v", backups, err)
+	}
+	backup, err := sql.Open("sqlite3", "file:"+filepath.ToSlash(backups[0])+"?mode=ro")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer backup.Close()
+	var safeRows int
+	if err := backup.QueryRow(`SELECT COUNT(*) FROM audit_events WHERE id = 'writer-lock-safe-event'`).Scan(&safeRows); err != nil {
+		t.Fatal(err)
+	}
+	if safeRows != 1 {
+		t.Fatalf("safe backup row count = %d, want 1", safeRows)
 	}
 }
 
@@ -485,6 +599,96 @@ func TestMigrationBackupRetentionTreatsDatabaseNameLiterally(t *testing.T) {
 		if _, err := os.Stat(candidate); err != nil {
 			t.Fatalf("expected file %q to remain: %v", candidate, err)
 		}
+	}
+}
+
+type v1DatabaseSnapshot struct {
+	Schema []v1SchemaObject
+	Events []v1AuditRow
+}
+
+type v1SchemaObject struct {
+	Type  string
+	Name  string
+	Table string
+	SQL   string
+}
+
+type v1AuditRow struct {
+	ID               string
+	TimestampNS      int64
+	Action           string
+	Mode             string
+	Category         string
+	RiskScore        int
+	RuleIDs          string
+	RequestHash      string
+	SubjectHash      string
+	Model            string
+	SourceFormat     string
+	Stream           int
+	TextBytesScanned int
+	Classifier       string
+	LatencyUS        int
+}
+
+func captureV1DatabaseSnapshot(t testing.TB, db *sql.DB) v1DatabaseSnapshot {
+	t.Helper()
+	var snapshot v1DatabaseSnapshot
+	schemaRows, err := db.Query(`SELECT type, name, tbl_name, COALESCE(sql, '')
+FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type, name`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for schemaRows.Next() {
+		var object v1SchemaObject
+		if err := schemaRows.Scan(&object.Type, &object.Name, &object.Table, &object.SQL); err != nil {
+			_ = schemaRows.Close()
+			t.Fatal(err)
+		}
+		snapshot.Schema = append(snapshot.Schema, object)
+	}
+	if err := schemaRows.Err(); err != nil {
+		_ = schemaRows.Close()
+		t.Fatal(err)
+	}
+	if err := schemaRows.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	eventRows, err := db.Query(`SELECT id, timestamp_ns, action, mode, category, risk_score, rule_ids,
+request_hash, subject_hash, model, source_format, stream, text_bytes_scanned, classifier, latency_us
+FROM audit_events ORDER BY id`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for eventRows.Next() {
+		var row v1AuditRow
+		if err := eventRows.Scan(&row.ID, &row.TimestampNS, &row.Action, &row.Mode, &row.Category,
+			&row.RiskScore, &row.RuleIDs, &row.RequestHash, &row.SubjectHash, &row.Model,
+			&row.SourceFormat, &row.Stream, &row.TextBytesScanned, &row.Classifier, &row.LatencyUS); err != nil {
+			_ = eventRows.Close()
+			t.Fatal(err)
+		}
+		snapshot.Events = append(snapshot.Events, row)
+	}
+	if err := eventRows.Err(); err != nil {
+		_ = eventRows.Close()
+		t.Fatal(err)
+	}
+	if err := eventRows.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return snapshot
+}
+
+func insertSafeLegacyAuditRow(t testing.TB, db *sql.DB, id string) {
+	t.Helper()
+	if _, err := db.Exec(`INSERT INTO audit_events VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		id, fixedMigrationTime().UnixNano(), "allow", "balanced", "", 0, "[]",
+		"sha256:"+strings.Repeat("a", 64), "hmac-sha256:"+strings.Repeat("b", 64), HashModel("safe-model"),
+		"openai", 0, 32, "privacy-rules", 5); err != nil {
+		t.Fatal(err)
 	}
 }
 
