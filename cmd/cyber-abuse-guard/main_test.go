@@ -69,7 +69,7 @@ func TestClearHostAPIWaitsForInFlightCallback(t *testing.T) {
 	}
 }
 
-func TestABIEnvelopeRegistrationAndFailClosedExecutor(t *testing.T) {
+func TestABIEnvelopeRegistrationAndModeAwareOversize(t *testing.T) {
 	if abiVersion != pluginabi.ABIVersion {
 		t.Fatalf("abiVersion = %d, want %d", abiVersion, pluginabi.ABIVersion)
 	}
@@ -108,8 +108,25 @@ func TestABIEnvelopeRegistrationAndFailClosedExecutor(t *testing.T) {
 		OK     bool                         `json:"ok"`
 		Result pluginapi.ModelRouteResponse `json:"result"`
 	}
-	if err := json.Unmarshal(raw, &oversizedEnvelope); err != nil || !oversizedEnvelope.OK || !oversizedEnvelope.Result.Handled || oversizedEnvelope.Result.Reason != "cyber_abuse_guard_scan_limit" {
-		t.Fatalf("oversized native route envelope=%s err=%v", raw, err)
+	if err := json.Unmarshal(raw, &oversizedEnvelope); err != nil || !oversizedEnvelope.OK || oversizedEnvelope.Result.Handled {
+		t.Fatalf("balanced oversized native route envelope=%s err=%v", raw, err)
+	}
+
+	strictLifecycle, _ := json.Marshal(map[string]any{
+		"schema_version": pluginabi.SchemaVersion,
+		"config_yaml":    []byte("mode: strict\naudit:\n  enabled: false\n"),
+	})
+	raw, code = handlePluginCall(pluginabi.MethodPluginReconfigure, strictLifecycle)
+	if code != 0 {
+		t.Fatalf("plugin.reconfigure strict code=%d envelope=%s", code, raw)
+	}
+	raw, code = handleOversizedPluginCall(pluginabi.MethodModelRoute)
+	if code != 0 {
+		t.Fatalf("strict oversized model.route code=%d envelope=%s", code, raw)
+	}
+	if err := json.Unmarshal(raw, &oversizedEnvelope); err != nil || !oversizedEnvelope.OK ||
+		!oversizedEnvelope.Result.Handled || oversizedEnvelope.Result.Reason != "cyber_abuse_guard_rpc_body_limit" {
+		t.Fatalf("strict oversized native route envelope=%s err=%v", raw, err)
 	}
 
 	for _, method := range []string{pluginabi.MethodExecutorExecuteStream, pluginabi.MethodExecutorCountTokens} {
