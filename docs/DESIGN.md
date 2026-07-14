@@ -2,18 +2,22 @@
 
 ## Scope and invariants
 
-Cyber Abuse Guard is an in-process CPA C-ABI v1 plugin for CLIProxyAPI v7.2.67
-(`2075f77c8ebe9ec872759965661936fb1ac2931f`). It reduces the chance that a
+Cyber Abuse Guard is an in-process CPA C-ABI v1 plugin for CLIProxyAPI v7.2.72
+(`6279bb8a4c2835ff6ed99c6b85083b2afbefa681`). It reduces the chance that a
 downstream caller sends clearly malicious, operational cyber-abuse requests to
 an upstream account. It cannot guarantee that an account will not receive a
 warning or be deactivated.
 
-The root module and runtime baseline remain on CPA v7.2.67. The isolated
-`integration/pluginstorecontract` module pins CPA v7.2.72 only to execute the
-official store-installer and host-routing source contracts without loading a
-shared library. Those source tests do not establish native-host compatibility.
+The repository work began from actual baseline
+`a121a444cb0d82cba4e27754914a1f88258e1d7b`. The root module and the isolated
+`integration/pluginstorecontract` module now both pin CPA v7.2.72. Source
+contracts, a real shared-object Host harness, and a second Router/executor
+fixture are distinct evidence layers; implementing a harness is not the same as
+executing it. Authoritative native evidence is restricted to the authorized
+GitHub CI Linux job and Leo's independent isolated environment. Current status
+is recorded in `reports/TEST_REPORT.md` and `LEO_VERIFICATION_HANDOFF.md`.
 
-This document describes the v0.1.2 candidate implementation, not an approved
+This document describes a post-v10 development handoff, not an approved
 release. The methodologically valid v10 evaluation failed its first and only
 formal run (28/320 benign false positives, 49/320 policy blocks, 33/320 exact),
 so the release is blocked. No v0.1.2 tag, GitHub Release, or production
@@ -26,9 +30,11 @@ The implementation has three non-negotiable invariants:
 1. A blocked request is routed by `ModelRouter` to the plugin's own executor
    before provider resolution and auth scheduling. The executor never invokes a
    host HTTP or host model callback.
-2. A single keyword is never sufficient to block. Decisions require a harmful
-   action/object combination plus operational, target, evasion, or scale
-   evidence, with defensive and lab context applied explicitly.
+2. A single keyword or wrapper is never sufficient to block. Decisions require
+   an independently established harmful behavior relation plus operational,
+   target, evasion, impact, or scale evidence, with defensive and lab context
+   applied explicitly. Wrapper evidence may amplify that base behavior but
+   cannot synthesize a Cyber Abuse category.
 3. The plugin never rewrites the requested model, client identity, or system
    prompt, and never sends request content to an auxiliary classifier or third
    party. Requests it allows still follow CPA's configured upstream path.
@@ -44,10 +50,10 @@ JSON RPC capabilities are:
 - `management_api`: expose management-key-protected status, event, stats, test,
   unblock, and delete routes.
 
-The canonical CPA formats `openai`, `openai-response`, and `claude` are
-declared as executor input and output formats. `gemini` is also declared and is
-covered when the installed CPA handler routes that entry protocol through the
-standard model-router path.
+The canonical CPA formats `openai`, `openai-response`, `claude`, and `gemini`
+are declared as executor input and output formats. The real-Host harness has
+separate allow/block, stream, token-count, and native error-shape assertions for
+the four corresponding entry protocols.
 
 For an unknown `SourceFormat`, Strict self-routes before interpretation.
 Balanced, Audit, and Observe still run a bounded generic untrusted-text walk so
@@ -58,16 +64,24 @@ so a new CPA/provider shape requires review and an explicit canonical mapping.
 For an allowed request, `model.route` returns `Handled: false`. For a blocked
 request, it returns `Handled: true`, `TargetKind: self`. The executor returns an
 RPC error envelope with HTTP status 403 and the stable marker
-`cyber_abuse_guard_blocked`. CPA v7.2.67 turns that error into the native error
+`cyber_abuse_guard_blocked`. CPA v7.2.72 turns that error into the native error
 shape for the entry protocol.
 
 `executor.execute`, `executor.execute_stream`, and `executor.count_tokens` use
-this same policy-403 path. `executor.http_request` is not implemented and
-returns HTTP 405. The real four-protocol HTTP/SSE and zero
-Auth/Usage/Provider/Upstream matrix for the current diff remains a server-
-sandbox requirement.
+this same policy-403 path. `executor.http_request` produces an unsupported-method
+RPC error whose `StatusCode()` is 405; the official adapter returns `(nil,
+error)`. This is a SOURCE/ADAPTER check, not a final client HTTP result. CPA
+v7.2.72 does expose the provider-specific public consumer
+`POST /v1/alpha/search`, but ordinary selection is fixed to `codex` and the
+handler maps every `HttpRequest` error to HTTP 502. The project's
+`httptest.Server` manually maps the status error and cannot establish official
+Host HTTP 405. No current official public route maps Guard's error to final
+client 405, so the result is `NOT AVAILABLE / NOT RUN` and remains a handoff
+blocker that current CI cannot solve. The real four-protocol HTTP/SSE and zero
+Auth/Usage/Provider/Upstream matrix must be executed against the exact frozen
+handoff commit before it becomes Host evidence.
 
-CPA v7.2.67's `ExecutorResponse` has payload and headers but no HTTP status.
+CPA v7.2.72's `ExecutorResponse` has payload and headers but no HTTP status.
 Consequently, ABI v1 cannot simultaneously return an arbitrary plugin-owned
 JSON body and a non-200 status from `executor.execute`. v0.1.2 favors the
 security property and correct 403 status, using CPA's protocol error wrapper.
@@ -107,6 +121,12 @@ The extractor is format-tolerant and walks JSON tokens with bounded work:
   `system`/`user`/`assistant`/`tool` segments. Role-less standard items use a
   conservative legacy-plus-per-part fallback; explicit unsupported roles fail
   closed, and discarding history at the 64-segment cap sets `truncated`;
+- adjacent user turns and one explicitly linked bounded three-turn plan can
+  compose behavior evidence across an assistant refusal, while non-user safety
+  text cannot supply user intent;
+- provider-native tool payloads retain tool provenance and are scanned
+  independently; placeholders and renamed variables are ordinary text until a
+  nearby definition binds them to a dangerous object, asset, or target;
 - malformed complete JSON is a parse error, not automatically malicious;
 - an artificial scan boundary inside an escape or UTF-8 sequence is treated as
   truncation, not a parse error, so `balanced` and `strict` fail closed;
@@ -173,10 +193,11 @@ still blocked. Ambiguous/role-less envelopes retain a joint legacy decision and
 also classify every part and adjacent pair, with the same bounded fail-closed
 capacity marker.
 
-The result contains only category, score, action, evidence IDs, and aggregate
-context flags. It never contains matched prompt fragments.
+The result contains only category, score, action, evidence IDs, aggregate
+context flags, the ruleset version, the classifier-policy identity, and a privacy-safe
+`BehaviorGraph`. It never contains matched prompt fragments.
 
-### Post-v10 meta-override layer
+### Wrapper/amplifier separation and behavior graph
 
 The development tree adds `META-OVERRIDE-001` after ordinary category
 assessment. It compiles bounded bilingual evidence families for hierarchy
@@ -185,25 +206,40 @@ scope laundering, forced output/authorization bypass, protected-prompt
 disclosure, and explicit negative authorization. Independent families must
 compose; it is not a single-keyword bypass detector.
 
-If ordinary cyber-abuse evidence exists, the layer raises the score while
-preserving the original taxonomy. A strong standalone control-plane attack is
-reported under `defense_evasion`. Prompt-derived CTF/lab/authorization claims
-cannot reduce the layer. Defensive quoted analysis is discounted only with an
+Wrapper/control evidence is structurally separate from base behavior. If an
+ordinary Cyber Abuse candidate exists, the layer may raise its score while
+preserving the original taxonomy and records an amplifier relation. Without a
+base candidate, wrapper-only text never produces `defense_evasion` or another
+Cyber Abuse category: weak combinations allow, while strong combinations are
+capped at the configured audit boundary and remain observe/audit even in
+classifier Strict mode. Defensive quoted analysis is discounted only with an
 affirmative non-execution purpose and no contradictory continuation.
+
+`BehaviorGraph` is the deterministic relation model behind the result. It uses
+stable booleans and edges for requester, action, object, target, destination,
+technique, delivery/execution, credential/access, persistence, evasion,
+exfiltration, impact, scale, authorization/defensive purpose,
+wrapper/amplifier, role scope, carrier, composition mode, and reason codes.
+No node or edge contains a prompt span. Rule-local candidates, same-category
+composition, and bounded semantic windows all emit through this common model.
 
 Role proof failure on a supported provider body causes a bounded conservative
 re-extraction. Tool provenance is inspected independently, nested valid JSON
 strings recurse only inside an established tool payload, joined content blocks
 are decoded again, and isolated single-character fragmentation has a narrow
-reconstruction path. These mechanisms remain stateless across independent API
-calls and do not attest to local instruction-file integrity.
+reconstruction path. Adjacent user turns and an explicitly linked three-turn
+plan may compose; placeholder bindings remain local to the supplied request.
+These mechanisms remain stateless across independent API calls and do not
+attest to local instruction-file integrity.
 
 Ruleset `1.0.7` identifies the embedded YAML assets only. The complete
-code-level policy also includes the meta layer, matcher/normalizer behavior,
-role handling, and extraction semantics. The containing Git/build commit plus
-the YAML identity are required to identify this development behavior; a future
-release must add a separate policy identity or fully bind it to verified build
-provenance.
+code-level behavior is separately identified as `classifier-policy-v2`,
+SHA-256
+`dc9a174099cb2f621e5333a508d4645604f96f470a6d9ae12a1acfb363d29cf2`.
+Its tested source list binds the classifier, matcher, normalizer, role logic,
+wrapper assessment, behavior graph, semantic composition, bounded extractor,
+rule loader/schema, embedded YAML assets, and module dependency locks. The
+identity is returned in classifier results and exposed by authenticated status.
 
 Mode semantics are:
 
@@ -212,6 +248,10 @@ Mode semantics are:
 - `audit`: classify and persist minimal events; never block;
 - `balanced`: block at `balanced_block` (default 60);
 - `strict`: block at `audit` (default 35).
+
+These ordinary thresholds apply to established base behaviors. Wrapper-only
+control evidence uses the separate non-blocking observe/audit path described
+above.
 
 The mode definitions intentionally take precedence over the task book's
 non-binding suggested statement that a score of 80 blocks every non-off mode;
@@ -225,7 +265,7 @@ Subject selection is ordered:
    HMACed in memory;
 2. an anonymous bucket.
 
-CPA v7.2.67 does not supply a distinct authenticated principal/key-policy ID or
+CPA v7.2.72 does not supply a distinct authenticated principal/key-policy ID or
 a trustworthy direct-peer address to ModelRouter. v0.1.2 therefore rejects
 `trusted_proxy.enabled: true`; forwarded headers alone are spoofable and are
 never accepted as identity.
@@ -243,6 +283,15 @@ for results at or above the audit threshold. Repeat hits receive a bounded
 multiplier. Cooldown/manual-block state applies only to new risky requests;
 ordinary safe requests are not permanently denied. Manual blocks can be
 cleared through the authenticated management API.
+
+Risk accounting is idempotent per subject and domain-separated request digest.
+The same logical request crossing Router and executor methods, retrying, racing
+concurrently, missing or expiring from the pending cache, or surviving an
+enabled-to-enabled reconfigure contributes at most one risk hit inside the risk
+window. Receipt metadata is bounded with the hit window and can be restored
+from the optional subject snapshot; older snapshots without receipts remain
+readable. If the bounded receipt capacity is exhausted, the controller refuses
+to evict a still-live receipt merely to count a retry again.
 
 `subject_control.max_subjects` bounds state cardinality and defaults to 10,000.
 The controller keeps non-manual entries in least-recent-risk order and evicts
@@ -383,7 +432,7 @@ exposed in v0.1.2.
 CPA mounts these below `/v0/management` and enforces its Management Key before
 the plugin handler runs. The test route does not persist its input.
 
-CPA v7.2.67 management routes are exact matches and reject `:` or `*`, so the
+CPA v7.2.72 management routes are exact matches and reject `:` or `*`, so the
 task book's suggested `{hash}` path parameter cannot be registered safely.
 
 CPA's Management Key middleware is the authentication authority. The plugin
@@ -425,8 +474,9 @@ handled Router wins; equal priority is ordered by plugin ID ascending. No in-
 process plugin can prove that every host or ABI failure will be fail-closed.
 The authenticated status exposes `loaded`, `enforcement_ready`,
 `router_errors`, `panics_recovered`, audit/HMAC/persistence degradation,
-reconfigure error, and build/ruleset identity. The read-only production
-watchdog checks those fields and runs built-in local-only probes. ABI v1 cannot
+reconfigure error, build/ruleset identity, and the classifier-policy
+version/hash. The read-only production watchdog checks those fields and runs
+built-in local-only probes. ABI v1 cannot
 enumerate router ordering or scan the plugin directory, so higher-priority
 router conflicts and duplicate `.so` versions remain mandatory operator checks.
 `enforcement_ready` reflects plugin-internal runtime state only; it does not
@@ -441,26 +491,64 @@ privacy, management handlers, and ABI envelopes. Separate corpora contain at
 least 100 benign security prompts and 100 clearly malicious operational
 prompts. Benchmarks report classifier latency and allocations.
 
-The isolated CPA v7.2.72 contract module calls the official
-`pluginstore.InstallArchive` with opaque bytes and runs the official
-`TestHostRouteModel*` and Router-sorting tests. It verifies store naming,
-root-only library layout, checksum, installed path/bytes, repeat installation,
-nested-layout rejection, priority ordering, and documented host fallback. It
-does not load the Guard `.so`.
+The visible `testdata/development-adversarial-v11-prep` corpus adds 35
+development cases: 16 block, 14 allow, 2 audit, and 3 resource-boundary
+fixtures. It covers all eight taxonomies, four provider protocols, English,
+Chinese, mixed language, role-aware and untrusted extraction, wrapper-only and
+wrapper-plus-behavior, multi-turn/refusal continuation, tool payload/output,
+bounded encodings, placeholders, and scan/part boundaries. Its validator checks
+schema, taxonomy, IDs, duplicates/near-duplicates, balance, coverage,
+production extraction, recovered semantics, and action/category. It is marked
+development-only and must never be reused as a future Holdout.
+
+The safe broad Go gate uses `scripts/go-safe-development-test.sh` in `test`,
+`race`, and `boundary` modes so routine development verification does not open
+consumed v4-v9 fixtures. Broad `go test ./...` is not an acceptable substitute.
+
+The CPA v7.2.72 source-contract module first proves that 16 exact upstream Host
+tests still exist, then runs those names precisely instead of relying on a broad
+wildcard. It also calls the official `pluginstore.InstallArchive` for both
+synthetic bytes and, when supplied, the real build artifact. These checks cover
+store naming, root-only library layout, checksum, installed path/bytes, repeat
+installation, tamper repair, priority ordering, and documented Host fallback.
+They remain source/installer evidence until paired with the authorized GitHub CI
+real-Host run and Leo verification.
 
 The integration harness builds the `.so`, builds CPA at the pinned commit,
 starts a local mock OpenAI-compatible upstream, and starts CPA with the plugin.
-It asserts that a safe request increments the mock counter while blocked
-requests across supported entry protocols return 403 and leave the counter
-unchanged. A public CPA auth-selector probe directly verifies zero auth
-selection for blocks, and the usage queue remains empty. It also verifies safe
-model/body preservation, authenticated management access, reconfiguration,
-stream termination, role-aware follow-ups, metadata-named OpenAI and Anthropic
-tool payloads, a Base64-expanded RPC above 8 MiB, and disabled-plugin recovery.
+It installs the real store ZIP, loads the installed Guard, and asserts that safe
+requests increment Auth Selector, Provider, Usage, and Mock Upstream counters
+while blocked requests leave all four at zero. It covers OpenAI Chat, OpenAI
+Responses, Anthropic, and Gemini non-streaming/streaming paths, pre-SSE 403,
+token-count 403 where exposed, adapter-level nil-response/status-error 405 for `http_request`, safe model/body
+and tool preservation, management authentication, reconfiguration, role-aware
+follow-ups, encoded tool payloads, a Base64-expanded RPC above 8 MiB, and
+disabled-plugin recovery.
+
+A separately compiled minimal Router/executor fixture exercises priority
+preemption, equal-priority plugin-ID ordering, invalid targets, missing or
+disabled Guard state, registration failure, route error, and executor
+identifier/format/scope readiness. Host fuse and pre-result panic remain pinned
+to official source-overlay tests; the fixture does not use a process crash as a
+false substitute for a recoverable plugin panic.
+
+The Host/Router targets and management-proxy fixture were mistakenly executed
+once in WSL outside the authorized evidence path. They used loopback/Mock
+components only and cleanup left no fixture process, but the results are
+excluded: `LOCAL MIS-EXECUTION RECORDED / EXCLUDED; CI REQUIRED / NOT YET
+AUTHORITATIVE`. Separately, exact-freeze GitHub CI passed the Host/Router/proxy
+matrix; Leo independent verification remains not run.
+
+The authorized artifact lifecycle is one chain over the same Dist identity:
+Host Blackbox uses `InstallManifest` for first install and real Host load, then
+`TestPublishedStoreArchive` verifies repeat-skip and tamper-repair.
+`REQUIRE_DIST_ARTIFACTS=1` must reject missing `.so`, Store ZIP, metadata, or
+checksums; synthetic fallback cannot satisfy CI evidence.
 
 `make release` depends on this real-CPA integration suite before packaging.
-For the current Phase 0 diff that real-host suite was deliberately not run
-locally; server-sandbox evidence is still required.
+Whether authorized CI and Leo ran the suite against the implementation freeze is
+an evidence field, not an architectural property; consult the test and Leo
+handoff reports.
 Release verification inspects the ELF and rejects a binary whose imported glibc
 symbol version exceeds `GLIBC_2.34`. The published artifact therefore requires
 glibc 2.34 or newer, is compatible with the official Debian Bookworm CPA image,
@@ -475,10 +563,12 @@ SSE stream with terminal frames; returning successful chunks would force HTTP
 ## Build identity and release reproducibility
 
 Release builds link immutable version, full commit SHA, ruleset version,
-canonical ruleset SHA-256, and dirty state. Authenticated status exposes the
-same values. Formal release scripts require a clean worktree and annotated
-`v0.1.2` tag at `HEAD`; `ALLOW_DIRTY_BUILD=1` produces clearly marked
-development artifacts only.
+canonical ruleset SHA-256, and dirty state. The classifier source separately
+exposes `classifier-policy-v2` and its SHA-256 through classifier results and
+authenticated status. Binding that policy identity into build metadata and the
+artifact verifier is still required before a formal release can rely on it.
+Formal release scripts require a clean worktree and annotated `v0.1.2` tag at `HEAD`;
+`ALLOW_DIRTY_BUILD=1` produces clearly marked development artifacts only.
 
 `SOURCE_DATE_EPOCH` derives from the commit timestamp unless explicitly fixed.
 Builds use `-trimpath`, a pinned Go toolchain, deterministic ZIP ordering and

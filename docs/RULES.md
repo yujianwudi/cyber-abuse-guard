@@ -24,10 +24,18 @@ letter leet substitutions, and creates a compact punctuation-free view. Rules
 use validated literal patterns compiled into an Aho-Corasick automaton; there
 are no runtime backtracking regular expressions.
 
-A rule cannot block on a lone keyword. It requires a configured combination of
-harmful action/object signals plus operational, target, evasion, or scale
-evidence. Each dimension contributes its strongest signal instead of adding
+A rule cannot block on a lone keyword or wrapper. It requires a configured
+harmful action/object core or an equivalent bounded semantic relation, plus
+independent operationalization, target, evasion, impact, or scale evidence.
+Each dimension contributes its strongest owned signal instead of adding
 unbounded points for repetition.
+
+The classifier materializes a privacy-safe `BehaviorGraph` with stable flags and
+edges for requester, action, object/asset, target/victim, technique,
+delivery/execution, credential/access, persistence, evasion, exfiltration,
+impact, scale, authorization/defensive purpose, wrapper/amplifier, role scope,
+carrier, composition mode, and reason codes. Graph nodes contain no prompt span,
+decoded payload, URL, credential, tool argument, or victim identifier.
 
 Negative contexts include defensive explanation, remediation, detection-rule
 creation, static analysis, incident response, high-level education, CTF/lab,
@@ -48,7 +56,7 @@ payloads remain inspectable even when the field is named `name`, `url`, `type`,
 or `model`. Order-independent Anthropic `tool_use.input` and second-order JSON
 use the same shared limits.
 
-## Meta-override implementation overlay
+## Wrapper/amplifier overlay
 
 `META-OVERRIDE-001` is a post-v10 implementation-level decision overlay, not a
 lone-keyword rule. It combines independent bilingual families for hierarchy
@@ -56,13 +64,16 @@ replacement, refusal suppression, unrestricted mode/persona, direct
 completion, scope/placeholder laundering, output control, protected-prompt or
 hidden-reasoning disclosure, and explicit negative authorization.
 
-When a normal cyber-abuse candidate already exists, the overlay raises its
-score without replacing the original category. A strong standalone
-control-plane attack is reported as `defense_evasion`. Prompt-derived CTF/lab,
-fictional-target, and authorization claims do not reduce this overlay.
-Defensive quoted material can reduce it only when the request has an
-affirmative analysis/remediation purpose, an explicit non-execution signal,
-and no contradictory operational continuation.
+When a normal Cyber Abuse candidate already exists, the overlay may raise its
+score without replacing the original category and records an amplifier
+relation. Without an independent base behavior, wrapper-only text never creates
+`defense_evasion` or any other Cyber Abuse category. Weak wrapper-only text
+allows; a strong control-plane combination is capped at the non-blocking audit
+boundary, including classifier Strict mode. Prompt-derived CTF/lab,
+fictional-target, and authorization claims do not wash an established dangerous
+behavior. Defensive quoted material can reduce wrapper evidence only when the
+request has an affirmative analysis/remediation purpose, an explicit
+non-execution signal, and no contradictory operational continuation.
 
 System, assistant, and tool segments are evaluated with their provenance.
 Benign safety/refusal quotations are kept separate from user intent, while an
@@ -107,8 +118,9 @@ Image/audio/video is not converted into text. It is governed separately by
 
 ## Decision output and privacy
 
-The classifier returns only action, category, score, ruleset version, stable
-rule/evidence IDs, and aggregate context flags. It never returns or persists a
+The classifier returns only action, category, score, ruleset version,
+classifier-policy version/hash, stable rule/evidence IDs, aggregate context
+flags, and the privacy-safe behavior graph. It never returns or persists a
 matched prompt fragment. Audit configuration cannot enable original-text
 logging.
 
@@ -130,12 +142,19 @@ authenticated status, compared with source by `verify-release.sh`, and included
 in `build-metadata.json`. A missing or mismatched identity is a release failure.
 
 This identity covers the embedded YAML rule assets. The complete code-level
-policy also includes `META-OVERRIDE-001`, matcher/normalizer mappings, role
-handling, and extraction semantics; none is covered by ruleset `1.0.7` or its
-canonical hash. The containing Git/build commit plus the YAML identity are
-required to identify this development behavior. Before a successor can be a
-release candidate, it must add a separately verified classifier-policy
-version/hash or fully bind those semantics to verified build provenance.
+policy is separately identified as:
+
+```text
+classifier_policy_version: classifier-policy-v2
+classifier_policy_sha256: dc9a174099cb2f621e5333a508d4645604f96f470a6d9ae12a1acfb363d29cf2
+```
+
+The policy digest test binds the deterministic classifier, matcher,
+normalizer, role logic, wrapper assessment, behavior graph, semantic
+composition, bounded extractor, rule loader/schema, embedded YAML files, and
+module dependency locks. Classifier results and authenticated status expose the
+identity. Build metadata and the artifact verifier do not yet bind it, so a
+handoff must also record the exact full Git commit.
 
 Any rule change requires a new ruleset version, regression review, manifest
 regeneration, changelog entry, and independent blind evaluation. Default rules
@@ -155,6 +174,22 @@ an independent or real-world benchmark. Its gate requires Balanced false
 positives `< 5%`, malicious recall `> 90%`, category coverage, and bilingual
 coverage.
 
+The visible development adversarial corpus is:
+
+```text
+testdata/development-adversarial-v11-prep/
+```
+
+It contains 35 development cases: 16 block, 14 allow, 2 audit, and 3
+resource-boundary fixtures. It covers all eight taxonomies, four provider
+protocols, English/Chinese/mixed language, wrapper contrasts, role and
+multi-turn scope, tool payload/output, bounded encodings, placeholders, and
+scan/part/truncation boundaries. The validator checks schema, fixed taxonomy,
+IDs, exact/near duplicates, balance, coverage, production extraction, recovered
+semantics, and expected action/category. The manifest permanently sets
+`development_only=true` and `future_holdout_eligible=false`; this corpus and any
+derived wording must never be reused as a future blind v11.
+
 Holdout data must be separately authored, frozen by SHA-256, schema-validated,
 deduplicated against regression data, scored only in aggregate, and excluded
 from per-row tuning. The task-book release gate additionally requires at least
@@ -173,13 +208,26 @@ No set may be relabelled as unseen, rerun, or used for row-specific tuning. The
 v0.1.2 release is blocked; a future attempt requires a new implementation and a
 new independently authored unseen set.
 
-Reproduce project regression and confirm the consumed-gate refusal with:
+Run the visible development validator with:
 
 ```bash
-make corpus-regression
-make holdout-test
+go test ./cmd/development-adversarial-v11-prep-validator \
+  -run '^TestDevelopmentAdversarialV11PrepCorpus$' -count=1
 ```
 
-`make holdout-test` now returns non-zero because v10 is consumed; it must not
-classify v10 again. Frozen hashes, aggregate metrics, and exit codes are kept in
+The broad development gate must use the sample-safe wrapper rather than
+`go test ./...`:
+
+```bash
+./scripts/go-safe-development-test.sh test
+./scripts/go-safe-development-test.sh race
+./scripts/go-safe-development-test.sh boundary
+```
+
+The future Makefile aliases are `unit-test`, `race`, and
+`consumed-boundary-test`. The wrapper must not open v4-v9 consumed fixtures.
+
+Do not run, inspect, print, or obtain through Git history any consumed blind
+sample. Evaluation v10 remains `CONSUMED / FAIL`; only its frozen aggregate
+report may be used. Frozen hashes, aggregate metrics, and exit codes are kept in
 the generation-specific reports and `docs/reports/RELEASE_EVIDENCE.md`.

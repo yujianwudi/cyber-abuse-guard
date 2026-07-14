@@ -37,8 +37,9 @@ type PersistentSubject struct {
 }
 
 type PersistentHit struct {
-	At    time.Time `json:"at"`
-	Score float64   `json:"score"`
+	At          time.Time `json:"at"`
+	Score       float64   `json:"score"`
+	RequestHash string    `json:"request_hash,omitempty"`
 }
 
 type RestoreResult struct {
@@ -85,7 +86,11 @@ func (c *Controller) ExportPersistent(hmacKeyID string) (PersistentSnapshot, err
 			Hits:          make([]PersistentHit, 0, len(current.hits)),
 		}
 		for _, item := range current.hits {
-			persisted.Hits = append(persisted.Hits, PersistentHit{At: item.at, Score: item.score})
+			persisted.Hits = append(persisted.Hits, PersistentHit{
+				At:          item.at,
+				Score:       item.score,
+				RequestHash: item.requestHash,
+			})
 		}
 		snapshot.Subjects = append(snapshot.Subjects, persisted)
 	}
@@ -145,6 +150,7 @@ func (c *Controller) RestorePersistent(snapshot PersistentSnapshot, expectedHMAC
 		}
 		current := &entry{manualBlocked: persisted.ManualBlocked}
 		lastActivity := time.Time{}
+		seenRequests := make(map[string]struct{}, len(persisted.Hits))
 		for _, persistedHit := range persisted.Hits {
 			at := persistedHit.At.UTC()
 			if at.IsZero() || at.After(now.Add(maxPersistenceClockSkew)) {
@@ -158,10 +164,19 @@ func (c *Controller) RestorePersistent(snapshot PersistentSnapshot, expectedHMAC
 			if persistedHit.Score <= 0 || persistedHit.Score > maxPersistedHitScore || math.IsNaN(persistedHit.Score) || math.IsInf(persistedHit.Score, 0) {
 				return RestoreResult{}, fmt.Errorf("%w: invalid hit score", ErrInvalidPersistence)
 			}
+			if persistedHit.RequestHash != "" {
+				if !validDigest(persistedHit.RequestHash, "sha256:") {
+					return RestoreResult{}, fmt.Errorf("%w: invalid persisted request hash", ErrInvalidPersistence)
+				}
+				if _, duplicate := seenRequests[persistedHit.RequestHash]; duplicate {
+					return RestoreResult{}, fmt.Errorf("%w: duplicate persisted request hash", ErrInvalidPersistence)
+				}
+				seenRequests[persistedHit.RequestHash] = struct{}{}
+			}
 			if now.Sub(at) >= c.cfg.Window {
 				continue
 			}
-			current.hits = append(current.hits, hit{at: at, score: persistedHit.Score})
+			current.hits = append(current.hits, hit{at: at, score: persistedHit.Score, requestHash: persistedHit.RequestHash})
 			if at.After(lastActivity) {
 				lastActivity = at
 			}

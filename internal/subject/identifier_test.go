@@ -31,19 +31,19 @@ func TestIdentifierHeaderPriorityAndNoPlaintext(t *testing.T) {
 	}
 	identity := identifier.FromHeaders(headers)
 	if identity.Source != SourceAuthorization {
-		t.Fatalf("source = %q", identity.Source)
+		t.Fatal("Authorization bearer was not selected as the subject source")
 	}
 	if identity.Hash != expectedHMAC("0123456789abcdef0123456789abcdef", bearer) {
-		t.Fatalf("hash = %q", identity.Hash)
+		t.Fatal("Authorization bearer did not produce the expected HMAC")
 	}
 	encoded := identity.Hash + identity.Source.String()
 	if strings.Contains(encoded, bearer) || strings.Contains(encoded, apiKey) {
-		t.Fatalf("Identity retained plaintext: %#v", identity)
+		t.Fatal("subject identity retained plaintext credential material")
 	}
 
 	identity = identifier.FromHeaders(http.Header{"X-Api-Key": []string{apiKey}})
 	if identity.Source != SourceAPIKey || identity.Hash != expectedHMAC("0123456789abcdef0123456789abcdef", apiKey) {
-		t.Fatalf("x-api-key identity = %#v", identity)
+		t.Fatal("x-api-key did not produce the expected HMAC identity")
 	}
 
 	// Unsupported Authorization schemes are not treated as API key material;
@@ -53,12 +53,12 @@ func TestIdentifierHeaderPriorityAndNoPlaintext(t *testing.T) {
 		"X-API-Key":     []string{apiKey},
 	})
 	if identity.Source != SourceAPIKey || identity.Hash != expectedHMAC("0123456789abcdef0123456789abcdef", apiKey) {
-		t.Fatalf("Basic fallback identity = %#v", identity)
+		t.Fatal("unsupported Authorization scheme did not safely fall back to x-api-key")
 	}
 
 	identity = identifier.FromHeaders(nil)
 	if identity.Source != SourceAnonymous || identity.Hash == "" || strings.Contains(identity.Hash, "anonymous") {
-		t.Fatalf("anonymous identity = %#v", identity)
+		t.Fatal("anonymous identity was not a non-plaintext HMAC bucket")
 	}
 }
 
@@ -78,7 +78,7 @@ func TestIdentifierSecretFilePermissions(t *testing.T) {
 		t.Fatalf("file Status() = %#v", got)
 	}
 	if got := identifier.FromHeaders(http.Header{"X-API-Key": []string{"secret"}}).Hash; got != expectedHMAC("abcdef0123456789abcdef0123456789", "secret") {
-		t.Fatalf("file-backed hash = %q", got)
+		t.Fatal("file-backed identifier produced an unexpected HMAC")
 	}
 
 	for _, mode := range []os.FileMode{0o640, 0o604, 0o644} {
@@ -104,6 +104,55 @@ func TestIdentifierSecretFileEnvironment(t *testing.T) {
 	}
 	if got := identifier.Status(); !got.Stable || got.Source != KeySourceFile {
 		t.Fatalf("file environment Status() = %#v", got)
+	}
+}
+
+func TestIdentifierRejectsEmptyAndTruncatedKeyMaterial(t *testing.T) {
+	t.Setenv(HMACKeyFileEnvironment, "")
+	for _, testCase := range []struct {
+		name string
+		key  string
+	}{
+		{name: "empty", key: ""},
+		{name: "truncated", key: strings.Repeat("k", minimumHMACKeyBytes-1)},
+	} {
+		t.Run(testCase.name+" environment", func(t *testing.T) {
+			t.Setenv(HMACKeyEnvironment, testCase.key)
+			if testCase.key == "" {
+				// Empty means not configured and intentionally selects the random
+				// fallback; empty-file coverage below exercises hard rejection.
+				return
+			}
+			if _, err := NewIdentifier(IdentifierConfig{}); err == nil {
+				t.Fatal("short environment HMAC key was accepted")
+			}
+		})
+		t.Run(testCase.name+" file", func(t *testing.T) {
+			t.Setenv(HMACKeyEnvironment, "")
+			path := filepath.Join(t.TempDir(), "hmac.key")
+			if err := os.WriteFile(path, []byte(testCase.key), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chmod(path, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := NewIdentifier(IdentifierConfig{SecretFile: path}); err == nil {
+				t.Fatal("empty or truncated HMAC key file was accepted")
+			}
+		})
+	}
+}
+
+func TestIdentifierKeyIDChangesWithoutExposingKeyMaterial(t *testing.T) {
+	first := newIdentifier([]byte(strings.Repeat("a", minimumHMACKeyBytes)), IdentifierStatus{Stable: true})
+	second := newIdentifier([]byte(strings.Repeat("b", minimumHMACKeyBytes)), IdentifierStatus{Stable: true})
+	firstID := first.KeyID()
+	secondID := second.KeyID()
+	if firstID == secondID || !strings.HasPrefix(firstID, "sha256:") || !strings.HasPrefix(secondID, "sha256:") {
+		t.Fatal("HMAC key identifiers are not stable, distinct digests")
+	}
+	if strings.Contains(firstID, strings.Repeat("a", minimumHMACKeyBytes)) || strings.Contains(secondID, strings.Repeat("b", minimumHMACKeyBytes)) {
+		t.Fatal("HMAC key identifier exposed key material")
 	}
 }
 

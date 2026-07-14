@@ -1,166 +1,146 @@
-# Privacy Verification Report — v0.1.2 candidate
+# Privacy Verification Report — post-v10 development handoff
+
+Last updated: 2026-07-14 (Asia/Shanghai)
 
 ## Status
 
-**PRE-PROMPT-INJECTION-CHANGE BASELINE — CURRENT-DIFF END-TO-END PRIVACY NOT
-RUN.** Typed canary tests previously covered audit events, SQLite files,
-management responses, parse failures, oversized routes, unknown source formats,
-persistence, migration, candidate packaging, SBOM, strict archive verification,
-and local-only network/proxy checks. Those results belong to an earlier
-development artifact and were not rerun after the current classifier/extractor
-changes. Current evidence is limited to the source-level checks in
-`TEST_REPORT.md`. Methodologically valid evaluation v10 is `CONSUMED / FAIL`,
-so no clean `v0.1.2` release tag or production artifact may be created.
+Current privacy work has **DEVELOPMENT SELF-CHECK** evidence on Linux/WSL ext4
+with Go 1.26.4 and CGO/race enabled, plus exact implementation-freeze
+**GITHUB CI PASS** evidence for real-Host management authentication, proxy 413,
+development-candidate artifact/SBOM scans, race, vet, and privacy scripts. Leo's
+independent real-Host/artifact review remains `NOT RUN`.
+
+Evaluation v10 was not read or rerun. Its frozen aggregate result remains
+`CONSUMED / FAIL` and is unrelated to the privacy PASS rows below.
+
+The WSL commands `make cpa-router-fixture-blackbox`,
+`make cpa-v7272-host-blackbox`, and
+`scripts/management-proxy-413-test.sh` were mistakenly executed outside the
+authorized evidence path. They used random loopback ports and Mock components
+only, contacted no production service or real provider, and cleanup left no
+fixture process running. Their results are excluded:
+
+```text
+LOCAL MIS-EXECUTION RECORDED / EXCLUDED; NOT AUTHORITATIVE
+```
 
 ## Privacy invariants
 
-The plugin must never persist, log, or return through management APIs:
+The plugin must never persist, log, or return through management or executor
+surfaces:
 
-- raw Prompt, Messages, Instructions, Tool Arguments, or uploaded code;
-- `Authorization` header or plaintext downstream API key;
-- Cookie, OAuth token, refresh token, session token, or provider credential;
-- plaintext subject/IP or HMAC secret;
-- upstream auth/account identity;
-- panic values that may contain attacker-controlled text.
+- raw Prompt, Messages, Instructions, Tool Arguments, tool output, or uploaded
+  code;
+- `Authorization`, plaintext downstream API keys, Cookie, OAuth/refresh/session
+  tokens, or provider credentials;
+- plaintext subject, IP address, arbitrary domain, full model name, HMAC secret,
+  or Management Key;
+- decoded dangerous payloads, matched spans, victim identifiers, or panic/error
+  values containing attacker-controlled text.
 
-`audit.log_original_text` exists only as a compatibility field. `true` must
-reject initial configuration and hot reconfiguration. There is no debug,
-trace, emergency, or test mode that overrides this rule.
+`audit.log_original_text=true` is rejected at initial configuration and hot
+reconfigure. There is no debug or test override.
 
-Allowed audit fields are limited to time, disposition, mode, coarse category,
-score, stable rule IDs, request SHA-256, subject HMAC, a domain-separated model
-digest, a fixed canonical source-format enum, stream flag, scanned byte count,
-and latency. Request SHA-256 is correlation metadata, not an encryption claim.
-The prompt-injection overlay emits only fixed identifiers such as
-`META-OVERRIDE-001` and `META-OVERRIDE-001:hierarchy`; it never returns or
-persists the matched phrase, quoted prompt, tool payload, or protected prompt
-content.
+Allowed retained values are limited to fixed/coarse metadata: timestamps,
+disposition, mode, category, score, stable rule/reason IDs, a domain-separated
+request digest, subject HMAC, domain-separated model digest, canonical source
+format, stream flag, scanned-byte count, latency, aggregate counters, build/
+ruleset/classifier-policy identity, and bounded persistence state.
 
-Optional subject persistence stores only:
+The classifier `BehaviorGraph` contains only stable booleans/relations and never
+contains a prompt span or decoded content.
 
-- `hmac-sha256:<digest>` subject ID;
-- score and bounded hit timestamps;
-- cooldown/manual-block state;
-- persistence version, saved timestamp, and a one-way HMAC key fingerprint.
+## Implemented controls
 
-The persistent Go type and SQLite schema cannot represent a plaintext key.
-HMAC key mismatch is explicit; old state is not silently overwritten.
-Schema/type/hash validation detects structural corruption, but schema v2 has no
-keyed whole-snapshot MAC. It does not authenticate completeness against a local
-SQLite writer; filesystem ownership and permissions are a documented trust
-boundary.
+- Request correlation is `sha256:` over an explicit domain separator plus the
+  request bytes; it is distinct from model and subject correlation domains.
+- Subjects are `hmac-sha256:` values only. Optional persisted idempotency
+  receipts store request digests, not raw requests.
+- Model names are stored only as `sha256-model-v1:` digests; source formats are
+  canonicalized to a fixed enum.
+- SQLite, CSV, management, panic recovery, logger callbacks, migration backups,
+  subject snapshots, release evidence, and watchdog output have typed canary
+  tests.
+- SQLite/config errors exposed through management are coarse and do not echo
+  attacker-controlled paths, SQL, or data.
+- Unix secret loading rejects short/empty keys, wrong owner/mode, symlinks,
+  FIFOs/devices, and validates/reads the same descriptor.
+- Before a v1→v2 migration publishes a backup or writes schema v2, legacy
+  `request_hash`, `subject_hash`, `model`, and `source_format` values are checked
+  against the digest/fixed-provider privacy contract. Any nonconforming value
+  fails closed: no backup is published, no migration occurs, and the original
+  database is retained for operator repair. The plugin does not automatically
+  sanitize a legacy plaintext database.
+- Classifier and media handling perform no guard-originated DNS lookup, remote
+  classification, media fetch, archive expansion, or telemetry call.
 
-## Network privacy
+The persisted subject snapshot still has no keyed whole-snapshot MAC. A local
+writer who already controls the SQLite file can delete otherwise valid rows;
+filesystem ownership remains a trust boundary.
 
-The v0.1.2 classifier is local deterministic rules. `classifier.enabled: true`
-is rejected. The plugin does not upload requests to another classifier,
-telemetry service, webhook, or remote log.
+## Development canary method
 
-HTTPS image/media URLs are never fetched. Image/audio/video/document-attachment
-bytes are not decoded. Bounded textual decoding performs no DNS lookup, redirect, network
-request, decompression, archive expansion, or document parsing.
+Tests inject unique synthetic prompt/key/auth/cookie/OAuth/domain/model/subject
+canaries into allowed, blocked, parse-error, truncation, panic, audit,
+persistence, migration, management, and watchdog paths. They then scan:
 
-Allowed requests still follow CPA's configured upstream path. This privacy
-claim applies to the guard's additional processing; it does not claim that CPA
-or the chosen provider never receives an allowed request.
+1. SQLite DB/WAL/SHM and migration backups;
+2. subject snapshots and sidecars;
+3. JSON/CSV audit exports;
+4. management status/events/test and executor responses;
+5. panic recovery, host logger, stdout, and stderr;
+6. release-evidence inputs and generated evidence text;
+7. disposable integration artifacts before cleanup.
 
-## Canary test method
+Tests report only the surface/category and PASS/FAIL; they do not print the
+secret canary value on failure.
 
-Use unique synthetic values that cannot appear accidentally, for example:
+## Executed development checks
 
-```text
-PROMPT_CANARY_CAG_V012_<random>
-APIKEY_CANARY_CAG_V012_<random>
-AUTH_CANARY_CAG_V012_<random>
-COOKIE_CANARY_CAG_V012_<random>
-OAUTH_CANARY_CAG_V012_<random>
-HMACKEY_CANARY_CAG_V012_<random>
-```
-
-Never use a real production credential. Exercise allowed, blocked, parse-error,
-truncated, opaque-media, management-test, panic-recovery, audit-degraded,
-migration, persistence-save/restore, and shutdown paths against a disposable
-local CPA + Mock Upstream.
-
-After clean shutdown, search the complete artifact set:
-
-1. SQLite main DB, WAL, and SHM;
-2. pre-migration database backups;
-3. CPA/plugin stdout/stderr and captured logs;
-4. Management Status, Events, Stats, Test, Health Probe, Unblock, and Delete
-   responses;
-5. panic/recovery error envelopes and host log callbacks;
-6. release `.so`, CPA store ZIP, audit bundle, `checksums.txt`, build metadata,
-   ruleset manifest, SBOM, and release-test summary;
-7. temporary integration/build directories before disposal.
-
-Representative repository test command:
-
-```bash
-go test -tags=sqlite_omit_load_extension ./internal/audit ./internal/plugin \
-  -run 'Privacy|Canary|OriginalText|Secret|Persistence' -count=1 -v
-```
-
-The exact final test names and output must be captured; the pattern above is a
-review command, not evidence by itself.
-
-For raw-file inspection, stop CPA first so WAL state is stable, then use a
-binary-safe search tool. Do not print the canary values in shared CI logs; emit
-only filename/category and PASS/FAIL. A match is a hard release failure until
-explained and removed. Hashes of the canary strings must also be chosen so the
-test does not mistake the intentionally stored request SHA-256 or subject HMAC
-for plaintext leakage.
-
-## Management response review
-
-CPA Management Key middleware is the authentication authority. The final real-
-host test must prove:
-
-- missing key: 401;
-- wrong key: 401;
-- normal downstream client key: 401;
-- correct Management Key: success;
-- response bodies contain no raw prompt, plaintext subject/key, matched
-  fragment, HMAC key, auth header, cookie, OAuth token, SQL error containing
-  data, or filesystem secret content.
-
-Status may expose only `hmac_stable`, initialized/degraded flags, and aggregate
-counters. Persisted subject metadata may contain a domain-separated one-way key
-identity for mismatch detection. Neither surface may expose the HMAC secret or
-configured Management Key.
-
-## Secret-file controls
-
-Production uses `CYBER_ABUSE_GUARD_HMAC_KEY_FILE` pointing to a regular
-mode-0600 non-symlink file. On Linux the plugin opens with `O_NOFOLLOW`, then
-validates and reads through the same descriptor. The generator creates the file
-atomically and prints only success/path metadata, never secret content.
-
-The secret is excluded from Git, Docker build context, both release ZIPs, SBOM,
-and logs. It should normally survive binary rollback/upgrade. Deleting it is an
-explicit destructive operation that breaks correlation with retained HMAC
-subject IDs.
-
-## Final evidence table
-
-| Surface | Canary scan | Final result |
+| Evidence class | Command/scope | Result |
 |---|---|---|
-| SQLite main DB | all synthetic canaries absent | **PASS** |
-| WAL and SHM | all synthetic canaries absent | **PASS** |
-| Migration backups | all raw canaries absent; only permitted digests/state | **PASS** |
-| CPA/plugin logs | all synthetic canaries absent | **PASS** |
-| Management responses | all synthetic canaries absent | **PASS** |
-| Panic/recovery output | all synthetic canaries absent | **PASS** |
-| Subject persistence | plaintext key/prompt absent; typed HMAC state only | **PASS** |
-| `.so` and pre-Phase0 release ZIP | secret-like paths absent; strict allowlist/modes | **PASS (historical candidate artifact)** |
-| Phase 0 store ZIP and audit bundle | source allowlists implemented; real built artifacts not produced locally | **PENDING SERVER BUILD** |
-| Build metadata/rules manifest | no secret/request text | **PASS** |
-| CycloneDX SBOM | no secret/request text | **PASS** |
-| Network capture | no guard-originated classifier/media fetch | **PASS** |
+| DEVELOPMENT SELF-CHECK, WSL/ext4 | `go test -race ./internal/subject ./internal/config -count=1 -v` | **PASS** |
+| DEVELOPMENT SELF-CHECK, WSL/ext4 | `go test -race ./internal/audit -count=1 -v` | **PASS** |
+| DEVELOPMENT SELF-CHECK, WSL/ext4 | plugin tests matching `EndToEndPrivacyCanaries`, `CallerControlledAuditMetadata`, `ProductionStatus`, `SubjectPersistenceRestores`, pending/logger/lifecycle race cases | **PASS** |
+| DEVELOPMENT SELF-CHECK, WSL/ext4 | `go vet ./internal/audit ./internal/config ./internal/plugin ./internal/subject` | **PASS** |
+| DEVELOPMENT SELF-CHECK, script | `scripts/check-production-health-test.sh` | **PASS** |
+| DEVELOPMENT SELF-CHECK, script | `scripts/release-evidence-privacy-test.sh` | **PASS** |
+| Windows native SQLite/race | native CGO/NTFS release-equivalent path | **NOT RUN / NOT A SUPPORTED RELEASE PATH** |
+| Real CPA management authentication | missing/wrong/client/correct Management Key 401/200 matrix on the implementation-freeze Host | **GITHUB CI PASS** |
+| Reverse-proxy request ceiling | >1 MiB returns 413 before CPA `io.ReadAll` | **GITHUB CI PASS**; local mis-execution remains excluded |
+| Development-candidate `.so`/store ZIP/audit bundle/SBOM scan | exact implementation-freeze candidates | **GITHUB CI PASS**; not a formal release |
+| GitHub CI | implementation freeze | **PASS** — push `29292693070`, PR `29292695293` |
+| Leo independent review | final Host and artifacts | **NOT RUN** |
+
+The PASS rows apply only to the named commands and current development tree.
+They do not establish the NOT RUN rows.
+
+## Management and Host boundary
+
+CPA's Management Key middleware is the authentication authority. Exact-freeze
+CI proved missing, wrong, and normal downstream keys return 401; only the
+correct Management Key succeeds. Responses remained canary-free. Leo must
+repeat this independently.
+
+CPA v7.2.72 performs `io.ReadAll` before the plugin management handler. The
+plugin's 1 MiB body and 2 MiB RPC-envelope limits therefore do not protect Host
+memory. Deployment evidence requires a reverse proxy to return 413 before CPA
+receives the oversized request.
+
+## Final evidence block
 
 ```text
-release_commit_tag_and_plugin_sha256: NOT CREATED — RELEASE BLOCKED
-privacy_test_log_sha256: candidate evidence only; no formal tagged release log
-canary_values: synthetic repository-only values; no production credential used
-overall_privacy_gate: PASS PRE-CHANGE BASELINE; CURRENT DIFF NOT RUN; RELEASE GATE remains FAIL
+starting_baseline: a121a444cb0d82cba4e27754914a1f88258e1d7b
+reliability_checkpoint_commit: 573def2649d164161e2dfdfeb3f59b1e1b38ebbc
+implementation_freeze_commit: 9c8114e22841f9a19b15b1f4b3c48531aa2453a0
+evidence_document_commit: SELF (resolve with git log -1 -- this file)
+classifier_policy_version: classifier-policy-v2
+classifier_policy_sha256: dc9a174099cb2f621e5333a508d4645604f96f470a6d9ae12a1acfb363d29cf2
+development_canary_tests: PASS FOR RECORDED WSL/SCRIPT SELF-CHECKS
+real_host_management_auth: GITHUB CI PASS
+management_proxy_413: GITHUB CI PASS
+development_candidate_artifact_canary_scan: GITHUB CI PASS; not formal release
+github_ci_privacy: PASS — push 29292693070; pull_request 29292695293
+leo_independent_privacy_review: NOT RUN
+formal_privacy_gate: BLOCKED
 ```

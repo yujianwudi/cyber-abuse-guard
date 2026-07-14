@@ -25,6 +25,37 @@ release_require_commands() {
   done
 }
 
+# release_assert_no_sensitive_env_values rejects a generated text artifact if
+# it contains any configured secret value that the release process can inherit.
+# Diagnostics identify only the environment variable name and never echo the
+# value. Every non-empty configured value is checked, including short secrets.
+release_assert_no_sensitive_env_values() {
+  local artifact="$1"
+  shift
+  [[ -f "$artifact" && ! -L "$artifact" ]] || \
+    release_die "privacy scan input must be a regular non-symlink file"
+  # Keep inherited secrets out of child-process argv. Release evidence is a
+  # bounded text artifact, so comparing it inside Bash avoids exposing the
+  # values through a transient grep/awk process while preserving multiline
+  # substring matching.
+  release_require_commands cat
+  local artifact_text sentinel="__CAG_RELEASE_PRIVACY_SCAN_EOF__"
+  if ! artifact_text="$({ cat -- "$artifact" || exit 1; printf '%s' "$sentinel"; })"; then
+    release_die "privacy scan could not read its input artifact"
+  fi
+  artifact_text="${artifact_text%"$sentinel"}"
+  local name value
+  for name in "$@"; do
+    [[ "$name" =~ ^[A-Z][A-Z0-9_]*$ ]] || \
+      release_die "privacy scan received an invalid environment variable name"
+    value="${!name:-}"
+    [[ -n "$value" ]] || continue
+    if [[ "$artifact_text" == *"$value"* ]]; then
+      release_die "generated release output contains a sensitive value from $name"
+    fi
+  done
+}
+
 release_ruleset_files() {
   local file
   shopt -s nullglob

@@ -236,13 +236,13 @@ func Parse(data []byte) (Config, error) {
 		if errors.Is(err, io.EOF) {
 			return cfg, nil
 		}
-		return Config{}, invalidf("decode YAML: %v", err)
+		return Config{}, invalidf("decode YAML")
 	}
 	var extra any
 	if err := decoder.Decode(&extra); err == nil {
 		return Config{}, invalidf("multiple YAML documents are not allowed")
 	} else if !errors.Is(err, io.EOF) {
-		return Config{}, invalidf("decode trailing YAML: %v", err)
+		return Config{}, invalidf("decode trailing YAML")
 	}
 	if err := Validate(cfg); err != nil {
 		return Config{}, err
@@ -418,11 +418,11 @@ func validateDataDir(path string) error {
 
 func validateTrustedProxy(p TrustedProxy) error {
 	if p.Enabled {
-		// CPA v7.2.67 does not expose the direct peer address to ModelRouter.
+		// CPA v7.2.72 does not expose the direct peer address to ModelRouter.
 		// Without that value the plugin cannot prove that a forwarded header was
 		// supplied by one of the configured proxies, so enabling it would make the
 		// subject bucket attacker-controlled.
-		return invalidf("trusted_proxy.enabled is unsupported with CPA v7.2.67 because ModelRouter has no trusted peer address")
+		return invalidf("trusted_proxy.enabled is unsupported with CPA v7.2.72 because ModelRouter has no trusted peer address")
 	}
 	if p.Header != "" && !isHTTPToken(p.Header) {
 		return invalidf("trusted_proxy.header must be a valid HTTP field name")
@@ -434,17 +434,17 @@ func validateTrustedProxy(p TrustedProxy) error {
 		}
 		prefix, err := netip.ParsePrefix(raw)
 		if err != nil {
-			return invalidf("trusted_proxy.cidrs contains invalid CIDR %q", raw)
+			return invalidf("trusted_proxy.cidrs contains an invalid CIDR")
 		}
 		if prefix != prefix.Masked() || prefix.Bits() == 0 || prefix.Addr().IsUnspecified() || prefix.Addr().IsMulticast() {
-			return invalidf("trusted_proxy CIDR %q is non-canonical or overly broad", raw)
+			return invalidf("trusted_proxy contains a non-canonical or overly broad CIDR")
 		}
 		minimumBits := 32
 		if prefix.Addr().Is4() {
 			minimumBits = 8
 		}
 		if prefix.Bits() < minimumBits {
-			return invalidf("trusted_proxy CIDR %q is broader than the minimum allowed prefix", raw)
+			return invalidf("trusted_proxy contains a CIDR broader than the minimum allowed prefix")
 		}
 	}
 	return nil

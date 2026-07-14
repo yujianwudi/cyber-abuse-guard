@@ -14,9 +14,10 @@ English | [简体中文](README_CN.md)
 > [!WARNING]
 > This repository is an **unreleased development candidate**. The v0.1.2
 > release decision is **BLOCKED**, the only methodologically valid v10
-> evaluation is `CONSUMED / FAIL`, and server-sandbox validation for the
-> current tree has not been completed. Do not create a v0.1.2 tag or GitHub
-> Release, and do not deploy this candidate to production.
+> evaluation is `CONSUMED / FAIL`. CPA v7.2.72 real-Host automation passed the
+> authorized GitHub CI job; Leo's isolated verification remains not run. Do not
+> create a v0.1.2 tag or GitHub Release, and do not deploy this candidate to
+> production.
 
 When CPA has loaded and registered the plugin, Router ordering reaches it, and
 the self-executor is ready, CPA Cyber Abuse Guard inspects supported model
@@ -33,19 +34,20 @@ is not sent to a public classifier.
 | Repository state | Unreleased post-v10 development tree; candidate lineage v0.1.2 |
 | Release decision | **BLOCKED / NOT PRODUCTION-READY** |
 | Formal evaluation | v10 `CONSUMED / FAIL`: benign FP 28/320, policy blocked 49/320, exact 33/320 |
-| Runtime baseline | CPA `v7.2.67`, commit `2075f77c8ebe9ec872759965661936fb1ac2931f` |
-| CPA v7.2.72 usage | Isolated source-contract tests only; no host compatibility claim |
+| Runtime baseline | CPA `v7.2.72`, commit `6279bb8a4c2835ff6ed99c6b85083b2afbefa681`, C ABI/RPC schema v1 |
+| CPA v7.2.72 checksums | module `h1:ppce0MLsz2xJi2yi3/A60zu03cM7bMWBAEJ6eC29E5Y=`; go.mod `h1:f4pcyAej8RoeRhIxJfm+OUMkCKaApiA8WzxR2XVlBh8=` |
 | Documented build target | Linux amd64, glibc 2.34 or newer, CPA C ABI/RPC schema v1 |
 | Unsupported platform | musl/Alpine |
 | Embedded YAML ruleset | `1.0.7`, SHA-256 `7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134` |
-| Current validation | Source/CI and Phase 0 contract evidence available; owner-operated server sandbox still required |
+| Classifier policy identity | `classifier-policy-v2`, SHA-256 `dc9a174099cb2f621e5333a508d4645604f96f470a6d9ae12a1acfb363d29cf2` |
+| Current validation | Source/build/artifact and real-Host matrices **GITHUB CI PASS** on implementation freeze `61536f9`; Leo verification **NOT RUN**; final official Guard client HTTP 405 unavailable |
 
-The root `go.mod` remains pinned to CPA v7.2.67. The isolated module under
-`integration/pluginstorecontract` pins CPA v7.2.72 only to exercise official
-source contracts. The archive tests pass opaque synthetic plugin bytes through
-`pluginstore.InstallArchive`; the host-routing tests run CPA's official
-in-memory fakes. Neither path loads this plugin or proves that this repository
-runs on a CPA v7.2.72 host.
+The root `go.mod` and `integration/pluginstorecontract` module both pin CPA
+v7.2.72. Source contracts enumerate and run 16 exact official Host tests, while
+the native harness installs the real Store ZIP, loads the real Guard `.so`, and
+uses a pure-C second Router/executor fixture. Source or compile-only results do
+not prove native compatibility: the authorized GitHub CI Linux job now records
+the development evidence, and Leo must repeat it independently in isolation.
 
 ## What this project is
 
@@ -72,11 +74,12 @@ runs on a CPA v7.2.72 host.
   user-code execution environment.
 - A production-ready release in its current state.
 
-The post-v10 tree includes a narrow `META-OVERRIDE-001` control-plane overlay
-for malicious instruction-hierarchy inversion and safety-policy suppression.
-A strong standalone control-plane attack can currently be reported as
-`defense_evasion`; this is a known scope extension in development code, not a
-claim that the plugin is a complete general model-safety filter.
+The post-v10 tree treats `META-OVERRIDE-001` as wrapper/control evidence, not a
+standalone Cyber Abuse category. Wrapper-only text may be allowed or audited,
+but cannot independently block or synthesize `defense_evasion`. When an
+independent dangerous behavior exists, the wrapper may amplify that candidate
+without replacing its taxonomy. This is not a complete general model-safety
+filter.
 
 ## How it works
 
@@ -89,7 +92,9 @@ downstream request
        -> if CPA accepts the self route and executor readiness:
           -> execute / execute_stream / count_tokens emit RPC error envelopes
              requesting HTTP status 403
-          -> http_request emits an unsupported-method envelope requesting 405
+          -> http_request emits an unsupported-method RPC error carrying status
+             405; the official adapter returns nil plus that status error, and
+             no current official public route maps it to final client HTTP 405
           -> provider resolution, auth selection, usage, and upstream are skipped
 ```
 
@@ -117,10 +122,23 @@ evidence. Labels such as “education”, “CTF”, “benchmark”, or “auth
 not automatically wash deployment-oriented abuse, while affirmative defensive
 analysis and non-execution intent can preserve legitimate work.
 
+Every non-trivial result can carry a privacy-safe `BehaviorGraph`: stable
+dimensions and relations for requester, action, object, target, destination,
+execution, credential/access, persistence, evasion, exfiltration, impact,
+scale, authorization/defensive scope, wrapper/amplifier, role scope, carrier,
+composition mode, and reason codes. It contains no prompt fragments.
+
 Supported source extractors cover OpenAI Chat, OpenAI Responses, Anthropic
-Claude, and Google Gemini request shapes. The current repository has source
-tests for these paths, but the four-protocol HTTP and zero-downstream-call
-matrix still requires owner-operated server-sandbox validation.
+Claude, and Google Gemini request shapes. The four-protocol HTTP and
+zero-downstream-call matrix passed authorized GitHub CI on the implementation
+freeze; Leo's isolated verification remains not run.
+
+Recognized roles keep system safety policy and assistant refusals separate from
+user intent. User-authored adjacent turns and one explicitly linked bounded
+three-turn plan can compose; provider-native tool payloads are scanned
+independently; unknown role shapes use the conservative fallback. Placeholders
+such as `<target>`, `${host}`, and `VICTIM_IP` matter only when nearby text binds
+them to a dangerous object or real target.
 
 Text handling is deliberately bounded:
 
@@ -128,6 +146,7 @@ Text handling is deliberately bounded:
 - 128 KiB encoded-source and 64 KiB aggregate decoded-text limits;
 - URL percent, HTML entity, inspectable Base64, textual data URL, JSON escape,
   and bounded nested tool-JSON handling;
+- provider-aware role, content-part, tool-argument, and tool-output carriers;
 - no decompression, archive expansion, network fetch, or cross-request semantic
   memory.
 
@@ -149,6 +168,11 @@ current candidate must not be installed in production. The staged rollout and
 rollback material in [INSTALL_DOCKER.md](docs/INSTALL_DOCKER.md) is retained
 for future, release-eligible builds and controlled server-sandbox work.
 
+Wrapper-only control evidence is a deliberate exception to the ordinary strict
+score matrix: it remains allow/observe/audit and never directly becomes a Cyber
+Abuse block. Strict blocking still requires an independently established base
+behavior.
+
 ## Security and privacy invariants
 
 - Raw prompts, messages, tool payloads, authorization headers, plaintext API
@@ -162,6 +186,8 @@ for future, release-eligible builds and controlled server-sandbox work.
   classification service.
 - Audit, subject, query, body, decoding, and RPC paths use explicit size and
   capacity limits.
+- Authenticated status exposes both the YAML ruleset identity and the complete
+  classifier-policy version/hash without exposing request text.
 
 CPA's host boundary remains fail-open in conditions the plugin cannot control.
 CPA may continue another Router or native routing if this plugin is not loaded,
@@ -187,34 +213,78 @@ HTTP 413 before reaching CPA.
 
 | Evidence | Status |
 |---|---|
-| Root unit, race, vet, fuzz-smoke, regression, build, and packaging workflows | Implemented in CI |
+| Safe unit/race boundary, vet, fuzz-smoke, regression, build, packaging, and reproducibility workflows | **GITHUB CI PASS** on implementation freeze `61536f9`; push run [29312969925](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29312969925) and PR run [29312971717](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29312971717) |
+| Safe Go development scripts | `test`, `race`, and `boundary` **DEVELOPMENT SELF-CHECK PASS** on the pre-review implementation tree, WSL Ubuntu 26.04 / Go 1.26.4; exact-freeze coverage is provided by GitHub CI |
 | CPA Store ZIP naming/layout/install source contract | Implemented against official CPA v7.2.72 source |
 | CPA Router ordering/fallback source contract | Implemented against official CPA v7.2.72 source |
-| Local executor refusal contract | RPC error envelopes request 403 for `execute`, `execute_stream`, and `count_tokens`; `http_request` requests 405 |
-| Native plugin loading on the current server diff | Not run locally |
-| OpenAI Chat / Responses / Claude / Gemini server matrix | Server sandbox required |
-| Zero Auth Selector / Usage / Provider / upstream calls on blocked requests | Server sandbox required |
+| Local executor refusal contract | RPC error envelopes request 403 for `execute`, `execute_stream`, and `count_tokens`; `http_request` has a SOURCE/ADAPTER status-error 405 check with no response only |
+| Native plugin loading on the implementation freeze | **GITHUB CI PASS** — real Store ZIP installed through CPA v7.2.72 and the installed `.so` loaded by the Host |
+| OpenAI Chat / Responses / Claude / Gemini server matrix | **GITHUB CI PASS** — allow controls, non-stream/stream 403, pre-SSE, and token-count 403 |
+| Zero Auth Selector / Usage / Provider / upstream calls on blocked requests | **GITHUB CI PASS** |
+| Multi-Router/fail-open and management proxy 413 matrices | **GITHUB CI PASS** — 15 native Router scenarios and proxy rejection before the counted CPA handler |
+| Final official CPA client HTTP 405 for `executor.http_request` | **NOT AVAILABLE / NOT RUN** — `/v1/alpha/search` is provider-specific, normally selects `codex`, and maps every executor error to 502; no current official route maps Guard's 405 error to final 405 |
 | Independent release evaluation | v10 consumed and failed; a new unseen set is required |
 | Production release | Blocked |
 
-Phase 0 evidence and remaining server cases are recorded in
-[PHASE0_CPA_CONTRACT.md](docs/reports/PHASE0_CPA_CONTRACT.md). Historical
-evaluation datasets are frozen evidence. Do not rerun or tune against
-individual v10 rows.
+Three WSL commands were mistakenly run outside the authorized evidence path:
+
+```text
+make cpa-router-fixture-blackbox
+make cpa-v7272-host-blackbox
+scripts/management-proxy-413-test.sh
+```
+
+They used random loopback ports and Mock components only, contacted no real
+provider or production service, and cleanup left no fixture process running.
+Their status is strictly:
+
+```text
+LOCAL MIS-EXECUTION RECORDED / EXCLUDED; NOT AUTHORITATIVE
+```
+
+No result from those local commands is a delivery PASS.
+The separately authorized GitHub CI results above are the applicable remote
+evidence; Leo's independent verification remains not run.
+
+A separate methodology incident involved three incorrectly scoped WSL
+source-search commands that unexpectedly emitted several rows from the retired
+`testdata/holdout-v3` corpus. All three searches were stopped immediately; the
+rows were not analyzed or used for tuning or conclusions, and evaluation v10 content
+was not accessed. The retired holdout-v3 corpus is no longer eligible as
+independent evidence, and this incident independently keeps the handoff status
+`BLOCKED FOR HANDOFF`.
+
+Current v7.2.72 source/native evidence boundaries are recorded in
+[CPA_INTEGRATION.md](docs/reports/CPA_INTEGRATION.md) and
+[LEO_VERIFICATION_HANDOFF.md](docs/LEO_VERIFICATION_HANDOFF.md). The older
+[PHASE0_CPA_CONTRACT.md](docs/reports/PHASE0_CPA_CONTRACT.md) remains historical
+Phase 0 evidence. Historical evaluation datasets are frozen; do not rerun or
+tune against individual v10 rows.
 
 ## Developer and auditor checks
 
-The following checks are source-only; they do not deploy CPA or load a
-`.so`:
+The following checks are source-only/safe development gates; they do not deploy
+CPA, load a `.so`, or open consumed evaluation samples:
 
 ```bash
 make format-check git-diff-check module-verify
-make test vet race fuzz-smoke corpus-regression
-make script-test
+./scripts/go-safe-development-test.sh test
+./scripts/go-safe-development-test.sh race
+./scripts/go-safe-development-test.sh boundary
+make vet fuzz-smoke corpus-regression script-test
+
+# Visible development-only adversarial corpus; never a future Holdout.
+go test ./cmd/development-adversarial-v11-prep-validator \
+  -run '^TestDevelopmentAdversarialV11PrepCorpus$' -count=1
 
 # Explicit source-only CPA v7.2.72 store and host contracts.
 go -C integration/pluginstorecontract test ./... -count=1
 ```
+
+The safe script is the required broad Go gate. `make unit-test`, `make race`,
+and `make consumed-boundary-test` resolve to those safe modes. Do not replace
+them with a broad invocation that can open retired or consumed evaluation
+fixtures.
 
 The release toolchain expects Go `1.26.4`. Linux-native build, integration,
 SBOM, vulnerability, artifact, and reproducibility commands are documented in
@@ -243,6 +313,7 @@ RAR is not a supported source or binary release format.
 | Path | Purpose |
 |---|---|
 | `cmd/cyber-abuse-guard/` | Native plugin entry point and CPA ABI bridge |
+| `cmd/development-adversarial-v11-prep-validator/` | Strict validator for the visible development-only adversarial corpus |
 | `internal/classifier/` | Deterministic policy evaluation and historical gates |
 | `internal/extract/` | Provider-aware, bounded request extraction and decoding |
 | `internal/plugin/` | Router, executor, management, runtime health, and reconfiguration |
@@ -250,7 +321,7 @@ RAR is not a supported source or binary release format.
 | `rules/` | Embedded versioned YAML cyber-abuse policy assets |
 | `integration/` | CPA integration and isolated official-source contract modules |
 | `scripts/` | Build, package, verify, reproduce, health-check, and release tooling |
-| `testdata/` | Regression and frozen evaluation evidence; not a tuning dataset |
+| `testdata/` | Regression data, explicitly development-only adversarial data, and frozen historical evaluation evidence; development data is never a future Holdout |
 | `docs/` | Design, operations, limitations, threat model, audit handoff, and reports |
 
 Ignored local `dist/`, `coverage.out`, databases, logs, and secret files are
@@ -263,7 +334,7 @@ not repository source or formal release evidence.
 | Project evaluator | [Design](docs/DESIGN.md), [Limitations](docs/LIMITATIONS.md), [Threat model](docs/THREAT_MODEL.md) |
 | Security auditor | [Audit handoff](docs/AUDIT_HANDOFF.md), [Release evidence](docs/reports/RELEASE_EVIDENCE.md), [Test report](docs/reports/TEST_REPORT.md) |
 | CPA integrator | [CPA integration](docs/reports/CPA_INTEGRATION.md), [Phase 0 contract](docs/reports/PHASE0_CPA_CONTRACT.md), [Docker operations](docs/INSTALL_DOCKER.md) |
-| Policy reviewer | [Rules](docs/RULES.md), [Privacy](docs/reports/PRIVACY.md), [Prompt-injection review](docs/reports/PROMPT_INJECTION_REVIEW.md) |
+| Policy reviewer | [Rules](docs/RULES.md), [Classifier redesign baseline](docs/reports/CLASSIFIER_REDESIGN_BASELINE.md), [Privacy](docs/reports/PRIVACY.md), [Prompt-injection review](docs/reports/PROMPT_INJECTION_REVIEW.md) |
 | Future maintainer | [Next-version recommendations](docs/NEXT_VERSION.md), [Changelog](CHANGELOG.md) |
 
 ## Security reporting

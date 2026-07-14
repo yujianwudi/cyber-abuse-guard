@@ -2,50 +2,84 @@
 
 ## Status
 
-**PRE-PROMPT-INJECTION-CHANGE BASELINE — CURRENT PROMPT-INJECTION/PHASE 0 DIFF
-NOT RUN THROUGH A REAL HOST.** The recorded
-v0.1.2 candidate integration run passed against an earlier dirty-suffixed
-development artifact through the real CPA v7.2.67 Plugin Host. It was not rerun
-for the current prompt-injection/extraction and Phase 0 contract diff and must
-not be presented as current-diff CPA, native-load, or deployment evidence.
-Methodologically valid evaluation v10 is `CONSUMED / FAIL`, so no clean
-`v0.1.2` release tag or production artifact may be created. The historical
-integration PASS cannot override the failed release gate.
+**IMPLEMENTED — AUTHORIZED REAL-HOST EVIDENCE REQUIRES GITHUB CI.** The current
+tree builds the dirty-suffixed guard `.so`, produces the one-entry Store ZIP,
+installs that archive through CPA's public `pluginstore.Client.InstallManifest`,
+loads the installed binary through the real native Host, and exercises the
+protocol and multi-Router matrices below. The authoritative run must occur in
+the GitHub CI Linux job and then be independently repeated by Leo.
 
-Target host: CLIProxyAPI `v7.2.67` at commit
-`2075f77c8ebe9ec872759965661936fb1ac2931f`, CPA C ABI/RPC schema v1.
+A local WSL run was mistakenly performed outside that authorized evidence path.
+It used only random loopback ports and a Mock Upstream and left no live fixture
+process, but its result is deliberately excluded from the delivery PASS/FAIL
+record. No production service or real provider was contacted.
 
-The repository root `go.mod` and runtime baseline remain on CPA v7.2.67. The
-isolated `integration/pluginstorecontract` module pins CPA v7.2.72 only to call
-the official `internal/pluginstore` implementation and official plugin-host
-routing tests. It treats the shared library as opaque synthetic bytes and does
-not load, register, execute, or claim host compatibility with CPA v7.2.72.
+The methodologically valid v10 result remains `CONSUMED / FAIL`; no clean
+`v0.1.2` tag, GitHub Release, or production deployment may be created.
 
-Final command:
+Target host: CLIProxyAPI `v7.2.72` at commit
+`6279bb8a4c2835ff6ed99c6b85083b2afbefa681`, CPA C ABI/RPC schema v1.
+Module checksum: `h1:ppce0MLsz2xJi2yi3/A60zu03cM7bMWBAEJ6eC29E5Y=`. go.mod
+checksum: `h1:f4pcyAej8RoeRhIxJfm+OUMkCKaApiA8WzxR2XVlBh8=`.
+
+Independent Host audit found one non-closable gap in the current upstream
+surface. Guard `executor.http_request` returns an RPC error carrying status 405;
+the official `ProviderExecutor.HttpRequest` adapter returns `(nil, error)`.
+CPA v7.2.72 does expose the provider-specific public consumer
+`POST /v1/alpha/search`, but ordinary selection is fixed to `codex`, not
+Guard's `cyber-abuse-guard` executor, and the handler maps every
+`HttpRequest` error to HTTP 502. The repository's `httptest.Server` manually
+maps the status error and is adapter-level evidence only. No current official
+public route maps Guard's error to final client 405, so that result is `NOT
+AVAILABLE / NOT RUN`; current CI cannot close it and this remains an explicit
+`BLOCKED FOR HANDOFF` item.
+
+In Home mode the external dispatcher can select by a returned auth provider
+rather than the handler's `codex` argument. That conditional path is not runtime
+evidence here; even if it returned `cyber-abuse-guard`, the same handler error
+branch would still emit 502, not 405.
+
+The repository root and isolated contract module are both pinned exactly to
+CPA v7.2.72. The isolated module pins 16 official Host test names and adds only
+a `_test.go` overlay to an ephemeral checksum-verified source copy. The native
+tests separately load the real guard `.so` and a minimal pure-C Router/executor
+fixture through the official Host.
+
+GitHub CI commands:
 
 ```bash
-make integration-test
+ALLOW_DIRTY_BUILD=1 make cpa-v7272-host-blackbox
+ALLOW_DIRTY_BUILD=1 make cpa-router-fixture-blackbox
+make cpa-host-fixture-contract
 ```
 
-The test must build/load the exact release-candidate `.so`, start the real CPA
-Plugin Host and native loader, use a local counting Mock Upstream, inject a
-counting CPA auth selector and usage-queue probe, and avoid all real providers.
+`make integration-test` composes both native black-box targets. The tests use
+random loopback ports, a counting Mock Upstream, a counting CPA auth selector,
+a wrapped provider executor, and the Management usage queue; they never connect
+to real providers. Do not infer a PASS from source inspection or compile-only
+testing.
 
-## Phase 0 source-contract status
+## CPA v7.2.72 evidence status
 
-The current Phase 0 tree contains the following source changes. No result is
-promoted to PASS here unless a command result is separately recorded:
+The following table separates source evidence, exact-freeze authorized GitHub
+CI evidence, and items that still require Leo's independent rerun:
 
-| Source assertion | Current status |
+| Assertion | Current status |
 |---|---|
-| Root `go.mod` remains CPA v7.2.67 | **SOURCE CONFIRMED** |
-| Isolated CPA v7.2.72 official installer and host-routing contract module | **PASS — source-level only** |
-| Store ZIP name `cyber-abuse-guard_<version>_linux_amd64.zip` | **SOURCE IMPLEMENTED** |
-| Store ZIP root contains exactly one versioned executable `.so` | **PASS WITH SYNTHETIC PUBLISHED-SHAPE ARTIFACT; REAL BUILD NOT CREATED** |
-| Legacy nested `plugins/linux/amd64/...` store layout rejected | **PASS — official `InstallArchive` rejection** |
-| Separate `cyber-abuse-guard-v<version>-audit-bundle.zip` | **SOURCE IMPLEMENTED** |
-| `execute`, `execute_stream`, and `count_tokens` use policy 403; `http_request` uses 405 | **UNIT TEST PASS; REAL-HOST MATRIX PENDING** |
-| Current-diff OpenAI Chat/Responses/Claude/Gemini HTTP status and zero Auth/Usage/Provider/Upstream calls | **SERVER SANDBOX PENDING / NOT RUN** |
+| Root `go.mod` resolves CPA v7.2.72 with both pinned checksums | **PASS** |
+| Sixteen required official Host tests are listed and run by exact name | **PASS** |
+| Ephemeral official-source fail-open overlay covers private panic/fuse/readiness state | **PASS — source fixture** |
+| Store ZIP name `cyber-abuse-guard_<version>_linux_amd64.zip` | **PASS** |
+| Real Store ZIP installs to the exact platform path through public `InstallManifest` | **GITHUB CI PASS** |
+| Installed real `.so` is loaded and registered by the CPA v7.2.72 Host | **GITHUB CI PASS** |
+| Legacy nested `plugins/linux/amd64/...` store layout rejected | **PASS — official installer contract** |
+| Separate `cyber-abuse-guard-v<version>-audit-bundle.zip` | **GITHUB CI VERIFIED** |
+| `execute`, `execute_stream`, and `count_tokens` use policy 403 | **GITHUB CI PASS** |
+| `http_request` unsupported-method status at official ProviderExecutor adapter | **SOURCE / ADAPTER CHECK (nil response + status-error 405)** |
+| Final official CPA handler/client HTTP 405 for Guard `http_request` | **NOT AVAILABLE / NOT RUN — BLOCKED FOR HANDOFF; current public consumer maps the error to 502** |
+| OpenAI Chat/Responses/Claude/Gemini allow and refusal matrices | **GITHUB CI PASS** |
+| Blocked Auth Selector/Provider/Usage/Mock Upstream counts remain zero | **GITHUB CI PASS** |
+| Pure-C second Router/executor priority and fail-open matrix | **GITHUB CI PASS (15 scenarios)** |
 
 The source-level contracts can be exercised without native loading:
 
@@ -53,48 +87,37 @@ The source-level contracts can be exercised without native loading:
 go -C integration/pluginstorecontract test ./... -count=1
 ```
 
-After a server build populates `dist/`, `make cpa-store-contract` additionally
-checks that real artifact; it still does not load the `.so`.
+After a development build populates `dist/`, `make cpa-store-contract` checks the
+real artifact shape. Native load is proven separately by the two black-box
+targets above.
 
 ## Mandatory assertions
 
-| Assertion | Pre-change baseline result |
+| Assertion | Current authoritative evidence |
 |---|---|
-| ELF discovered, `dlopen` loaded, ABI metadata registered | **PASS** |
-| Runtime version/commit/dirty/ruleset version/hash match build metadata | **PASS** |
-| `loaded=true`, `enforcement_ready=true`, expected mode/priority | **PASS** |
-| Missing Management Key returns 401 | **PASS** |
-| Wrong Management Key returns 401 | **PASS** |
-| Ordinary downstream client key cannot use management routes | **PASS** |
-| Correct Management Key returns 200 | **PASS** |
-| Oversized management body/query/path/method rejected safely | **PASS** |
-| Safe OpenAI Chat reaches mock unchanged | **PASS** |
-| Safe OpenAI Responses reaches mock unchanged | **PASS** |
-| Safe Anthropic Messages/Tool reaches mock unchanged | **PASS** |
-| Safe Gemini reaches mock unchanged | **PASS** |
-| Safe tool arguments/model/client/system behavior unchanged | **PASS** |
-| Risky OpenAI Chat returns local 403 | **PASS** |
-| Risky Responses returns local 403 | **PASS** |
-| Risky Anthropic and tool input return local 403 | **PASS** |
-| Risky Gemini returns local 403 | **PASS** |
-| Risky streaming request is rejected before stream establishment | **PASS** |
-| Risky token-count request returns the same policy 403 | **NOT PART OF PRE-CHANGE BASELINE; CURRENT SERVER SANDBOX PENDING** |
-| Executor HTTP forwarding request returns 405 unsupported | **CURRENT SOURCE CONTRACT; SERVER SANDBOX PENDING** |
-| Multi-turn follow-up/history padding/unknown role cannot hide risk | **PASS** |
-| URL/HTML/Base64/JSON/tool double encoding uses bounded production path | **PASS** |
-| Every blocked case leaves Mock Upstream call count at zero | **PASS** |
-| Every blocked case leaves CPA Auth Selector count at zero | **PASS** |
-| Every blocked case leaves usage queue empty | **PASS** |
-| Opaque media follows explicit and mode-aware policy | **PASS (unit + host-path policy tests)** |
-| HTTPS media URL is never fetched | **PASS (unit + host-path policy tests)** |
-| Raw body >6 MiB / RPC >8 MiB is no-copy local 403 in Balanced | **PASS** |
-| Injected ModelRouter panic/error increments status and self-routes in Balanced | **PASS (router fault tests)** |
-| SQLite unavailable/locked does not weaken local block | **PASS (fault tests)** |
-| Invalid reconfigure retains last valid runtime and exposes error | **PASS** |
-| HMAC/persistence degradation is visible without secret output | **PASS** |
-| Built-in health probes remain local and non-mutating | **PASS** |
-| Plugin disable restores native CPA behavior | **PASS** |
-| Shutdown completes within its bound | **PASS** |
+| ELF discovered, `dlopen` loaded, ABI metadata registered | **GITHUB CI PASS** |
+| Runtime version/commit/dirty/ruleset version/hash match build metadata | **GITHUB CI PASS** |
+| `loaded=true`, `enforcement_ready=true`, expected mode/priority | **GITHUB CI PASS** |
+| Missing/wrong/client Management keys return 401; correct key returns 200 | **GITHUB CI PASS** |
+| Oversized management body/query/path/method rejected safely | **GITHUB CI PASS** |
+| Safe OpenAI Chat/Responses/Anthropic/Gemini requests reach mock unchanged | **GITHUB CI PASS** |
+| Safe model, role history, stream setting, and tool arguments remain unchanged | **GITHUB CI PASS** |
+| Risky OpenAI Chat/Responses/Anthropic/Gemini return local 403 | **GITHUB CI PASS** |
+| Risky streaming requests are rejected before stream establishment | **GITHUB CI PASS** |
+| Risky Anthropic and Gemini token-count requests return policy 403 | **GITHUB CI PASS** |
+| Executor HTTP forwarding request produces nil response + adapter/status-error 405 | **SOURCE / ADAPTER CHECK** |
+| Official CPA public handler produces final client HTTP 405 | **NOT AVAILABLE / NOT RUN — BLOCKER** |
+| Multi-turn and bounded encoded carrier handling | **GITHUB CI PASS** |
+| Every blocked case leaves Mock Upstream, Auth Selector, provider execution, and usage counts at zero | **GITHUB CI PASS** |
+| Opaque media and no-fetch behavior | **GITHUB CI UNIT PASS**; opaque media semantics remain a limitation |
+| Raw body >6 MiB / RPC >8 MiB is no-copy local 403 in Balanced | **GITHUB CI PASS** |
+| Injected ModelRouter panic/error recovery and counters | **UNIT PASS; OFFICIAL-SOURCE FIXTURE PASS** |
+| SQLite unavailable/locked does not weaken local block | **FAULT TEST PASS** |
+| Invalid reconfigure retains the last valid runtime and exposes a sanitized error | **GITHUB CI PASS** |
+| HMAC/persistence degradation is visible without secret output | **UNIT PASS** |
+| Built-in health probes remain local and non-mutating | **GITHUB CI PASS** |
+| Plugin disable restores native CPA behavior | **GITHUB CI PASS** |
+| Shutdown completes within its bound | **GITHUB CI PASS** |
 
 ## Allowed-request integrity
 
@@ -145,6 +168,24 @@ mode-aware recovery while retaining these host-level facts:
 This mitigation cannot change CPA's host-level fail-open policy and is not a
 guarantee against every future host or ABI failure.
 
+The real native matrix adds a minimal pure-C Router/executor rather than a
+second Go `c-shared` runtime. Fifteen CI scenarios are defined to prove:
+guard-first and fixture-first priority, equal-priority plugin-ID ordering
+(`aaa-router` before the guard and `zzz-router` after it), Router error, invalid
+target, empty executor identifier, empty format declarations, missing executor
+capability, OAuth-only scope, unhandled continuation, guard not loaded, guard
+registration failure, guard disabled, fixture handling, and continuation to the
+native provider. The fixture-handled response and native response are
+distinguished, and every non-native scenario asserts zero Auth selection and
+zero Mock Upstream calls. All 15 scenarios passed in exact-freeze GitHub CI;
+Leo's independent rerun remains not run.
+
+The native C ABI has no safe way to manufacture a Go panic that the Host can
+recover, or to mutate the Host's private fuse map. The fixture therefore does
+not use a segmentation fault as false panic/fuse evidence. Those two states are
+covered by the checksum-verified official-source overlay; Leo must retain this
+evidence distinction.
+
 `enforcement_ready` is an internal plugin runtime signal. It does not prove
 host load/registration, favorable ordering, non-fused state, valid target
 acceptance, or per-request executor readiness.
@@ -175,12 +216,19 @@ The policy executor method matrix is:
 | `executor.execute` | synchronous RPC error carrying HTTP 403 |
 | `executor.execute_stream` | synchronous RPC error carrying HTTP 403 before SSE/headers commit |
 | `executor.count_tokens` | synchronous RPC error carrying HTTP 403 |
-| `executor.http_request` | unsupported HTTP 405 |
+| `executor.http_request` | unsupported RPC/status-error; official ProviderExecutor adapter returns nil + error carrying 405; no current official route maps that error to final 405 |
 
-Real HTTP status and response-shape compatibility must be checked separately for
-OpenAI Chat, OpenAI Responses, Claude, and Gemini. For the current diff, all four
-protocols and zero Auth Selector, Provider, Usage, and Mock Upstream calls remain
-**PENDING / NOT RUN** in the server sandbox.
+The automation checks real HTTP status and response-shape compatibility
+separately for OpenAI Chat, OpenAI Responses, Claude, and Gemini. It asserts safe
+non-stream and stream controls, synchronous pre-SSE 403 refusal,
+Anthropic/Gemini token-count 403, adapter-level `http_request` status-error 405, and zero Auth Selector,
+Provider, Usage, and Mock Upstream calls for locally blocked requests. These
+assertions are **GITHUB CI PASS** on implementation freeze `9c8114e`.
+
+The adapter assertion above must not be promoted to final Host HTTP evidence.
+CPA's provider-specific `/v1/alpha/search` consumer maps any executor error to
+502; therefore Guard's status-error 405 remains `NOT AVAILABLE / NOT RUN` as a
+final client result even after the current CI job.
 
 ## Management HTTP buffering boundary
 
@@ -188,9 +236,10 @@ CPA currently invokes `io.ReadAll` inside `ServeManagementHTTP` before the
 plugin receives the management request. The plugin's 1 MiB body bound and 2 MiB
 RPC-envelope bound therefore do not cap CPA's HTTP memory allocation. The
 deployment reverse proxy must enforce its own limit; the Docker/Nginx example
-uses `client_max_body_size 1m`. The server sandbox must prove that a request
-slightly above the limit returns HTTP 413 at Nginx before CPA/plugin counters or
-handlers observe it.
+uses `client_max_body_size 1m`. `make management-proxy-413-test` implements a
+counted Nginx fixture. Exact-freeze GitHub CI proved that a request slightly
+above the limit returns HTTP 413 before the counted CPA-handler stub observes
+it. Leo must repeat the check in the target sandbox.
 
 ## Final evidence block
 
@@ -198,11 +247,18 @@ handlers observe it.
 release_commit_tag_and_artifact_hashes: NOT CREATED — RELEASE BLOCKED
 ruleset_version: 1.0.7
 ruleset_sha256: 7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134
-cpa_version: v7.2.67
-cpa_commit: 2075f77c8ebe9ec872759965661936fb1ac2931f
-phase0_store_contract_target: isolated CPA v7.2.72 installer and host-routing source contracts only; no host compatibility claim
-phase0_store_contract_command_exit_status: 0 (synthetic/source-level only)
-current_diff_real_cpa_command_exit_status: NOT RUN
-integration_log_sha256: pre-change candidate evidence only; no current-diff or formal tagged release log
-overall_cpa_integration_gate: PASS PRE-CHANGE BASELINE; CURRENT PROMPT-INJECTION/PHASE0 DIFF NOT RUN; RELEASE GATE remains FAIL
+cpa_version: v7.2.72
+cpa_commit: 6279bb8a4c2835ff6ed99c6b85083b2afbefa681
+cpa_module_sum: h1:ppce0MLsz2xJi2yi3/A60zu03cM7bMWBAEJ6eC29E5Y=
+cpa_go_mod_sum: h1:f4pcyAej8RoeRhIxJfm+OUMkCKaApiA8WzxR2XVlBh8=
+official_host_source_contract_exit_status: 0
+implementation_freeze_commit: 9c8114e22841f9a19b15b1f4b3c48531aa2453a0
+github_ci_runs: PASS — push 29292693070; pull_request 29292695293
+implementation_freeze_real_store_installed_host_exit_status: 0 / GITHUB CI PASS
+implementation_freeze_real_multi_router_fixture_exit_status: 0 / GITHUB CI PASS (15 scenarios)
+management_proxy_413_exit_status: 0 / GITHUB CI PASS
+panic_and_fuse_evidence: official-source overlay only; not claimed as native C ABI evidence
+http_request_adapter_405: SOURCE / ADAPTER STATUS-ERROR CHECK (response=nil)
+official_cpa_final_client_http_405: NOT AVAILABLE / NOT RUN — BLOCKED FOR HANDOFF
+overall_cpa_integration_gate: BLOCKED — engineering CI passed; Leo is not run and final official CPA client HTTP 405 is unavailable; RELEASE GATE remains FAIL
 ```

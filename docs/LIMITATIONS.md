@@ -47,7 +47,7 @@
    can remain outside the deterministic follow-up window.
 
 8. **CPA router failures are host-level fail-open.** The root development
-   baseline is CPA v7.2.67. CPA may continue other Routers or native routing if
+   dependency is CPA v7.2.72. CPA may continue other Routers or native routing if
    the plugin is not loaded, registration fails, it is fused, the Router returns
    an error, a panic occurs before the host accepts a valid handled result, the
    target is invalid/empty, or the self executor is not ready. The plugin
@@ -74,9 +74,13 @@
     established. ABI v1 cannot return both a 403 and a successful terminal SSE
     frame; successful chunks would force HTTP 200. The policy executor routes
     `execute`, `execute_stream`, and `count_tokens` to the same policy HTTP 403;
-    `http_request` remains unsupported with HTTP 405. Current-diff real-host
-    behavior across OpenAI Chat, OpenAI Responses, Claude, and Gemini remains a
-    server-sandbox requirement.
+    `http_request` returns an unsupported-method RPC error whose `StatusCode()`
+    is 405; the official adapter returns `(nil, error)`. CPA v7.2.72's public
+    `/v1/alpha/search` consumer normally selects `codex` and maps every executor
+    error to HTTP 502. The project-owned `httptest.Server` manually maps the
+    status error, so final official CPA client HTTP 405 is `NOT AVAILABLE / NOT
+    RUN` and remains a handoff blocker until an official route can map Guard's
+    error to a final 405.
 
 12. **Protocol-specific error shapes differ.** OpenAI-compatible handlers can
     retain a stable marker. Anthropic may normalize plugin errors and drop
@@ -86,7 +90,7 @@
 13. **No `Retry-After` on executor errors.** ABI-v1 RPC errors cannot attach
     arbitrary downstream response headers.
 
-14. **Exact management routes only.** CPA v7.2.67 rejects dynamic `:`/`*`
+14. **Exact management routes only.** CPA v7.2.72 rejects dynamic `:`/`*`
     plugin routes, so subject unblock uses a fixed path and bounded JSON body.
     CPA host middleware, not the plugin, is the Management Key verification
     authority; ABI v1 does not reveal the configured key to the plugin. Host
@@ -107,7 +111,7 @@
     reserved, but `classifier.enabled: true` is rejected. The plugin makes no
     classifier network request and does not upload prompts to a third party.
 
-17. **No authenticated management UI.** CPA v7.2.67 resource routes are not a
+17. **No authenticated management UI.** CPA v7.2.72 resource routes are not a
     safe place for audit/subject data. This version exposes exact authenticated
     management API routes only.
 
@@ -141,7 +145,12 @@
 23. **Schema downgrade is not promised.** v0.1.2 migrates a v0.1.1 event DB to
     schema v2 atomically and can create bounded pre-migration backups. v0.1.1 is
     not claimed to understand schema v2. A full rollback should restore the
-    matching pre-migration database backup.
+    matching pre-migration database backup. Before publishing a backup or
+    migrating, legacy `request_hash`, `subject_hash`, `model`, and
+    `source_format` must already satisfy digest/fixed-provider privacy contracts.
+    A nonconforming value fails closed: no backup is published, no migration
+    occurs, and the original DB is retained for operator repair. The plugin does
+    not automatically sanitize a legacy plaintext database.
 
 24. **Audit path ancestors are a trust boundary.** The final data directory
     must not be group/world writable; final DB/WAL/SHM symlinks are rejected.
@@ -167,22 +176,24 @@
     evicts logical entries immediately, but heap buckets may remain until later
     garbage collection. The new logical limit is enforced for every request.
 
-29. **Only one host/runtime target is qualified.** The repository root `go.mod`
-    and development/runtime baseline remain CPA v7.2.67 at the pinned commit,
-    Linux amd64, and glibc 2.34+. musl/Alpine is unsupported. The isolated
-    v7.2.72 source-contract module verifies the official archive/install logic
-    and official host Router ordering/fallback tests with synthetic bytes; it
-    does not establish Guard native-host, ABI, executor, management, stream, or
-    deployment compatibility. A newer CPA or ABI still requires a complete new
-    integration run.
+29. **Only one host/runtime target is in scope.** The root `go.mod` pins CPA
+    v7.2.72 at tag commit
+    `6279bb8a4c2835ff6ed99c6b85083b2afbefa681`, Linux amd64, and glibc 2.34+.
+    musl/Alpine is unsupported. Source-contract and Windows compile checks do
+    not establish native compatibility. Authoritative evidence requires the
+    authorized GitHub CI Linux job and Leo's independent isolated real-Host run
+    against the implementation freeze, plus final artifact verification. A
+    newer CPA or ABI requires a complete new integration run.
 
 30. **Performance evidence is host-specific and cannot override the failed
-    release gate.** The current development candidate measured approximately
-    76.296/124.682/216.869 microseconds at ordinary P50/P95/P99,
-    78.335194 ms for candidate-rich acceptance (76.693716-80.439013 ms in raw
-    benchmarks, 78,360 B/op and 174 allocs/op), and 14.970291 ms / 293,906 B/op
-    near budget. These are useful engineering regressions only, not production
-    approval.
+    release gate.** Same-machine Windows development medians improved from
+    baseline `a121a44` to classifier commit `a1be19f` in all five measured
+    latency cases, including 165,552→103,190 ns/op for the ordinary classifier
+    and 119,484,917→97,126,983 ns/op for candidate-rich max-parts. Small,
+    role-aware, and semantic-graph allocations increased. Pending-cache and
+    duplicate-request microbenchmarks are separate WSL/Windows self-checks.
+    These results are `DEVELOPMENT SELF-CHECK / NOT FINAL EVIDENCE` and require
+    final-commit reruns by Leo.
 
 31. **Unknown provider shapes are only generically understood.** Strict blocks
     an unknown `SourceFormat` before interpretation. Balanced/Audit/Observe use
@@ -207,26 +218,28 @@
     local `model_instructions_file` before CPA serializes a request. That
     control belongs to the launcher/deployment environment.
 
-35. **Control-plane taxonomy is coarse.** A strong standalone meta override is
-    currently reported as `defense_evasion`, not a dedicated prompt-injection
-    category. When ordinary abuse is present, the original abuse taxonomy is
-    retained and amplified.
+35. **Control-plane signals have no standalone Cyber Abuse taxonomy.** Wrapper-
+    only text is allowed or audited and cannot synthesize `defense_evasion` or
+    another Cyber Abuse category. When an independent dangerous behavior is
+    present, wrapper evidence retains and amplifies that behavior's taxonomy.
+    Operators needing a distinct prompt-injection reporting taxonomy must add a
+    separate non-Cyber-Abuse control-plane event model in a future version.
 
-36. **Server sandbox validation is pending.** The current prompt-injection
-    and Phase 0 changes have source-level evidence only unless separately listed
-    in the test report. They have not been deployed, natively loaded, or
-    exercised through a current-diff real CPA integration locally. In
-    particular, the four-protocol 403 matrix and zero Auth Selector, Provider,
-    Usage, and Mock Upstream calls remain **PENDING / NOT RUN** in the
-    owner-operated server sandbox and cannot reverse the v10 release failure.
+36. **Local Host execution is not authoritative evidence.** The four-protocol
+    harness, real store install, zero Auth Selector/Provider/Usage/Mock Upstream
+    counters, Router fixture, and proxy-413 fixture were mistakenly executed in
+    WSL using loopback/Mock components and cleaned up without residual fixture
+    processes. Those local results are excluded. Authorized GitHub CI passed the
+    implementation-freeze Host/Router/proxy matrix; Leo independent verification
+    remains not run. No Host result can reverse the frozen v10 failure.
 
-37. **Classifier-policy identity is not yet independently versioned.**
-    Ruleset `1.0.7` and its canonical hash identify the embedded YAML
-    cyber-abuse assets, not the complete Go-level policy. The meta overlay,
-    matcher/normalizer mappings, role handling, and extraction semantics all
-    affect decisions. The containing Git/build commit plus the YAML identity
-    are required for this development tree. A future release must add a policy
-    version/hash or fully bind these semantics to verified build provenance.
+37. **Classifier-policy identity is source-bound but not yet artifact-bound.**
+    The Go-level behavior is identified as `classifier-policy-v2` / SHA-256
+    `dc9a174099cb2f621e5333a508d4645604f96f470a6d9ae12a1acfb363d29cf2`,
+    while ruleset `1.0.7` separately identifies YAML assets. A digest test binds
+    the reviewed source list, and authenticated status exposes the policy
+    identity. Current build metadata and artifact verification do not yet carry
+    that identity, so the full Git commit remains required for provenance.
 
 38. **Provider safety-control semantics are not enforced.** Recognized
     transport/configuration containers such as `safetySettings`,
@@ -251,3 +264,18 @@
     reports, and operator scripts belong in the separate
     `cyber-abuse-guard-v<version>-audit-bundle.zip`. Neither artifact exists as
     an approved v0.1.2 release because the release gate remains blocked.
+
+41. **The visible 35-case development corpus is not independent evidence.**
+    `testdata/development-adversarial-v11-prep` is deliberately visible,
+    implementation-facing, and marked `future_holdout_eligible=false`. Its
+    validator can prove schema, coverage, extraction, and expected regression
+    behavior only. Leo must not reuse any case or derived wording as a future
+    blind v11; quality generalization remains unknown until a new isolated set
+    is authored outside the development loop.
+
+42. **Synthetic Store tests cannot close the artifact lifecycle.** Authorized
+    CI must require the real `.so`, Store ZIP, metadata, and checksums; use
+    `InstallManifest` for first install and Host load; and run
+    `TestPublishedStoreArchive` against the same Dist identity for repeat-skip
+    and tamper-repair. Missing artifacts must fail rather than falling back to
+    synthetic bytes.

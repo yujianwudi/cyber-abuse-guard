@@ -192,7 +192,7 @@ func (p *Plugin) route(state *runtimeState, request pluginapi.ModelRouteRequest)
 	if p.identifier != nil {
 		subjectHash = p.identifier.FromHeaders(request.Headers).Hash
 	}
-	decision := state.subject.Evaluate(subjectHash, result.Score)
+	decision := state.subject.EvaluateRequest(subjectHash, requestHash, result.Score)
 	state.markSubjectPersistenceDirty()
 	truncationBlock := result.Truncated && (state.config.Mode == config.ModeBalanced || state.config.Mode == config.ModeStrict)
 	blocked := state.config.Mode != config.ModeAudit && (result.Action == classifier.ActionBlock || truncationBlock || opaqueBlock)

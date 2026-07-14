@@ -14,6 +14,7 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginabi"
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
 	"github.com/yujianwudi/cyber-abuse-guard/internal/buildinfo"
+	"github.com/yujianwudi/cyber-abuse-guard/internal/classifier"
 	"github.com/yujianwudi/cyber-abuse-guard/internal/rules"
 	"github.com/yujianwudi/cyber-abuse-guard/internal/subject"
 )
@@ -42,6 +43,25 @@ func TestProductionStatusExposesThreadSafeReadinessSignals(t *testing.T) {
 	}
 	if ruleset, _ := status["ruleset_version"].(string); ruleset == "" {
 		t.Fatalf("status omitted ruleset_version: %#v", status)
+	}
+	policyIdentity := classifier.CurrentPolicyIdentity()
+	if status["classifier_policy_version"] != policyIdentity.Version || status["classifier_policy_sha256"] != policyIdentity.SHA256 {
+		t.Fatalf("status classifier policy identity does not match the compiled identity")
+	}
+	classifierStatus, ok := status["classifier"].(map[string]any)
+	if !ok {
+		t.Fatal("status omitted classifier metadata")
+	}
+	encodedPolicy, err := json.Marshal(classifierStatus["policy_identity"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var statusPolicy classifier.PolicyIdentity
+	if err := json.Unmarshal(encodedPolicy, &statusPolicy); err != nil {
+		t.Fatal(err)
+	}
+	if statusPolicy != policyIdentity {
+		t.Fatal("nested classifier policy identity does not match the compiled identity")
 	}
 	build := buildinfo.Current()
 	if status["version"] != build.Version || status["commit"] != build.Commit || status["ruleset_sha256"] != build.RulesetSHA256 || status["dirty"] != build.Dirty || status["ruleset_version_match"] != true {

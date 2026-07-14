@@ -27,21 +27,19 @@ func TestReconfigurePreservesSubjectRiskState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for i := 0; i < 2; i++ {
-		raw, code := p.Call(pluginabi.MethodModelRoute, rawRoute)
-		if code != 0 {
-			t.Fatalf("model.route code=%d envelope=%s", code, raw)
-		}
+	raw, code := p.Call(pluginabi.MethodModelRoute, rawRoute)
+	if code != 0 {
+		t.Fatalf("model.route code=%d envelope=%s", code, raw)
 	}
 
 	subjectHash := p.identifier.FromHeaders(headers).Hash
 	beforeController := p.runtime.Load().subject
 	before, ok := beforeController.Snapshot(subjectHash)
-	if !ok || before.HitCount != 2 {
-		t.Fatalf("subject state before reconfigure = (%+v, %v), want two hits", before, ok)
+	if !ok || before.HitCount != 1 {
+		t.Fatalf("subject state before reconfigure = (%+v, %v), want one logical hit", before, ok)
 	}
 
-	raw, code := p.Call(pluginabi.MethodPluginReconfigure, lifecyclePayload(t,
+	raw, code = p.Call(pluginabi.MethodPluginReconfigure, lifecyclePayload(t,
 		"mode: audit\nmax_scan_bytes: 131072\naudit:\n  enabled: false\nsubject_control:\n  enabled: true\n  max_subjects: 64\n"))
 	if code != 0 {
 		t.Fatalf("plugin.reconfigure code=%d envelope=%s", code, raw)

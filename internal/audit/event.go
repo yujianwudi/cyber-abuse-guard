@@ -15,8 +15,9 @@ import (
 )
 
 const (
-	modelHashDomain = "cyber-abuse-guard/audit/model/v1\x00"
-	modelHashPrefix = "sha256-model-v1:"
+	requestHashDomain = "cyber-abuse-guard/audit/request/v1\x00"
+	modelHashDomain   = "cyber-abuse-guard/audit/model/v1\x00"
+	modelHashPrefix   = "sha256-model-v1:"
 
 	// SourceFormatUnknown is the only value retained for caller-supplied source
 	// formats outside the fixed CPA provider enum.
@@ -49,8 +50,10 @@ type Event struct {
 // HashRequest produces the one-way request correlation value accepted by an
 // Event. Callers should discard the request bytes after classification.
 func HashRequest(request []byte) string {
-	sum := sha256.Sum256(request)
-	return "sha256:" + hex.EncodeToString(sum[:])
+	hash := sha256.New()
+	_, _ = hash.Write([]byte(requestHashDomain))
+	_, _ = hash.Write(request)
+	return "sha256:" + hex.EncodeToString(hash.Sum(nil))
 }
 
 // HashModel returns the deterministic, domain-separated correlation value used

@@ -36,14 +36,15 @@ func TestSubjectPersistenceRestoresAcrossReconfigureAndRestart(t *testing.T) {
 
 	first := New()
 	register(t, first, persistenceYAML(dataDir, "balanced"))
-	for iteration := 0; iteration < 2; iteration++ {
-		if route := callRouteWithHeaders(t, first, maliciousRequest, headers); !route.Handled {
-			t.Fatalf("setup malicious route was not blocked: %+v", route)
-		}
+	if route := callRouteWithHeaders(t, first, maliciousRequest, headers); !route.Handled {
+		t.Fatalf("setup malicious route was not blocked: %+v", route)
+	}
+	if route := callRouteWithHeaders(t, first, maliciousRequest, headers); !route.Handled {
+		t.Fatalf("duplicate setup route was not blocked: %+v", route)
 	}
 	subjectHash := first.identifier.FromHeaders(headers).Hash
 	before, ok := first.runtime.Load().subject.Snapshot(subjectHash)
-	if !ok || before.HitCount != 2 {
+	if !ok || before.HitCount != 1 {
 		t.Fatalf("subject before persistence=%#v, %v", before, ok)
 	}
 	raw, code := first.Call(pluginabi.MethodPluginReconfigure, lifecyclePayload(t, persistenceYAML(dataDir, "audit")))
@@ -59,6 +60,12 @@ func TestSubjectPersistenceRestoresAcrossReconfigureAndRestart(t *testing.T) {
 	after, ok := second.runtime.Load().subject.Snapshot(subjectHash)
 	if !ok || after.HitCount != before.HitCount || after.Score <= 0 {
 		t.Fatalf("restored subject=%#v, %v; before=%#v", after, ok, before)
+	}
+	if route := callRouteWithHeaders(t, second, maliciousRequest, headers); !route.Handled {
+		t.Fatalf("restored duplicate route was not blocked: %+v", route)
+	}
+	if afterRetry, ok := second.runtime.Load().subject.Snapshot(subjectHash); !ok || afterRetry.HitCount != 1 {
+		t.Fatalf("restored duplicate request was re-accounted: %#v, %v", afterRetry, ok)
 	}
 	status := managementJSON(t, second, http.MethodGet, managementBasePath+"/status", nil)
 	persistence, ok := status["subject_persistence"].(map[string]any)
@@ -85,7 +92,7 @@ func TestSubjectPersistenceKeyMismatchIsVisibleWithoutFailOpen(t *testing.T) {
 	register(t, second, persistenceYAML(dataDir, "balanced"))
 	status := managementJSON(t, second, http.MethodGet, managementBasePath+"/status", nil)
 	persistence, ok := status["subject_persistence"].(map[string]any)
-	if !ok || persistence["degraded"] != true || persistence["writes_blocked"] != true || !strings.Contains(persistence["last_error"].(string), "different HMAC key") || status["persistence_degraded"] != true {
+	if !ok || persistence["degraded"] != true || persistence["writes_blocked"] != true || persistence["last_error"] != "subject persistence is degraded" || status["persistence_degraded"] != true {
 		t.Fatalf("HMAC mismatch persistence status=%#v", status)
 	}
 	if route := callRouteWithHeaders(t, second, maliciousRequest, headers); !route.Handled || route.TargetKind != pluginapi.ModelRouteTargetSelf {
@@ -109,8 +116,9 @@ func TestSubjectPersistenceKeyMismatchIsVisibleWithoutFailOpen(t *testing.T) {
 func TestSubjectPersistenceRestoreErrorsBlockWritesAndPreserveCorruptSnapshot(t *testing.T) {
 	t.Setenv(subject.HMACKeyEnvironment, "0123456789abcdef0123456789abcdef")
 	testCases := []struct {
-		name   string
-		tamper func(*testing.T, *sql.DB)
+		name      string
+		forbidden string
+		tamper    func(*testing.T, *sql.DB)
 	}{
 		{
 			name: "row integrity",
@@ -127,6 +135,16 @@ func TestSubjectPersistenceRestoreErrorsBlockWritesAndPreserveCorruptSnapshot(t 
 			tamper: func(t *testing.T, db *sql.DB) {
 				t.Helper()
 				if _, err := db.Exec(`UPDATE subject_state SET state_json = '{'`); err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
+		{
+			name:      "JSON unknown field privacy",
+			forbidden: "PERSISTENCE_ERROR_CANARY_76ca19e0",
+			tamper: func(t *testing.T, db *sql.DB) {
+				t.Helper()
+				if _, err := db.Exec(`UPDATE subject_state SET state_json = '{"PERSISTENCE_ERROR_CANARY_76ca19e0":true}'`); err != nil {
 					t.Fatal(err)
 				}
 			},
@@ -189,8 +207,17 @@ func TestSubjectPersistenceRestoreErrorsBlockWritesAndPreserveCorruptSnapshot(t 
 			register(t, second, persistenceYAML(dataDir, "balanced"))
 			status := managementJSON(t, second, http.MethodGet, managementBasePath+"/status", nil)
 			persistence, ok := status["subject_persistence"].(map[string]any)
-			if !ok || persistence["degraded"] != true || persistence["writes_blocked"] != true || persistence["last_error"] == "" || status["persistence_degraded"] != true {
+			if !ok || persistence["degraded"] != true || persistence["writes_blocked"] != true || persistence["last_error"] != "subject persistence is degraded" || status["persistence_degraded"] != true {
 				t.Fatalf("corrupt restore persistence status=%#v", status)
+			}
+			if testCase.forbidden != "" {
+				encodedStatus, err := json.Marshal(status)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if strings.Contains(string(encodedStatus), testCase.forbidden) {
+					t.Fatal("subject persistence status reflected corrupt snapshot content")
+				}
 			}
 			if route := callRouteWithHeaders(t, second, maliciousRequest, headers); !route.Handled || route.TargetKind != pluginapi.ModelRouteTargetSelf {
 				t.Fatalf("corrupt persistence weakened in-memory enforcement: %+v", route)

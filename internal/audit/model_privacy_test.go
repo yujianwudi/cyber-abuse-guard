@@ -14,22 +14,42 @@ func TestHashModelIsDeterministicAndDomainSeparated(t *testing.T) {
 	first := HashModel(model)
 	second := HashModel(model)
 	if first != second {
-		t.Fatalf("HashModel() is not deterministic: %q != %q", first, second)
+		t.Fatal("HashModel is not deterministic")
 	}
 	if first == HashRequest([]byte(model)) {
-		t.Fatalf("model and request hash domains collided: %q", first)
+		t.Fatal("model and request hash domains collided")
 	}
 	if !strings.HasPrefix(first, modelHashPrefix) || strings.Contains(first, model) {
-		t.Fatalf("HashModel() returned an unsafe value %q", first)
+		t.Fatal("HashModel returned an unsafe value")
 	}
 
 	wantSum := sha256.Sum256([]byte(modelHashDomain + model))
 	want := modelHashPrefix + hex.EncodeToString(wantSum[:])
 	if first != want {
-		t.Fatalf("HashModel() = %q, want domain-separated digest %q", first, want)
+		t.Fatal("HashModel did not match the documented domain-separated digest")
 	}
 	if HashModel("") != "" {
 		t.Fatal("HashModel(empty) must remain empty")
+	}
+}
+
+func TestHashRequestIsDeterministicAndDomainSeparated(t *testing.T) {
+	const request = "REQUEST_PRIVACY_CANARY_secret-body"
+	first := HashRequest([]byte(request))
+	second := HashRequest([]byte(request))
+	if first != second || !strings.HasPrefix(first, "sha256:") || strings.Contains(first, request) {
+		t.Fatal("request hash is not a deterministic privacy-safe digest")
+	}
+	plain := sha256.Sum256([]byte(request))
+	if first == "sha256:"+hex.EncodeToString(plain[:]) {
+		t.Fatal("request hash omitted its domain separator")
+	}
+	wantHash := sha256.New()
+	_, _ = wantHash.Write([]byte(requestHashDomain))
+	_, _ = wantHash.Write([]byte(request))
+	want := "sha256:" + hex.EncodeToString(wantHash.Sum(nil))
+	if first != want {
+		t.Fatal("request hash does not match the documented domain")
 	}
 }
 
@@ -67,9 +87,9 @@ func TestPrepareEventSanitizesCallerControlledMetadata(t *testing.T) {
 		t.Fatalf("prepareEvent() error = %v", err)
 	}
 	if event.Model != HashModel(modelCanary) || strings.Contains(event.Model, modelCanary) {
-		t.Fatalf("prepared Event.Model = %q", event.Model)
+		t.Fatal("prepared event retained unsafe model metadata")
 	}
 	if event.SourceFormat != SourceFormatUnknown {
-		t.Fatalf("prepared Event.SourceFormat = %q, want %q", event.SourceFormat, SourceFormatUnknown)
+		t.Fatal("prepared event retained an unknown caller-controlled source format")
 	}
 }

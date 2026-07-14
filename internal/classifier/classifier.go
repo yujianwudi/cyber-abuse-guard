@@ -126,6 +126,8 @@ type Evidence struct {
 
 // Result intentionally has no field capable of carrying prompt fragments.
 type Result struct {
+	PolicyVersion  string         `json:"policy_version"`
+	PolicySHA256   string         `json:"policy_sha256"`
 	RuleSetVersion string         `json:"ruleset_version"`
 	Score          int            `json:"score"`
 	Category       rules.Category `json:"category,omitempty"`
@@ -133,6 +135,7 @@ type Result struct {
 	RuleIDs        []string       `json:"rule_ids,omitempty"`
 	Context        ContextFlags   `json:"context"`
 	Evidence       []Evidence     `json:"evidence,omitempty"`
+	Behavior       *BehaviorGraph `json:"behavior,omitempty"`
 	Truncated      bool           `json:"truncated,omitempty"`
 }
 
@@ -375,10 +378,13 @@ func (c *Classifier) ClassifyWithPolicy(parts []string, mode Mode, thresholds Th
 // semantic window. Ordinary user text never receives that exception.
 func (c *Classifier) classifyWithPolicy(parts []string, mode Mode, thresholds Thresholds, policy Policy, structuredToolPayload bool) Result {
 	if c == nil {
-		return Result{Action: ActionAllow}
+		return Result{PolicyVersion: ClassifierPolicyVersion, PolicySHA256: ClassifierPolicySHA256, Action: ActionAllow}
 	}
 	if mode == ModeOff {
-		return Result{RuleSetVersion: c.version, Action: ActionAllow}
+		return Result{
+			PolicyVersion: ClassifierPolicyVersion, PolicySHA256: ClassifierPolicySHA256,
+			RuleSetVersion: c.version, Action: ActionAllow,
+		}
 	}
 	thresholds = validThresholdsOrDefault(thresholds)
 	signals := make([]bool, c.signalCount)
@@ -506,6 +512,8 @@ func (c *Classifier) classifyWithPolicy(parts []string, mode Mode, thresholds Th
 		context.Authorized = context.Authorized || prior.Authorized
 	}
 	result := Result{
+		PolicyVersion:  ClassifierPolicyVersion,
+		PolicySHA256:   ClassifierPolicySHA256,
 		RuleSetVersion: c.version,
 		Action:         ActionAllow,
 		Context:        context,
@@ -963,10 +971,9 @@ func (c *Classifier) classifyWithPolicy(parts []string, mode Mode, thresholds Th
 	// Meta-override language is an abuse amplifier, not a standalone keyword
 	// blocklist. It covers instruction-hierarchy inversion, refusal suppression,
 	// sandbox/placeholder laundering, forced exact-output templates, negative
-	// authorization, and control-plane secret disclosure. When an ordinary
-	// cyber-abuse candidate already exists, retain its taxonomy and raise it to
-	// at least the meta-override score. Otherwise, a sufficiently strong control-
-	// plane attack is reported under the existing defense-evasion category.
+	// authorization, and control-plane secret disclosure. It may raise an
+	// existing cyber-abuse candidate, but never creates a cyber taxonomy by
+	// itself. Wrapper-only requests remain a bounded control-plane audit signal.
 	meta := bestMeta
 	if meta.score >= AuditThreshold {
 		bestOrdinaryIndex := -1
@@ -993,18 +1000,30 @@ func (c *Classifier) classifyWithPolicy(parts []string, mode Mode, thresholds Th
 			}
 			winner.ruleIDs = append(winner.ruleIDs, metaOverrideRuleID)
 			winner.evidence = append(winner.evidence, meta.evidence...)
-		} else {
-			candidates = append(candidates, candidate{
-				score:    meta.score,
-				category: rules.CategoryEvasion,
-				ruleID:   metaOverrideRuleID,
-				evidence: meta.evidence,
-			})
 		}
 	}
 	if len(candidates) == 0 {
+		if meta.score >= AuditThreshold {
+			result.Score = metaControlAuditScore(meta.score, thresholds)
+			result.RuleIDs = []string{metaOverrideRuleID}
+			result.Evidence = append(result.Evidence, meta.evidence...)
+			result.Evidence = append(result.Evidence, contextEvidence(context)...)
+			result.Evidence = uniqueSortedEvidence(result.Evidence)
+			result.Action = actionForMetaControl(mode, result.Score, thresholds)
+			carrier := "text"
+			if structuredToolPayload {
+				carrier = "structured_tool_payload"
+			}
+			attachBehaviorGraph(&result, "parts", carrier)
+			return result
+		}
 		result.Action = actionFor(mode, 0, thresholds)
 		result.Evidence = contextEvidence(context)
+		carrier := "text"
+		if structuredToolPayload {
+			carrier = "structured_tool_payload"
+		}
+		attachBehaviorGraph(&result, "parts", carrier)
 		return result
 	}
 	sort.Slice(candidates, func(i, j int) bool {
@@ -1032,6 +1051,11 @@ func (c *Classifier) classifyWithPolicy(parts []string, mode Mode, thresholds Th
 	result.RuleIDs = uniqueSorted(result.RuleIDs)
 	result.Evidence = uniqueSortedEvidence(result.Evidence)
 	result.Action = actionFor(mode, result.Score, thresholds)
+	carrier := "text"
+	if structuredToolPayload {
+		carrier = "structured_tool_payload"
+	}
+	attachBehaviorGraph(&result, "parts", carrier)
 	return result
 }
 

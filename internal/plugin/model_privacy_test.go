@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginabi"
@@ -35,7 +34,7 @@ func TestCallerControlledAuditMetadataIsPrivateAcrossEventsSQLiteAndManagementAP
 
 	items, ok := management["events"].([]any)
 	if !ok || len(items) != 2 {
-		t.Fatalf("management events = %#v, want two events", management["events"])
+		t.Fatal("management API did not return exactly two privacy-safe events")
 	}
 	wantHashes := map[string]bool{
 		audit.HashModel(decisionCanary): false,
@@ -48,16 +47,17 @@ func TestCallerControlledAuditMetadataIsPrivateAcrossEventsSQLiteAndManagementAP
 		}
 		model, _ := event["model"].(string)
 		if _, exists := wantHashes[model]; !exists {
-			t.Fatalf("management event model = %q, want a domain-separated digest", model)
+			t.Fatal("management event model was not an expected domain-separated digest")
 		}
 		if event["source_format"] != audit.SourceFormatUnknown {
-			t.Fatalf("management event source_format = %#v, want %q", event["source_format"], audit.SourceFormatUnknown)
+			t.Fatal("management event retained a caller-controlled source format")
 		}
 		wantHashes[model] = true
 	}
 	for model, seen := range wantHashes {
 		if !seen {
-			t.Fatalf("management API did not return expected model digest %q", model)
+			_ = model
+			t.Fatal("management API omitted an expected model digest")
 		}
 	}
 
@@ -79,10 +79,10 @@ func TestCallerControlledAuditMetadataIsPrivateAcrossEventsSQLiteAndManagementAP
 	assertNoAuditCanary(t, eventRaw, decisionCanary, parseCanary, sourceCanary)
 	for _, event := range events {
 		if _, exists := wantHashes[event.Model]; !exists {
-			t.Fatalf("persisted Event.Model = %q, want a domain-separated digest", event.Model)
+			t.Fatal("persisted model was not an expected domain-separated digest")
 		}
 		if event.SourceFormat != audit.SourceFormatUnknown {
-			t.Fatalf("persisted Event.SourceFormat = %q, want %q", event.SourceFormat, audit.SourceFormatUnknown)
+			t.Fatal("persisted event retained a caller-controlled source format")
 		}
 	}
 
@@ -113,17 +113,17 @@ func callPrivacyModelRoute(t testing.TB, p *Plugin, requestedModel, sourceFormat
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw, code := p.Call(pluginabi.MethodModelRoute, rawRequest)
+	_, code := p.Call(pluginabi.MethodModelRoute, rawRequest)
 	if code != 0 {
-		t.Fatalf("model.route code=%d envelope=%s", code, raw)
+		t.Fatalf("privacy model.route return code = %d", code)
 	}
 }
 
 func assertNoAuditCanary(t testing.TB, data []byte, canaries ...string) {
 	t.Helper()
-	for _, canary := range canaries {
+	for index, canary := range canaries {
 		if bytes.Contains(data, []byte(canary)) {
-			t.Fatalf("plaintext audit metadata canary %q was retained in %s", canary, strings.TrimSpace(string(data)))
+			t.Fatalf("privacy surface retained plaintext canary index %d", index)
 		}
 	}
 }

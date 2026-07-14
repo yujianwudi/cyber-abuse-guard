@@ -2,6 +2,13 @@
 
 Last updated: 2026-07-14 (Asia/Shanghai)
 
+> Historical Phase 0 snapshot. At that time the root module used CPA v7.2.67
+> while `integration/pluginstorecontract` used v7.2.72. Those statements are
+> superseded by implementation freeze `61536f9`, whose root dependency is CPA
+> v7.2.72. See `CPA_INTEGRATION.md` and
+> `LEO_VERIFICATION_HANDOFF.md` for current evidence. The historical findings
+> below are intentionally retained rather than rewritten.
+
 ## Decision
 
 **RELEASE BLOCKED.** This Phase 0 work repairs source-level CPA contracts and

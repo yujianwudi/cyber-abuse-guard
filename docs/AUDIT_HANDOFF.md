@@ -1,302 +1,249 @@
-# GPT-5.6-Pro 独立审计交接说明 — CPA Cyber Abuse Guard v0.1.2 candidate
+# 独立审计交接说明 — CPA Cyber Abuse Guard v0.1.2 开发树
 
-## 1. 结论前提
+最后更新：2026-07-14（Asia/Shanghai）
 
-本项目是 CLIProxyAPI（CPA）的本地原生请求封控插件，不是上游安全策略的替代品。
-当前源码仍是 **v0.1.2 候选工作树**，不得仅凭“功能已实现”、项目内回归语料或本说明
-声称生产就绪。当前正式结论是 **RELEASE GATE FAIL / RELEASE BLOCKED**：方法学有效的
-独立 v10 首次且唯一正式运行得到合法误报 28/320、恶意阻断 49/320、精确分类 33/320，
-未达到门槛且已经消耗。不得创建 `v0.1.2` Tag、GitHub Release 或用于生产部署。
-未来只有在新实现完成后，使用全新独立集合重新评审；不得重跑或复用 v10。即使未来全部
-门禁通过，也不能保证上游账号永不被警告、限流、暂停或封禁。
+## 1. 当前结论
 
-状态约定：
-
-- **已验证（开发工作树）**：有本地命令结果，但仍须在最终干净 Tag 上重跑；
-- **历史证据**：不可用于批准本版本；
-- **NOT CREATED / RELEASE BLOCKED**：因正式门禁失败而不得继续生成；
-- **接受限制 / 未实现**：当前版本明确不提供，不能按文档设计视为已实现。
-
-## 2. 项目与安全链路
-
-目标矩阵是 CPA `v7.2.67`（commit
-`2075f77c8ebe9ec872759965661936fb1ac2931f`）、CPA C ABI/RPC schema v1、
-Linux amd64、glibc 2.34+；musl/Alpine 不受支持。
-
-仓库根 `go.mod` 与当前开发/运行基线仍固定 CPA v7.2.67。独立模块
-`integration/pluginstorecontract` 固定 v7.2.72，只用于调用官方
-`pluginstore.InstallArchive` 与官方 Host Router 测试验证商店 ZIP、排序和回退契约；使用
-合成不透明字节，不加载 `.so`，不能据此声称 CPA v7.2.72 宿主兼容、已部署或已完成集成。
+当前状态是：
 
 ```text
-下游请求
-  -> CPA ModelRouter（Provider/Auth Selector/Usage/上游之前）
-     -> 放行：Handled=false，原请求继续 CPA 原生链路
-     -> 阻断：Handled=true + TargetKind=self
-        -> execute / execute_stream / count_tokens 返回策略 HTTP 403
-        -> http_request 返回不支持 HTTP 405
-        -> 不进入 Provider/Auth/Usage/真实上游
+BLOCKED FOR HANDOFF
 ```
 
-插件不重写模型名、客户端身份、System Prompt 或安全声明，不执行用户代码，不读取 CPA
-Auth/OAuth 文件，不把 Prompt/Token/Cookie/OAuth/API Key 上传给远端分类器，也不抓取
-公网媒体 URL。
+这不是最终质量 PASS，也不是生产批准。实际起始基线为
+`a121a444cb0d82cba4e27754914a1f88258e1d7b`；实现冻结为 `61536f9`，两条精确 SHA 的
+GitHub CI 均已通过。证据文档单独提交；最终交接时已核对工作树清洁。
 
-## 3. 架构与入口
+方法学有效的 v10 首次且唯一正式运行仍为 `CONSUMED / FAIL`：合法误报 28/320，恶意
+阻断 49/320，精确分类 33/320。该结论不变。不得读取、打印、执行、通过 Git 历史获取或
+逐条分析 v10 样本，也不得用开发集冒充新盲测。
 
-| 层 | 主要入口 | 审计重点 |
-|---|---|---|
-| C ABI 边界 | `cmd/cyber-abuse-guard/main.go` | 初始化/调用/释放/关闭、8 MiB no-copy 上限、panic recovery |
-| 插件生命周期 | `internal/plugin/plugin.go` | 注册、热更新、原子 runtime、关闭并发、RPC 错误语义 |
-| 路由与封控 | `internal/plugin/router.go` | 未知 SourceFormat、解析失败/截断/媒体、local self-route |
-| 请求提取 | `internal/extract/` | 多协议 JSON、角色/Tool provenance、两层有界解码、资源上限 |
-| 决策引擎 | `internal/classifier/` | 组合证据、上下文/角色边界、Balanced/Strict 阈值、性能 |
-| 规则 | `rules/`、`internal/rules/` | 嵌入 ruleset `1.0.7`、版本/哈希一致性、无运行时下载 |
-| 主体控制 | `internal/subject/` | HMAC 身份、衰减/Cooldown/Manual Block、容量与持久化表示 |
-| 审计存储 | `internal/audit/` | 固定事件、SQLite schema v2、迁移/备份/查询/CSV 隐私 |
-| 管理面 | `internal/plugin/management.go` | Management Key 边界、精确路由、输入上限与隐私响应 |
-| 发布/运维 | `internal/buildinfo/`、`scripts/` | Tag-only、SBOM、严格验证、复现、Watchdog、Secret 生成 |
+方法学事件：三条作用域错误的 WSL 源码搜索命令意外输出了已退役
+`testdata/holdout-v3` 的若干行。三次搜索都被立即停止；输出内容没有被分析，也没有用于
+分类器调优或任何结论。Evaluation v10 内容未被访问。即便如此，已退役 holdout-v3 不再
+具备独立证据资格；该事件本身也使交接状态保持 `BLOCKED FOR HANDOFF`。
 
-CPA 管理面只注册固定路径；普通下游 API Key 不能替代 Management Key。Blocked stream
-选择真实 HTTP 403，而不是已建立的成功 SSE；这是 ABI v1 的明确取舍。
+未创建 Tag、GitHub Release，未部署或修改生产 CPA。即使未来工程门禁通过，也不能保证
+上游账号永不被警告、限流、暂停或封禁。
 
-CPA 当前在调用插件管理处理器前由 `ServeManagementHTTP` 执行 `io.ReadAll`，因此插件的
-1 MiB Body 限制和 2 MiB RPC Envelope 限制不是宿主 HTTP 内存上限。部署代理必须设置
-请求体限制；Docker/Nginx 示例使用 `client_max_body_size 1m`，并要求服务器沙盒证明超限
-请求在进入 CPA 前返回 413。
+## 2. 证据标签
 
-## 4. v0.1.1 → v0.1.2 主要修改
+审计时必须严格区分：
 
-以下是源码实现状态，不是最终发布 PASS：
+| 标签 | 含义 |
+|---|---|
+| `DEVELOPMENT SELF-CHECK` | 指定本地开发命令已运行，只证明该命令和当时工作树 |
+| `SOURCE IMPLEMENTED` | 源码/测试夹具存在，不表示已执行 |
+| `SOURCE OVERLAY PASS` | 固定 CPA 上游源码契约已运行，不表示真实 Guard `.so` 已加载 |
+| `GITHUB CI` | 精确推送 Commit 的远端检查；旧 main/旧分支结果不能继承 |
+| `REAL HOST` | 真实 Guard `.so` 由 CPA v7.2.72 Host 加载，并经 HTTP 路径验证 |
+| `LOCAL MIS-EXECUTION / EXCLUDED` | 命令在授权证据路径外运行；该结果永久排除，必须分别引用 GitHub CI 或 Leo 的独立结果 |
+| `NOT RUN` | 没有该层结果 |
+| `BLOCKED` | 缺少冻结、环境或前置条件，绝不是 PASS |
 
-1. 增加 URL percent、HTML entity、可检查 Base64、文本 data URL、JSON escape、
-   二次 Tool JSON 的有界解码；最多两层/八变体、编码源 128 KiB、解码合计 64 KiB；
-   不解压、不展开归档、不联网。
-2. image/audio/video 与普通截断分离，增加 `opaque_media_policy=block|audit|allow`
-   及 mode 默认值；`allow` 只是未检查透传，不是安全结论。
-3. 标准 OpenAI/Responses、Anthropic、Gemini 使用 system/user/assistant/tool provenance；
-   逐段和相邻用户续接分析。Assistant refusal/policy restatement 不应算用户意图，但未受约束
-   的后续指令必须重新分类。
-4. 未知 SourceFormat 在 Strict 解释前本地阻断；Balanced/Audit/Observe 使用通用有界
-   不可信文本提取器继续检查。计数器、最小事件和 Watchdog 差量用于发现新协议形态。
-5. 嵌入 ruleset `1.0.7`，要求伤害意图、危险对象/影响与操作化、目标、规避或规模证据
-   组合；“教育/CTF/已授权”标签不能洗白受保护的高风险操作。
-6. RequestedModel 不再明文审计，而是 `sha256-model-v1:<64 hex>` 域分离摘要；
-   SourceFormat 只保留 `openai|openai-response|claude|gemini|unknown`。历史读取、管理
-   查询和 CSV 也执行相同净化。
-7. SQLite schema v2 增加版本/历史和可选 HMAC-only Subject State；严格校验列、类型、
-   顺序、约束、索引、单例版本行与迁移序列。迁移事务化；`VACUUM INTO` 备份经私有
-   staging、0400、sync、no-overwrite hard link 发布并限制保留。
-8. ModelRouter panic、大 RPC、解析边界和关闭竞态采用 mode-aware 本地处理；状态暴露
-   readiness、router error、recovered panic、audit/HMAC/persistence degradation 与
-   build/rules identity。CPA Host 的根本 fail-open 仍然存在。
-9. HMAC 生成器拒绝覆盖、符号链接路径、错误 owner/mode；私有临时文件经同步和
-   no-overwrite 发布，不打印密钥。Watchdog 只接受回环地址，校验身份/健康、本地探针和
-   计数器差量，不访问 `/v1`。
-10. 锁定 Go `1.26.4`、CycloneDX GoMod `v1.9.0`、govulncheck `v1.6.0`；增加
-    clean-tag preflight、dirty 标记、严格 verifier/故障注入、SBOM、双 clone 复现、
-    source tar.gz、最终 evidence 和 GitHub Tag workflow。
+WSL 中曾误执行以下三个本地目标：
 
-### 4.1 v10 之后的审计加固（2026-07-13）
-
-当前 `agent/post-v10-production-hardening` 分支的本轮提示注入工作基于
-`68ce0f662cbb034e61e1f3a8b91f50ea20c57637`，包含 v10 消耗之后的工程加固；这些修改
-没有独立盲测结论，不能改变 Release Gate FAIL：
-
-- v7-v10 作者工具在写入前使用生产 `ExtractText` 证明每种 carrier 能恢复原始语义；
-  validator 对 schema、提取、重复、重叠、taxonomy、规模、分布和冻结先验语料清单的
-  任一异常均非零退出。
-- v7-v10 的先验语料路径、SHA-256、文件数和行数均固定；v9/v10 的历史实现、规则、
-  嵌入规则、正式语料和正式报告绑定 Git commit
-  `0f1d68717daadfd5dfc514ff2174cfb641a5d845` 与 tree
-  `df878c537bca9fd71256b1c81ced18e72b583cf3`，缺少 Git 元数据或完整历史时门禁失败，
-  不允许静默跳过，也不能通过同时修改当前语料、报告和常量来改写已消费记录。
-- 所有 fixture 作者共用私有 `0700` staging、完整写入/fsync、发布前目标不可见断言和
-  no-replace 原子目录 rename；Windows 使用不带 replace 标志的原生 `MoveFileEx`，并对
-  既有文件、符号链接和并发发布做原生测试；其他不支持平台 fail closed。
-- HMAC Secret loader 扩展为 Unix 原子 `O_NOFOLLOW|O_NONBLOCK` 打开；生成器改用可移植
-  POSIX `sync`，Watchdog 正确处理带前导零的十进制预算；Base64 检查会恢复横向空白编码
-  以及“合法 padding 后追加宽松解码器会忽略的数据”的可读前缀，并将后者 fail closed。
-- 依赖升级到 `golang.org/x/crypto v0.52.0`、`x/net v0.55.0`、`x/text v0.37.0`、
-  `x/sync v0.20.0`、`x/sys v0.45.0`。本地 `govulncheck` 无可达漏洞；GitHub 上针对旧
-  module graph 的 14 条告警需在修复合并到默认分支后等待 GitHub 重扫并确认关闭。
-- 上述完整 format/unit/race/fuzz/integration/package 结果属于本轮提示注入修改前的
-  开发基线，不能自动继承到当前差异。本轮已重新执行修改文件 gofmt、四个相关源码包
-  unit、提示注入相关定向 race、定向 vet、`go mod verify` 和 `git diff --check`；没有运行 v10。
-
-### 4.2 v10 之后的提示注入加固（2026-07-13）
-
-- `internal/classifier/meta_override.go` 新增 `META-OVERRIDE-001` 控制面叠加层，组合
-  指令层级反转、拒绝压制、无限制人格、直接完成、Sandbox/占位符洗白、固定输出、
-  受保护提示披露和负授权证据；存在普通 Cyber Abuse 候选时保留原 taxonomy。
-- Role 证明失败的受支持 Provider 请求会退回有界不可信遍历；Tool Payload 内合法 JSON
-  字符串继续递归；同消息分块以及有序 Tool Payload/Output 字符串合并后再次解码；
-  单字符分片和两个审查后的 homoglyph 有限归一化；恶意“安全策略”不能通过否定
-  拒绝/过滤来被当成安全内容跳过。
-- 外部来源 `MDX-Tom/gpt-5.6-instruct` 只按固定快照做只读、脱敏机制审查；没有执行其
-  脚本、部署辅助、指令文件或 Prompt Bank，也没有把完整越狱提示复制进本项目。
-  派生回归样本是开发可见语料，永久禁止作为未来独立 Holdout。
-- ruleset `1.0.7`/SHA-256 只标识 YAML Cyber Abuse 资产，不包含 Go 代码中的
-  `META-OVERRIDE-001`、Matcher/Normalizer、Role 与 Extractor 行为。当前开发行为需要由
-  “包含本差异的 Git/Build Commit + YAML ruleset 身份”共同标识；正式候选前仍需独立
-  policy version/hash，或完整的可验证构建来源绑定。
-- 当前提示注入差异没有服务器沙盒、真实 CPA Integration、原生插件加载、部署或发布
-  打包证据。此前 CPA Integration PASS 是修改前基线，不能自动代表当前工作树。
-
-### 4.3 Phase 0：CPA 商店与 Executor 契约（2026-07-14）
-
-- 仓库根仍以 CPA v7.2.67 为开发基线；v7.2.72 只存在于隔离的
-  `integration/pluginstorecontract` 源码契约模块，不构成宿主兼容声明。
-- CPA 商店安装 ZIP 为
-  `cyber-abuse-guard_<version>_linux_amd64.zip`，ZIP 根目录只允许一个版本化 `.so`；旧的
-  `plugins/linux/amd64/...` 嵌套布局由官方 `InstallArchive` 契约测试明确拒绝。
-- 文档、SBOM、构建元数据、报告和运维脚本位于独立
-  `cyber-abuse-guard-v<version>-audit-bundle.zip`；该资料包不能交给 CPA 商店安装器。
-- `executor.execute`、`executor.execute_stream`、`executor.count_tokens` 统一走策略 403；
-  `executor.http_request` 保持 405 unsupported。
-- 官方 installer/host 源码契约、合成商店包以及 executor 定向单测已 PASS；真实构建
-  产物、audit bundle、四协议 403/Auth/Usage/Provider/Upstream 零调用仍必须以服务器
-  沙盒输出补录。
-
-## 5. 信任与威胁边界
-
-受信任：固定版本 CPA Plugin Host、CPA Management Key 中间件、插件进程内代码、经运维
-控制的配置/只读 Secret/本地目录。请求体、Header、Tool arguments、模型名、SourceFormat、
-媒体和管理测试输入均不可信。
-
-SQLite 本地写入者是重要例外：schema/type/hash/history 能发现结构损坏，但 v0.1.2 没有
-keyed whole-snapshot MAC，因此删除一批仍合法的 Subject rows 无法与合法较小快照区分；
-本地 DB 写入者在“持久化完整性”上仍被信任。
-
-CPA Host 在插件未加载、注册失败、被 fuse、Router error、宿主接受有效 handled result
-前发生 panic、target 无效/为空或 self executor not ready 时，可能继续其他 Router 或原生
-路由。更高优先级 Router 若提前 Handle 也会绕过本插件；同优先级按插件 ID 升序。
-插件只能覆盖已知错误和 active Balanced/Strict runtime 下的 recovered panic，无法从 ABI
-v1 修改 Host 策略、枚举 Router 顺序或检查插件目录。`enforcement_ready` 只是插件内部
-状态，不能证明宿主加载/注册、未 fuse、顺序有利或具体请求的 executor ready。
-
-## 6. Holdout / Evaluation 方法学与证据
-
-审计时不要读取、打印或逐条分析任何 Holdout/Evaluation JSONL；只核对冻结的聚合报告、
-字节数与哈希。不得运行任何已消费集合的分类，不得使用行级结果调参。
-
-| 代次 | 冻结状态 | 发布意义 |
-|---|---|---|
-| v1 | retired methodology-invalid diagnostic | 历史诊断，不能批准发布 |
-| v2-v8 | `CONSUMED / FAIL` | 已消费失败，禁止重跑 |
-| v9 | `CONSUMED / METHODOLOGY INVALID / FAIL` | 缺失固定 Taxonomy Enum 校验器，禁止重跑 |
-| v10 | `CONSUMED / FAIL`，方法学有效 | 当前正式门禁失败，最终阻断发布 |
-
-v10 使用 ruleset `1.0.7`，canonical embedded ruleset SHA-256 为
-`7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134`。
-首次且唯一正式运行仅输出聚合：合法误报 28/320（8.75%），恶意阻断 49/320
-（15.31%），精确分类 33/320（10.31%）；四个关键类别门槛也全部失败。
-`make holdout-test` 现在会立即拒绝再次分类 v10。完整聚合、哈希与快照身份见
-`docs/reports/EVALUATION_V10_REPORT.md`；v1-v9 的历史报告保持冻结，不得改写。
-
-## 7. 验证状态
-
-修改前基线已验证（开发工作树候选证据）：unit/race/vet/fuzz、module/script/actionlint、普通 Corpus、
-Round 4 Development Suite、benchmark、govulncheck、真实 CPA + Mock Upstream/Auth/Usage、
-隐私、candidate package/verifier/fault checks。普通 Corpus 为 0/142 FP、154/154 recall/exact；
-Round 4 为 64/64 恶意阻断、0/64 合法误报。这些非盲测工程结果不能覆盖 v10 的正式失败。
-
-本轮提示注入差异已用锁定的 Go `1.26.4` 验证：修改文件 gofmt；
-`go test -tags=sqlite_omit_load_extension ./internal/rules ./internal/extract ./internal/classifier ./internal/plugin -count=1`；
-相同四包定向 `go vet`；`go mod verify`；`go mod tidy -diff`；`git diff --check`。
-以上仅为源码级开发证据。
-新增提示注入/提取/Router 回归用例的三包定向 `go test -race` 也已通过。
-`SERVER SANDBOX VALIDATION: PENDING / NOT RUN`；当前差异的真实 CPA Integration、原生
-加载、部署、正式 Holdout、正式打包、Tag 和 GitHub Release 均未运行或被禁止。
-
-Phase 0 的 installer/host 源码契约、合成商店 ZIP 和 Executor 单测已通过；双 ZIP 真实
-构建产物验证、四协议真实 HTTP 403/405，以及阻断时 Auth Selector、Provider、Usage、
-Mock Upstream 零调用仍应以服务器沙盒实际输出补录。服务器沙盒仍为
-`PENDING / NOT RUN`。
-
-最终红线已经失败：v10 Release Gate FAIL。因此干净发布 Commit、Annotated Tag、GitHub
-Release、正式产物发布和生产灰度均不得继续。未来评审必须来自新实现与全新独立集合。
-
-未实现/接受限制：HMAC 双密钥轮换；持久化 whole-snapshot MAC；外部/本地模型分类器；
-外部规则更新；挑战审批与管理 UI；媒体语义、任意编码/压缩/文档解析；Router 顺序/重复
-`.so` 自动检测；可信远端地址；schema v2 原地降级；未来 CPA/ABI、musl、非 Linux/amd64。
-
-## 8. 建议优先审计问题
-
-1. Assistant/System safety framing 后接新指令是否仍可洗白，合法 continuation 是否误报。
-2. Gemini `functionCall.args`、Anthropic `tool_use.input`、媒体字段乱序下 provenance 是否稳定。
-3. 未知 SourceFormat 的通用扫描是否既不静默绕过，也不会把 metadata 大量误报。
-4. audit 写入、legacy 读取、管理 API、CSV 是否都不回显明文 Model/任意 SourceFormat。
-5. SQLite schema/迁移/备份发布是否有 TOCTOU、跨文件系统或崩溃一致性缺口。
-6. register/reconfigure/route/shutdown/native panic 是否有 race、use-after-close 或死锁。
-7. HMAC 生成器和运行时 Secret loader 的 symlink/owner/mode/并发/fsync 契约是否一致。
-8. 发布脚本能否拒绝 dirty/tag mismatch、缺命令、归档 symlink、错误 ELF/ABI/glibc、
-   rules/SBOM/hash 不一致；最终 evidence 是否避免自引用哈希。
-9. v10 是否真正只输出聚合、绑定冻结实现与固定 Taxonomy Enum，已消费重跑是否被拒绝。
-10. 真实 CPA 的 stream 403、blocked 零 Auth/Usage/Upstream、Management 401 与 rollback。
-11. 商店 ZIP 是否根目录仅一个 `.so`，官方 v7.2.72 `InstallArchive` 是否验证安装路径、
-    重复安装及旧嵌套布局拒绝；审计资料包是否始终与商店 ZIP 分离。
-12. 未加载/注册失败/fused/router error/panic/无效 target/not-ready/优先级抢占时是否明确
-    保留宿主 fail-open；同优先级 ID 升序是否有测试或部署核对。
-13. Nginx `client_max_body_size 1m` 是否让超限 Management 请求在 CPA `io.ReadAll` 前
-    返回 413，而不是只依赖插件 1 MiB/2 MiB 限制。
-
-## 9. 建议命令
-
-```bash
-git status --short
-git diff --check
-git diff --stat 47d30451fa911fa5076b7b8023cc5e532deba25e..HEAD
-git ls-files --stage 'scripts/*.sh'
-make format-check git-diff-check module-verify
-make test vet race fuzz-smoke script-test corpus-regression benchmark vulncheck
-
-# Phase 0 源码级 CPA v7.2.72 store 契约；不加载 .so，也不证明宿主兼容：
-make cpa-store-contract
-
-# 只确认已消费保护：v10 会拒绝再次分类并返回非零。
-make holdout-test
-
-# 当前不得创建 v0.1.2 tag，也不得运行 formal-release。
-# 未来只能在新实现 + 全新独立集合通过后重新建立发布候选。
+```text
+make cpa-router-fixture-blackbox
+make cpa-v7272-host-blackbox
+scripts/management-proxy-413-test.sh
 ```
 
-产物复核建议：`sha256sum -c dist/checksums.txt`、`file`、`readelf -h -d -sW`、
-`nm -D --defined-only`、`unzip -Z -l`，并从 GitHub Release 回下载后再校验一次。
+它们只使用随机回环端口和 Mock 组件，没有连接真实 Provider 或生产服务；清理核对确认无
+Fixture 进程残留。其结果从交付证据中排除，状态固定为：
 
-## 10. GitHub 与最终字段
+```text
+LOCAL MIS-EXECUTION RECORDED / EXCLUDED; NOT AUTHORITATIVE
+```
+
+不得把这些本地结果改写成 PASS。
+
+## 3. 精确开发身份
 
 ```text
 repository: https://github.com/yujianwudi/cyber-abuse-guard
-candidate_base_commit: 47d30451fa911fa5076b7b8023cc5e532deba25e
-release_commit: NOT CREATED — RELEASE BLOCKED
-annotated_tag: NOT CREATED — RELEASE BLOCKED
-annotated_tag_object: NOT CREATED — RELEASE BLOCKED
-tag_target_commit: NOT CREATED — RELEASE BLOCKED
-github_actions_ci_run: candidate checks only; no approving tagged run
-github_actions_release_run: NOT RUN — RELEASE BLOCKED
-github_release_url: NOT CREATED — RELEASE BLOCKED
-server_sandbox_validation: PENDING / NOT RUN
-current_prompt_injection_integration: NOT RUN
-root_cpa_development_baseline: v7.2.67
-phase0_v7.2.72_scope: official installer and host-routing source contracts only
-phase0_store_contract_result: PASS WITH SYNTHETIC ARTIFACT; REAL BUILD ARTIFACT PENDING
-phase0_four_protocol_zero_call_matrix: SERVER SANDBOX PENDING / NOT RUN
-release_decision: REJECT / FAIL
+starting_baseline: a121a444cb0d82cba4e27754914a1f88258e1d7b
+branch: agent/complete-classifier-cpa-v7272-handoff
+reliability_checkpoint_commit: 573def2649d164161e2dfdfeb3f59b1e1b38ebbc
+implementation_freeze_commit: 61536f9f02c47a4d79031a47dc8a284f040e41c1
+evidence_document_commit: a2d30fc63fca4fba020cda282474aaca15a47d8f
+root_cpa_version: v7.2.72
+cpa_upstream_tag_commit: 6279bb8a4c2835ff6ed99c6b85083b2afbefa681
+cpa_module_sum: h1:ppce0MLsz2xJi2yi3/A60zu03cM7bMWBAEJ6eC29E5Y=
+cpa_go_mod_sum: h1:f4pcyAej8RoeRhIxJfm+OUMkCKaApiA8WzxR2XVlBh8=
+target: Linux amd64, glibc 2.34+, C ABI/RPC schema v1
+recorded_wsl_toolchain: go1.26.4 linux/amd64
+ruleset: 1.0.7
+ruleset_sha256: 7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134
+classifier_policy: classifier-policy-v2
+classifier_policy_sha256: dc9a174099cb2f621e5333a508d4645604f96f470a6d9ae12a1acfb363d29cf2
 ```
 
-| 产物 | SHA-256 | 状态 |
-|---|---|---|
-| `cyber-abuse-guard-v0.1.2.so` | NOT CREATED | RELEASE BLOCKED |
-| `cyber-abuse-guard_0.1.2_linux_amd64.zip`（CPA 商店 ZIP，根目录仅一个 `.so`） | NOT CREATED | RELEASE BLOCKED |
-| `cyber-abuse-guard-v0.1.2-audit-bundle.zip`（独立资料包） | NOT CREATED | RELEASE BLOCKED |
-| `cyber-abuse-guard-v0.1.2-source.tar.gz` | NOT CREATED | RELEASE BLOCKED |
-| `build-metadata.json` | NOT CREATED | RELEASE BLOCKED |
-| `ruleset-manifest.json` / `ruleset.sha256` | NOT CREATED | RELEASE BLOCKED |
-| `sbom.cdx.json` | NOT CREATED | RELEASE BLOCKED |
-| `release-test-summary.txt` | NOT CREATED | RELEASE BLOCKED |
-| `release-evidence-final.md` | NOT CREATED | RELEASE BLOCKED |
+classifier-policy 哈希通过源码清单测试绑定分类器、Matcher、Normalizer、Role、Wrapper、
+BehaviorGraph、语义组合、Extractor、规则加载/YAML 和依赖锁。管理状态会暴露版本/哈希，
+但当前 Build Metadata/Artifact Verifier 尚未绑定该字段，因此最终完整 Git Commit 仍是行为
+身份的一部分。
 
-最终应同时审阅 README、DESIGN、THREAT_MODEL、LIMITATIONS、INSTALL_DOCKER、全部冻结的
-Holdout/Evaluation 聚合报告、测试/隐私/性能/CPA 报告与完整源码；不能只审二进制 ZIP，
-也不能依据本说明推翻 v10 的正式失败结论。
+## 4. 请求安全链路
+
+```text
+下游请求
+  -> CPA v7.2.72 ModelRouter（Auth Selector / Provider / Usage / Upstream 之前）
+     -> 放行：Handled=false，保持模型、消息和 Tool 参数，进入 CPA 原生链路
+     -> 阻断：Handled=true + TargetKind=self
+        -> execute / execute_stream / count_tokens：策略 HTTP 403
+        -> stream：在成功 SSE Header/Chunk 之前同步 403
+        -> http_request：仅有 RPC/Adapter status-error 405（response=nil）
+           /v1/alpha/search 普通路径选择 codex，并把 Executor Error 映射为 502；
+           当前没有官方公开路由把 Guard Error 映射为最终客户端 405
+        -> Auth Selector / Provider / Usage / Mock Upstream 应全部为 0
+```
+
+CPA Host 根本 fail-open 仍存在：插件未加载、注册失败、被 fuse、Router error、Host 接受
+Handled Result 前 panic、invalid target、executor not-ready，或更高优先级 Router 先 Handle，
+都可能继续后续 Router/原生路由。同优先级按 Plugin ID 升序。`enforcement_ready` 仅说明
+插件内部 Runtime 状态，不能证明 Host 已加载、未 fuse、顺序正确或具体 Executor ready。
+
+## 5. 分类器重构
+
+本轮源码将危险底层行为与 Wrapper/Amplifier 分开：
+
+- Wrapper-only 不能创建 Cyber Abuse Taxonomy；弱 Wrapper 放行，强 Wrapper 最多审计；
+- Wrapper + 独立危险行为可提高置信度，但保留原危险类别；
+- BehaviorGraph 表示 Actor/Action/Object/Target/Technique/Execution/Credential/
+  Persistence/Evasion/Exfiltration/Impact/Scale/Authorization/Role/Carrier 等关系；
+- 图和管理输出只含布尔/关系/固定 ID，不含原文、片段、目标、URL 或 Tool Arguments；
+- System 安全政策和 Assistant refusal 不作为用户恶意意图；相邻用户续接和明确三轮计划可
+  有界组合；
+- Tool provenance、占位符绑定、URL percent、HTML entity、Base64、JSON Unicode、嵌套
+  Tool JSON 和有限分片/同形字在资源上限内处理。
+
+可见开发集 `testdata/development-adversarial-v11-prep` 共 35 条：16 block、14 allow、
+2 audit、3 resource-boundary。覆盖八类、四协议、三种语言类型以及 Wrapper、Role、
+Multi-turn、Tool、Carrier、Placeholder 和边界。其 Manifest 明确
+`development_only=true`、`future_holdout_eligible=false`。里奥绝不能把它或派生措辞用于
+独立 v11。
+
+## 6. 主体、持久化与隐私
+
+- 主体风险以 Subject HMAC + 域分离 Request Digest 幂等；execute/stream/token-count、
+  retry、并发、pending miss/expiry、enabled reconfigure 和 shutdown race 不重复记分；
+- 幂等 Receipt 随 Subject Snapshot 保存；旧快照保持兼容；
+- Pending Cache 使用有序 O(1) 刷新/淘汰；
+- Unix HMAC 文件校验 owner/mode/regular-file/symlink/FIFO/device/空短 Key；
+- SQLite/迁移备份/Subject Snapshot/管理 API/CSV/日志/Panic/Watchdog/Release Evidence
+  有 Canary 测试；
+- v1→v2 迁移在发布备份或写入前验证旧库 `request_hash`、`subject_hash`、`model` 和
+  `source_format` 隐私契约；任一值不是规定 Digest/固定 Provider Enum 时 fail closed，
+  不发布备份、不执行迁移，原库保留给运营修复；不会自动清洗旧明文库；
+- 插件不把 Prompt、Token、Cookie、OAuth、API Key、IP、域名或完整模型名写入这些表面；
+- 仍未实现 HMAC 双密钥轮换和 keyed whole-snapshot MAC。
+
+## 7. 当前已执行的开发检查
+
+| 范围 | 结果 |
+|---|---|
+| Wrapper/BehaviorGraph/Role/Policy Identity 定向分类器测试 | **DEVELOPMENT SELF-CHECK PASS** |
+| 35 条 Development Corpus Validator | **DEVELOPMENT SELF-CHECK PASS** |
+| Prompt Injection/Tool/Encoding 定向 Plugin 测试 | **DEVELOPMENT SELF-CHECK PASS** |
+| Classifier Validator `go vet`、gofmt、根 module verify/tidy、当时 diff check | **DEVELOPMENT SELF-CHECK PASS** |
+| WSL `-race` Subject/Config/Audit 及定向 Plugin 生命周期/隐私测试 | **DEVELOPMENT SELF-CHECK PASS** |
+| `go-safe-development-test.sh test`、`go-safe-development-test.sh race`、`go-safe-development-test.sh boundary` | **DEVELOPMENT SELF-CHECK PASS** — WSL Ubuntu 26.04 / Go 1.26.4；test/race 未运行 Evaluation/Holdout 测试名；boundary 只运行 3 个 v10 聚合/报告标记/拒绝重跑测试且日志确认 fixture 未访问 |
+| WSL reliability `go vet`、Health Script、Release Evidence Privacy Script | **DEVELOPMENT SELF-CHECK PASS** |
+| 同机 Classifier Benchmark 对比 | **DEVELOPMENT SELF-CHECK PASS / NOT FINAL EVIDENCE** |
+| CPA 16 个精确官方 Host Source Tests | **SOURCE OVERLAY PASS** |
+| 真实 `.so` Store Install/Host Load | **GITHUB CI PASS** — 真实 Store ZIP 首装并由 CPA v7.2.72 Host 加载；本地误执行仍排除 |
+| 四协议 403/pre-SSE/token-count | **GITHUB CI PASS** — 32 个 Host 子测试；本地误执行仍排除 |
+| `http_request` RPC/Adapter status-error 405（response=nil） | **SOURCE / ADAPTER CHECK** |
+| 官方 CPA Handler 最终客户端 HTTP 405 | **NOT AVAILABLE / NOT RUN — BLOCKED FOR HANDOFF；当前 CI 无法补齐** |
+| Auth/Provider/Usage/Mock Upstream 零调用 | **GITHUB CI PASS**；本地误执行仍排除 |
+| Multi-Router/fail-open Native Fixture | **GITHUB CI PASS** — 15 个隔离原生场景；panic/fuse 另有官方源码 overlay |
+| Management Proxy 413 | **GITHUB CI PASS** — 超限请求在计数 CPA Handler Stub 前返回 413 |
+| GitHub CI | **PASS** — Push `29312969925`，PR `29312971717`；Push 长 Fuzz PASS，两条可复现性 PASS |
+| CodeRabbit Ready Review | 首轮对 `8719c7f` 提出 8 个线程和 2 个 nitpick；有效问题由 `61536f9` 修复，`cmd` 缺失符号项经定向编译证伪；对 `8719c7f..61536f9` 的后续复审为 **NO ACTIONABLE COMMENTS** |
+| 开发候选产物与哈希 | **GITHUB CI PASS / RECORDED**；不是正式发布产物 |
+
+完整命令和矩阵见 `docs/reports/TEST_REPORT.md`，性能与隐私分别见
+`docs/reports/PERFORMANCE.md`、`docs/reports/PRIVACY.md`。
+
+## 8. 冻结 v10 结论
+
+审计者只允许读取冻结聚合报告，不允许读取/打印/运行样本。v10 聚合：
+
+| 指标 | 结果 |
+|---|---:|
+| 合法误报 | 28 / 320（8.75%） |
+| 恶意阻断 | 49 / 320（15.31%） |
+| 精确分类 | 33 / 320（10.31%） |
+
+发布门槛全部失败，四个关键类别门槛也全部失败。该历史结果既不能被本轮源码改写，也不能
+被开发集 PASS 覆盖。未来必须由开发流程外独立创建全新盲测。
+
+## 9. 里奥建议验证顺序
+
+在最终实现冻结前，本地只运行不会打开已消费评估样本、不会加载 `.so` 的安全开发门禁：
+
+```bash
+git status --short
+git rev-parse HEAD
+git log --oneline --decorate -10
+go version
+go env GOOS GOARCH CGO_ENABLED GOMAXPROCS GOAMD64
+
+make format-check
+make git-diff-check
+make module-verify
+./scripts/go-safe-development-test.sh test
+./scripts/go-safe-development-test.sh race
+./scripts/go-safe-development-test.sh boundary
+make vet
+make fuzz-smoke
+make script-test
+make corpus-regression
+make benchmark
+make vulncheck
+make build-linux-amd64
+make cpa-host-fixture-contract
+```
+
+不要运行已消费 v10 分类，不要运行独立 v11。若某个广泛 Target 会读取已消费样本，应先
+审计其定义并改用不读取样本的精确定向命令；不得通过跳过失败或 `|| true` 制造 PASS。
+
+`make integration-test`、`make management-proxy-413-test` 和带
+`REQUIRE_DIST_ARTIFACTS=1` 的 `make cpa-store-contract` 只能由授权 GitHub CI 运行，并在
+Leo 的授权隔离环境复验。CI 的 Host Blackbox 通过 `InstallManifest` 完成同一 Dist 身份的
+首装和真实 Host 加载；随后 `TestPublishedStoreArchive` 对该身份验证 repeat-skip 与
+tamper-repair。Synthetic fallback 不是 CI 证据。
+
+现有项目 `httptest.Server` 是测试自建的包装，会手工把 `error.StatusCode()` 写入 HTTP
+响应；它只能证明 RPC/Adapter 状态码错误层，不能冒充官方 CPA Handler。CPA v7.2.72
+确有 provider-specific 的 `POST /v1/alpha/search`：普通路径固定选择 `codex`，而且对
+任何 `HttpRequest` Error 固定返回 502。Guard 返回的是携带 405 的 Error，不是成功的
+`ExecutorHTTPResponse`，所以当前没有官方公开路由把它映射为最终客户端 405。该项无法
+由当前 CI 自然产生，是独立的 `BLOCKED FOR HANDOFF` 阻断项。
+
+精确 Implementation Freeze 的 GitHub CI、产物 SHA-256、Store ZIP 根目录、完整 Install
+Lifecycle、真实 Host 四协议和零副作用、Proxy 413 以及隐私 Canary 已记录。最终独立质量
+结论仍由里奥给出。
+
+## 10. 交接字段
+
+```text
+implementation_freeze_commit: 61536f9f02c47a4d79031a47dc8a284f040e41c1
+evidence_document_commit: a2d30fc63fca4fba020cda282474aaca15a47d8f
+pull_request: https://github.com/yujianwudi/cyber-abuse-guard/pull/4
+clean_tree: YES AT FINAL HANDOFF
+github_ci: PASS — push 29312969925; pull_request 29312971717
+real_host_matrix: GITHUB CI PASS — 32 Host subtests; 15 Router scenarios
+management_proxy_413: GITHUB CI PASS
+http_request_adapter_405: SOURCE / ADAPTER STATUS-ERROR CHECK (response=nil)
+official_cpa_final_client_http_405: NOT AVAILABLE / NOT RUN — BLOCKED FOR HANDOFF
+development_artifact_hashes: RECORDED — see docs/reports/RELEASE_EVIDENCE.md
+tag: NOT CREATED
+github_release: NOT CREATED
+production_deployment: NOT PERFORMED
+leo_verification: NOT RUN
+final_status: BLOCKED FOR HANDOFF
+```
+
+逐项 30 项交接清单见 `docs/LEO_VERIFICATION_HANDOFF.md`。
