@@ -10,7 +10,7 @@ base: 2d81ebdd5943c0334c484a146ce74f0069b1942f
 CPA: v7.2.75 / e57416731aec87051ac00d0812df6aebd0e9d57a
 classifier policy: classifier-policy-v2
 classifier policy SHA-256: 6a0480acc63617b688484c81baf4991cad48b57ad4414b1a8aeab0f0d196c51c
-fourth-round CI/artifact/isolated Host: PENDING
+fourth-round CI/artifact/Store-installed CI Host: PASS; authorized Tencent isolated Host/audit: PENDING
 ```
 
 The earlier v7.2.72 multimodal and Host results remain historical evidence in

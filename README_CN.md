@@ -36,7 +36,7 @@ CPA Cyber Abuse Guard 会在 Provider 解析和账号认证调度之前检查受
 | 不支持平台 | musl/Alpine |
 | 内置 YAML 规则集 | `1.0.7`，SHA-256 `7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134` |
 | 分类器策略身份 | `classifier-policy-v2`，SHA-256 `6a0480acc63617b688484c81baf4991cad48b57ad4414b1a8aeab0f0d196c51c` |
-| 当前验证 | 第四轮 JSON/multipart 本地单元回归已通过；CPA v7.2.75 CI artifact 与隔离 Host 证据仍待完成，状态为 **PARTIAL / NOT PRODUCTION-READY** |
+| 当前验证 | 第四轮本地门禁、GitHub CI artifact、可复现性与 CPA v7.2.75 Store 安装式 CI Host 已通过；腾讯云授权隔离 Host/audit 复验仍待完成，状态为 **PARTIAL / NOT PRODUCTION-READY** |
 
 仓库根 `go.mod` 与 `integration/pluginstorecontract` 隔离模块都精确固定 CPA
 v7.2.75。源码契约先列出并固定 16 个官方 Host 关键测试，再运行官方实现；额外 overlay

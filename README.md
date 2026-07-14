@@ -40,7 +40,7 @@ is not sent to a public classifier.
 | Unsupported platform | musl/Alpine |
 | Embedded YAML ruleset | `1.0.7`, SHA-256 `7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134` |
 | Classifier policy identity | `classifier-policy-v2`, SHA-256 `6a0480acc63617b688484c81baf4991cad48b57ad4414b1a8aeab0f0d196c51c` |
-| Current validation | Fourth-round JSON/multipart unit regressions pass locally; CPA v7.2.75 CI artifact and isolated Host evidence are pending; status remains **PARTIAL / NOT PRODUCTION-READY** |
+| Current validation | Fourth-round local gates, GitHub CI artifact, reproducibility, and CPA v7.2.75 Store-installed CI Host pass; the authorized Tencent isolated Host/audit review remains pending, so status is **PARTIAL / NOT PRODUCTION-READY** |
 
 The root `go.mod` and `integration/pluginstorecontract` module both pin CPA
 v7.2.75. Source contracts enumerate and run 16 exact official Host tests, while

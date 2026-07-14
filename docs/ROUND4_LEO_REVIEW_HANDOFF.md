@@ -14,23 +14,55 @@ CPA module sum: h1:WcCCeENtQ5F2bT86FVIOZJJbWCkPqrp3idl8kyZqARM=
 CPA go.mod sum: h1:f4pcyAej8RoeRhIxJfm+OUMkCKaApiA8WzxR2XVlBh8=
 classifier policy: classifier-policy-v2
 classifier policy SHA-256: 6a0480acc63617b688484c81baf4991cad48b57ad4414b1a8aeab0f0d196c51c
+implementation freeze / artifact source: 79aa4310457b2d5a4b4bf38022fe983ddfcdc72c
 ```
 
-Branch HEAD, implementation freeze, artifact source commit, CI URLs, and
-artifact hashes must be filled from the pushed Draft PR. Until CI and the
-authorized CPA v7.2.75 Host matrix finish, this is a development handoff and
-not production approval.
+The evidence-document version is the commit containing this file, as identified
+by Git/PR history; it is docs-only and must not be mistaken for the artifact
+source above. The authorized Tencent CPA v7.2.75 Host/audit matrix remains
+pending, so this is a development handoff and not production approval.
 
 | Evidence field | Current value |
 |---|---|
-| branch HEAD | PENDING COMMIT |
-| implementation freeze | PENDING |
-| artifact source commit | PENDING |
-| Draft PR / CI run | PENDING |
-| `.so`, `.so.sha256`, Store ZIP, audit bundle, build metadata, ruleset manifest/SHA, SBOM, checksums | PENDING BUILD AND HASH |
-| exact diff stat / docs-only commits | PENDING COMMIT |
-| CPA v7.2.75 isolated Host | NOT RUN FOR THIS CANDIDATE |
+| evidence document HEAD | This file's docs-only commit in PR history |
+| implementation freeze | `79aa4310457b2d5a4b4bf38022fe983ddfcdc72c` |
+| artifact source commit | `79aa4310457b2d5a4b4bf38022fe983ddfcdc72c` |
+| Draft PR | <https://github.com/yujianwudi/cyber-abuse-guard/pull/6> |
+| CI runs | push <https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29366207032>; PR <https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29366210668> |
+| CI conclusions | quality/artifacts, long fuzz, and reproducibility: PASS on both runs |
+| artifact | `cyber-abuse-guard-linux-amd64-dirty`, GitHub artifact id `8324511321` |
+| implementation diff | `origin/main@2d81ebd..79aa431`: 37 files, 2,916 insertions, 556 deletions |
+| CPA v7.2.75 Store-installed CI Host | PASS; exact Store archive and standalone SO identity used |
+| authorized Tencent isolated Host/audit | NOT RUN FOR THIS CANDIDATE |
 | Leo independent result | NOT RUN |
+
+## CI and artifact evidence
+
+The existing workflow ran its consumed evaluation-v10 aggregate boundary gate.
+That is recorded as a CI fact only; no restricted body was opened or executed
+locally. All other quality steps, including explicit round-four regressions,
+unit, race, vet, fuzz, benchmark, dependency scanning, Store-installed Host,
+SBOM/package verification, artifact hashing, clean-tree, and reproducibility,
+passed for artifact source `79aa431`.
+
+The downloaded artifact was checked without loading the SO or opening the audit
+bundle. All eight entries declared by `checksums.txt` matched the downloaded
+files. Build metadata records version `0.1.2-dirty`, Go `1.26.4`, linux/amd64,
+CGO enabled, commit `79aa4310457b2d5a4b4bf38022fe983ddfcdc72c`, ruleset
+`1.0.7`, and ruleset SHA-256
+`7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134`.
+
+| File | Bytes | SHA-256 |
+|---|---:|---|
+| `build-metadata.json` | 400 | `b18b400d7d73416946da65832037c7ea0c621f9d058929f3f8fdde60f3ee728c` |
+| `checksums.txt` | 768 | `4ae28b3b34dd72195677a9910ec40d6f6498f0ae89518a8c79c260accbc78abb` |
+| `cyber-abuse-guard_0.1.2-dirty_linux_amd64.zip` | 3,444,191 | `73c8649739114960bf3be298a3a3bc0b092d4cbecc082991f52a0c99159e9f84` |
+| `cyber-abuse-guard-v0.1.2-dirty.so` | 8,324,232 | `591805dafdf477080b728b14da04c8ca843926ca3b8483095995588c40626c9b` |
+| `cyber-abuse-guard-v0.1.2-dirty.so.sha256` | 100 | `0363fa4a051b68cccbed8c6ab7972954e1508debd6ec3c7b292529279608b7ca` |
+| `cyber-abuse-guard-v0.1.2-dirty-audit-bundle.zip` | 3,607,727 | `e16b188615b9b10897197e5aa4580f0c6a44b45cde7790a3568ff5063e106af4` |
+| `ruleset.sha256` | 88 | `a8ff687340617dc18832047f841979a0bd06ff8c50a4bc3c15dd7da37b6fbee2` |
+| `ruleset-manifest.json` | 1,475 | `486a4dfad49b4e96a600f908cbea47376baab5c8875324999ae50b6251f1af7e` |
+| `sbom.cdx.json` | 5,919 | `7aa97543c1d920c5afae76838a6c4254dcd73aae6fe1f1d7b3869235f9196d50` |
 
 ## Defects fixed
 
