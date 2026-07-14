@@ -36,7 +36,7 @@ CPA Cyber Abuse Guard 会在 Provider 解析和账号认证调度之前检查受
 | 不支持平台 | musl/Alpine |
 | 内置 YAML 规则集 | `1.0.7`，SHA-256 `7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134` |
 | 分类器策略身份 | `classifier-policy-v2`，SHA-256 `bd55065bc3f1fd350148ad8f2f440c8f606aeb02fabd0024d7a350fe23ee4585` |
-| 当前验证 | Store 安装、`.so` 加载、四协议、零副作用与 15 场景多 Router Host 自动化均已 **GITHUB CI PASS**；里奥独立复验待运行 |
+| 当前验证 | 第二轮源码/构建/artifact 与 CPA Store-installed Host fixture 已在 implementation freeze `c27294d` **GITHUB CI PASS**；Leo/腾讯二号机隔离 Host 尚未复验，状态仍为 **PARTIAL / NOT PRODUCTION-READY** |
 
 仓库根 `go.mod` 与 `integration/pluginstorecontract` 隔离模块都精确固定 CPA
 v7.2.72。源码契约先列出并固定 16 个官方 Host 关键测试，再运行官方实现；额外 overlay
