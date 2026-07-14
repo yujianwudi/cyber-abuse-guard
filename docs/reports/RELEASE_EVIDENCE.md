@@ -51,7 +51,7 @@ starting_baseline: a121a444cb0d82cba4e27754914a1f88258e1d7b
 branch: agent/complete-classifier-cpa-v7272-handoff
 reliability_checkpoint_commit: 573def2649d164161e2dfdfeb3f59b1e1b38ebbc
 implementation_freeze_commit: 61536f9f02c47a4d79031a47dc8a284f040e41c1
-evidence_document_commit: SELF (resolve with git log -1 -- this file)
+evidence_document_commit: a2d30fc63fca4fba020cda282474aaca15a47d8f
 worktree: CLEAN AT FINAL HANDOFF
 root_cpa_version: v7.2.72
 cpa_upstream_tag_commit: 6279bb8a4c2835ff6ed99c6b85083b2afbefa681
@@ -222,7 +222,7 @@ release and must not be uploaded as a GitHub Release.
 
 ```text
 implementation_freeze_commit: 61536f9f02c47a4d79031a47dc8a284f040e41c1
-evidence_document_commit: SELF (resolve with git log -1 -- this file)
+evidence_document_commit: a2d30fc63fca4fba020cda282474aaca15a47d8f
 annotated_tag: NOT CREATED — RELEASE BLOCKED
 github_release_url: NOT CREATED — RELEASE BLOCKED
 github_actions_ci_run: PASS — push 29312969925; pull_request 29312971717

@@ -66,7 +66,7 @@ starting_baseline: a121a444cb0d82cba4e27754914a1f88258e1d7b
 branch: agent/complete-classifier-cpa-v7272-handoff
 reliability_checkpoint_commit: 573def2649d164161e2dfdfeb3f59b1e1b38ebbc
 implementation_freeze_commit: 61536f9f02c47a4d79031a47dc8a284f040e41c1
-evidence_document_commit: SELF (resolve with git log -1 -- this file)
+evidence_document_commit: a2d30fc63fca4fba020cda282474aaca15a47d8f
 root_cpa_version: v7.2.72
 cpa_upstream_tag_commit: 6279bb8a4c2835ff6ed99c6b85083b2afbefa681
 cpa_module_sum: h1:ppce0MLsz2xJi2yi3/A60zu03cM7bMWBAEJ6eC29E5Y=
@@ -230,7 +230,7 @@ Lifecycle、真实 Host 四协议和零副作用、Proxy 413 以及隐私 Canary
 
 ```text
 implementation_freeze_commit: 61536f9f02c47a4d79031a47dc8a284f040e41c1
-evidence_document_commit: SELF (resolve with git log -1 -- this file)
+evidence_document_commit: a2d30fc63fca4fba020cda282474aaca15a47d8f
 pull_request: https://github.com/yujianwudi/cyber-abuse-guard/pull/4
 clean_tree: YES AT FINAL HANDOFF
 github_ci: PASS — push 29312969925; pull_request 29312971717

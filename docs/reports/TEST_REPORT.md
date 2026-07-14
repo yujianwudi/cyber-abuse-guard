@@ -211,7 +211,7 @@ development cases.
 starting_baseline: a121a444cb0d82cba4e27754914a1f88258e1d7b
 reliability_checkpoint_commit: 573def2649d164161e2dfdfeb3f59b1e1b38ebbc
 implementation_freeze_commit: 61536f9f02c47a4d79031a47dc8a284f040e41c1
-evidence_document_commit: SELF (resolve with git log -1 -- this file)
+evidence_document_commit: a2d30fc63fca4fba020cda282474aaca15a47d8f
 branch: agent/complete-classifier-cpa-v7272-handoff
 root_cpa_version: v7.2.72
 cpa_upstream_tag_commit: 6279bb8a4c2835ff6ed99c6b85083b2afbefa681

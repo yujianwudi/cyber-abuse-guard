@@ -31,7 +31,7 @@ the handoff status `BLOCKED FOR HANDOFF`.
 starting_baseline: a121a444cb0d82cba4e27754914a1f88258e1d7b
 reliability_checkpoint_commit: 573def2649d164161e2dfdfeb3f59b1e1b38ebbc
 implementation_freeze_commit: 61536f9f02c47a4d79031a47dc8a284f040e41c1
-evidence_document_commit: SELF (resolve with git log -1 -- this file)
+evidence_document_commit: a2d30fc63fca4fba020cda282474aaca15a47d8f
 ```
 
 The implementation SHA must be frozen after all code/test work is reviewed. The
@@ -443,7 +443,7 @@ independent rerun is **NOT RUN**.
 
 ```text
 implementation freeze: 61536f9f02c47a4d79031a47dc8a284f040e41c1
-evidence document commit: SELF (resolve with git log -1 -- this file)
+evidence document commit: a2d30fc63fca4fba020cda282474aaca15a47d8f
 safe development quality matrix: DEVELOPMENT SELF-CHECK PASS
 GitHub CI on exact implementation commit: PASS (push + PR runs)
 real CPA v7.2.72 store install/load: GITHUB CI PASS
