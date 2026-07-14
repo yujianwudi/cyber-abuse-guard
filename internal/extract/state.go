@@ -61,8 +61,8 @@ func (r *Result) IsComplete() bool {
 	if r == nil {
 		return false
 	}
-	return len(r.IncompleteReasons) == 0 && !r.Truncated && r.ParseError == "" &&
-		(r.Completeness == "" || r.Completeness == CompletenessComplete)
+	return r.Completeness == CompletenessComplete &&
+		len(r.IncompleteReasons) == 0 && !r.Truncated && r.ParseError == ""
 }
 
 func (r *Result) HasIncompleteReason(reason IncompleteReason) bool {

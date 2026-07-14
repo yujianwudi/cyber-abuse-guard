@@ -105,12 +105,16 @@ func extractMultipart(body []byte, boundary string, limits Limits) Result {
 		}
 		value, overflow, readOK := readMultipartText(part, fieldLimit)
 		_ = part.Close()
-		if !readOK || !utf8.Valid(value) || containsBinaryControl(string(value)) {
+		if !readOK {
 			result.addIncomplete(IncompleteMultipartParseError)
 			break
 		}
 		if overflow {
 			result.addIncomplete(IncompleteMultipartTextLimit)
+			break
+		}
+		if !utf8.Valid(value) || containsBinaryControl(string(value)) {
+			result.addIncomplete(IncompleteMultipartParseError)
 			break
 		}
 		multipartTextBytes += len(value)

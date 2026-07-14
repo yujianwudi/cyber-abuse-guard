@@ -329,6 +329,10 @@ func TestExtractRequestJSONResourceReasons(t *testing.T) {
 }
 
 func TestIncompleteReasonsAreBoundedDeduplicatedAndStable(t *testing.T) {
+	zero := Result{}
+	if zero.IsComplete() {
+		t.Fatal("zero-value Result must not be treated as a complete inspection")
+	}
 	var result Result
 	for index := len(incompleteReasonOrder) - 1; index >= 0; index-- {
 		result.addIncomplete(incompleteReasonOrder[index])
@@ -395,6 +399,20 @@ func TestExtractRequestMultipartResourceLimits(t *testing.T) {
 			t.Fatalf("result=%#v err=%v", result, err)
 		}
 	})
+}
+
+func TestMultipartTextOverflowTakesPrecedenceOverCutUTF8(t *testing.T) {
+	body, contentType := multipartBody(t, []multipartTestPart{{name: "prompt", value: []byte("你好")}})
+	result, err := ExtractRequest(body, http.Header{"Content-Type": []string{contentType}}, Limits{MaxMultipartTextPartBytes: 4})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.HasIncompleteReason(IncompleteMultipartTextLimit) {
+		t.Fatalf("result=%#v, want multipart text limit", result)
+	}
+	if result.HasIncompleteReason(IncompleteMultipartParseError) {
+		t.Fatalf("cut UTF-8 was misclassified as a parse error: %#v", result)
+	}
 }
 
 func TestExtractRequestMultipartJSONFieldsUseSharedBoundedWalk(t *testing.T) {

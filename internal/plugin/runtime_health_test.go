@@ -443,3 +443,20 @@ func TestOpaqueMediaPolicyIsModeAwareAndNeverFetchesURLs(t *testing.T) {
 		})
 	}
 }
+
+func TestIncompleteDispositionDoesNotCountOpaquePolicyBlock(t *testing.T) {
+	p := New()
+	t.Cleanup(p.Shutdown)
+	register(t, p, "mode: balanced\nmax_scan_bytes: 64\nopaque_media_policy: block\naudit:\n  enabled: false\nsubject_control:\n  enabled: false\n")
+
+	body := `{"input":[{"type":"input_image","image_url":"data:image/png;base64,AAAA"},{"type":"input_text","text":"` + strings.Repeat("x", 256) + `"}]}`
+	if route := callRoute(t, p, body); route.Handled {
+		t.Fatalf("balanced incomplete+opaque request was blocked: %+v", route)
+	}
+	if got := p.counters.opaqueMediaBlocked.Load(); got != 0 {
+		t.Fatalf("opaque_media_blocked=%d, want 0 for incomplete-primary disposition", got)
+	}
+	if got := p.counters.opaqueMediaAudited.Load(); got != 1 {
+		t.Fatalf("opaque_media_audited=%d, want 1", got)
+	}
+}

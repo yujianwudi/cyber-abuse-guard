@@ -156,6 +156,13 @@ func (p *Plugin) route(state *runtimeState, request pluginapi.ModelRouteRequest)
 	}
 
 	opaqueAudit, opaqueBlock := opaqueMediaDisposition(state.config, extracted.OpaqueMedia)
+	if len(incompleteReasons) != 0 && opaqueBlock {
+		// Incomplete inspection is the primary disposition. Do not report a
+		// policy-level opaque-media block when balanced actually allowed+audited
+		// the request (or strict blocked it for the incomplete reason).
+		opaqueAudit = true
+		opaqueBlock = false
+	}
 	if extracted.OpaqueMedia {
 		p.counters.opaqueMedia.Add(1)
 		for _, kind := range extracted.OpaqueMediaKinds {
