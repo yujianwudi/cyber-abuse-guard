@@ -1,4 +1,4 @@
-# Known Limitations — v0.1.2 candidate
+# Known Limitations — v0.1.2 fifth-round development candidate
 
 1. **No guarantee against account action.** The plugin reduces the number of
    clearly risky requests that reach upstream. It cannot guarantee that an
@@ -220,10 +220,15 @@
     callers that omit relevant history can therefore remove context the plugin
     never received.
 
-34. **Local instruction-file integrity is outside the plugin boundary.** The
-    router cannot prove the owner, mode, allowlist membership, or hash of a
-    local `model_instructions_file` before CPA serializes a request. That
-    control belongs to the launcher/deployment environment.
+34. **Local instruction-file and remote-template integrity are outside the
+    plugin boundary.** The Router cannot prove the path, owner, mode, allowlist
+    membership, hash/signature, or reload history of a local
+    `model_instructions_file`, `AGENTS.md`, remote instruction template, or
+    other high-priority client configuration loaded before CPA serializes a
+    request. The launcher/deployment environment must enforce a path allowlist,
+    non-business-user ownership and write restrictions, SHA-256 or signature
+    binding, verification at startup and every reload, fixed configuration
+    audit, and human-approved remote templates pinned to a commit/hash.
 
 35. **Control-plane signals have no standalone Cyber Abuse taxonomy.** Wrapper-
     only text is allowed or audited and cannot synthesize `defense_evasion` or
@@ -238,33 +243,45 @@
     WSL using loopback/Mock components and cleaned up without residual fixture
     processes. Those local results are excluded. Authorized GitHub CI passed an
     earlier CPA v7.2.72 implementation-freeze Host/Router/proxy matrix. The
-    fourth-round CPA v7.2.75 artifact, CI matrix, and isolated Host evidence are
-    pending; Leo independent verification remains not run. No Host result can
-    reverse the frozen v10 failure.
+    fifth-round CPA v7.2.75 artifact and CI evidence are pending; ordinary CI
+    runs bounded source-contract tests and compiles integration-tagged code
+    without starting CPA or loading the `.so`. The Tencent Cloud isolated Host
+    plus independent verification remain not run. No Host result can reverse
+    the frozen v10 failure.
 
 37. **Classifier-policy identity is source-bound but not yet artifact-bound.**
     The Go-level behavior is identified as `classifier-policy-v2` / SHA-256
-    `6a0480acc63617b688484c81baf4991cad48b57ad4414b1a8aeab0f0d196c51c`,
-    while ruleset `1.0.7` separately identifies YAML assets. A digest test binds
-    the reviewed source list, and authenticated status exposes the policy
-    identity. Current build metadata and artifact verification do not yet carry
-    that identity, so the full Git commit remains required for provenance.
+    `5fc25855a868cba206123697c1631ba251575157f37cd79654e9a65c888a750b`,
+    while ruleset `1.0.7` separately identifies YAML assets. Ruleset `1.0.7`
+    does **not** include the Go-level `META-OVERRIDE-001` overlay, extractor
+    semantics, approved tool-schema mappings, or control-plane telemetry. A
+    digest test binds the reviewed source list, and authenticated status
+    exposes the policy identity. Current build metadata and artifact
+    verification do not yet carry that identity, so the full Git commit remains
+    required for provenance.
 
 38. **Provider safety-control semantics are not enforced.** Recognized
     transport/configuration containers such as `safetySettings`,
     `generationConfig`, and generic `options` are not interpreted as model
     policy. The plugin scans model-visible text and tool data; it does not prove
     that a client or CPA configuration kept every provider-side safety option
-    enabled. Enforce those controls with a server-side allowlist and verify them
-    in the owner-operated sandbox.
+    enabled. Enforce those controls with a versioned server-side schema
+    allowlist and reject or forcibly overwrite unsafe values before routing;
+    verify the effective values independently in the owner-operated sandbox.
 
-39. **Tool JSON property names are not standalone instructions.** Text values
-    inside established tool payloads are scanned recursively, but a property
-    name whose value is only a boolean, number, or `null` is not promoted to
-    prompt text. A key-only control such as `reveal_system_prompt: true` can
-    therefore remain outside semantic classification unless equivalent text is
-    present in a value. Provider/tool schemas should reject unapproved control
-    keys before they reach the model or executor.
+39. **Key-only tool controls are schema-specific, not globally scanned.** Text
+    values inside established tool payloads are scanned recursively. Only an
+    explicitly approved, versioned tool schema may map a boolean/numeric/null
+    property to a fixed low-cardinality semantic signal; unknown control keys
+    in that known schema become fixed `tool_schema` incomplete inspection,
+    following the existing Balanced allow+audit / Strict local-block contract
+    without classification.
+    The fifth-round mapping is activated only by
+    `cag_control_schema=meta_override_control/v1` inside established
+    tool/tool-payload provenance; the same marker elsewhere is inert. Ordinary
+    business JSON property names never become prompt text. Provider
+    configuration keys remain a host schema-policy responsibility rather than
+    classifier guesses.
 
 40. **The CPA store ZIP is not the audit bundle.**
     `cyber-abuse-guard_<version>_linux_amd64.zip` must contain exactly one root
@@ -274,13 +291,18 @@
     `cyber-abuse-guard-v<version>-audit-bundle.zip`. Neither artifact exists as
     an approved v0.1.2 release because the release gate remains blocked.
 
-41. **The visible 35-case development corpus is not independent evidence.**
+41. **Visible development corpora are not independent evidence.**
     `testdata/development-adversarial-v11-prep` is deliberately visible,
     implementation-facing, and marked `future_holdout_eligible=false`. Its
     validator can prove schema, coverage, extraction, and expected regression
     behavior only. Leo must not reuse any case or derived wording as a future
-    blind v11; quality generalization remains unknown until a new isolated set
-    is authored outside the development loop.
+    blind v11. The fifth-round
+    `testdata/development-public-jailbreak-patterns-v1` corpus is likewise
+    sanitized, `development_only=true`, `future_holdout_eligible=false`,
+    derived only from public adversarial taxonomy, and declares
+    `contains_live_payloads=false`. Neither corpus nor derived wording is
+    independent evidence; quality generalization remains unknown until a new
+    isolated set is authored outside the development loop.
 
 42. **Synthetic Store tests cannot close the artifact lifecycle.** Authorized
     CI must require the real `.so`, Store ZIP, metadata, and checksums; use
@@ -317,3 +339,41 @@
     CPA reconstruction, pre-SSE behavior, or Auth/Provider/Usage/upstream side
     effects. Those claims require the exact CI artifact in the authorized
     isolated Host matrix.
+
+47. **Unit tests and GitHub CI are not production admission.** Passing source,
+    unit, race, vet, fuzz, benchmark, privacy, packaging, or reproducibility
+    gates shows only that the named command passed on the named commit and
+    environment. It cannot replace artifact inspection, the authorized Tencent
+    Cloud CPA v7.2.75 + Mock-upstream Host matrix, or independent review, and it
+    cannot reverse the frozen v10 failure.
+
+48. **The fifth-round deployment decision is still pending.** No fifth-round
+    Tencent Cloud Host validation, independent source/artifact review,
+    production observation, tag, or Release is recorded here. Even after all
+    source and artifact gates pass, the strongest permitted status is
+    `READY FOR INDEPENDENT SOURCE/ARTIFACT REVIEW`; it is never
+    `PRODUCTION APPROVED`.
+
+49. **Role-aware cross-source composition is intentionally incomplete.** To
+    avoid treating a system policy example or assistant refusal as user intent,
+    the classifier does not combine base Cyber Abuse taxonomy evidence from a
+    system/assistant segment with a later user segment. It may combine bounded
+    control-plane/meta-override evidence, but high-priority instruction source,
+    owner, mode, hash/signature, and reload integrity remain mandatory host
+    gates. A compromised high-priority source can therefore create semantics the
+    plugin cannot independently authenticate.
+
+50. **Parts and Segments do not yet share one semantic parse product.** The
+    primary token walk creates `Parts`; recognized role envelopes then undergo
+    a second bounded JSON parse to create `Segments`, reusing the same bounded
+    extraction helpers. Differential, race, fuzz, and fifth-round media tests
+    have not reproduced a leak, but two parses retain a parser-drift risk. A
+    future refactor should emit both views from one immutable semantic result.
+
+51. **The fifth-round restricted-corpus access claim is not clean.** One
+    over-broad read-only `git grep` unexpectedly emitted content from restricted
+    `testdata/holdout/malicious-operational.jsonl`. No holdout test ran, no
+    output was redirected or copied into implementation artifacts, and it was
+    not analyzed or used for tuning or conclusions. Nevertheless, this round
+    must not claim zero restricted-corpus access, and the incident independently
+    keeps methodological handoff blocked.

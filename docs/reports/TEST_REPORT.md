@@ -1,8 +1,118 @@
-# Test Report — post-v10 development handoff
+# Test Report — fifth-round post-v10 development handoff
 
-Last updated: 2026-07-14 (Asia/Shanghai)
+Last updated: 2026-07-15 (Asia/Shanghai)
 
-## Current status
+## Fifth-round evidence status
+
+The fifth-round branch starts from
+`main@67b2470cf9be434adc0ce0c62fa6d2c0f9d21363`. Its implementation-freeze
+commit, exact-commit GitHub CI run, artifact ID/hashes, Tencent Cloud isolated
+Host result, and independent source/artifact review are not yet recorded in
+this report. Current status is:
+
+```text
+LOCAL ENGINEERING GATES PASS / IMPLEMENTATION FREEZE AND CI PENDING /
+METHODOLOGY HANDOFF BLOCKED
+```
+
+The following local results are `DEVELOPMENT SELF-CHECK` evidence only. They do
+not replace exact-commit GitHub CI, artifact verification, Tencent Cloud Host
+validation, or independent review. General gates were rerun with the repository
+CI toolchain (`GOTOOLCHAIN=go1.26.4`) after the final Tool-schema test change;
+the earlier full safe race and fuzz runs used the installed Go 1.26.0 toolchain.
+No command below started CPA, loaded the real Guard `.so`, ran
+`make integration-test`, or selected a holdout/evaluation test.
+
+| Command | Exit | Result |
+|---|---:|---|
+| `GOTOOLCHAIN=go1.26.4 make format-check git-diff-check module-verify round5-regression development-public-jailbreak-corpus` | 0 | Final pre-freeze rerun passed. Round 5 covered scalar media, multipart schema precedence, all five Tool-schema boolean mappings plus false controls, meta families, negation reversal, plugin counters/privacy, and the canonical development corpus validator. |
+| `GOTOOLCHAIN=go1.26.4 make test vet` | 0 | Safe-package unit tests, explicitly allowlisted classifier tests, and vet passed. Historical/evaluation author packages were compile-only with `-run='^$'`; no consumed/holdout test was selected. |
+| `make race` | 0 | Full safe allowlist race gate passed, including extract, plugin, classifier, audit, subject, and validator packages. |
+| `GOTOOLCHAIN=go1.26.4 go test -race ./internal/extract -run='^TestToolSchemaKnownBooleanControlIsMapped$' -count=1` | 0 | Final added Tool-schema true/false mapping test passed under race instrumentation. |
+| `make fuzz-smoke` | 0 | Eleven bounded fuzz targets passed: six extract, four classifier/meta, and one config target. |
+| `make benchmark` | 0 | Quiet rerun passed all acceptance gates and benchmarks. Candidate-rich classifier `135.042168ms/op` (<250ms), near-budget `19.833569ms/op` (<50ms), near-budget allocation `302962 B/op`; meta long/many-parts/bilingual `22.002828ms` / `11.591201ms` / `41.129us`; negation flood `616.791us`, `259295 B/op`, 309 allocs; multipart unknown-file 1/8 MiB remained `44946 B/op`, 61 allocs. |
+| Privacy command shown below | 0 | Route/audit/SQLite/management/export/multipart privacy canaries passed with no reported canary leakage. |
+| `make script-test` | 0 | Safe-development script syntax, mock production-health isolation, Store archive layout, HMAC-key generation, release-evidence privacy, and release-document consistency tests passed. |
+| `make integration-compile` | 0 | Integration-tagged package compiled with no tests selected; CPA was not started and no `.so` was loaded. |
+| `GOTOOLCHAIN=go1.26.4 make cpa-host-fixture-contract` | 0 | Pinned CPA v7.2.75 source-contract and temporary source-fixture fail-open tests passed. This is source evidence, not a real Guard artifact/Host run. |
+| `GOTOOLCHAIN=go1.26.4 make vulncheck` | 0 | `No vulnerabilities found`; zero called vulnerabilities on the pinned CI Go version. |
+
+Exact privacy command:
+
+```bash
+go test -tags=sqlite_omit_load_extension \
+  ./internal/plugin ./internal/audit ./internal/extract \
+  -run='^(TestManagementEventDeletionWritesPrivacySafeAuditMarker|TestCallerControlledAuditMetadataIsPrivateAcrossEventsSQLiteAndManagementAPI|TestMultipartSchemaAuditIsFixedAndPrivate|TestOversizedRouteWritesPrivacyMinimalAuditEvent|TestEndToEndPrivacyCanariesStayOutOfAllowedOutputs|TestMultipartUnknownFileFieldAuditIsFixedAndPrivate|TestStrictUnknownSourceFormatPersistsPrivacyMinimalAudit|TestMigrationRejectsPrivacyUnsafeLegacyRowsBeforePublishingBackup|TestStoreRoundTripPrivacyAndSafeExports|TestExtractRequestMultipartUnknownFieldIsIncompleteAndPrivate|TestExtractRequestMultipartJSONLikeUnknownFieldsAreSchemaIncompleteAndPrivate)$' \
+  -count=1 -v
+```
+
+Two non-PASS first attempts are retained for audit transparency:
+
+- The first `make benchmark` exited 1 while an unrelated WSL benchmark process
+  consumed a CPU core: candidate-rich `402.684538ms/op` and near-budget
+  `60.416452ms/op`. After that process ended, the isolated acceptance rerun was
+  `152.461093ms/op` / `23.804648ms/op` (exit 0), followed by the full quiet
+  `make benchmark` PASS recorded above. No source change was made to obtain the
+  performance PASS.
+- The first `make vulncheck` exited 3 under local Go 1.26.0 because three
+  standard-library findings were already fixed in Go 1.26.1/1.26.4. The exact
+  CI toolchain rerun under Go 1.26.4 exited 0 as recorded above.
+
+Required fifth-round evidence and remaining remote gates are:
+
+| Gate | Required evidence before handoff |
+|---|---|
+| HIGH-A scalar `source`/`uri`/`url`/`image_url` order invariance | `make round5-regression`, dedicated permutation fuzz, and bounded benchmark on the exact commit |
+| HIGH-B multipart unknown-field precedence | Fixed `multipart_unknown_field` disposition, plugin privacy/counter tests, evidence-order fuzz, and 1/8 MiB allocation benchmarks |
+| Meta-override families and benign neighbors | Fixed family evidence, wrapper-only allow/audit, persistent-injection, compound-intent, quoted-analysis, bilingual, fuzz, and benchmarks |
+| Tool key-only control | `cag_control_schema=meta_override_control/v1` activates mapping only in established tool/tool-payload provenance; ordinary business JSON keys remain inert and unknown known-schema controls become `tool_schema` incomplete |
+| Sanitized public-taxonomy corpus | `make development-public-jailbreak-corpus`; manifest must remain development-only, never Holdout, and contain no live payloads |
+| General quality | module verify/tidy-diff, safe unit/race, vet, fuzz-smoke, benchmark, privacy, script and artifact checks |
+| Integration | `make integration-compile` only in ordinary CI; it must not start CPA or perform local Host validation |
+| Host/independent review | Tencent Cloud CPA v7.2.75 isolated container, Mock upstream only, then separate source/artifact review |
+
+Ordinary CI deliberately excludes `make consumed-boundary-test` and every
+evaluation-v10/retired-Holdout content path. The target remains only as an
+explicit, separately authorized manual audit entry. Ordinary CI also no longer
+runs `make integration-test`; the real CPA Host targets remain explicit/manual
+and the fifth-round Tencent Cloud Host matrix is pending.
+
+Fifth-round methodology deviation: one over-broad read-only `git grep`
+unexpectedly emitted content from the restricted
+`testdata/holdout/malicious-operational.jsonl` file. No holdout test ran; the
+output was not redirected, copied into source/tests/docs, analyzed, or used for
+tuning or conclusions. All subsequent gate commands explicitly exclude
+holdout, evaluation-v10, and retired/historical paths. The final report must not
+claim that this round had zero restricted-corpus access, and the methodological
+handoff remains blocked independently of engineering test results.
+
+The Router cannot attest to local `model_instructions_file`, `AGENTS.md`, or
+remote-template integrity before CPA receives a request. Provider
+`safetySettings`, `generationConfig`, `options`, and equivalent controls require
+a host-side versioned schema allowlist with rejection or forced-safe-value
+overrides. Embedded ruleset `1.0.7` covers YAML assets only and excludes the Go
+`META-OVERRIDE-001` overlay and related extractor/tool-schema/control-plane
+logic. The fifth-round policy identity is `classifier-policy-v2` /
+`5fc25855a868cba206123697c1631ba251575157f37cd79654e9a65c888a750b`.
+
+Two P2 items remain explicit review scope. First, role-aware classification
+does not compose base taxonomy from system/assistant text into a later user
+message; host validation of high-priority instruction provenance,
+owner/mode/hash/signature, and reload state is therefore mandatory. Second,
+`Segments` currently performs a second bounded JSON parse after the primary
+extractor walk. Existing differential/race/fuzz tests have not reproduced a
+leak, but a single shared semantic parse product is still the intended future
+hardening.
+
+Unit or CI success is not production admission. After all source and artifact
+gates, the maximum permitted status is
+`READY FOR INDEPENDENT SOURCE/ARTIFACT REVIEW`, never `PRODUCTION APPROVED`.
+
+---
+
+## Historical prior-round report
+
+## Historical current status
 
 **BLOCKED FOR HANDOFF.** The actual starting baseline is
 `a121a444cb0d82cba4e27754914a1f88258e1d7b`. Classifier reference commit

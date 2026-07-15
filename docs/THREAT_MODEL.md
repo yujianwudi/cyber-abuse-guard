@@ -19,15 +19,17 @@ trusted with request text.
 The root dependency is CPA v7.2.75 at upstream tag commit
 `e57416731aec87051ac00d0812df6aebd0e9d57a`. Source overlays, developer tests,
 authorized GitHub CI, and Leo's isolated real-Host run are separate evidence
-classes. A source implementation, local WSL run, or older PASS is never treated
-as proof for the implementation freeze. The fourth-round CI artifact and CPA
-v7.2.75 isolated-Host matrix are currently pending.
+classes. A source implementation, local WSL run, unit PASS, GitHub CI PASS, or
+older PASS is never treated as production admission for the implementation
+freeze. The fifth-round exact-commit artifact, authorized Tencent Cloud CPA
+v7.2.75 + Mock-upstream Host matrix, and independent review are currently
+pending.
 
 ## Principal threats and controls
 
 | Threat | Control |
 |---|---|
-| Explicit malicious request reaches an upstream account | ModelRouter runs before provider/auth selection; handled decisions target only the local executor. The historical v7.2.72 harness counted Auth Selector, Provider, Usage, and Mock Upstream calls independently for four protocols, but does not validate this candidate. The fourth-round v7.2.75 artifact/Host matrix and Leo independent verification are pending. |
+| Explicit malicious request reaches an upstream account | ModelRouter runs before provider/auth selection; handled decisions target only the local executor. The historical v7.2.72 harness counted Auth Selector, Provider, Usage, and Mock Upstream calls independently for four protocols, but does not validate this candidate. The fifth-round v7.2.75 artifact, Tencent Cloud Host matrix, and independent verification are pending; ordinary CI is compile-only. |
 | Another router handles the request first | Install at priority 300, verify effective ordering, disable the obsolete identity-rewrite filter, and document that any higher-priority handled Router can bypass this guard. At equal priority CPA orders by plugin ID ascending, so a lexicographically earlier handled Router can also win. |
 | Plugin is absent, registration fails, it is fused, or its self executor is unusable | Treat load/registration/fuse state, Router errors or pre-result panics, invalid/empty targets, and executor-not-ready as CPA host fail-open conditions that may continue other Routers or native routing. `enforcement_ready` is internal plugin state only; external load/order/readiness monitoring remains required. |
 | Keyword-only false positive blocks legitimate security work | Base behavior requires related action/object plus operationalization, target, evasion, impact, or scale evidence; defensive/lab/remediation scope is explicit and wrapper evidence cannot manufacture a taxonomy. |
@@ -44,6 +46,9 @@ v7.2.75 isolated-Host matrix are currently pending.
 | Parser tests are mistaken for real ingress/Host proof | CPA v7.2.75 `ModelRouteRequest` has no general HTTP path and the image handler may rebuild multipart before routing. Parser tests prove only the plugin-input contract; exact-artifact Host tests must separately prove CPA reconstruction, pre-SSE behavior, and Auth/Provider/Usage/upstream deltas. |
 | Base64 or high-risk words are split across provider blocks, ordered tool fields, or isolated characters | Same-message content and ordered tool-payload/output strings are re-decoded after pristine joining, and a tightly bounded isolated-character reconstruction path closes simple fragmentation. |
 | Public adversarial material contaminates later evaluation | External repositories are reviewed read-only, sanitized into mechanism-level development tests, never executed, and never reused as a blind Holdout. |
+| A local instruction file or remote template injects higher-priority policy before CPA sees the request | This is outside the Router boundary. The host must allowlist instruction paths, enforce owner/mode and write restrictions, bind SHA-256/signatures, verify at startup and every reload, audit changes, and pin human-approved remote templates to a commit/hash. The Router cannot attest to `model_instructions_file`, `AGENTS.md`, or remote-template integrity. |
+| Provider safety/config fields weaken upstream policy without prompt text | Do not guess from keywords. The host must apply a versioned schema allowlist and reject or forcibly overwrite unsafe `safetySettings`, `generationConfig`, `options`, and equivalent values before routing. |
+| A key-only tool control hides semantics in a boolean/numeric/null property | Map only explicitly approved, versioned tool schemas to fixed low-cardinality semantics; the current marker `cag_control_schema=meta_override_control/v1` is authoritative only inside established tool/tool-payload provenance. Treat unknown control keys in that known schema as fixed `tool_schema` incomplete, and never promote arbitrary business JSON keys to prompt text. |
 | JSON/decode/media resource exhaustion | Token walk, depth/part/byte budgets, 128 KiB encoded-source and 64 KiB decoded-variant caps, no decompression/archive expansion/network fetch, separate opaque-media policy, fuzz tests. |
 | Artificial scan boundary inside a JSON escape or UTF-8 sequence becomes a router-error bypass | Boundary decode errors are classified as truncation rather than malformed complete JSON; enforcing modes fail closed, with escape and multibyte regression tests. |
 | Base64-expanded plugin RPC exceeds the native copy cap before extraction | The native boundary recognizes oversized model-route/executor methods without copying the payload; Balanced/Strict self-route to a local scan-limit 403, and the real CPA test proves zero auth selection/upstream usage for a raw request above 6 MiB. |
@@ -98,12 +103,18 @@ Therefore the plugin reduces risk but cannot guarantee that an account will
 never be warned, suspended, or deactivated.
 
 The classifier remains stateless across separate API calls, cannot attest to
-the owner, permissions, or hash of a local instruction file before a request
-reaches CPA, and does not claim arbitrary-transform or opaque-media semantic
-coverage. Local WSL Host/Router/proxy commands were mistakenly executed with
+the path, owner, permissions, hash/signature, reload history, or remote origin
+of a local instruction file or template before a request reaches CPA, and does
+not claim arbitrary-transform or opaque-media semantic coverage. Provider
+safety/config semantics remain a host schema-policy responsibility. Local WSL
+Host/Router/proxy commands were mistakenly executed with
 loopback/Mock components and cleaned up without residual processes, but are
 excluded from evidence. Historical results are reported in
 `reports/TEST_REPORT.md` and `LEO_VERIFICATION_HANDOFF.md`; the current pending
 candidate is in `ROUND4_LEO_REVIEW_HANDOFF.md`. Any missing final-commit Host,
 GitHub CI, artifact, or proxy result is **NOT RUN** or **BLOCKED**, never an
-inferred PASS.
+inferred PASS. Embedded ruleset `1.0.7` identifies YAML assets only and does
+not include the Go `META-OVERRIDE-001` overlay. The fifth-round Tencent Cloud
+Host run and independent source/artifact review remain pending; even after
+engineering gates pass, the maximum status is
+`READY FOR INDEPENDENT SOURCE/ARTIFACT REVIEW`, not production approval.

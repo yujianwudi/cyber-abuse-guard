@@ -34,6 +34,7 @@ const (
 	IncompleteMultipartParseError            IncompleteReason = "multipart_parse_error"
 	IncompleteMultipartUnknownField          IncompleteReason = "multipart_unknown_field"
 	IncompleteMultipartTextFieldTypeMismatch IncompleteReason = "multipart_text_field_type_mismatch"
+	IncompleteToolSchema                     IncompleteReason = "tool_schema"
 	IncompleteDeferredTextCandidateLimit     IncompleteReason = "deferred_text_candidate_limit"
 	IncompleteUnsupportedMediaType           IncompleteReason = "unsupported_media_type"
 	IncompleteUnsupportedContentEncoding     IncompleteReason = "unsupported_content_encoding"
@@ -56,6 +57,7 @@ var incompleteReasonOrder = [...]IncompleteReason{
 	IncompleteMultipartParseError,
 	IncompleteMultipartUnknownField,
 	IncompleteMultipartTextFieldTypeMismatch,
+	IncompleteToolSchema,
 	IncompleteDeferredTextCandidateLimit,
 	IncompleteUnsupportedMediaType,
 	IncompleteUnsupportedContentEncoding,

@@ -157,6 +157,14 @@ func (p *Plugin) route(state *runtimeState, request pluginapi.ModelRouteRequest)
 			}
 		}
 	}
+	if len(incompleteReasons) == 0 && result.Behavior != nil && result.Behavior.Wrapper {
+		// Control-plane observation is deliberately orthogonal to the winning
+		// cyber-abuse taxonomy and subject-risk state. The management surface
+		// exposes one fixed, low-cardinality counter only; no prompt fragment,
+		// family name, dynamic key, repository identifier, or prompt hash is
+		// retained as a label.
+		p.counters.controlPlaneMetaOverride.Add(1)
+	}
 
 	opaqueAudit, opaqueBlock := opaqueMediaDisposition(state.config, extracted.OpaqueMedia)
 	if len(incompleteReasons) != 0 && opaqueBlock {
@@ -403,7 +411,7 @@ func (p *Plugin) recordIncompleteCounters(reasons []extract.IncompleteReason, de
 		p.counters.incompleteAllowed.Add(1)
 	}
 
-	var parseError, scanLimit, jsonDepth, textPart, multipartLimit, multipartSchema, deferredTextLimit, unsupported, rpcBody bool
+	var parseError, scanLimit, jsonDepth, textPart, multipartLimit, multipartSchema, toolSchema, deferredTextLimit, unsupported, rpcBody bool
 	var truncated bool
 	for _, reason := range reasons {
 		switch reason {
@@ -433,6 +441,8 @@ func (p *Plugin) recordIncompleteCounters(reasons []extract.IncompleteReason, de
 			}
 		case extract.IncompleteMultipartUnknownField, extract.IncompleteMultipartTextFieldTypeMismatch:
 			multipartSchema = true
+		case extract.IncompleteToolSchema:
+			toolSchema = true
 		case extract.IncompleteDeferredTextCandidateLimit:
 			deferredTextLimit = true
 			truncated = true
@@ -461,6 +471,9 @@ func (p *Plugin) recordIncompleteCounters(reasons []extract.IncompleteReason, de
 	}
 	if multipartSchema {
 		p.counters.incompleteMultipartSchema.Add(1)
+	}
+	if toolSchema {
+		p.counters.incompleteToolSchema.Add(1)
 	}
 	if deferredTextLimit {
 		p.counters.incompleteDeferredTextLimit.Add(1)

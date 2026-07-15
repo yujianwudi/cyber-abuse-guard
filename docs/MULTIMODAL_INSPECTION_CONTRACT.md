@@ -9,7 +9,7 @@ does not replace CPA v7.2.75 isolated-Host or Leo independent verification.
 base: 2d81ebdd5943c0334c484a146ce74f0069b1942f
 CPA: v7.2.75 / e57416731aec87051ac00d0812df6aebd0e9d57a
 classifier policy: classifier-policy-v2
-classifier policy SHA-256: 6a0480acc63617b688484c81baf4991cad48b57ad4414b1a8aeab0f0d196c51c
+classifier policy SHA-256: 5fc25855a868cba206123697c1631ba251575157f37cd79654e9a65c888a750b
 fourth-round CI/artifact/Store-installed CI Host: PASS; authorized Tencent isolated Host/audit: PENDING
 ```
 

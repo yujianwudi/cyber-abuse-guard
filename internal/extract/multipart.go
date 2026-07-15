@@ -61,13 +61,30 @@ func extractMultipart(body []byte, boundary string, profile RequestProfile, limi
 			break
 		}
 
+		fieldClass := classifyMultipartField(profile.Source, name)
 		partMediaType, mediaTypeOK := parsePartMediaType(part.Header)
+		if fieldClass == multipartFieldUnknown {
+			// Schema identity is authoritative. Filename, MIME, attachment, and
+			// other file evidence may add bounded opaque telemetry, but can never
+			// authorize a field absent from the selected SourceProfile.
+			result.addIncomplete(IncompleteMultipartUnknownField)
+			if mediaTypeOK && hasMultipartFileEvidence(disposition, hasFilename, partMediaType) {
+				result.OpaqueMedia = true
+				markMultipartOpaque(&result, name, partMediaType)
+			}
+			if _, err := io.CopyBuffer(io.Discard, part, discardBuffer); err != nil {
+				result.addIncomplete(IncompleteMultipartParseError)
+				_ = part.Close()
+				break
+			}
+			_ = part.Close()
+			continue
+		}
 		if !mediaTypeOK {
 			result.addIncomplete(IncompleteMultipartParseError)
 			_ = part.Close()
 			break
 		}
-		fieldClass := classifyMultipartField(profile.Source, name)
 		fileEvidence := hasMultipartFileEvidence(disposition, hasFilename, partMediaType)
 		textTypeMismatch := fieldClass == multipartFieldText && partMediaType != "" && !strings.HasPrefix(partMediaType, "text/")
 		if fieldClass == multipartFieldText && (fileEvidence || textTypeMismatch) {
@@ -102,17 +119,6 @@ func extractMultipart(body []byte, boundary string, profile RequestProfile, limi
 			_ = part.Close()
 			continue
 		}
-		if fieldClass == multipartFieldUnknown {
-			result.addIncomplete(IncompleteMultipartUnknownField)
-			if _, err := io.CopyBuffer(io.Discard, part, discardBuffer); err != nil {
-				result.addIncomplete(IncompleteMultipartParseError)
-				_ = part.Close()
-				break
-			}
-			_ = part.Close()
-			continue
-		}
-
 		textFieldCount++
 		if textFieldCount > limits.MaxMultipartTextFields {
 			result.addIncomplete(IncompleteMultipartTextLimit)

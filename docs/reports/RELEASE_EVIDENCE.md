@@ -1,6 +1,92 @@
-# v0.1.2 Development Evidence and Release Closure
+# v0.1.2 Fifth-Round Development Evidence and Release Closure
 
-Last updated: 2026-07-14 (Asia/Shanghai)
+Last updated: 2026-07-15 (Asia/Shanghai)
+
+## Fifth-round evidence addendum
+
+The fifth-round branch is based on
+`main@67b2470cf9be434adc0ce0c62fa6d2c0f9d21363`. No fifth-round implementation
+freeze, exact-commit CI run, downloadable artifact identity, SO SHA-256,
+checksums/sidecar verification, Tencent Cloud isolated Host conclusion, or
+independent source/artifact decision is recorded yet. The artifact hashes and
+GitHub Actions IDs later in this document belong to an older implementation
+freeze and must not be reused for this round.
+
+```text
+fifth_round_source_commit: PENDING
+fifth_round_implementation_freeze: PENDING
+fifth_round_local_engineering_gates: PASS — DEVELOPMENT SELF-CHECK ONLY
+fifth_round_github_ci: NOT RUN / PENDING
+fifth_round_artifact_id_and_hashes: NOT CREATED / PENDING
+fifth_round_tencent_isolated_host: NOT RUN
+fifth_round_independent_review: NOT RUN
+fifth_round_tag: NOT CREATED
+fifth_round_github_release: NOT CREATED
+fifth_round_production_deployment: NOT PERFORMED
+fifth_round_status: ENGINEERING SELF-CHECK PASS / CI PENDING / METHODOLOGY HANDOFF BLOCKED
+```
+
+Ordinary CI is development-only. It runs `make integration-compile` and does
+not start CPA, deploy a plugin, or execute the real Host matrix. Existing
+`make integration-test`/Host targets remain explicit manual targets for the
+later authorized Tencent Cloud CPA v7.2.75 + Mock-upstream sandbox. Ordinary CI
+also excludes `make consumed-boundary-test` and all evaluation-v10/retired
+Holdout content; that target is retained only for separately authorized audit
+work.
+
+A distinct fifth-round methodology deviation must remain attached to every
+artifact/CI claim: one over-broad read-only `git grep` unexpectedly emitted
+content from restricted `testdata/holdout/malicious-operational.jsonl`. No
+holdout test ran, no output was redirected or copied into source/tests/docs,
+and it was not analyzed or used for tuning or conclusions. Subsequent gates
+explicitly exclude all holdout/evaluation paths. Therefore this round cannot
+claim zero restricted-corpus access, and engineering PASS evidence cannot lift
+the methodological `BLOCKED FOR HANDOFF` status.
+
+Release evidence must bind two separate policy identities:
+
+- ruleset `1.0.7` and its YAML asset hash; and
+- the refreshed classifier-policy identity plus exact Git commit for the Go
+  `META-OVERRIDE-001` overlay, extraction/media/multipart semantics, the
+  tool-only `cag_control_schema=meta_override_control/v1` mapping, and fixed
+  control-plane telemetry. The fifth-round value is `classifier-policy-v2` /
+  `5fc25855a868cba206123697c1631ba251575157f37cd79654e9a65c888a750b`.
+
+Ruleset `1.0.7` alone does not identify the complete policy. The Tool schema
+marker is valid only inside established tool/tool-payload provenance; it does
+not authorize arbitrary business JSON keys or Provider configuration.
+
+The artifact/Host reviewer must also verify controls outside the Router:
+instruction-path allowlists and owner/mode/hash/signature/reload checks for
+`model_instructions_file`, `AGENTS.md`, and remote templates; and a versioned
+host schema allowlist that rejects or forcibly overwrites unsafe
+`safetySettings`, `generationConfig`, `options`, and equivalents.
+
+The reviewer must also retain two P2 limitations. Role-aware classification
+does not merge a base Cyber Abuse taxonomy from system/assistant content into a
+later user message, so authenticated high-priority instruction provenance is a
+host prerequisite. In addition, `Segments` is still produced by a second
+bounded JSON parse after the primary extractor walk; current tests have not
+reproduced a leak, but a future single semantic parse product is required to
+remove dual-parser drift risk.
+
+Unit, CI, reproducibility, and artifact PASS results are necessary engineering
+evidence but never production admission. After every source/artifact gate is
+complete, the highest permitted status is
+`READY FOR INDEPENDENT SOURCE/ARTIFACT REVIEW`, not `PRODUCTION APPROVED`.
+
+Local source evidence is recorded in `TEST_REPORT.md`: final Go 1.26.4
+format/diff/module, Round 5, development-corpus, safe unit/vet, vulncheck,
+source-contract, and compile-only checks passed; the full safe race, fuzz,
+benchmark, privacy, and script gates also passed. The first benchmark and
+vulncheck attempts failed for documented environment/toolchain reasons and were
+retained rather than hidden. No local artifact/Host/deployment claim follows
+from these results. Exact-commit GitHub CI and downloadable artifact identity
+remain pending.
+
+---
+
+## Historical prior-round evidence
 
 ## Decision
 

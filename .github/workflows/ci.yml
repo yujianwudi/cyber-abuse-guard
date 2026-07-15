@@ -49,6 +49,8 @@ jobs:
         run: make cpa-host-fixture-contract
       - name: round4-regression
         run: make round4-regression
+      - name: round5-regression
+        run: make round5-regression
       - name: unit-test
         run: make unit-test
       - name: race
@@ -63,17 +65,16 @@ jobs:
         run: make management-proxy-413-test
       - name: corpus-regression
         run: make corpus-regression
-      - name: consumed-evaluation-v10-aggregate-boundary
-        run: make consumed-boundary-test
+      - name: development-public-jailbreak-patterns-v1-validator
+        run: make development-public-jailbreak-corpus
       - name: benchmark-acceptance
         run: make benchmark
       - name: dependency-vulnerability-gate
         run: make vulncheck
-      - name: build-linux-amd64-and-CPA-v7.2.75-store-installed-host
+      - name: build-linux-amd64-and-integration-compile-only
         env:
           ALLOW_DIRTY_BUILD: '1'
-          CYBER_ABUSE_GUARD_REQUIRE_HOST_INTEGRATION: '1'
-        run: make integration-test
+        run: make build-linux-amd64 integration-compile
       - name: SBOM, package, and verify-release
         env:
           ALLOW_DIRTY_BUILD: '1'
@@ -105,7 +106,7 @@ jobs:
             printf 'artifact_path=%s artifact_bytes=%s ' "$artifact" "$(stat -c %s "$artifact")"
             sha256sum "$artifact"
           done
-          echo 'host_matrix_summary=CPA v7.2.75 source contract and Store-installed Host steps completed'
+          echo 'integration_summary=source contract and integration compile-only completed; Tencent Cloud isolated Host pending'
       - name: clean-tree-check
         run: make clean-tree-check
       - name: Upload development verification artifacts
@@ -160,9 +161,14 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
       - run: |
-          go test ./internal/extract -run='^$' -fuzz=FuzzExtractText -fuzztime=30s
-          go test ./internal/extract -run='^$' -fuzz=FuzzExtractRequestContentType -fuzztime=30s
-          go test ./internal/extract -run='^$' -fuzz=FuzzExtractRequestMediaMemberOrder -fuzztime=60s
-          go test ./internal/extract -run='^$' -fuzz=FuzzExtractRequestMultipart -fuzztime=60s
-          go test ./internal/classifier -run='^$' -fuzz=FuzzClassifier -fuzztime=30s
-          go test ./internal/config -run='^$' -fuzz=FuzzConfigParser -fuzztime=30s
+          go test ./internal/extract -run='^$' -fuzz='^FuzzExtractText$' -fuzztime=30s
+          go test ./internal/extract -run='^$' -fuzz='^FuzzExtractRequestContentType$' -fuzztime=30s
+          go test ./internal/extract -run='^$' -fuzz='^FuzzExtractRequestMediaMemberOrder$' -fuzztime=60s
+          go test ./internal/extract -run='^$' -fuzz='^FuzzExtractRequestScalarMediaCarrierPermutation$' -fuzztime=60s
+          go test ./internal/extract -run='^$' -fuzz='^FuzzExtractRequestMultipart$' -fuzztime=60s
+          go test ./internal/extract -run='^$' -fuzz='^FuzzExtractRequestMultipartUnknownFieldEvidenceOrder$' -fuzztime=60s
+          go test ./internal/classifier -run='^$' -fuzz='^FuzzClassifier$' -fuzztime=30s
+          go test ./internal/classifier -run='^$' -fuzz='^FuzzMetaOverrideClausePermutation$' -fuzztime=30s
+          go test ./internal/classifier -run='^$' -fuzz='^FuzzMetaOverrideEncodingAndPartSplit$' -fuzztime=30s
+          go test ./internal/classifier -run='^$' -fuzz='^FuzzDefensiveQuotedSampleBoundary$' -fuzztime=30s
+          go test ./internal/config -run='^$' -fuzz='^FuzzConfigParser$' -fuzztime=30s

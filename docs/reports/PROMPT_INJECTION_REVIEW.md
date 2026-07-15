@@ -1,10 +1,97 @@
-# Defensive Review: `MDX-Tom/gpt-5.6-instruct`
+# Defensive Review: public prompt-injection references and fifth-round controls
 
-> Historical defensive-input review. The branch, commit, classifier identity,
-> and pending-validation statements below describe the earlier snapshot and are
-> superseded by implementation freeze `9c8114e`. See
-> `LEO_VERIFICATION_HANDOFF.md` and `CPA_INTEGRATION.md` for current evidence;
-> the original review record is retained unchanged below this notice.
+> The fifth-round addendum below is current design/handoff context. The older
+> single-repository review is retained afterward as historical evidence; its
+> branch, commit, classifier identity, validation, and taxonomy statements must
+> not be inherited as fifth-round PASS evidence.
+
+## Fifth-round defensive addendum
+
+The fifth round treats the pinned snapshots of `MDX-Tom/gpt-5.6-instruct`,
+`yynxxxxx/Codex-X`, and `yynxxxxx/Codex-5.5-codex-instruct-5.5` only as
+untrusted public adversarial references. No prompt installer, injection script,
+configuration mutator, or third-party test runner is installed or executed.
+No original jailbreak prompt, live payload, real target, credential, URL/IP,
+or model output is copied into rules, tests, audit, counters, or reports.
+
+The sanitized mechanism-level additions are combination-based rather than a
+jailbreak keyword blocklist:
+
+- `benchmark_coercion`;
+- `persistent_instruction_injection`;
+- strengthened `scope_laundering`, `refusal_suppression`, and `output_control`;
+- `persona_takeover`;
+- `agentic_execution_escalation` as a non-standalone amplifier;
+- compound-intent routing that preserves a harmful second clause; and
+- a stricter defensive quoted-sample boundary whose final effective directive
+  must remain inert analysis.
+
+Wrapper-only harmless text remains allow/audit and cannot synthesize
+`defense_evasion` or another Cyber Abuse taxonomy. A complete independent base
+behavior remains primary; meta evidence only amplifies it or emits a fixed,
+orthogonal `control_plane_event=meta_override` observation. Evidence and
+telemetry contain fixed family IDs only—never prompt text, repository names,
+dynamic field names, targets, filenames, URLs, or prompt hashes.
+
+The bounded key-only control mapping is enabled only by
+`cag_control_schema=meta_override_control/v1` inside established
+tool/tool-payload provenance. The marker has no authority in ordinary business
+JSON or Provider configuration, arbitrary keys are never promoted to prompt
+text, and an unknown control in that known schema becomes fixed `tool_schema`
+incomplete without classification.
+
+The visible corpus at
+`testdata/development-public-jailbreak-patterns-v1` is required to declare:
+
+```json
+{
+  "development_only": true,
+  "future_holdout_eligible": false,
+  "derived_from_public_adversarial_taxonomy": true,
+  "contains_live_payloads": false
+}
+```
+
+It contains only harmless canaries, abstract placeholders, and minimal pairs.
+It and all derived wording are permanently ineligible for future blind
+evaluation.
+
+Two supply-chain/configuration risks remain outside the Router:
+
+1. It cannot attest to the path, owner, mode, hash/signature, reload history,
+   or remote origin of `model_instructions_file`, `AGENTS.md`, or another local
+   high-priority instruction template loaded before CPA receives a request.
+2. It cannot prove safe semantics for Provider controls such as
+   `safetySettings`, `generationConfig`, or `options`.
+
+The host must therefore use instruction-path allowlists, owner/mode and write
+restrictions, hash/signature binding at startup and reload, audited changes,
+human-approved remote templates pinned to a commit/hash, and a versioned
+Provider schema allowlist with rejection or forced-safe-value overrides.
+
+Ruleset `1.0.7` identifies only embedded YAML Cyber Abuse assets. It does not
+include the Go-level `META-OVERRIDE-001` overlay, extraction semantics,
+tool-schema mappings, or control-plane telemetry. Fifth-round provenance must
+also bind `classifier-policy-v2` /
+`5fc25855a868cba206123697c1631ba251575157f37cd79654e9a65c888a750b`
+and the exact Git commit.
+
+Ordinary CI no longer invokes the consumed evaluation-v10 boundary target and
+uses `make integration-compile` without starting CPA. The fifth-round
+unit/CI/artifact gates, Tencent Cloud CPA v7.2.75 + Mock-upstream Host
+validation, and independent source/artifact review are separate and are not
+production authorization. Until exact evidence is recorded, status is:
+
+```text
+NOT YET READY FOR INDEPENDENT SOURCE/ARTIFACT REVIEW
+```
+
+After all engineering gates, the maximum permitted status is
+`READY FOR INDEPENDENT SOURCE/ARTIFACT REVIEW`, never `PRODUCTION APPROVED`.
+
+---
+
+## Historical single-repository review
 
 Status: **development input only / not blind evidence / server sandbox validation pending**
 

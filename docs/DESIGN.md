@@ -287,7 +287,7 @@ attest to local instruction-file integrity.
 Ruleset `1.0.7` identifies the embedded YAML assets only. The complete
 code-level behavior is separately identified as `classifier-policy-v2`,
 SHA-256
-`6a0480acc63617b688484c81baf4991cad48b57ad4414b1a8aeab0f0d196c51c`.
+`f4a944ade27c850eecd7bb6f4ead3cc45a406e02797bbc2db33df50bc6ddab82`.
 Its tested source list binds the classifier, matcher, normalizer, role logic,
 wrapper assessment, behavior graph, semantic composition, bounded extractor,
 rule loader/schema, embedded YAML assets, and module dependency locks. The

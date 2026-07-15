@@ -12,9 +12,10 @@ import (
 )
 
 const (
-	AuditThreshold    = 35
-	BalancedThreshold = 60
-	HardThreshold     = 80
+	AuditThreshold                = 35
+	BalancedThreshold             = 60
+	HardThreshold                 = 80
+	maxAdjacentNegationCandidates = 8
 )
 
 // Mode controls how a score becomes an action. The hard threshold is a global
@@ -310,6 +311,10 @@ func New(set *rules.RuleSet) (*Classifier, error) {
 		&c.metaOverride.outputControl,
 		&c.metaOverride.secretDisclosure,
 		&c.metaOverride.negativeAuthorization,
+		&c.metaOverride.benchmarkCoercion,
+		&c.metaOverride.persistentInjection,
+		&c.metaOverride.personaTakeover,
+		&c.metaOverride.agenticEscalation,
 	}
 	for index, terms := range metaOverrideTermGroups() {
 		signalID, compileErr := compileGroup(terms, fmt.Sprintf("meta override family %d", index+1))
@@ -406,10 +411,66 @@ func (c *Classifier) classifyWithPolicy(parts []string, mode Mode, thresholds Th
 	metaTailParts := make([]string, 0, 8)
 	metaTailActive := false
 	metaTailLastPart := ""
+	metaTailWindowComplete := true
+	pendingMetaPrefix := ""
 	bestMeta := metaOverrideAssessment{}
+	bestAdjacentReversal := Result{}
+	hasAdjacentReversal := false
+	adjacentReversalCandidates := 0
+	adjacentReversalTerminal := false
+	finishResult := func(result Result) Result {
+		if !hasAdjacentReversal {
+			return result
+		}
+		candidate := bestAdjacentReversal
+		candidate.Truncated = candidate.Truncated || result.Truncated
+		if roleResultBetter(candidate, result) {
+			return candidate
+		}
+		return result
+	}
 	partCount := 0
 	remainingBytes := maxClassifierInputBytes
 	truncated := false
+	resetMetaTail := func() {
+		clear(metaTailSignals)
+		metaTailParts = metaTailParts[:0]
+		metaTailActive = false
+		metaTailLastPart = ""
+		metaTailWindowComplete = true
+	}
+	appendMetaTailPart := func(partText string) {
+		if len(metaTailParts) == cap(metaTailParts) {
+			copy(metaTailParts, metaTailParts[1:])
+			metaTailParts = metaTailParts[:len(metaTailParts)-1]
+			metaTailWindowComplete = false
+		}
+		metaTailParts = append(metaTailParts, partText)
+		metaTailLastPart = partText
+	}
+	finalizeMetaTail := func() {
+		if !metaTailActive {
+			return
+		}
+		metaTailText := ""
+		if len(metaTailParts) == 1 {
+			metaTailText = metaTailParts[0]
+		} else if len(metaTailParts) > 1 {
+			metaTailText = strings.Join(metaTailParts, "\n")
+		}
+		metaContext := c.matchContextsWithPolicy(metaTailSignals, policy.Allow)
+		assessment := c.assessMetaOverride(
+			[][]bool{metaTailSignals}, metaTailText, metaContext,
+			metaTailWindowComplete && !truncated,
+		)
+		if (assessment.controlPlaneBlock && !bestMeta.controlPlaneBlock) ||
+			(assessment.controlPlaneBlock == bestMeta.controlPlaneBlock &&
+				(assessment.score > bestMeta.score ||
+					(assessment.score == bestMeta.score && len(assessment.evidence) > len(bestMeta.evidence)))) {
+			bestMeta = assessment
+		}
+		resetMetaTail()
+	}
 	for partIndex, part := range parts {
 		if partIndex >= maxClassifierParts || remainingBytes <= 0 {
 			truncated = true
@@ -446,42 +507,84 @@ func (c *Classifier) classifyWithPolicy(parts []string, mode Mode, thresholds Th
 		}
 		c.standardMatcher.match(views.standardRunes, scratchSignals)
 		c.compactMatcher.matchCompactWithScratch(views.standardRunes, scratchSignals, compactScratch)
+		if partCount > 0 && !adjacentReversalTerminal &&
+			adjacentRuleCorePotential(c.rules, currentSignals, scratchSignals) &&
+			runesMayContainNegation(currentRunes) {
+			rule, reconstruct := c.adjacentNegationNeedsReconstruction(currentRunes, currentSignals, scratchSignals)
+			if reconstruct {
+				adjacentReversalCandidates++
+				var candidate Result
+				if adjacentReversalCandidates > maxAdjacentNegationCandidates {
+					candidate = c.adjacentNegationOverflowResult(rule, mode, thresholds, structuredToolPayload)
+					adjacentReversalTerminal = true
+					truncated = true
+				} else {
+					previousText := string(currentRunes)
+					joinedText := previousText + "\n" + string(views.standardRunes)
+					candidatePolicy := policy
+					candidatePolicy.Allow = ContextPolicy{}
+					candidate = c.classifyWithPolicy([]string{joinedText}, mode, thresholds, candidatePolicy, structuredToolPayload)
+					if candidate.Score >= HardThreshold {
+						adjacentReversalTerminal = true
+					}
+				}
+				if !hasAdjacentReversal || roleResultBetter(candidate, bestAdjacentReversal) {
+					bestAdjacentReversal = candidate
+					hasAdjacentReversal = true
+				}
+			}
+		}
 		currentHasMeta := c.hasMetaOverrideSignal(scratchSignals)
 		if currentHasMeta {
 			partText := string(views.standardRunes)
-			linked := metaTailActive && metaOverridePartsLinked(metaTailLastPart, partText)
+			if !metaTailActive && pendingMetaPrefix != "" {
+				metaTailActive = true
+				appendMetaTailPart(pendingMetaPrefix)
+			}
+			pendingMetaPrefix = ""
+			linked := false
+			if metaTailActive {
+				linked = metaOverridePartsLinked(metaTailLastPart, partText)
+				if !linked {
+					linked = metaOverrideQuoteBoundaryOpen(strings.Join(metaTailParts, "\n"))
+				}
+			}
 			if !linked {
-				clear(metaTailSignals)
-				metaTailParts = metaTailParts[:0]
-				metaTailActive = false
-				metaTailLastPart = ""
+				finalizeMetaTail()
 			}
 			metaTailActive = true
-			metaTailLastPart = partText
-			if len(metaTailParts) == cap(metaTailParts) {
-				copy(metaTailParts, metaTailParts[1:])
-				metaTailParts = metaTailParts[:len(metaTailParts)-1]
-			}
 			for signalID, matched := range scratchSignals {
 				if matched {
 					metaTailSignals[signalID] = true
 				}
 			}
-			metaTailParts = append(metaTailParts, partText)
-			metaTailText := partText
-			if len(metaTailParts) > 1 {
-				metaTailText = strings.Join(metaTailParts, "\n")
+			appendMetaTailPart(partText)
+		} else {
+			partText := ""
+			if metaTailActive {
+				partText = string(views.standardRunes)
+				// Keep the complete bounded tail, including unknown clauses. The
+				// structural decision requires the last effective directive to be
+				// explicitly inert; silently dropping an unrecognized final segment
+				// would let terse imperatives such as "Deploy." sanitize a quoted
+				// persistent override. The eight-part cap prevents connector floods.
+				if len(metaTailParts) < cap(metaTailParts) {
+					appendMetaTailPart(partText)
+				} else {
+					metaTailWindowComplete = false
+					finalizeMetaTail()
+				}
 			}
-			metaContext := c.matchContextsWithPolicy(metaTailSignals, policy.Allow)
-			assessment := c.assessMetaOverride([][]bool{metaTailSignals}, metaTailText, metaContext)
-			if assessment.score > bestMeta.score || (assessment.score == bestMeta.score && len(assessment.evidence) > len(bestMeta.evidence)) {
-				bestMeta = assessment
+			if !metaTailActive {
+				if partText == "" && metaOverrideMayContainQuotedPrefix(part) {
+					partText = string(views.standardRunes)
+				}
+				if metaOverridePotentialQuotedPrefix(partText) {
+					pendingMetaPrefix = partText
+				} else {
+					pendingMetaPrefix = ""
+				}
 			}
-		} else if metaTailActive {
-			clear(metaTailSignals)
-			metaTailParts = metaTailParts[:0]
-			metaTailActive = false
-			metaTailLastPart = ""
 		}
 		for signalID, matched := range scratchSignals {
 			if matched {
@@ -497,6 +600,7 @@ func (c *Classifier) classifyWithPolicy(parts []string, mode Mode, thresholds Th
 		previousRunesUsed, currentRunesUsed, scratchRunesUsed = currentRunesUsed, bufferUsed, previousRunesUsed
 		partCount++
 	}
+	finalizeMetaTail()
 	currentContext := ContextFlags{}
 	if partCount > 0 {
 		currentContext = c.matchContextsWithPolicy(currentSignals, policy.Allow)
@@ -554,7 +658,7 @@ func (c *Classifier) classifyWithPolicy(parts []string, mode Mode, thresholds Th
 				currentDirectives = c.analyzeDirectives(currentRunes)
 				directivesReady = true
 			}
-			currentCore = !currentDirectives.ruleCoreIsOnlyNegated(rule)
+			currentCore = !c.ruleCoreIsOnlyNegated(currentDirectives, rule)
 			if currentCore && isLegitimateCategoryWorkflow(rule.category, currentText) {
 				currentCore = false
 			}
@@ -975,6 +1079,7 @@ func (c *Classifier) classifyWithPolicy(parts []string, mode Mode, thresholds Th
 	// existing cyber-abuse candidate, but never creates a cyber taxonomy by
 	// itself. Wrapper-only requests remain a bounded control-plane audit signal.
 	meta := bestMeta
+	metaAttachedToOrdinary := false
 	if meta.score >= AuditThreshold {
 		bestOrdinaryIndex := -1
 		for index := range candidates {
@@ -991,6 +1096,7 @@ func (c *Classifier) classifyWithPolicy(parts []string, mode Mode, thresholds Th
 		}
 		if bestOrdinaryIndex >= 0 {
 			winner := &candidates[bestOrdinaryIndex]
+			metaAttachedToOrdinary = true
 			if winner.score < meta.score {
 				winner.score = meta.score
 			}
@@ -1002,20 +1108,35 @@ func (c *Classifier) classifyWithPolicy(parts []string, mode Mode, thresholds Th
 			winner.evidence = append(winner.evidence, meta.evidence...)
 		}
 	}
-	if len(candidates) == 0 {
+	// A control-plane decision must not disappear merely because unrelated
+	// defensive text created a below-audit taxonomy candidate. If there is no
+	// auditable base behavior to own the decision, preserve the standalone,
+	// category-free audit or persistent control-plane block.
+	if len(candidates) == 0 || (meta.score >= AuditThreshold && !metaAttachedToOrdinary) {
 		if meta.score >= AuditThreshold {
-			result.Score = metaControlAuditScore(meta.score, thresholds)
+			if meta.controlPlaneBlock {
+				result.Score = meta.score
+				if result.Score < thresholds.HardBlock {
+					result.Score = thresholds.HardBlock
+				}
+			} else {
+				result.Score = metaControlAuditScore(meta.score, thresholds)
+			}
 			result.RuleIDs = []string{metaOverrideRuleID}
 			result.Evidence = append(result.Evidence, meta.evidence...)
 			result.Evidence = append(result.Evidence, contextEvidence(context)...)
 			result.Evidence = uniqueSortedEvidence(result.Evidence)
-			result.Action = actionForMetaControl(mode, result.Score, thresholds)
+			if meta.controlPlaneBlock {
+				result.Action = actionFor(mode, result.Score, thresholds)
+			} else {
+				result.Action = actionForMetaControl(mode, result.Score, thresholds)
+			}
 			carrier := "text"
 			if structuredToolPayload {
 				carrier = "structured_tool_payload"
 			}
 			attachBehaviorGraph(&result, "parts", carrier)
-			return result
+			return finishResult(result)
 		}
 		result.Action = actionFor(mode, 0, thresholds)
 		result.Evidence = contextEvidence(context)
@@ -1024,7 +1145,7 @@ func (c *Classifier) classifyWithPolicy(parts []string, mode Mode, thresholds Th
 			carrier = "structured_tool_payload"
 		}
 		attachBehaviorGraph(&result, "parts", carrier)
-		return result
+		return finishResult(result)
 	}
 	sort.Slice(candidates, func(i, j int) bool {
 		if candidates[i].score != candidates[j].score {
@@ -1051,6 +1172,124 @@ func (c *Classifier) classifyWithPolicy(parts []string, mode Mode, thresholds Th
 	result.RuleIDs = uniqueSorted(result.RuleIDs)
 	result.Evidence = uniqueSortedEvidence(result.Evidence)
 	result.Action = actionFor(mode, result.Score, thresholds)
+	carrier := "text"
+	if structuredToolPayload {
+		carrier = "structured_tool_payload"
+	}
+	attachBehaviorGraph(&result, "parts", carrier)
+	return finishResult(result)
+}
+
+func adjacentRuleCorePotential(rules []compiledRule, previous, current []bool) bool {
+	if len(previous) == 0 || len(current) == 0 {
+		return false
+	}
+	for _, rule := range rules {
+		if previous[rule.intent] && current[rule.object] {
+			return true
+		}
+	}
+	return false
+}
+
+var coarseNegationRunes = [][]rune{
+	[]rune("not"), []rune("never"), []rune("without"), []rune("forbid"), []rune("prohibit"),
+	[]rune("refus"), []rune("cannot"), []rune("can't"), []rune("don't"),
+	[]rune("n't"), []rune("n’t"), []rune("n‘t"),
+	[]rune("严禁"), []rune("禁止"), []rune("不得"), []rune("不要"), []rune("不能"), []rune("不会"), []rune("拒绝"), []rune("不"),
+}
+
+func runesMayContainNegation(text []rune) bool {
+	for _, marker := range coarseNegationRunes {
+		for start := 0; start+len(marker) <= len(text); start++ {
+			matched := true
+			for offset := range marker {
+				if text[start+offset] != marker[offset] {
+					matched = false
+					break
+				}
+			}
+			if matched {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (c *Classifier) adjacentNegationNeedsReconstruction(previousRunes []rune, previous, current []bool) (compiledRule, bool) {
+	if len(previous) == 0 || len(current) == 0 {
+		return compiledRule{}, false
+	}
+	analysis := c.analyzeDirectives(previousRunes)
+	for _, rule := range c.rules {
+		if !previous[rule.intent] || !current[rule.object] {
+			continue
+		}
+		if analysis.overflow {
+			return rule, true
+		}
+		laterActiveContinuation := false
+		for index := len(analysis.clauses) - 1; index >= 0; index-- {
+			clause := analysis.clauses[index]
+			if !clause.signals[rule.intent] {
+				laterActiveContinuation = laterActiveContinuation || continuesPriorRiskDirective(clause.text)
+				continue
+			}
+			found, negates := clauseRuleIntentNegation(clause.text, rule.intentStarts)
+			if laterActiveContinuation {
+				return rule, true
+			}
+			if found && !negates {
+				if descriptiveNegationClause(clause.text) {
+					break
+				}
+				return rule, true
+			}
+			if !found && startsWithRuleIntent(clause.text, rule.intentStarts) {
+				return rule, true
+			}
+			// The most recent clause that owns this intent controls the adjacent
+			// object. A direct prohibition must not be washed out by an older
+			// reversal, and an unnegated explanatory mention is not enough to join
+			// otherwise independent parts.
+			break
+		}
+	}
+	return compiledRule{}, false
+}
+
+func descriptiveNegationClause(clause string) bool {
+	clause = strings.ToLower(strings.TrimSpace(clause))
+	if !hasExplanatoryFraming(clause) {
+		return false
+	}
+	return containsAnyLiteral(clause,
+		"why attackers", "how attackers", "attackers ", "why an attacker", "how an attacker", "an attacker ",
+		"why the malware", "how the malware", "the malware ", "why the sample", "how the sample", "the sample ",
+		"为何攻击者", "攻击者为何", "攻击者如何", "恶意软件为何", "恶意软件如何", "样本为何", "样本如何",
+	)
+}
+
+func (c *Classifier) adjacentNegationOverflowResult(rule compiledRule, mode Mode, thresholds Thresholds, structuredToolPayload bool) Result {
+	score := thresholds.HardBlock
+	if score < HardThreshold {
+		score = HardThreshold
+	}
+	result := Result{
+		PolicyVersion:  ClassifierPolicyVersion,
+		PolicySHA256:   ClassifierPolicySHA256,
+		RuleSetVersion: c.version,
+		Score:          clampScore(score),
+		Category:       rule.category,
+		Action:         actionFor(mode, score, thresholds),
+		RuleIDs:        []string{rule.id},
+		Evidence: []Evidence{
+			{ID: rule.id + ":intent", Kind: "intent"},
+			{ID: rule.id + ":object", Kind: "object"},
+		},
+		Truncated: true,
+	}
 	carrier := "text"
 	if structuredToolPayload {
 		carrier = "structured_tool_payload"
@@ -1380,7 +1619,7 @@ func (c *Classifier) analyzeDirectives(text []rune) analyzedDirectives {
 	return analysis
 }
 
-func (analysis analyzedDirectives) ruleCoreIsOnlyNegated(rule compiledRule) bool {
+func (c *Classifier) ruleCoreIsOnlyNegated(analysis analyzedDirectives, rule compiledRule) bool {
 	// Extreme clause counts are ambiguous and must not turn a matched abuse core
 	// into an allow decision merely because analysis was bounded.
 	if analysis.overflow {
@@ -1399,12 +1638,77 @@ func (analysis analyzedDirectives) ruleCoreIsOnlyNegated(rule compiledRule) bool
 			continue
 		}
 		foundCore = true
-		if !clauseNegatesRuleIntent(clause.text, rule.intentStarts) {
+		if !clauseNegatesRuleIntent(clause.text, rule.intentStarts) && !c.coordinatedCoreNegated(clause, rule) {
 			foundUnnegatedCore = true
 			break
 		}
 	}
 	return foundCore && !foundUnnegatedCore
+}
+
+func (c *Classifier) coordinatedCoreNegated(clause analyzedDirectiveClause, rule compiledRule) bool {
+	intentIndex := earliestRuleIntentIndex(clause.text, rule.intentStarts)
+	if intentIndex <= 0 {
+		return false
+	}
+	prefix := strings.TrimSpace(clause.text[:intentIndex])
+	conjunction := ""
+	for _, marker := range []string{" and", " or", "并且", "以及", "并", "且", "或"} {
+		if strings.HasSuffix(prefix, marker) && len(marker) > len(conjunction) {
+			conjunction = marker
+		}
+	}
+	if conjunction == "" {
+		return false
+	}
+	earlier := strings.TrimSpace(prefix[:len(prefix)-len(conjunction)])
+	if earlier == "" || !containsAnyLiteral(earlier,
+		"never", "do not", "don't", "must not", "should not", "cannot", "can't", "without", "forbid", "prohibit", "refuse to",
+		"严禁", "禁止", "不得", "不要", "不能", "拒绝", "不",
+	) {
+		return false
+	}
+	earlierRunes := []rune(earlier)
+	signals := make([]bool, c.signalCount)
+	c.standardMatcher.match(earlierRunes, signals)
+	compactScratch := make([]bool, c.compactMatcher.maxPatternLength)
+	c.compactMatcher.matchCompactWithScratch(earlierRunes, signals, compactScratch)
+	for _, priorRule := range c.rules {
+		if priorRule.category != rule.category || !signals[priorRule.intent] || !signals[priorRule.object] {
+			continue
+		}
+		if clauseNegatesRuleIntent(earlier, priorRule.intentStarts) {
+			return true
+		}
+	}
+	if hasAnyPrefix(earlier,
+		"never ", "do not ", "don't ", "must not ", "should not ", "forbid ", "forbids ", "prohibit ", "prohibits ",
+		"严禁", "禁止", "不得", "不要", "不能",
+	) {
+		sameCategoryObject := false
+		for _, priorRule := range c.rules {
+			if priorRule.category == rule.category && signals[priorRule.object] {
+				sameCategoryObject = true
+				break
+			}
+		}
+		if sameCategoryObject && containsAnyLiteral(earlier,
+			"render unreadable", "make inaccessible", "unreadable", "inaccessible", "encrypted",
+			"不可读", "无法读取", "无法访问", "被加密",
+		) {
+			return true
+		}
+		for _, profile := range c.semanticProfiles {
+			if profile.category != rule.category {
+				continue
+			}
+			dimensions := c.semanticDimensions(profile, [][]bool{signals})
+			if dimensions.object && (dimensions.harm || dimensions.action || dimensions.outcome) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // continuesPriorRiskDirective is deliberately narrower than a bare second
@@ -1418,10 +1722,11 @@ func continuesPriorRiskDirective(clause string) bool {
 		return false
 	}
 	return containsAnyLiteral(clause,
-		" it", " that", " them", " the above", " above request", " same payload", " same tool",
+		" it", " that", " them", " the above", " above request", " same payload", " same tool", " same operation", " same action",
+		"do the same", "apply it", "implement it", "implement the above", "carry it out", "execute it",
 		"working code", "complete code", "source code", "ready-to-run", "ready to run",
 		"commands", "script", "payload", "executable", "implementation",
-		"它", "该内容", "上述", "上面", "同一载荷", "同一工具", "完整代码", "可运行代码",
+		"它", "该内容", "上述", "上面", "同一载荷", "同一工具", "同一操作", "照做", "执行它", "应用它", "实现上述", "完整代码", "可运行代码",
 		"源码", "命令", "脚本", "载荷", "可执行文件", "实现出来",
 	)
 }
@@ -1472,59 +1777,302 @@ func (analysis analyzedDirectives) ruleIntentIsOnlyNegated(rule compiledRule) bo
 }
 
 func clauseNegatesRuleIntent(clause string, intents []string) bool {
+	found, negates := clauseRuleIntentNegation(clause, intents)
+	return found && negates
+}
+
+func clauseRuleIntentNegation(clause string, intents []string) (found, negates bool) {
+	clause = normalizeNegationSyntax(clause)
 	intentIndex := earliestRuleIntentIndex(clause, intents)
 	if intentIndex < 0 {
-		return false
+		return false, false
 	}
 	prefix := strings.TrimSpace(clause[:intentIndex])
-	for _, bait := range []string{
-		"do not refuse", "don't refuse", "must not refuse", "never hesitate", "do not hesitate", "don't hesitate",
-		"must not be denied", "must not deny", "do not deny", "don't deny", "must not be blocked", "must not block",
-		"do not block", "don't block", "must not be filtered", "do not filter", "disable guardrails", "remove guardrails",
-		"disable safety checks", "skip safety checks", "must not enforce the policy", "must not apply safety",
-		"ignore the instruction", "ignore the policy", "disregard the instruction", "disregard the policy",
-		"不要拒绝", "不得拒绝", "不得阻止", "不得拦截", "不得过滤", "不要阻止", "不要拦截", "不要过滤",
-		"关闭护栏", "移除护栏", "禁用安全检查", "跳过安全检查", "不得执行安全策略",
-		"不要犹豫", "忽略指令", "忽略策略",
-	} {
-		if strings.Contains(prefix, bait) {
-			return false
-		}
-	}
 	closest := -1
 	closestEnd := -1
+	closestMarker := ""
 	for _, marker := range []string{
-		"must never", "must not", "should never", "should not", "do not", "don't", "cannot", "can't",
-		"will not", "never", "not to", "without", "forbids", "forbid", "forbidden to", "prohibits", "prohibit", "refuse to",
+		"must never", "must not", "should never", "should not", "need not", "ought not", "shall not", "would not", "could not", "may not",
+		"do not", "cannot", "will not", "never", "not to", "without", "forbids", "forbid", "forbidden to", "prohibits", "prohibit", "refuse to",
 		"严禁", "禁止", "不得", "不要", "不需要", "无需", "不能", "不会", "拒绝", "不",
 	} {
 		index := strings.LastIndex(prefix, marker)
 		if marker == "不" && index >= 0 && !isBareChineseNegationBridge(strings.TrimSpace(prefix[index+len(marker):])) {
 			continue
 		}
-		if index >= 0 && index >= closest {
+		if index >= 0 && (index > closest || (index == closest && len(marker) > len(closestMarker))) {
 			closest = index
 			closestEnd = index + len(marker)
+			closestMarker = marker
 		}
 	}
 	if closest < 0 {
-		return false
+		return false, false
+	}
+	if prohibitionMarkerIsNegated(prefix[:closest], closestMarker) {
+		return true, false
 	}
 	for _, override := range []string{"ignore", "disregard", "override", "忽略", "无视"} {
 		if strings.Contains(prefix[:closest], override) {
-			return false
+			return true, false
 		}
 	}
 	between := strings.TrimSpace(prefix[closestEnd:])
-	for _, doubleNegative := range []string{"refuse", "hesitate", "hesitation", "avoid", "decline", "拒绝", "犹豫", "避免"} {
-		if strings.Contains(between, doubleNegative) {
+	if negationScopeInterrupted(between) {
+		return true, false
+	}
+	if directNegationBridge(between) || safeIndirectNegationBridge(between) {
+		return true, true
+	}
+	// Fail closed for an unrecognized intermediate predicate. Only a direct,
+	// bounded negator-to-intent bridge can suppress a matched abuse action.
+	return true, false
+}
+
+func prohibitionMarkerIsNegated(before, marker string) bool {
+	switch marker {
+	case "forbids", "forbid", "forbidden to", "prohibits", "prohibit", "refuse to", "严禁", "禁止", "拒绝":
+	default:
+		return false
+	}
+	before = strings.TrimSpace(before)
+	for _, negator := range []string{
+		"must never", "must not", "should never", "should not", "need not", "ought not", "shall not", "would not", "could not", "may not",
+		"do not", "will not", "cannot", "never", "not to",
+		"不得", "不要", "不能", "不会", "不",
+	} {
+		if strings.HasSuffix(before, negator) {
+			return true
+		}
+	}
+	return false
+}
+
+func directNegationBridge(between string) bool {
+	between = strings.TrimSpace(between)
+	if between == "" {
+		return true
+	}
+	if strings.ContainsAny(between, ",，;；:：—–") {
+		return false
+	}
+	for stripped := 0; stripped < 6; stripped++ {
+		matched := false
+		for _, modifier := range []string{
+			"在任何情况下", "无论如何", "永远", "绝对", "再次", "仍然", "立即", "马上", "立刻", "主动", "故意", "轻易", "再",
+		} {
+			if strings.HasPrefix(between, modifier) {
+				between = strings.TrimSpace(between[len(modifier):])
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			break
+		}
+	}
+	if between == "" {
+		return true
+	}
+	fields := strings.Fields(strings.ToLower(between))
+	if len(fields) == 0 || len(fields) > 8 {
+		return false
+	}
+	for _, field := range fields {
+		if !directNegationModifier(field) {
 			return false
 		}
 	}
-	if negationScopeInterrupted(between) {
+	return true
+}
+
+func directNegationModifier(word string) bool {
+	switch strings.Trim(word, "'\"") {
+	case "ever", "again", "still", "currently", "now", "immediately", "directly", "actively", "intentionally", "knowingly",
+		"deliberately", "accidentally", "inadvertently", "routinely", "prematurely", "under", "any", "all", "circumstances",
+		"for", "a", "one", "reason", "at":
+		return true
+	default:
 		return false
 	}
-	return true
+}
+
+func safeIndirectNegationBridge(between string) bool {
+	between = strings.ToLower(strings.TrimSpace(between))
+	if between == "" || len(between) > 192 || strings.ContainsAny(between, ",，;；:：—–") ||
+		containsAnyLiteral(between, " but ", " however ", " then ", " and then ", "但是", "然而", "然后") {
+		return false
+	}
+	for _, refusalBridge := range []string{
+		"help", "help to", "help with", "assist", "assist to", "assist with", "assist in",
+		"provide help to", "provide assistance to", "帮助", "协助",
+		"discuss how attackers", "discuss how an attacker", "explain how to", "explain how attackers", "explain how an attacker",
+		"analyze how attackers", "analyze how an attacker", "describe how to", "describe how attackers", "describe how an attacker",
+	} {
+		if between == refusalBridge {
+			return true
+		}
+	}
+	prefixOK := hasAnyPrefix(between,
+		"treat ", "treating ", "be treated ", "use ", "using ", "be used ",
+		"interpret ", "interpreting ", "be interpreted ", "consider ", "considering ", "be considered ",
+	)
+	if !prefixOK {
+		return false
+	}
+	for _, suffix := range []string{
+		" as authorization to", " as permission to", " as approval to", " as a reason to",
+	} {
+		if strings.HasSuffix(between, suffix) {
+			return true
+		}
+	}
+	return false
+}
+
+// parseNegationReversalGovernor recognizes only the first bounded governor in
+// the negator's local scope. It deliberately does not search the whole bridge:
+// in "do not treat a failed test as authorization to deploy", "failed" is
+// evidence about the test, not a governor that reverses "do not". actionIndex
+// points at the first token after the governor bridge; when it equals the field
+// count, the risky action begins immediately after the caller's bridge.
+func parseNegationReversalGovernor(text string) (actionIndex, fieldCount int, ok bool) {
+	text = strings.ToLower(strings.TrimSpace(normalizeNegationSyntax(text)))
+	for stripped := 0; stripped < 2; stripped++ {
+		matched := false
+		for _, modifier := range []string{"再", "再次", "仍然", "轻易"} {
+			if strings.HasPrefix(text, modifier) {
+				text = strings.TrimSpace(text[len(modifier):])
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			break
+		}
+	}
+	for _, governor := range []string{
+		"拒绝", "犹豫", "避免", "未能", "忘记", "疏忽", "停止", "克制",
+	} {
+		if strings.HasPrefix(text, governor) {
+			rest := strings.TrimSpace(text[len(governor):])
+			for stripped := 0; stripped < 4; stripped++ {
+				matched := false
+				for _, modifier := range []string{
+					"在任何情况下", "无论如何", "再次", "仍然", "立即", "马上", "立刻", "片刻", "短暂", "轻易", "再",
+				} {
+					if strings.HasPrefix(rest, modifier) {
+						rest = strings.TrimSpace(rest[len(modifier):])
+						matched = true
+						break
+					}
+				}
+				if !matched {
+					break
+				}
+			}
+			if rest == "" {
+				return 1, 1, true
+			}
+			return 1, 2, true
+		}
+	}
+
+	fields := strings.Fields(text)
+	fieldCount = len(fields)
+	if fieldCount == 0 {
+		return 0, 0, false
+	}
+	governorIndex := 0
+	for governorIndex < fieldCount && governorIndex < 4 && negationReversalModifier(fields[governorIndex]) {
+		governorIndex++
+	}
+	if governorIndex >= fieldCount {
+		return 0, fieldCount, false
+	}
+
+	governor := fields[governorIndex]
+	switch governor {
+	case "avoid", "stop":
+		actionIndex = governorIndex + 1
+		for actionIndex < fieldCount && actionIndex <= governorIndex+5 && negationReversalModifier(fields[actionIndex]) {
+			actionIndex++
+		}
+		if actionIndex < fieldCount && (fields[actionIndex] == "before" || fields[actionIndex] == "from") {
+			actionIndex++
+		}
+		return actionIndex, fieldCount, true
+	case "refuse", "hesitate", "decline", "fail", "forget", "neglect", "refrain":
+		connector := "to"
+		if governor == "refrain" {
+			connector = "from"
+		}
+		for index := governorIndex + 1; index < fieldCount && index <= governorIndex+6; index++ {
+			if fields[index] == connector || (governor == "hesitate" && fields[index] == "before") {
+				return index + 1, fieldCount, true
+			}
+			if !negationReversalModifier(fields[index]) {
+				return 0, fieldCount, false
+			}
+		}
+	}
+	return 0, fieldCount, false
+}
+
+var negationGovernorSeparators = strings.NewReplacer(
+	"-", " ", "‐", " ", "‑", " ", "‒", " ",
+)
+
+var negationQuoteNormalizer = strings.NewReplacer("’", "'", "‘", "'")
+
+var negationContractionNormalizer = strings.NewReplacer(
+	"mustn't", "must not", "shouldn't", "should not", "won't", "will not", "needn't", "need not",
+	"oughtn't", "ought not", "shan't", "shall not", "wouldn't", "would not", "couldn't", "could not",
+	"don't", "do not", "can't", "cannot",
+)
+
+func normalizeNegationSyntax(text string) string {
+	if !strings.ContainsAny(text, "'’‘-‐‑‒") {
+		return text
+	}
+	text = negationQuoteNormalizer.Replace(text)
+	text = negationContractionNormalizer.Replace(text)
+	return negationGovernorSeparators.Replace(text)
+}
+
+func negationReversalModifier(word string) bool {
+	switch strings.Trim(word, "'\"") {
+	case "ever", "again", "even", "briefly", "momentarily", "accidentally", "inadvertently",
+		"possibly", "temporarily", "prematurely", "needlessly", "unnecessarily", "simply", "just", "merely",
+		"under", "any", "all", "circumstances", "for", "a", "one", "reason", "moment":
+		return true
+	default:
+		return false
+	}
+}
+
+func hasNegationReversalFraming(text string) bool {
+	text = normalizeNegationSyntax(text)
+	for _, negator := range []string{
+		"must never ", "must not ", "should never ", "should not ", "need not ", "ought not ", "shall not ",
+		"would not ", "could not ", "may not ", "do not ", "never ", "not to ",
+		"严禁", "禁止", "不得", "不要", "不能", "不会",
+	} {
+		searchFrom := 0
+		for searchFrom < len(text) {
+			index := strings.Index(text[searchFrom:], negator)
+			if index < 0 {
+				break
+			}
+			index += searchFrom
+			after := text[index+len(negator):]
+			if _, _, ok := parseNegationReversalGovernor(after); ok {
+				return true
+			}
+			searchFrom = index + len(negator)
+		}
+	}
+	return false
 }
 
 func isBareChineseNegationBridge(value string) bool {
@@ -2086,6 +2634,9 @@ func followUpEligible(text []rune) bool {
 	if lastClause == "" {
 		return false
 	}
+	if hasNegationReversalFraming(lastClause) {
+		return true
+	}
 	for _, reinforcing := range []string{
 		"do not refuse", "don't refuse", "must not refuse", "never hesitate", "do not hesitate", "don't hesitate",
 		"不要拒绝", "不得拒绝", "不要犹豫", "不得犹豫",
@@ -2113,9 +2664,10 @@ func followUpEligible(text []rune) bool {
 }
 
 func hasNegatedSafetyFraming(text string) bool {
+	text = normalizeNegationSyntax(text)
 	for _, phrase := range []string{
-		"never ", "do not ", "don't ", "must not ", "should not ",
-		"cannot ", "can't ", "will not ", "refuse to ", "prohibited", "forbidden",
+		"never ", "do not ", "must not ", "should not ", "need not ", "ought not ", "shall not ",
+		"would not ", "could not ", "may not ", "cannot ", "will not ", "refuse to ", "prohibited", "forbidden",
 		"不要", "不得", "不能", "不会", "拒绝", "禁止", "严禁",
 	} {
 		if strings.Contains(text, phrase) {

@@ -31,8 +31,8 @@ CPA_ROUTER_FIXTURE_SCENARIOS := guard-priority-higher fixture-priority-higher \
 .NOTPARALLEL: release
 
 .PHONY: all format-check git-diff-check module-verify test unit-test vet race \
-	fuzz-smoke script-test corpus-regression consumed-boundary-test holdout-test benchmark build-linux-amd64 \
-	integration-test cpa-v7275-host-blackbox cpa-v7272-host-blackbox cpa-router-fixture-blackbox cpa-host-fixture-contract round4-regression management-proxy-413-test ruleset-manifest sbom vulncheck release-preflight \
+	fuzz-smoke script-test corpus-regression development-public-jailbreak-corpus consumed-boundary-test holdout-test benchmark build-linux-amd64 \
+	integration-compile integration-test cpa-v7275-host-blackbox cpa-v7272-host-blackbox cpa-router-fixture-blackbox cpa-host-fixture-contract round4-regression round5-regression management-proxy-413-test ruleset-manifest sbom vulncheck release-preflight \
 	package-release package-source-release release release-evidence formal-release release-doc-consistency release-doc-consistency-test verify-release verification-fault-test cpa-store-contract artifact-hash \
 	reproducibility-test clean-tree-check tools clean
 
@@ -71,12 +71,17 @@ race:
 	GO=$(GO) TEST_TAGS=$(TEST_TAGS) bash ./scripts/go-safe-development-test.sh race
 
 fuzz-smoke:
-	$(GO) test ./internal/extract -run='^$$' -fuzz=FuzzExtractText -fuzztime=5s
-	$(GO) test ./internal/extract -run='^$$' -fuzz=FuzzExtractRequestMediaMemberOrder -fuzztime=5s
-	$(GO) test ./internal/extract -run='^$$' -fuzz=FuzzExtractRequestContentType -fuzztime=5s
-	$(GO) test ./internal/extract -run='^$$' -fuzz=FuzzExtractRequestMultipart -fuzztime=5s
-	$(GO) test ./internal/classifier -run='^$$' -fuzz=FuzzClassifier -fuzztime=5s
-	$(GO) test ./internal/config -run='^$$' -fuzz=FuzzConfigParser -fuzztime=5s
+	$(GO) test ./internal/extract -run='^$$' -fuzz='^FuzzExtractText$$' -fuzztime=5s
+	$(GO) test ./internal/extract -run='^$$' -fuzz='^FuzzExtractRequestMediaMemberOrder$$' -fuzztime=5s
+	$(GO) test ./internal/extract -run='^$$' -fuzz='^FuzzExtractRequestScalarMediaCarrierPermutation$$' -fuzztime=5s
+	$(GO) test ./internal/extract -run='^$$' -fuzz='^FuzzExtractRequestContentType$$' -fuzztime=5s
+	$(GO) test ./internal/extract -run='^$$' -fuzz='^FuzzExtractRequestMultipart$$' -fuzztime=5s
+	$(GO) test ./internal/extract -run='^$$' -fuzz='^FuzzExtractRequestMultipartUnknownFieldEvidenceOrder$$' -fuzztime=5s
+	$(GO) test ./internal/classifier -run='^$$' -fuzz='^FuzzClassifier$$' -fuzztime=5s
+	$(GO) test ./internal/classifier -run='^$$' -fuzz='^FuzzMetaOverrideClausePermutation$$' -fuzztime=5s
+	$(GO) test ./internal/classifier -run='^$$' -fuzz='^FuzzMetaOverrideEncodingAndPartSplit$$' -fuzztime=5s
+	$(GO) test ./internal/classifier -run='^$$' -fuzz='^FuzzDefensiveQuotedSampleBoundary$$' -fuzztime=5s
+	$(GO) test ./internal/config -run='^$$' -fuzz='^FuzzConfigParser$$' -fuzztime=5s
 
 script-test:
 	bash -n ./scripts/go-safe-development-test.sh
@@ -89,6 +94,21 @@ script-test:
 corpus-regression:
 	$(GO) test -tags=$(TEST_TAGS) ./internal/classifier \
 		-run='^TestBalancedCorpusMetrics$$' -count=1 -v
+
+development-public-jailbreak-corpus:
+	@listed="$$($(GO) test ./cmd/development-public-jailbreak-patterns-v1-validator -list='^(TestDevelopmentPublicJailbreakPatternsV1Corpus|TestDevelopmentPublicJailbreakPatternsRejectsLiveMaterial|TestDevelopmentPublicJailbreakPatternsRejectsManifestCoverageDrift|TestDevelopmentPublicJailbreakPatternsRejectsDirectoryDrift|TestDevelopmentPublicJailbreakPatternsRejectsSymlink)$$')" || exit $$?; \
+	for test_name in \
+		TestDevelopmentPublicJailbreakPatternsV1Corpus \
+		TestDevelopmentPublicJailbreakPatternsRejectsLiveMaterial \
+		TestDevelopmentPublicJailbreakPatternsRejectsManifestCoverageDrift \
+		TestDevelopmentPublicJailbreakPatternsRejectsDirectoryDrift \
+		TestDevelopmentPublicJailbreakPatternsRejectsSymlink; do \
+		printf '%s\n' "$$listed" | grep -Fxq "$$test_name" || { \
+			echo "required development public-jailbreak validator $$test_name is missing" >&2; exit 1; \
+		}; \
+	done
+	$(GO) test ./cmd/development-public-jailbreak-patterns-v1-validator \
+		-run='^(TestDevelopmentPublicJailbreakPatternsV1Corpus|TestDevelopmentPublicJailbreakPatternsRejectsLiveMaterial|TestDevelopmentPublicJailbreakPatternsRejectsManifestCoverageDrift|TestDevelopmentPublicJailbreakPatternsRejectsDirectoryDrift|TestDevelopmentPublicJailbreakPatternsRejectsSymlink)$$' -count=1 -v
 
 consumed-boundary-test:
 	GO=$(GO) TEST_TAGS=$(TEST_TAGS) bash ./scripts/go-safe-development-test.sh boundary
@@ -104,9 +124,11 @@ holdout-test:
 
 benchmark:
 	$(GO) test ./internal/classifier \
-		-run='^TestClassifier(Adversarial)?PerformanceAcceptance$$' -count=1 -v
+		-run='^(TestClassifier(Adversarial)?PerformanceAcceptance|TestRound5MetaOverridePerformanceAcceptance|TestRound5AdjacentNegationCandidateFloodPerformanceAcceptance)$$' -count=1 -v
 	$(GO) test ./internal/classifier -run='^$$' -bench=. -benchmem -count=3
-	$(GO) test ./internal/extract -run='^$$' -bench='^BenchmarkExtractRequest(ReverseOrderedMedia|Multipart)' -benchmem -benchtime=3x
+	$(GO) test ./internal/extract -run='^$$' \
+		-bench='^(BenchmarkExtractRequest(ReverseOrderedMedia|Multipart|ScalarCarrierPermutation).*|BenchmarkMultipartUnknownFileField(1MiB|8MiB))$$' \
+		-benchmem -benchtime=3x
 
 round4-regression:
 	@listed="$$($(GO) test ./internal/extract ./internal/plugin -list='^(TestExtractRequestMediaObjectMemberOrderInvariant|TestExtractRequestMultipartUnknownFieldIsIncompleteAndPrivate|TestBalancedMultipartUnknownFieldAllowsWithoutClassification|TestStrictMultipartUnknownFieldBlocksWithoutClassification)$$')" || exit $$?; \
@@ -118,8 +140,80 @@ round4-regression:
 	$(GO) test -tags=$(TEST_TAGS) ./internal/plugin -count=1 -v \
 		-run='^(TestBalancedMultipartUnknownFieldAllowsWithoutClassification|TestStrictMultipartUnknownFieldBlocksWithoutClassification)$$'
 
+round5-regression:
+	@listed="$$($(GO) test ./internal/extract -list='^(TestExtractRequestScalarMediaCarrierMemberOrderInvariant|TestExtractRequestScalarMediaCarrierNeverEntersPartsOrSegments|TestExtractRequestScalarMediaCarrierDoesNotConsumeTextBudget|TestExtractRequestNonMediaSourceURIFallsBackToText|TestExtractRequestToolSourceURIRemainsInspectable|TestExtractRequestScalarCarrierDoesNotCrossSiblingOrToolBoundary|TestExtractRequestScalarCarrierAllowedChildParentResolution|TestExtractRequestScalarCarrierOverflowDisposition|TestExtractRequestToolScalarCarrierOverflowIsIncomplete|TestExtractRequestScalarCarrierPerformanceAcceptance|TestExtractRequestMultipartUnknownFileFieldIsSchemaIncomplete|TestExtractRequestMultipartUnknownFieldPrecedesFileEvidence|TestExtractRequestMultipartUnnamedAttachmentIsSchemaIncomplete|TestExtractRequestMultipartUnknownFileAllocationsDoNotScaleWithPayload|TestToolSchemaKnownBooleanControlIsMapped|TestToolSchemaUnknownControlKeyIsIncomplete|TestToolSchemaMemberOrderInvariant|TestOrdinaryBusinessJSONKeysDoNotBecomePromptText|TestProviderSafetyFieldsRequireHostSchemaPolicy)$$')" || exit $$?; \
+	for test_name in \
+		TestExtractRequestScalarMediaCarrierMemberOrderInvariant \
+		TestExtractRequestScalarMediaCarrierNeverEntersPartsOrSegments \
+		TestExtractRequestScalarMediaCarrierDoesNotConsumeTextBudget \
+		TestExtractRequestNonMediaSourceURIFallsBackToText \
+		TestExtractRequestToolSourceURIRemainsInspectable \
+		TestExtractRequestScalarCarrierDoesNotCrossSiblingOrToolBoundary \
+		TestExtractRequestScalarCarrierAllowedChildParentResolution \
+		TestExtractRequestScalarCarrierOverflowDisposition \
+		TestExtractRequestToolScalarCarrierOverflowIsIncomplete \
+		TestExtractRequestScalarCarrierPerformanceAcceptance \
+		TestExtractRequestMultipartUnknownFileFieldIsSchemaIncomplete \
+		TestExtractRequestMultipartUnknownFieldPrecedesFileEvidence \
+		TestExtractRequestMultipartUnnamedAttachmentIsSchemaIncomplete \
+		TestExtractRequestMultipartUnknownFileAllocationsDoNotScaleWithPayload \
+		TestToolSchemaKnownBooleanControlIsMapped \
+		TestToolSchemaUnknownControlKeyIsIncomplete \
+		TestToolSchemaMemberOrderInvariant \
+		TestOrdinaryBusinessJSONKeysDoNotBecomePromptText \
+		TestProviderSafetyFieldsRequireHostSchemaPolicy; do \
+		printf '%s\n' "$$listed" | grep -Fxq "$$test_name" || { echo "required round-five extract regression $$test_name is missing" >&2; exit 1; }; \
+	done
+	@listed="$$($(GO) test ./internal/classifier -list='^(TestRound5MetaOverrideFamiliesProduceFixedEvidence|TestRound5MetaOverridePerformanceAcceptance|TestRound5PersistentInstructionInjectionBlocksOnlyActiveSafetyOverride|TestRound5PersistentInstructionInjectionAcrossLinkedUserSegments|TestRound5PersistentBlockSurvivesIncidentalLowScoreTaxonomyTerms|TestRound5WrapperAuditSurvivesIncidentalLowScoreTaxonomyTerms|TestRound5MetaOverrideBenignNearNeighborsAllow|TestRound5MetaOverrideDefensiveQuotedSamplesRemainInert|TestRound5MetaOverrideDefensiveTailCannotAuthorizeExecution|TestRound5MetaOverrideBilingualFamilies|TestRound5RefusalScopeOutputAndCompoundIntentHardening|TestRound5AgenticEscalationAmplifiesButDoesNotReplaceBaseTaxonomy|TestRound5AdjacentPartsNegationReversalCannotHideAbuse|TestRound5AdjacentUserSegmentsNegationReversalCannotHideAbuse|TestRound5AdjacentNegationCandidateFloodFailsClosed|TestRound5AdjacentNegationCandidateFloodPerformanceAcceptance|TestRound5AdjacentPartsNegationReversalSurvivesTrailingParts|TestRound5NegationReversalKeepsTrueProhibitionsBenign)$$')" || exit $$?; \
+	for test_name in \
+		TestRound5MetaOverrideFamiliesProduceFixedEvidence \
+		TestRound5MetaOverridePerformanceAcceptance \
+		TestRound5PersistentInstructionInjectionBlocksOnlyActiveSafetyOverride \
+		TestRound5PersistentInstructionInjectionAcrossLinkedUserSegments \
+		TestRound5PersistentBlockSurvivesIncidentalLowScoreTaxonomyTerms \
+		TestRound5WrapperAuditSurvivesIncidentalLowScoreTaxonomyTerms \
+		TestRound5MetaOverrideBenignNearNeighborsAllow \
+		TestRound5MetaOverrideDefensiveQuotedSamplesRemainInert \
+		TestRound5MetaOverrideDefensiveTailCannotAuthorizeExecution \
+		TestRound5MetaOverrideBilingualFamilies \
+		TestRound5RefusalScopeOutputAndCompoundIntentHardening \
+		TestRound5AgenticEscalationAmplifiesButDoesNotReplaceBaseTaxonomy \
+		TestRound5AdjacentPartsNegationReversalCannotHideAbuse \
+		TestRound5AdjacentUserSegmentsNegationReversalCannotHideAbuse \
+		TestRound5AdjacentNegationCandidateFloodFailsClosed \
+		TestRound5AdjacentNegationCandidateFloodPerformanceAcceptance \
+		TestRound5AdjacentPartsNegationReversalSurvivesTrailingParts \
+		TestRound5NegationReversalKeepsTrueProhibitionsBenign; do \
+		printf '%s\n' "$$listed" | grep -Fxq "$$test_name" || { echo "required round-five classifier regression $$test_name is missing" >&2; exit 1; }; \
+	done
+	@listed="$$($(GO) test -tags=$(TEST_TAGS) ./internal/plugin -list='^(TestBalancedMultipartUnknownFileFieldAllowsAndAuditsWithoutClassification|TestStrictMultipartUnknownFileFieldBlocksEvenWhenOpaquePolicyAllows|TestMultipartUnknownFileFieldAuditIsFixedAndPrivate|TestControlPlaneMetaOverrideCounterIsFixedAndOrthogonal|TestIncompleteRequestDoesNotEmitControlPlaneCounter|TestWrapperOnlyControlPlaneDoesNotAccumulateSubjectRisk|TestPersistentControlPlaneBlockRemainsCategoryFreeAndDoesNotPersistSubjectRisk|TestOpaqueMediaBlockCannotBeDowngradedByWrapperAudit|TestCompleteClassifierBlockStillWinsOverOpaqueMediaBlock|TestToolSchemaMappedControlIsAuditedAndCounted|TestToolSchemaUnknownControlIsIncompleteWithoutClassification|TestStrictToolSchemaUnknownControlBlocksWithoutClassification)$$')" || exit $$?; \
+	for test_name in \
+		TestBalancedMultipartUnknownFileFieldAllowsAndAuditsWithoutClassification \
+		TestStrictMultipartUnknownFileFieldBlocksEvenWhenOpaquePolicyAllows \
+		TestMultipartUnknownFileFieldAuditIsFixedAndPrivate \
+		TestControlPlaneMetaOverrideCounterIsFixedAndOrthogonal \
+		TestIncompleteRequestDoesNotEmitControlPlaneCounter \
+		TestWrapperOnlyControlPlaneDoesNotAccumulateSubjectRisk \
+		TestPersistentControlPlaneBlockRemainsCategoryFreeAndDoesNotPersistSubjectRisk \
+		TestOpaqueMediaBlockCannotBeDowngradedByWrapperAudit \
+		TestCompleteClassifierBlockStillWinsOverOpaqueMediaBlock \
+		TestToolSchemaMappedControlIsAuditedAndCounted \
+		TestToolSchemaUnknownControlIsIncompleteWithoutClassification \
+		TestStrictToolSchemaUnknownControlBlocksWithoutClassification; do \
+		printf '%s\n' "$$listed" | grep -Fxq "$$test_name" || { echo "required round-five plugin regression $$test_name is missing" >&2; exit 1; }; \
+	done
+	$(GO) test ./internal/extract -count=1 -v \
+		-run='^(TestExtractRequestScalarMediaCarrierMemberOrderInvariant|TestExtractRequestScalarMediaCarrierNeverEntersPartsOrSegments|TestExtractRequestScalarMediaCarrierDoesNotConsumeTextBudget|TestExtractRequestNonMediaSourceURIFallsBackToText|TestExtractRequestToolSourceURIRemainsInspectable|TestExtractRequestScalarCarrierDoesNotCrossSiblingOrToolBoundary|TestExtractRequestScalarCarrierAllowedChildParentResolution|TestExtractRequestScalarCarrierOverflowDisposition|TestExtractRequestToolScalarCarrierOverflowIsIncomplete|TestExtractRequestScalarCarrierPerformanceAcceptance|TestExtractRequestMultipartUnknownFileFieldIsSchemaIncomplete|TestExtractRequestMultipartUnknownFieldPrecedesFileEvidence|TestExtractRequestMultipartUnnamedAttachmentIsSchemaIncomplete|TestExtractRequestMultipartUnknownFileAllocationsDoNotScaleWithPayload|TestToolSchemaKnownBooleanControlIsMapped|TestToolSchemaUnknownControlKeyIsIncomplete|TestToolSchemaMemberOrderInvariant|TestOrdinaryBusinessJSONKeysDoNotBecomePromptText|TestProviderSafetyFieldsRequireHostSchemaPolicy)$$'
+	$(GO) test ./internal/classifier -count=1 -v \
+		-run='^(TestRound5MetaOverrideFamiliesProduceFixedEvidence|TestRound5MetaOverridePerformanceAcceptance|TestRound5PersistentInstructionInjectionBlocksOnlyActiveSafetyOverride|TestRound5PersistentInstructionInjectionAcrossLinkedUserSegments|TestRound5PersistentBlockSurvivesIncidentalLowScoreTaxonomyTerms|TestRound5WrapperAuditSurvivesIncidentalLowScoreTaxonomyTerms|TestRound5MetaOverrideBenignNearNeighborsAllow|TestRound5MetaOverrideDefensiveQuotedSamplesRemainInert|TestRound5MetaOverrideDefensiveTailCannotAuthorizeExecution|TestRound5MetaOverrideBilingualFamilies|TestRound5RefusalScopeOutputAndCompoundIntentHardening|TestRound5AgenticEscalationAmplifiesButDoesNotReplaceBaseTaxonomy|TestRound5AdjacentPartsNegationReversalCannotHideAbuse|TestRound5AdjacentUserSegmentsNegationReversalCannotHideAbuse|TestRound5AdjacentNegationCandidateFloodFailsClosed|TestRound5AdjacentNegationCandidateFloodPerformanceAcceptance|TestRound5AdjacentPartsNegationReversalSurvivesTrailingParts|TestRound5NegationReversalKeepsTrueProhibitionsBenign)$$'
+	$(GO) test -tags=$(TEST_TAGS) ./internal/plugin -count=1 -v \
+		-run='^(TestBalancedMultipartUnknownFileFieldAllowsAndAuditsWithoutClassification|TestStrictMultipartUnknownFileFieldBlocksEvenWhenOpaquePolicyAllows|TestMultipartUnknownFileFieldAuditIsFixedAndPrivate|TestControlPlaneMetaOverrideCounterIsFixedAndOrthogonal|TestIncompleteRequestDoesNotEmitControlPlaneCounter|TestWrapperOnlyControlPlaneDoesNotAccumulateSubjectRisk|TestPersistentControlPlaneBlockRemainsCategoryFreeAndDoesNotPersistSubjectRisk|TestOpaqueMediaBlockCannotBeDowngradedByWrapperAudit|TestCompleteClassifierBlockStillWinsOverOpaqueMediaBlock|TestToolSchemaMappedControlIsAuditedAndCounted|TestToolSchemaUnknownControlIsIncompleteWithoutClassification|TestStrictToolSchemaUnknownControlBlocksWithoutClassification)$$'
+
 build-linux-amd64:
 	GO=$(GO) VERSION=$(VERSION) ./scripts/build-linux-amd64.sh
+
+integration-compile:
+	$(GO) test -tags=integration,$(TEST_TAGS) -run='^$$' ./integration
 
 integration-test: cpa-v7275-host-blackbox cpa-router-fixture-blackbox
 
@@ -214,7 +308,7 @@ formal-release:
 		./scripts/formal-release.sh
 
 release: release-preflight format-check git-diff-check module-verify test vet race \
-	fuzz-smoke script-test corpus-regression holdout-test benchmark integration-test vulncheck sbom package-release cpa-store-contract
+	fuzz-smoke script-test corpus-regression development-public-jailbreak-corpus round4-regression round5-regression holdout-test benchmark integration-test vulncheck sbom package-release cpa-store-contract
 
 verify-release:
 	GO=$(GO) VERSION=$(VERSION) CYCLONEDX_GOMOD=$(CYCLONEDX_GOMOD) \

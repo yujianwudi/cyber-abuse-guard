@@ -197,9 +197,49 @@ func (c *Classifier) ClassifySegmentsWithPolicy(segments []extract.Segment, mode
 			best = candidate
 		}
 	}
+	// A bounded run of user-authored content parts may split one explicitly
+	// quoted, inert review across segment boundaries. Prefixes are classified
+	// conservatively while the run is incomplete; once the complete structural
+	// boundary proves that the quoted sample is inert and the last effective
+	// directive is analysis/non-execution, replace only a wrapper-only prefix
+	// result. Base cyber-abuse behavior, tool text, non-user text, long runs, and
+	// malformed quote boundaries can never be cleared by this path.
+	if best.Behavior != nil && best.Behavior.Wrapper && !best.Behavior.BaseBehavior {
+		if joined, ok := metaOverrideDefensiveUserSegmentRun(segments); ok {
+			candidate := c.ClassifyWithPolicy([]string{joined}, mode, thresholds, policy)
+			truncated = truncated || candidate.Truncated
+			if candidate.Action == ActionAllow && candidate.Score < AuditThreshold &&
+				(candidate.Behavior == nil || !candidate.Behavior.BaseBehavior) {
+				best = candidate
+			}
+		}
+	}
 	best.Truncated = best.Truncated || truncated
 	attachBehaviorGraph(&best, "role_aware", "")
 	return best
+}
+
+func metaOverrideDefensiveUserSegmentRun(segments []extract.Segment) (string, bool) {
+	if len(segments) < 2 || len(segments) > 8 {
+		return "", false
+	}
+	parts := make([]string, 0, len(segments))
+	totalBytes := 0
+	for _, segment := range segments {
+		if segment.Role != extract.RoleUser || segment.Provenance != extract.ProvenanceContent {
+			return "", false
+		}
+		totalBytes += len(segment.Text)
+		if totalBytes > maxClassifierInputBytes {
+			return "", false
+		}
+		parts = append(parts, segment.Text)
+	}
+	joined := strings.Join(parts, "\n")
+	if !metaOverrideDefensiveAnalysis(joined, ContextFlags{}) {
+		return "", false
+	}
+	return joined, true
 }
 
 // threeTurnPlanWindowEligible permits one additional bounded user-only merge

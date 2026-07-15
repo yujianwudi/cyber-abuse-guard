@@ -19,6 +19,7 @@ var classifierPolicySourceFiles = []string{
 	"internal/classifier/classifier.go",
 	"internal/classifier/matcher.go",
 	"internal/classifier/meta_override.go",
+	"internal/classifier/meta_override_structure.go",
 	"internal/classifier/normalize.go",
 	"internal/classifier/policy_identity_test.go",
 	"internal/classifier/roles.go",

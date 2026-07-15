@@ -845,6 +845,7 @@ type counters struct {
 	incompleteTextPartLimit          atomic.Uint64
 	incompleteMultipartLimit         atomic.Uint64
 	incompleteMultipartSchema        atomic.Uint64
+	incompleteToolSchema             atomic.Uint64
 	incompleteDeferredTextLimit      atomic.Uint64
 	incompleteUnsupportedContentType atomic.Uint64
 	incompleteRPCBodyLimit           atomic.Uint64
@@ -865,6 +866,7 @@ type counters struct {
 	opaqueMediaRemoteURL             atomic.Uint64
 	opaqueMediaOther                 atomic.Uint64
 	unknownSourceFormats             atomic.Uint64
+	controlPlaneMetaOverride         atomic.Uint64
 }
 
 func (c *counters) snapshot() map[string]uint64 {
@@ -885,6 +887,7 @@ func (c *counters) snapshot() map[string]uint64 {
 		"incomplete_text_part_limit":          c.incompleteTextPartLimit.Load(),
 		"incomplete_multipart_limit":          c.incompleteMultipartLimit.Load(),
 		"incomplete_multipart_schema":         c.incompleteMultipartSchema.Load(),
+		"incomplete_tool_schema":              c.incompleteToolSchema.Load(),
 		"incomplete_deferred_text_limit":      c.incompleteDeferredTextLimit.Load(),
 		"incomplete_unsupported_content_type": c.incompleteUnsupportedContentType.Load(),
 		"incomplete_rpc_body_limit":           c.incompleteRPCBodyLimit.Load(),
@@ -906,5 +909,6 @@ func (c *counters) snapshot() map[string]uint64 {
 		"opaque_media_remote_url":             c.opaqueMediaRemoteURL.Load(),
 		"opaque_media_other":                  c.opaqueMediaOther.Load(),
 		"unknown_source_formats":              c.unknownSourceFormats.Load(),
+		"control_plane_meta_override":         c.controlPlaneMetaOverride.Load(),
 	}
 }

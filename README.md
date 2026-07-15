@@ -12,12 +12,13 @@
 English | [简体中文](README_CN.md)
 
 > [!WARNING]
-> This repository is an **unreleased development candidate**. The v0.1.2
-> release decision is **BLOCKED**, the only methodologically valid v10
-> evaluation is `CONSUMED / FAIL`. The fourth-round candidate targets CPA
-> v7.2.75; its new GitHub CI artifact, isolated Host matrix, and Leo verification
-> remain pending. Do not create a v0.1.2 tag or GitHub Release, and do not deploy
-> this candidate to production.
+> This repository is an **unreleased fifth-round development candidate**. The
+> v0.1.2 release decision is **BLOCKED**, and the only methodologically valid
+> v10 evaluation remains `CONSUMED / FAIL`. Fifth-round source, CI, artifact,
+> Tencent Cloud isolated-Host, and independent-review gates are separate. Do
+> not create a v0.1.2 tag or GitHub Release, and do not deploy this candidate to
+> production. Unit or GitHub CI success would be engineering evidence only,
+> never production admission.
 
 When CPA has loaded and registered the plugin, Router ordering reaches it, and
 the self-executor is ready, CPA Cyber Abuse Guard inspects supported model
@@ -39,16 +40,63 @@ is not sent to a public classifier.
 | Documented build target | Linux amd64, glibc 2.34 or newer, CPA C ABI/RPC schema v1 |
 | Unsupported platform | musl/Alpine |
 | Embedded YAML ruleset | `1.0.7`, SHA-256 `7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134` |
-| Classifier policy identity | `classifier-policy-v2`, SHA-256 `6a0480acc63617b688484c81baf4991cad48b57ad4414b1a8aeab0f0d196c51c` |
-| Current validation | Fourth-round local gates, GitHub CI artifact, reproducibility, and CPA v7.2.75 Store-installed CI Host pass; the authorized Tencent isolated Host/audit review remains pending, so status is **PARTIAL / NOT PRODUCTION-READY** |
+| Classifier policy identity | `classifier-policy-v2`, SHA-256 `5fc25855a868cba206123697c1631ba251575157f37cd79654e9a65c888a750b` |
+| Current validation | Fifth-round local development gates pass on the candidate tree, including safe unit/race, vet, fuzz, benchmark, privacy, Go 1.26.4 vulncheck, source-contract, and integration compile-only checks. Implementation-freeze commit, exact-commit CI, artifact inspection, Tencent Cloud isolated Host validation, and independent review are pending. The restricted-corpus methodology incident independently keeps handoff blocked; this is not production approval. |
+
+## Fifth-round boundary and review status
+
+- The Router sees only the request delivered by CPA. It cannot attest to the
+  path, owner, mode, SHA-256/signature, reload history, or contents of a local
+  `model_instructions_file`, `AGENTS.md`, remote instruction template, or other
+  client-side high-priority configuration loaded before the request reaches
+  CPA. The host must enforce path allowlists, owner/mode checks, immutable hash
+  or signature binding, reload-time verification, and audited template changes.
+- Provider controls such as `safetySettings`, `generationConfig`, and `options`
+  are not prompt text and are not safely governed by keyword matching. The host
+  must apply a versioned schema allowlist and reject or forcibly overwrite
+  unsafe values before routing.
+- The only fifth-round key-only mapping is explicitly activated by
+  `cag_control_schema=meta_override_control/v1` inside an established
+  tool/tool-payload object. The same key outside tool provenance does not
+  activate semantic mapping, and arbitrary business JSON keys are never
+  promoted to prompt text.
+- Embedded ruleset `1.0.7` identifies only the YAML Cyber Abuse assets. It does
+  **not** include the Go-level `META-OVERRIDE-001` overlay, extraction semantics,
+  tool-schema mappings, or control-plane telemetry. The classifier-policy
+  identity and exact Git commit are required alongside the ruleset identity.
+- The visible `development-public-jailbreak-patterns-v1` corpus contains only
+  sanitized canaries and abstract minimal pairs. It is development-only,
+  contains no live payloads, and is permanently ineligible for a future blind
+  Holdout.
+- Ordinary CI no longer invokes any evaluation-v10 boundary target. The manual
+  `consumed-boundary-test` target remains only for separately authorized audit
+  work and is not a routine development or CI gate.
+- Role-aware classification deliberately does not compose a base Cyber Abuse
+  taxonomy from system/assistant text into a later user message. This prevents
+  provider policy examples and refusals from becoming user intent, but means
+  the host must authenticate every high-priority instruction source and enforce
+  its owner, mode, hash/signature, and reload policy before the request reaches
+  CPA.
+- `Segments` are currently derived by a second bounded JSON parse after the
+  primary extractor walk. Differential, race, fuzz, and scalar-media tests have
+  not reproduced semantic leakage, but a future refactor should emit Parts and
+  Segments from one semantic parse product to remove parser-drift risk.
+- During this fifth-round review, one over-broad read-only `git grep`
+  unexpectedly emitted content from the restricted
+  `testdata/holdout/malicious-operational.jsonl` file. No holdout test ran; the
+  output was not redirected, copied into source/tests/docs, analyzed, or used
+  for tuning or conclusions. Subsequent gates explicitly exclude every
+  holdout/evaluation path. This incident means the round cannot truthfully claim
+  zero restricted-corpus access and independently keeps handoff blocked.
 
 The root `go.mod` and `integration/pluginstorecontract` module both pin CPA
 v7.2.75. Source contracts enumerate and run 16 exact official Host tests, while
 the native harness installs the real Store ZIP, loads the real Guard `.so`, and
 uses a pure-C second Router/executor fixture. Source or compile-only results do
-not prove native compatibility: the fourth-round GitHub CI Linux run, artifact,
-and CPA v7.2.75 isolated-Host matrix are still pending, and Leo must repeat the
-frozen result independently in isolation.
+not prove native compatibility: fifth-round ordinary CI executes bounded
+source-contract tests and compiles the integration-tagged package without
+starting CPA or loading the `.so`; the exact artifact, Tencent Cloud CPA
+v7.2.75 isolated-Host matrix, and independent review are still pending.
 
 ## What this project is
 
@@ -145,8 +193,9 @@ incomplete schema rather than classifier text.
 
 The earlier v7.2.72 four-protocol HTTP and zero-downstream-call matrix remains
 historical evidence for implementation freeze `61536f9`. It does not validate
-the fourth-round CPA v7.2.75 candidate; its CI artifact, real-Host matrix, audit
-privacy check, and Leo isolated verification are separate pending gates.
+the fifth-round CPA v7.2.75 candidate; its exact-commit CI, artifact, real-Host
+matrix, audit privacy check, and independent verification are separate pending
+gates.
 
 Recognized roles keep system safety policy and assistant refusals separate from
 user intent. User-authored adjacent turns and one explicitly linked bounded
@@ -250,14 +299,14 @@ must separately cover commercial mode, retention, permissions, and deletion.
 
 | Evidence | Status |
 |---|---|
-| Fourth-round JSON order, multipart profile, race/vet/fuzz/benchmark, artifact, and CPA v7.2.75 Host gates | **PENDING** — no fourth-round CI run, artifact hash, implementation freeze, or isolated-Host conclusion is recorded yet |
-| Historical safe unit/race boundary, vet, fuzz-smoke, regression, build, packaging, and reproducibility workflows | **GITHUB CI PASS** on earlier implementation freeze `61536f9`; push run [29312969925](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29312969925) and PR run [29312971717](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29312971717); not fourth-round evidence |
+| Fifth-round two-HIGH, meta-override, tool-schema, corpus, race/vet/fuzz/benchmark, artifact, and CPA v7.2.75 Host gates | **PENDING** — no fifth-round CI run, artifact hash, implementation freeze, Tencent isolated-Host conclusion, or independent review is recorded yet |
+| Historical safe unit/race boundary, vet, fuzz-smoke, regression, build, packaging, and reproducibility workflows | **GITHUB CI PASS** on earlier implementation freeze `61536f9`; push run [29312969925](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29312969925) and PR run [29312971717](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29312971717); not fifth-round evidence |
 | Safe Go development scripts | `test`, `race`, and `boundary` **DEVELOPMENT SELF-CHECK PASS** on the pre-review implementation tree, WSL Ubuntu 26.04 / Go 1.26.4; exact-freeze coverage is provided by GitHub CI |
-| CPA Store ZIP naming/layout/install source contract | Updated to official CPA v7.2.75 source; fourth-round CI execution pending |
-| CPA Router ordering/fallback source contract | Updated to official CPA v7.2.75 source; fourth-round CI execution pending |
+| CPA Store ZIP naming/layout/install source contract | Updated to official CPA v7.2.75 source; fifth-round exact-commit CI evidence pending |
+| CPA Router ordering/fallback source contract | Updated to official CPA v7.2.75 source; fifth-round exact-commit CI evidence pending |
 | Local executor refusal contract | RPC error envelopes request 403 for `execute`, `execute_stream`, and `count_tokens`; `http_request` has a SOURCE/ADAPTER status-error 405 check with no response only |
 | Historical native plugin loading | **GITHUB CI PASS** for the earlier v7.2.72 freeze; current CPA v7.2.75 Store artifact/load is **PENDING** |
-| Historical OpenAI Chat / Responses / Claude / Gemini server matrix | **GITHUB CI PASS** on the earlier v7.2.72 freeze; fourth-round order/profile cases are pending |
+| Historical OpenAI Chat / Responses / Claude / Gemini server matrix | **GITHUB CI PASS** on the earlier v7.2.72 freeze; fifth-round Host cases are pending and ordinary CI is compile-only |
 | Historical zero Auth Selector / Usage / Provider / upstream calls on blocked requests | **GITHUB CI PASS** on the earlier freeze; current exact-artifact proof is pending |
 | Historical Multi-Router/fail-open and management proxy 413 matrices | **GITHUB CI PASS** on the earlier freeze — 15 native Router scenarios and proxy rejection before the counted CPA handler |
 | Final official CPA client HTTP 405 for `executor.http_request` | **NOT AVAILABLE / NOT RUN** — `/v1/alpha/search` is provider-specific, normally selects `codex`, and maps every executor error to 502; no current official route maps Guard's 405 error to final 405 |
@@ -292,6 +341,14 @@ was not accessed. The retired holdout-v3 corpus is no longer eligible as
 independent evidence, and this incident independently keeps the handoff status
 `BLOCKED FOR HANDOFF`.
 
+An additional, distinct fifth-round incident occurred later: one over-broad
+read-only `git grep` unexpectedly emitted content from the restricted
+`testdata/holdout/malicious-operational.jsonl` file. It did not run a holdout
+test, redirect or retain a separate output file, feed any source/test/document,
+or influence tuning or conclusions. Nevertheless, this round must not state
+that no restricted corpus was accessed, and its methodological handoff remains
+blocked even if all engineering gates pass.
+
 Historical v7.2.72 source/native evidence boundaries are recorded in
 [CPA_INTEGRATION.md](docs/reports/CPA_INTEGRATION.md) and
 [LEO_VERIFICATION_HANDOFF.md](docs/LEO_VERIFICATION_HANDOFF.md). The older
@@ -310,21 +367,34 @@ CPA, load a `.so`, or open consumed evaluation samples:
 make format-check git-diff-check module-verify
 ./scripts/go-safe-development-test.sh test
 ./scripts/go-safe-development-test.sh race
-./scripts/go-safe-development-test.sh boundary
 make vet fuzz-smoke corpus-regression script-test
+make round4-regression round5-regression
+make development-public-jailbreak-corpus
 
 # Visible development-only adversarial corpus; never a future Holdout.
 go test ./cmd/development-adversarial-v11-prep-validator \
   -run '^TestDevelopmentAdversarialV11PrepCorpus$' -count=1
 
+go test ./cmd/development-public-jailbreak-patterns-v1-validator \
+  -run '^TestDevelopmentPublicJailbreakPatternsV1Corpus$' -count=1
+
 # Explicit source-only CPA v7.2.75 store and host contracts.
 go -C integration/pluginstorecontract test ./... -count=1
+
+# Ordinary CI compiles integration-tagged code but does not start CPA.
+make integration-compile
 ```
 
-The safe script is the required broad Go gate. `make unit-test`, `make race`,
-and `make consumed-boundary-test` resolve to those safe modes. Do not replace
-them with a broad invocation that can open retired or consumed evaluation
-fixtures.
+The safe script is the required broad Go gate. `make unit-test` and `make race`
+resolve to its sample-safe modes. Do not replace them with a broad invocation
+that can open retired or consumed evaluation fixtures. The separately named
+`make consumed-boundary-test` target is intentionally absent from ordinary CI
+and must not be run without explicit evaluation-boundary authorization.
+
+Ordinary fifth-round CI uses `make integration-compile`; it does not call
+`make integration-test` or either Host blackbox target. Real `.so` loading and
+the Host matrix are reserved for the later authorized Tencent Cloud CPA
+v7.2.75 + Mock-upstream sandbox, not local development validation.
 
 The release toolchain expects Go `1.26.4`. Linux-native build, integration,
 SBOM, vulnerability, artifact, and reproducibility commands are documented in
@@ -354,6 +424,7 @@ RAR is not a supported source or binary release format.
 |---|---|
 | `cmd/cyber-abuse-guard/` | Native plugin entry point and CPA ABI bridge |
 | `cmd/development-adversarial-v11-prep-validator/` | Strict validator for the visible development-only adversarial corpus |
+| `cmd/development-public-jailbreak-patterns-v1-validator/` | Strict validator for sanitized, public-taxonomy-derived development canaries |
 | `internal/classifier/` | Deterministic policy evaluation and historical gates |
 | `internal/extract/` | Provider-aware, bounded request extraction and decoding |
 | `internal/plugin/` | Router, executor, management, runtime health, and reconfiguration |
@@ -361,7 +432,7 @@ RAR is not a supported source or binary release format.
 | `rules/` | Embedded versioned YAML cyber-abuse policy assets |
 | `integration/` | CPA integration and isolated official-source contract modules |
 | `scripts/` | Build, package, verify, reproduce, health-check, and release tooling |
-| `testdata/` | Regression data, explicitly development-only adversarial data, and frozen historical evaluation evidence; development data is never a future Holdout |
+| `testdata/` | Regression data, explicitly development-only adversarial/canary data, and frozen historical evaluation evidence; development data is never a future Holdout |
 | `docs/` | Design, operations, limitations, threat model, audit handoff, and reports |
 
 Ignored local `dist/`, `coverage.out`, databases, logs, and secret files are

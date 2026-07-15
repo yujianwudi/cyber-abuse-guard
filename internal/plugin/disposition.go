@@ -76,6 +76,13 @@ func inspectionDisposition(mode config.Mode, outcome inspectionOutcome, opaquePo
 	case config.ModeAudit, config.ModeBalanced, config.ModeStrict:
 		decision.EvaluateSubject = true
 	}
+	if behavior := outcome.Classification.Behavior; behavior != nil && behavior.Wrapper && !behavior.BaseBehavior {
+		// Wrapper-only control-plane evidence is observable, but it is not a
+		// cyber-abuse behavior and must not accumulate subject risk. A standalone
+		// persistent-injection block remains enforced by the current classification
+		// below; this flag controls only cross-request subject accounting.
+		decision.EvaluateSubject = false
+	}
 
 	switch outcome.Classification.Action {
 	case classifier.ActionBlock:
@@ -110,29 +117,39 @@ func inspectionDisposition(mode config.Mode, outcome inspectionOutcome, opaquePo
 		}
 	}
 
-	// A complete malicious-text result always wins over opaque-media audit.
-	// Conversely, an explicit opaque-media block can enforce a clean text
-	// request only in an enforcing mode.
-	if outcome.OpaqueMedia && outcome.Classification.Action == classifier.ActionAllow && !decision.Block {
+	// A complete malicious-text block always wins and retains its taxonomy.
+	// Otherwise an explicit opaque-media block wins over allow/audit/observe in
+	// enforcing modes. This keeps the configured media disposition orthogonal to
+	// wrapper-only control-plane audits instead of letting an audit downgrade a
+	// required opaque-media block.
+	if outcome.OpaqueMedia && !decision.Block {
 		switch opaquePolicy {
 		case config.OpaqueMediaPolicyBlock:
 			switch mode {
 			case config.ModeObserve:
-				decision.Observe = true
-				decision.Code = "observe_opaque_media"
-				decision.Category = "opaque_media"
+				if outcome.Classification.Action == classifier.ActionAllow {
+					decision.Observe = true
+					decision.Code = "observe_opaque_media"
+					decision.Category = "opaque_media"
+				}
 			case config.ModeAudit:
-				decision.Audit = true
-				decision.Code = "audit_opaque_media"
-				decision.Category = "opaque_media"
+				if outcome.Classification.Action == classifier.ActionAllow {
+					decision.Audit = true
+					decision.Code = "audit_opaque_media"
+					decision.Category = "opaque_media"
+				}
 			case config.ModeBalanced, config.ModeStrict:
 				decision.Audit = false
+				decision.Observe = false
 				decision.Block = true
 				decision.Code = "block_opaque_media"
 				decision.Category = "opaque_media"
 				decision.RouteReason = "cyber_abuse_guard_opaque_media"
 			}
 		case config.OpaqueMediaPolicyAudit:
+			if outcome.Classification.Action != classifier.ActionAllow {
+				break
+			}
 			switch mode {
 			case config.ModeObserve:
 				decision.Observe = true
@@ -185,6 +202,8 @@ func incompleteCategory(reasons []extract.IncompleteReason) string {
 	case contains(extract.IncompleteMultipartUnknownField,
 		extract.IncompleteMultipartTextFieldTypeMismatch):
 		return "multipart_schema"
+	case contains(extract.IncompleteToolSchema):
+		return "tool_schema"
 	case contains(extract.IncompleteMultipartBoundaryLimit,
 		extract.IncompleteMultipartPartLimit,
 		extract.IncompleteMultipartHeaderLimit,
@@ -226,6 +245,8 @@ func incompleteRouteReason(category string) string {
 		return "cyber_abuse_guard_multipart_limit"
 	case "multipart_schema":
 		return "cyber_abuse_guard_multipart_schema"
+	case "tool_schema":
+		return "cyber_abuse_guard_tool_schema"
 	case "deferred_text_limit":
 		return "cyber_abuse_guard_deferred_text_limit"
 	case "unsupported_content_type":

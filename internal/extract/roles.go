@@ -301,6 +301,9 @@ func addRoleContentSegments(segments *segmentRing, raw json.RawMessage, role Rol
 				analysisParts = append(analysisParts, value)
 			}
 			appendDecoded := func(value string) {
+				if _, opaque := opaqueDataURLKind(value); opaque {
+					return
+				}
 				decoded, encoded, incomplete := decodeBoundedText(value)
 				if encoded && incomplete {
 					truncated = true
@@ -483,12 +486,14 @@ func joinRolePartsWithPristineDecode(parts, rawParts []string) (string, bool) {
 		analysisParts = append(analysisParts, value)
 	}
 	appendUnique(rawJoined)
-	decoded, encoded, incomplete := decodeBoundedText(rawJoined)
-	if encoded && incomplete {
-		truncated = true
-	}
-	for _, variant := range decoded {
-		appendUnique(variant)
+	if _, opaque := opaqueDataURLKind(rawJoined); !opaque {
+		decoded, encoded, incomplete := decodeBoundedText(rawJoined)
+		if encoded && incomplete {
+			truncated = true
+		}
+		for _, variant := range decoded {
+			appendUnique(variant)
+		}
 	}
 	for _, part := range parts {
 		appendUnique(part)
