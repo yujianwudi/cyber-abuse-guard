@@ -208,7 +208,7 @@ func (c *Classifier) ClassifySegmentsWithPolicy(segments []extract.Segment, mode
 		if joined, ok := metaOverrideDefensiveUserSegmentRun(segments); ok {
 			candidate := c.ClassifyWithPolicy([]string{joined}, mode, thresholds, policy)
 			truncated = truncated || candidate.Truncated
-			if candidate.Action == ActionAllow && candidate.Score < AuditThreshold &&
+			if !truncated && candidate.Action == ActionAllow && candidate.Score < AuditThreshold &&
 				(candidate.Behavior == nil || !candidate.Behavior.BaseBehavior) {
 				best = candidate
 			}

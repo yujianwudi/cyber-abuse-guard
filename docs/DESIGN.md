@@ -12,6 +12,13 @@ The pinned module checksum is
 `h1:WcCCeENtQ5F2bT86FVIOZJJbWCkPqrp3idl8kyZqARM=` and its `go.mod` checksum is
 `h1:f4pcyAej8RoeRhIxJfm+OUMkCKaApiA8WzxR2XVlBh8=`.
 
+Pinned latest-compatibility evidence is a separate layer: the isolated
+`integration/cpalatestcontract` module and `make cpa-latest-compat` pin CPA
+v7.2.79 (`b6ce0beecd31dff389d3190f7db6d7a1d4ce0e7e`) and compile the Guard plus
+integration package before running 16 official Router tests and the shared
+fail-open source overlay. This does not change the v7.2.75 artifact baseline or
+constitute a v7.2.79 native Host/Store load.
+
 The repository work began from actual baseline
 `a121a444cb0d82cba4e27754914a1f88258e1d7b`. The root module and the isolated
 `integration/pluginstorecontract` module now both pin CPA v7.2.75. Source

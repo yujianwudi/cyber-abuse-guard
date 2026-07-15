@@ -1,6 +1,33 @@
 # CPA Integration and Store-Contract Report — v0.1.2 candidate
 
-## Status
+## 2026-07-16 latest-compat addendum
+
+The runtime/artifact baseline for the round5.2 development tree remains CPA
+v7.2.75. A separate source/compile compatibility lane now pins the latest
+audited CPA release, `v7.2.79` at commit
+`b6ce0beecd31dff389d3190f7db6d7a1d4ce0e7e`:
+
+```text
+module: github.com/router-for-me/CLIProxyAPI/v7 v7.2.79
+module_sum: h1:/2s9euOTOeKUCIPWjHdCsll9vUHkJ/H2bq25Da3DQrg=
+go_mod_sum: h1:ytvZNWbCv7PrAyR80+RKsDJPODsdL6qxyFaXDBNZdqs=
+plugin_abi_rpc_router_store_diff: no breaking change found
+public_plugin_api_delta: UsageRecord.Generate bool (Guard does not register UsagePlugin)
+guard_and_integration_compile_only: PASS
+official_router_contracts: PASS / 16 fixed tests
+shared_fail_open_overlay: PASS
+native_host_or_guard_so_load: NOT RUN
+```
+
+The reproducible entrypoint is `make cpa-latest-compat`. It uses a temporary
+modfile, an isolated `integration/cpalatestcontract` module, and the shared
+checksum-verified overlay. It does not start CPA, load a `.so`, install the
+Store archive, contact a Provider/account, or validate request reconstruction,
+logging, and zero-upstream side effects. Those remain owner-operated server
+sandbox work. The remainder of this report preserves historical v7.2.72
+implementation-freeze evidence and must not be relabeled as v7.2.79 Host proof.
+
+## Historical v7.2.72 implementation-freeze status
 
 **IMPLEMENTED — AUTHORIZED REAL-HOST EVIDENCE REQUIRES GITHUB CI.** The current
 tree builds the dirty-suffixed guard `.so`, produces the one-entry Store ZIP,

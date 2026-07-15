@@ -165,10 +165,10 @@ if (( unknown_source_formats_before > 0 )); then
 fi
 
 if jq -e '.conflict_detection.router_enumeration_supported == false' >/dev/null <<<"$response_body"; then
-  printf '%s\n' 'NOTICE: CPA v7.2.72 ABI cannot enumerate router ordering; verify higher-priority routers in deployment configuration.' >&2
+  printf '%s\n' 'NOTICE: CPA plugin ABI v1 cannot enumerate router ordering; verify higher-priority routers in deployment configuration.' >&2
 fi
 if jq -e '.conflict_detection.duplicate_plugin_binary_scan_supported == false' >/dev/null <<<"$response_body"; then
-  printf '%s\n' 'NOTICE: CPA v7.2.72 ABI cannot inspect the plugin directory; verify that only one cyber-abuse-guard .so is deployed.' >&2
+  printf '%s\n' 'NOTICE: CPA plugin ABI v1 cannot inspect the plugin directory; verify that only one cyber-abuse-guard .so is deployed.' >&2
 fi
 
 # Both probes are local Management API operations with built-in text. They do

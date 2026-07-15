@@ -19,7 +19,7 @@ func TestDevelopmentPublicJailbreakPatternsV1Corpus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if metrics.Total < 24 || metrics.Allow == 0 || metrics.Audit == 0 || metrics.RoleAware == 0 || metrics.Untrusted == 0 {
+	if metrics.Total < 36 || metrics.Allow == 0 || metrics.Audit == 0 || metrics.RoleAware == 0 || metrics.Untrusted == 0 {
 		t.Fatalf("unexpected development metrics: %+v", metrics)
 	}
 }
@@ -92,10 +92,11 @@ func TestDevelopmentPublicJailbreakPatternsRejectsManifestCoverageDrift(t *testi
 		Input:             json.RawMessage(`{"messages":[{"role":"user","content":"CANARY"}]}`),
 	}
 	for label, mutate := range map[string]func(*fixtureRecord){
-		"family":    func(value *fixtureRecord) { value.Family = "unapproved_family" },
-		"protocol":  func(value *fixtureRecord) { value.Protocol = "unapproved_protocol" },
-		"carrier":   func(value *fixtureRecord) { value.Carrier = "unapproved_carrier" },
-		"transform": func(value *fixtureRecord) { value.Transform = "unapproved_transform" },
+		"family":         func(value *fixtureRecord) { value.Family = "unapproved_family" },
+		"protocol":       func(value *fixtureRecord) { value.Protocol = "unapproved_protocol" },
+		"carrier":        func(value *fixtureRecord) { value.Carrier = "unapproved_carrier" },
+		"transform":      func(value *fixtureRecord) { value.Transform = "unapproved_transform" },
+		"source context": func(value *fixtureRecord) { value.SourceContext = "unapproved_source" },
 	} {
 		t.Run(label, func(t *testing.T) {
 			invalid := record
@@ -156,5 +157,6 @@ func canonicalManifestForTest() manifest {
 		RequiredProtocols:                    append([]string(nil), canonicalDevelopmentProtocols...),
 		RequiredCarriers:                     append([]string(nil), canonicalDevelopmentCarriers...),
 		RequiredTransforms:                   append([]string(nil), canonicalDevelopmentTransforms...),
+		RequiredSourceContexts:               append([]string(nil), canonicalDevelopmentSourceContexts...),
 	}
 }

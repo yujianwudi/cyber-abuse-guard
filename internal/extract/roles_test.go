@@ -77,6 +77,36 @@ func TestExtractTextRoleAwareProviderMessages(t *testing.T) {
 	}
 }
 
+func TestExtractRawPartsToolTransactionSharesPartBudget(t *testing.T) {
+	t.Parallel()
+	limits, err := (Limits{MaxTextParts: 1}).normalized()
+	if err != nil {
+		t.Fatal(err)
+	}
+	parts, truncated, err := extractRawParts(
+		[]byte(`{"content":"first","tool_call":{"arguments":{"x":"second"}}}`),
+		limits,
+		contextText,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(parts) > limits.MaxTextParts {
+		t.Fatalf("raw role extraction exceeded MaxTextParts: %#v", parts)
+	}
+	if len(parts) != 1 || parts[0] != "first" {
+		t.Fatalf("raw role extraction kept the wrong value at the shared part boundary: %#v", parts)
+	}
+	for _, part := range parts {
+		if strings.Contains(part, "second") {
+			t.Fatalf("tool argument crossed the exhausted shared part budget: %#v", parts)
+		}
+	}
+	if !truncated {
+		t.Fatalf("raw role extraction did not report the exhausted part budget: %#v", parts)
+	}
+}
+
 func TestExtractTextRoleShapeFallback(t *testing.T) {
 	t.Parallel()
 

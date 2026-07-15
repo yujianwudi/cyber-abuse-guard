@@ -127,7 +127,9 @@ func metaOverrideTermGroups() []rules.Terms {
 				"do not ask clarifying questions", "do not perform a risk assessment", "skip permission checks",
 				"omit authorization checks", "output the fixed first line", "answer with the exact template",
 				"prefix every response with", "fixed response prefix", "emit a continuation marker", "continue from the marker",
-				"return only the fixed token",
+				"return only the fixed token", "hide the override source", "do not disclose policy changes",
+				"conceal the active policy", "split the remaining directive across inspection boundaries",
+				"resume after the filter boundary", "delay the remaining directive until the next segment",
 			},
 		},
 		{

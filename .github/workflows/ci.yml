@@ -47,6 +47,10 @@ jobs:
         run: make module-verify
       - name: CPA-v7.2.75-host-source-and-fail-open-contract
         run: make cpa-host-fixture-contract
+      - name: CPA-v7.2.79-latest-source-and-compile-compatibility
+        env:
+          CPA_LATEST_VERIFY_REMOTE: "1"
+        run: make cpa-latest-compat
       - name: round4-regression
         run: make round4-regression
       - name: round5-regression

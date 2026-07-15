@@ -62,8 +62,37 @@ for full_package in "${listed_packages[@]}"; do
   package_seen["$relative_package"]=1
 done
 for package in "${safe_packages[@]}" "${excluded_packages[@]}"; do
-  if [[ ! -v package_seen["$package"] ]]; then
+	if [[ ! -v package_seen["$package"] ]]; then
     printf 'reviewed Go package is missing from the module: %s\n' "$package" >&2
+    exit 1
+	fi
+done
+
+join_regex() {
+  local joined="" name
+  for name in "$@"; do
+    joined+="${joined:+|}${name}"
+  done
+  printf '^(%s)$' "$joined"
+}
+
+# Fifth-round extractor audit regressions are safe development tests. Keep an
+# explicit name allowlist so renaming or accidentally dropping one fails closed
+# before the broader safe-package run.
+expected_round5_extract_entries=(
+  TestExtractRawPartsToolTransactionSharesPartBudget
+  TestExtractRequestConflictingMediaMarkersAreOrderInvariant
+  TestExtractRequestInheritedMediaKindUsesChildExplicitMarker
+  TestExtractTextToolTransactionSharesPartBudget
+)
+round5_extract_pattern="$(join_regex "${expected_round5_extract_entries[@]}")"
+listed_round5_extract_tests="$(
+  "$go_bin" test ./internal/extract \
+    -list "$round5_extract_pattern"
+)"
+for name in "${expected_round5_extract_entries[@]}"; do
+  if ! grep -Fxq "$name" <<<"$listed_round5_extract_tests"; then
+    printf 'required safe round-five extractor entry is missing: %s\n' "$name" >&2
     exit 1
   fi
 done
@@ -183,28 +212,39 @@ expected_safe_classifier_entries=(
   TestRoleAwareProviderToolPayloadAlwaysScanned
   TestRoleAwareSafetyFramingCannotHideOperationalOverride
   TestRoleAwareSafetyFramingWithBenignContinuationAllows
+  TestRoleAwareTruncatedDefensiveReconstructionKeepsWrapperFinding
   TestRoleAwareUnknownProvenanceUsesConservativeFallback
   TestRoleAwareUserFollowUpSkipsAssistantRefusal
   TestRound5AgenticEscalationAmplifiesButDoesNotReplaceBaseTaxonomy
+	TestRound5AdjacentCompactIntentNegationFailsClosed
   TestRound5AdjacentNegationCandidateFloodFailsClosed
   TestRound5AdjacentNegationCandidateFloodPerformanceAcceptance
+	TestRound5AdjacentOverflowPreservesAllMatchedCores
   TestRound5AdjacentPartsNegationReversalCannotHideAbuse
   TestRound5AdjacentPartsNegationReversalSurvivesTrailingParts
+  TestRound5AdjacentReversalUsesConfiguredHardBlockThreshold
   TestRound5AdjacentUserSegmentsNegationReversalCannotHideAbuse
   TestRound5CoordinatedCrossCategoryProhibitionsRemainBenign
   TestRound5CrossCategoryNegationDoesNotCoverOperationalTail
+	TestRound5DirectiveBoundaryRunsPreserveSentenceBreaks
+	TestRound5EarlierLiteralNegationCannotHideLaterCompactClause
+  TestRound5LargeAdjacentNegationReconstructionFailsClosed
+	TestRound5LongNegationReversalBridgeFailsActive
   TestRound5MetaOverrideBenignNearNeighborsAllow
   TestRound5MetaOverrideBilingualFamilies
   TestRound5MetaOverrideDefensiveQuotedSamplesRemainInert
   TestRound5MetaOverrideDefensiveTailCannotAuthorizeExecution
   TestRound5MetaOverrideFamiliesProduceFixedEvidence
   TestRound5MetaOverridePerformanceAcceptance
+  TestRound5NegationCannotHideLaterActiveIntent
   TestRound5PersistentBlockSurvivesIncidentalLowScoreTaxonomyTerms
   TestRound5PersistentInstructionInjectionAcrossLinkedUserSegments
   TestRound5PersistentInstructionInjectionBlocksOnlyActiveSafetyOverride
   TestRound5RefusalScopeOutputAndCompoundIntentHardening
   TestRound5NegationReversalKeepsTrueProhibitionsBenign
   TestRound5NormalizedContractionsRemainNegationReversals
+	TestRound5UnrelatedPassiveNegationCannotLaunderMetaTarget
+  TestRound5UnrelatedSignalsDoNotPolluteMetaTail
   TestRound5WrapperAuditSurvivesIncidentalLowScoreTaxonomyTerms
   TestSafetyLabelsCannotWashOutOperationalAbuse
   TestSameCategoryEvidenceCompositionIsScopedAndConservative
@@ -297,14 +337,6 @@ for name in "${expected_consumed_tests[@]}"; do
     exit 1
   fi
 done
-
-join_regex() {
-  local joined="" name
-  for name in "$@"; do
-    joined+="${joined:+|}${name}"
-  done
-  printf '^(%s)$' "$joined"
-}
 
 safe_pattern="$(join_regex "${expected_safe_classifier_entries[@]}")"
 boundary_pattern="$(join_regex \
