@@ -5,40 +5,88 @@ Last updated: 2026-07-15 (Asia/Shanghai)
 ## Fifth-round evidence addendum
 
 The fifth-round branch is based on
-`main@67b2470cf9be434adc0ce0c62fa6d2c0f9d21363`. The evidence below binds the
-pre-audit implementation freeze `1466b2e7dfcafbb0547fc7863a419eccccd8091f`; it
-does not validate the four fixes in the current audit delta. Before merge, the
-audit-fix source commit and exact-source push/PR CI must be recorded and its
-canonical development artifact, metadata, SO SHA-256, and checksum/sidecars
-must be regenerated and verified. Tencent Cloud isolated Host validation and
-independent source/artifact review have not run. Artifact hashes and GitHub
-Actions IDs in the later historical section belong to an older implementation
-freeze and must not be reused for this round.
+`main@67b2470cf9be434adc0ce0c62fa6d2c0f9d21363`. Audit-fix implementation
+freeze `174401cd234f960e66ce55b9fc88614d948d5129`, exact-source push CI, PR
+merge-validation CI, canonical development artifact identity, SO SHA-256, and
+checksum/sidecar verification are recorded below. Tencent Cloud isolated Host
+validation and independent source/artifact review have not run. The earlier
+pre-audit and historical artifact hashes remain provenance only and must not be
+reused for this implementation freeze.
 
 ```text
 fifth_round_branch: agent/round5-scalar-media-multipart-meta-override
 fifth_round_base_commit: 67b2470cf9be434adc0ce0c62fa6d2c0f9d21363
 fifth_round_pre_audit_source_commit: 1466b2e7dfcafbb0547fc7863a419eccccd8091f
-fifth_round_audit_fix_source_commit: PENDING COMMIT / MUST REPLACE BEFORE MERGE
-fifth_round_implementation_freeze: PENDING AUDIT-FIX COMMIT
+fifth_round_audit_fix_source_commit: 174401cd234f960e66ce55b9fc88614d948d5129
+fifth_round_implementation_freeze: 174401cd234f960e66ce55b9fc88614d948d5129
 fifth_round_pull_request: https://github.com/yujianwudi/cyber-abuse-guard/pull/7
 fifth_round_local_engineering_gates: PASS — DEVELOPMENT SELF-CHECK ONLY
 fifth_round_pre_audit_push_ci: PASS — 29400003434
 fifth_round_pre_audit_pull_request_ci: PASS — 29400080092
 fifth_round_pre_audit_ci_jobs: quality-and-artifacts=PASS; fuzz-long=PASS; reproducibility=PASS (both runs)
-fifth_round_audit_fix_exact_source_ci: PENDING / REQUIRED BEFORE MERGE
-fifth_round_audit_fix_ci_jobs: PENDING / REQUIRED BEFORE MERGE
+fifth_round_audit_fix_push_ci: PASS — 29406952739
+fifth_round_audit_fix_pull_request_ci: PASS — 29406955151
+fifth_round_audit_fix_ci_jobs: quality-and-artifacts=PASS; fuzz-long=PASS; reproducibility=PASS (both runs)
 fifth_round_pre_audit_canonical_artifact: VERIFIED — ID 8336957771
-fifth_round_audit_fix_canonical_artifact: PENDING REGENERATION AND VERIFICATION
-fifth_round_audit_fix_artifact_id_and_hashes: PENDING REGENERATION
-fifth_round_code_rabbit_initial_audit: 4 MAJOR issues — fixes implemented; exact-source evidence pending
+fifth_round_audit_fix_canonical_artifact: VERIFIED — ID 8339760603
+fifth_round_audit_fix_artifact_id_and_hashes: RECORDED / LOCALLY REHASHED
+fifth_round_code_rabbit_initial_audit: 4 MAJOR issues — verified and fixed
+fifth_round_code_rabbit_follow_up: 0 issues
 fifth_round_tencent_isolated_host: NOT RUN
 fifth_round_independent_review: NOT RUN
 fifth_round_stable_v0.1.2_tag: NOT CREATED / BLOCKED
 fifth_round_development_prerelease: OWNER-AUTHORIZED AFTER MERGE — v0.1.2-dev.round5.1
 fifth_round_github_release: DEVELOPMENT PRERELEASE ONLY / NOT PRODUCTION ADMISSION
 fifth_round_production_deployment: NOT PERFORMED
-fifth_round_status: AUDIT FIXES LOCALLY VALIDATED / EXACT-SOURCE CI AND ARTIFACT PENDING / METHODOLOGY HANDOFF BLOCKED
+fifth_round_status: ENGINEERING SOURCE/CI/ARTIFACT GATES PASS / METHODOLOGY HANDOFF BLOCKED
+```
+
+## Fifth-round audit-fix canonical artifact identity
+
+The exact-source canonical artifact for the audit-fix implementation freeze is
+the push-run artifact, not the PR-run artifact:
+
+```text
+artifact_id: 8339760603
+name: cyber-abuse-guard-linux-amd64-dirty
+size_in_bytes: 10690635
+container_digest: sha256:84a4003f3b8cccbb2454fcce689033bf0592b11e06f0e74c5632a1b5031cc6ce
+created_at: 2026-07-15T10:20:15Z
+expires_at: 2026-10-13T10:06:30Z
+workflow_run: https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29406952739
+source_commit: 174401cd234f960e66ce55b9fc88614d948d5129
+```
+
+The canonical artifact was downloaded and rehashed without deploying or loading
+the plugin. The audit bundle was treated as an opaque file for SHA-256 only; its
+contents were not opened.
+
+| File | SHA-256 | Verification |
+|---|---|---|
+| `cyber-abuse-guard-v0.1.2-dirty.so` | `7664a6ddc2f2301467200ee7f8d77b445e1627f3ab13e223c4dea2d83d1d6dc6` | `checksums.txt` and SO sidecar match |
+| `cyber-abuse-guard-v0.1.2-dirty.so.sha256` | `1c0afc8300cc68c54324fd67d5a45050afbb1955069dde90b7d9d4e4bd0a6606` | `checksums.txt` match |
+| `cyber-abuse-guard_0.1.2-dirty_linux_amd64.zip` | `6a9720cad5c4ee9ad6cfaae552c988bd14314b2afbc160bb62d045caa4ee4f72` | `checksums.txt` match |
+| `cyber-abuse-guard-v0.1.2-dirty-audit-bundle.zip` | `917a3b82de31b748fbcf65d6161c8e1589f8a90c512b2e2e615ce41e13a229f2` | `checksums.txt` match; body not opened |
+| `build-metadata.json` | `0698cdd9a2df7b1b39ca6a5c66b12958c9e067540a8ceef524818dcf84e7312b` | `checksums.txt` match |
+| `checksums.txt` | `bd65e32c7b70cbeefbf83b2efcf264f84e84efda8ddea52fc56bb260ee4f3ae1` | locally hashed |
+| `ruleset-manifest.json` | `486a4dfad49b4e96a600f908cbea47376baab5c8875324999ae50b6251f1af7e` | `checksums.txt` and ruleset sidecar match |
+| `ruleset.sha256` | `a8ff687340617dc18832047f841979a0bd06ff8c50a4bc3c15dd7da37b6fbee2` | `checksums.txt` match |
+| `sbom.cdx.json` | `0820956e7270401c3b2d8e66b48d3ad513c56053620a1f5c07ef2a6d983a076a` | `checksums.txt` match; CycloneDX 1.6 |
+
+All entries listed by `checksums.txt` rehashed successfully. Build metadata is:
+
+```text
+schema_version: 1
+version: 0.1.2-dirty
+source_version: 0.1.2
+commit: 174401cd234f960e66ce55b9fc88614d948d5129
+ruleset_version: 1.0.7
+ruleset_sha256: 7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134
+dirty: true
+source_date_epoch: 1784109984
+go_version: go1.26.4
+goos/goarch: linux/amd64
+cgo_enabled: true
 ```
 
 ## Fifth-round pre-audit artifact identity (superseded for the audit-fix delta)
@@ -96,12 +144,11 @@ goos/goarch: linux/amd64
 cgo_enabled: true
 ```
 
-The pre-audit artifact metadata still does not embed classifier-policy identity,
-and it predates the current classifier-policy digest. The audit-fix classifier
-identity therefore remains a joint binding of
+The audit-fix artifact metadata still does not embed classifier-policy identity.
+The audit-fix classifier identity therefore remains a joint binding of
 `classifier-policy-v2`, SHA-256
 `c2092d0949fcaa1d0f085dfe31a668d45cc4d14efc10427d0f3ebcf3e821a112`,
-and the pending exact audit-fix Git commit.
+and exact Git commit `174401cd234f960e66ce55b9fc88614d948d5129`.
 
 Ordinary CI is development-only. It runs `make integration-compile` and does
 not start CPA, deploy a plugin, or execute the real Host matrix. Existing
