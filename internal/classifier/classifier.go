@@ -2214,6 +2214,16 @@ func ruleIntentInflectionForms(intent string) ([4]string, int) {
 			count++
 		}
 	}
+	// English verbs ending in consonant+y replace y with i before -es/-ed.
+	// Preserve the y-stem so repeated forms such as copy/copies/copied are
+	// treated as one action family and cannot inherit defensive credit from an
+	// earlier occurrence through the coordination grammar.
+	for _, suffix := range []string{"ies", "ied"} {
+		if strings.HasSuffix(intent, suffix) && len(intent) > len(suffix)+1 {
+			add(strings.TrimSuffix(intent, suffix) + "y")
+			break
+		}
+	}
 	for _, suffix := range []string{"ing", "ed", "es", "s"} {
 		if !strings.HasSuffix(intent, suffix) || len(intent) <= len(suffix)+1 {
 			continue
@@ -2378,6 +2388,16 @@ func prohibitionNegationBridge(bridge string) bool {
 	fields := strings.Fields(strings.ToLower(bridge))
 	if len(fields) == 0 {
 		return false
+	}
+	modifierEnd := 0
+	for modifierEnd < len(fields) && directNegationModifier(fields[modifierEnd]) {
+		modifierEnd++
+	}
+	if len(fields)-modifierEnd == 2 && fields[modifierEnd+1] == "to" {
+		switch fields[modifierEnd] {
+		case "allowed", "permitted", "authorized", "required", "supposed", "able":
+			return true
+		}
 	}
 	for _, field := range fields {
 		if !directNegationModifier(field) {
@@ -2586,7 +2606,9 @@ var negationQuoteNormalizer = strings.NewReplacer("’", "'", "‘", "'")
 var negationContractionNormalizer = strings.NewReplacer(
 	"mustn't", "must not", "shouldn't", "should not", "won't", "will not", "needn't", "need not",
 	"oughtn't", "ought not", "shan't", "shall not", "wouldn't", "would not", "couldn't", "could not",
-	"don't", "do not", "can't", "cannot",
+	"don't", "do not", "can't", "cannot", "isn't", "is not", "aren't", "are not",
+	"wasn't", "was not", "weren't", "were not", "doesn't", "does not", "didn't", "did not",
+	"hasn't", "has not", "haven't", "have not", "hadn't", "had not",
 )
 
 func normalizeNegationSyntax(text string) string {

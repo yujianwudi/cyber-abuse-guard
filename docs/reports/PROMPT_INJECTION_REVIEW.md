@@ -103,11 +103,11 @@ Ruleset `1.0.7` identifies only embedded YAML Cyber Abuse assets. It does not
 include the Go-level `META-OVERRIDE-001` overlay, extraction semantics,
 tool-schema mappings, or control-plane telemetry. Fifth-round provenance must
 also bind `classifier-policy-v2` /
-`a28c9da8eeea0420f33d9fb421b662108b7944f9f49e1f14083b951f181993b0`
+`31ecabf97c9581c0d766f126290ca5ab9a07dc6a4c37afd9dd8743871482eead`
 and the exact Git commit.
 
 Ordinary CI no longer invokes the consumed evaluation-v10 boundary target and
-uses `make integration-compile` without starting CPA. The pinned CPA v7.2.79
+uses `make integration-compile` without starting CPA. The pinned CPA v7.2.80
 lane is source/compile compatibility evidence only; Tencent Cloud CPA v7.2.75
 remains the server Host baseline. The fifth-round unit/CI/artifact gates, that
 owner-operated Host validation, and independent source/artifact review are

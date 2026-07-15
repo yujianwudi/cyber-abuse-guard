@@ -4,21 +4,53 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 go_bin="${GO:-go}"
 cpa_module='github.com/router-for-me/CLIProxyAPI/v7'
-cpa_version='v7.2.79'
-cpa_repository='https://github.com/router-for-me/CLIProxyAPI.git'
-cpa_commit='b6ce0beecd31dff389d3190f7db6d7a1d4ce0e7e'
-cpa_module_sum='h1:/2s9euOTOeKUCIPWjHdCsll9vUHkJ/H2bq25Da3DQrg='
+cpa_version='v7.2.80'
+cpa_latest_release_api='https://api.github.com/repos/router-for-me/CLIProxyAPI/releases/latest'
+cpa_tag_ref_api='https://api.github.com/repos/router-for-me/CLIProxyAPI/git/ref/tags'
+cpa_commit='09da52ad509e2c18e7b9540db3b98c2214c280aa'
+cpa_module_sum='h1:QIa5T/KYvJACHVPPRzXcRwq/HLpbwWYJYpZAC1eY2WA='
 cpa_go_mod_sum='h1:ytvZNWbCv7PrAyR80+RKsDJPODsdL6qxyFaXDBNZdqs='
 
 if [[ "${CPA_LATEST_VERIFY_REMOTE:-0}" == "1" ]]; then
-  resolved_tag="$(GIT_TERMINAL_PROMPT=0 timeout 60s git ls-remote --refs "$cpa_repository" "refs/tags/$cpa_version")"
-  expected_tag="$(printf '%s\trefs/tags/%s' "$cpa_commit" "$cpa_version")"
-  [[ "$resolved_tag" == "$expected_tag" ]] || {
-    printf 'latest CPA tag identity mismatch: got %s want %s\n' "$resolved_tag" "$expected_tag" >&2
+  for required_command in curl jq; do
+    command -v "$required_command" >/dev/null 2>&1 || {
+      printf '%s is required for latest CPA release identity verification\n' "$required_command" >&2
+      exit 1
+    }
+  done
+  release_curl_args=(
+    --fail
+    --silent
+    --show-error
+    --location
+    --max-time 60
+    --header 'Accept: application/vnd.github+json'
+    --header 'X-GitHub-Api-Version: 2022-11-28'
+  )
+  if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+    release_curl_args+=(--header "Authorization: Bearer ${GITHUB_TOKEN}")
+  fi
+  latest_release_json="$(curl "${release_curl_args[@]}" "$cpa_latest_release_api")"
+  latest_release_tag="$(printf '%s\n' "$latest_release_json" | jq -er '.tag_name | select(type == "string" and length > 0)')"
+  [[ -n "$latest_release_tag" ]] || {
+    printf 'latest CPA release response did not contain tag_name\n' >&2
+    exit 1
+  }
+  [[ "$latest_release_tag" == "$cpa_version" ]] || {
+    printf 'latest CPA release mismatch: got %s want pinned %s\n' "$latest_release_tag" "$cpa_version" >&2
+    exit 1
+  }
+
+  tag_ref_json="$(curl "${release_curl_args[@]}" "$cpa_tag_ref_api/$cpa_version")"
+  resolved_tag_type="$(printf '%s\n' "$tag_ref_json" | jq -er '.object.type | select(type == "string" and length > 0)')"
+  resolved_tag_commit="$(printf '%s\n' "$tag_ref_json" | jq -er '.object.sha | select(type == "string" and length > 0)')"
+  [[ "$resolved_tag_type" == "commit" && "$resolved_tag_commit" == "$cpa_commit" ]] || {
+    printf 'latest CPA tag identity mismatch: got type=%s commit=%s want type=commit commit=%s\n' \
+      "$resolved_tag_type" "$resolved_tag_commit" "$cpa_commit" >&2
     exit 1
   }
 else
-  printf 'CPA latest remote tag check skipped; set CPA_LATEST_VERIFY_REMOTE=1 to require it\n' >&2
+  printf 'CPA latest release and remote tag checks skipped; set CPA_LATEST_VERIFY_REMOTE=1 to require them\n' >&2
 fi
 
 work="$(mktemp -d)"

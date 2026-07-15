@@ -14,10 +14,11 @@ The pinned module checksum is
 
 Pinned latest-compatibility evidence is a separate layer: the isolated
 `integration/cpalatestcontract` module and `make cpa-latest-compat` pin CPA
-v7.2.79 (`b6ce0beecd31dff389d3190f7db6d7a1d4ce0e7e`) and compile the Guard plus
+v7.2.80 (`09da52ad509e2c18e7b9540db3b98c2214c280aa`) and independently verify
+GitHub's current `releases/latest` and Tag-to-Commit identity before compiling the Guard plus
 integration package before running 16 official Router tests and the shared
 fail-open source overlay. This does not change the v7.2.75 artifact baseline or
-constitute a v7.2.79 native Host/Store load.
+constitute a v7.2.80 native Host/Store load.
 
 The repository work began from actual baseline
 `a121a444cb0d82cba4e27754914a1f88258e1d7b`. The root module and the isolated
@@ -27,8 +28,9 @@ fixture are distinct evidence layers; implementing a harness is not the same as
 executing it. Authoritative native evidence is restricted to the authorized
 GitHub CI Linux job and Leo's independent isolated environment. Historical
 evidence remains in `reports/TEST_REPORT.md` and `LEO_VERIFICATION_HANDOFF.md`;
-the current candidate is tracked in `ROUND4_LEO_REVIEW_HANDOFF.md` and remains
-pending until its CI artifact and CPA v7.2.75 Host matrix exist.
+the current candidate is tracked in `AUDIT_HANDOFF.md`,
+`reports/TEST_REPORT.md`, and `reports/RELEASE_EVIDENCE.md`, and remains pending
+until its CI artifact and CPA v7.2.75 Host matrix exist.
 
 This document describes a post-v10 development handoff, not an approved
 release. The methodologically valid v10 evaluation failed its first and only

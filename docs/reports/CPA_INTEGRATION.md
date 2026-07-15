@@ -4,12 +4,12 @@
 
 The runtime/artifact baseline for the round5.2 development tree remains CPA
 v7.2.75. A separate source/compile compatibility lane now pins the latest
-audited CPA release, `v7.2.79` at commit
-`b6ce0beecd31dff389d3190f7db6d7a1d4ce0e7e`:
+audited CPA release, `v7.2.80` at commit
+`09da52ad509e2c18e7b9540db3b98c2214c280aa`:
 
 ```text
-module: github.com/router-for-me/CLIProxyAPI/v7 v7.2.79
-module_sum: h1:/2s9euOTOeKUCIPWjHdCsll9vUHkJ/H2bq25Da3DQrg=
+module: github.com/router-for-me/CLIProxyAPI/v7 v7.2.80
+module_sum: h1:QIa5T/KYvJACHVPPRzXcRwq/HLpbwWYJYpZAC1eY2WA=
 go_mod_sum: h1:ytvZNWbCv7PrAyR80+RKsDJPODsdL6qxyFaXDBNZdqs=
 plugin_abi_rpc_router_store_diff: no breaking change found
 public_plugin_api_delta: UsageRecord.Generate bool (Guard does not register UsagePlugin)
@@ -19,13 +19,15 @@ shared_fail_open_overlay: PASS
 native_host_or_guard_so_load: NOT RUN
 ```
 
-The reproducible entrypoint is `make cpa-latest-compat`. It uses a temporary
+The reproducible entrypoint is `make cpa-latest-compat`. With
+`CPA_LATEST_VERIFY_REMOTE=1`, it first requires GitHub `releases/latest` to
+resolve to `v7.2.80` and the Tag to resolve to the pinned commit. It then uses a temporary
 modfile, an isolated `integration/cpalatestcontract` module, and the shared
 checksum-verified overlay. It does not start CPA, load a `.so`, install the
 Store archive, contact a Provider/account, or validate request reconstruction,
 logging, and zero-upstream side effects. Those remain owner-operated server
 sandbox work. The remainder of this report preserves historical v7.2.72
-implementation-freeze evidence and must not be relabeled as v7.2.79 Host proof.
+implementation-freeze evidence and must not be relabeled as v7.2.80 Host proof.
 
 ## Historical v7.2.72 implementation-freeze status
 

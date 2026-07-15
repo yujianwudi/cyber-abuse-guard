@@ -17,9 +17,9 @@ import (
 
 const (
 	cpaLatestModulePath        = "github.com/router-for-me/CLIProxyAPI/v7"
-	cpaLatestVersion           = "v7.2.79"
-	cpaLatestCommit            = "b6ce0beecd31dff389d3190f7db6d7a1d4ce0e7e"
-	cpaLatestModuleSum         = "h1:/2s9euOTOeKUCIPWjHdCsll9vUHkJ/H2bq25Da3DQrg="
+	cpaLatestVersion           = "v7.2.80"
+	cpaLatestCommit            = "09da52ad509e2c18e7b9540db3b98c2214c280aa"
+	cpaLatestModuleSum         = "h1:QIa5T/KYvJACHVPPRzXcRwq/HLpbwWYJYpZAC1eY2WA="
 	cpaLatestGoModSum          = "h1:ytvZNWbCv7PrAyR80+RKsDJPODsdL6qxyFaXDBNZdqs="
 	cpaLatestPluginHostPackage = cpaLatestModulePath + "/internal/pluginhost"
 	cpaLatestFixtureSHA256     = "9d8b420cac74ea54bb54753269bdebf5e9fbc0f8c0192034a8ea4dda83adbb80"
@@ -109,7 +109,7 @@ func TestLatestCPAHostFailOpenFixtureContract(t *testing.T) {
 		t.Fatalf("shared Host fixture sha256=%s, want %s", actual, cpaLatestFixtureSHA256)
 	}
 
-	moduleCopy := filepath.Join(t.TempDir(), "cpa-v7.2.79")
+	moduleCopy := filepath.Join(t.TempDir(), "cpa-v7.2.80")
 	if errCopyModule := os.CopyFS(moduleCopy, os.DirFS(module.Dir)); errCopyModule != nil {
 		t.Fatalf("copy latest CPA module for Host fixture: %v", errCopyModule)
 	}

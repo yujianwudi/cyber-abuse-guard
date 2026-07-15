@@ -110,8 +110,9 @@ safety/config semantics remain a host schema-policy responsibility. Local WSL
 Host/Router/proxy commands were mistakenly executed with
 loopback/Mock components and cleaned up without residual processes, but are
 excluded from evidence. Historical results are reported in
-`reports/TEST_REPORT.md` and `LEO_VERIFICATION_HANDOFF.md`; the current pending
-candidate is in `ROUND4_LEO_REVIEW_HANDOFF.md`. Any missing final-commit Host,
+`LEO_VERIFICATION_HANDOFF.md`; the current pending candidate is recorded in
+`AUDIT_HANDOFF.md`, `reports/TEST_REPORT.md`, and
+`reports/RELEASE_EVIDENCE.md`. Any missing final-commit Host,
 GitHub CI, artifact, or proxy result is **NOT RUN** or **BLOCKED**, never an
 inferred PASS. Embedded ruleset `1.0.7` identifies YAML assets only and does
 not include the Go `META-OVERRIDE-001` overlay. The fifth-round Tencent Cloud

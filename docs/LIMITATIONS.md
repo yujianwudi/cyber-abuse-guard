@@ -260,7 +260,7 @@
 
 37. **Classifier-policy identity is source-bound but not yet artifact-bound.**
     The round5.2 Go-level source identity is `classifier-policy-v2` / SHA-256
-    `a28c9da8eeea0420f33d9fb421b662108b7944f9f49e1f14083b951f181993b0`.
+    `31ecabf97c9581c0d766f126290ca5ab9a07dc6a4c37afd9dd8743871482eead`.
     The historical round5.1 value was `classifier-policy-v2` / SHA-256
     `c2092d0949fcaa1d0f085dfe31a668d45cc4d14efc10427d0f3ebcf3e821a112`.
     Ruleset `1.0.7` separately identifies YAML assets and
@@ -421,14 +421,14 @@
     restricted access; v10 remains `CONSUMED / FAIL`, and methodology handoff
     remains blocked.
 
-54. **CPA v7.2.79 compatibility is source/compile evidence only.** The separate
-    `integration/cpalatestcontract` module pins `v7.2.79` at commit
-    `b6ce0beecd31dff389d3190f7db6d7a1d4ce0e7e` and exact Go module checksums.
+54. **CPA v7.2.80 compatibility is source/compile evidence only.** The separate
+    `integration/cpalatestcontract` module pins `v7.2.80` at commit
+    `09da52ad509e2c18e7b9540db3b98c2214c280aa` and exact Go module checksums.
     The latest-compat lane compiles the Guard and integration packages, runs 16
     official Router tests, and applies the shared checksum-verified fail-open
     overlay to an ephemeral official-source copy. It does not start CPA, load a
     Guard `.so`, install through Store, or prove request reconstruction,
-    logging, Auth/Provider/Usage isolation, and upstream behavior on v7.2.79.
+    logging, Auth/Provider/Usage isolation, and upstream behavior on v7.2.80.
     The artifact/runtime baseline remains v7.2.75 until the owner runs the
     authorized server sandbox matrix.
 

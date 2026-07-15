@@ -20,8 +20,8 @@ round5_2_branch: agent/post-release-reaudit-fixes
 round5_2_base_commit: 89b62b341278073e7b6518b85e41cd7f7c6b682c
 round5_2_source_fixes: IN PROGRESS / PRE-FREEZE
 round5_2_source_freeze: PENDING PRE-MERGE BACKFILL
-round5_2_classifier_policy_identity: classifier-policy-v2 / a28c9da8eeea0420f33d9fb421b662108b7944f9f49e1f14083b951f181993b0
-round5_2_cpa_latest_source_compat: v7.2.79 / b6ce0beecd31dff389d3190f7db6d7a1d4ce0e7e / DEVELOPMENT SELF-CHECK PASS / GITHUB CI PENDING
+round5_2_classifier_policy_identity: classifier-policy-v2 / 31ecabf97c9581c0d766f126290ca5ab9a07dc6a4c37afd9dd8743871482eead
+round5_2_cpa_latest_source_compat: v7.2.80 / 09da52ad509e2c18e7b9540db3b98c2214c280aa / DEVELOPMENT SELF-CHECK PASS / GITHUB CI PENDING
 round5_2_public_reference_corpus: 36 sanitized cases / 18 allow / 18 audit / development-only
 round5_2_local_safe_gates: PENDING PRE-MERGE BACKFILL
 round5_2_push_ci: PENDING PRE-MERGE BACKFILL
@@ -55,12 +55,29 @@ records, list each of the nine asset SHA-256 values, and preserve every
 tag resolve to one commit.
 
 The latest-compat lane is separate from the CPA v7.2.75 runtime/artifact
-baseline. It pins CPA v7.2.79 with module checksum
-`h1:/2s9euOTOeKUCIPWjHdCsll9vUHkJ/H2bq25Da3DQrg=` and go.mod checksum
+baseline. It pins CPA v7.2.80 with module checksum
+`h1:QIa5T/KYvJACHVPPRzXcRwq/HLpbwWYJYpZAC1eY2WA=` and go.mod checksum
 `h1:ytvZNWbCv7PrAyR80+RKsDJPODsdL6qxyFaXDBNZdqs=`. The development self-check
 compiled Guard/integration packages, ran the fixed 16 official Router tests,
 and ran the checksum-verified fail-open overlay. No CPA Host or `.so` was
 started/loaded; branch/PR CI remains a pre-merge backfill field.
+
+The round5.2 re-audit also reproduced and closed three source-level merge
+blockers with sanitized CANARY inputs. Repeated `copy/copies/copied` forms no
+longer inherit an earlier prohibition; bounded `not allowed/permitted/
+authorized/required/supposed/able to prohibit ...` bridges and common copular/
+do/have contractions no longer hide an active intent; and meta-wrapper
+structural analysis now rejects defensive credit after 128 clauses or 1,024
+directive boundaries. The reachable `8 x 32 KiB` period/semicolon/newline
+CANARY gate fell from about 118-123 ms and 12.1 MiB/op before the fix to about
+7-10 ms and 1.36 MiB/op after it. These are development measurements, not Host
+or production evidence.
+
+Release-path hardening in the same source freeze makes every tracked shell
+script executable in Git, runs dirty `release-preflight` in ordinary CI, adds
+the previously omitted CPA Host/latest/proxy gates to formal release, and
+verifies both GitHub `releases/latest` and the pinned Tag-to-Commit ref through
+authenticated REST metadata when a token is available.
 
 The sanitized public-reference refresh is fixed to
 `MDX-Tom/gpt-5.6-instruct@5f469e43ef66f540cadb475039fd9ed469aef654`,
@@ -73,7 +90,9 @@ it cannot attribute repository origin or inspect opaque/local-only content.
 ## Historical round5.1 prerelease closure
 
 [`v0.1.2-dev.round5.1`](https://github.com/yujianwudi/cyber-abuse-guard/releases/tag/v0.1.2-dev.round5.1)
-is an immutable historical development prerelease. It is explicitly
+is treated as a historical development snapshot by project policy. GitHub
+currently reports `isImmutable=false`, so its API metadata and hashes are
+point-in-time evidence rather than platform-enforced immutability. It is explicitly
 `BLOCKED / NOT FOR DEPLOYMENT`, `prerelease=true`, and `latest=false`. Its tag
 must remain at `89b62b341278073e7b6518b85e41cd7f7c6b682c`; moving or reusing that
 tag would break the recorded source/artifact chain. Any later source must use a
@@ -294,7 +313,7 @@ Release evidence must bind two separate policy identities:
   `classifier-policy-v2` /
   `c2092d0949fcaa1d0f085dfe31a668d45cc4d14efc10427d0f3ebcf3e821a112`.
   The round5.2 source-bound value is `classifier-policy-v2` /
-  `a28c9da8eeea0420f33d9fb421b662108b7944f9f49e1f14083b951f181993b0`;
+  `31ecabf97c9581c0d766f126290ca5ab9a07dc6a4c37afd9dd8743871482eead`;
   the exact source-freeze Commit remains a separate pre-merge field.
 
 Ruleset `1.0.7` alone does not identify the complete policy. The Tool schema

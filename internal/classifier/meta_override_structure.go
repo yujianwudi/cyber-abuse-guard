@@ -9,6 +9,8 @@ import (
 const (
 	maxMetaOverrideQuotedSpans           = 16
 	maxMetaOverrideSplitAssociationBytes = 512
+	maxMetaOverrideDirectiveClauses      = 128
+	maxMetaOverrideDirectiveBoundaries   = 1024
 )
 
 type metaOverrideQuotedSpan struct {
@@ -413,7 +415,14 @@ func metaOverrideHasNegatedMetaAction(text string) bool {
 }
 
 func metaOverrideHasActiveDirective(text string) bool {
-	clauses := metaOverrideDirectiveClausesWithBoundaries(text)
+	clauses, overflow := metaOverrideDirectiveClausesBounded(text)
+	if overflow {
+		// Structural analysis grants optional defensive credit. A request that
+		// exceeds the fixed clause or separator budget is ambiguous, so retain the
+		// active wrapper interpretation instead of materializing attacker-sized
+		// clause slices or treating the uninspected suffix as inert.
+		return true
+	}
 	if metaOverrideAdjacentClausesHaveActiveDirective(clauses) {
 		return true
 	}
@@ -1290,14 +1299,27 @@ func metaOverrideDirectiveClauses(text string) []string {
 }
 
 func metaOverrideDirectiveClausesWithBoundaries(text string) []metaOverrideDirectiveClause {
+	clauses, _ := metaOverrideDirectiveClausesBounded(text)
+	return clauses
+}
+
+func metaOverrideDirectiveClausesBounded(text string) ([]metaOverrideDirectiveClause, bool) {
 	clauses := make([]metaOverrideDirectiveClause, 0, 4)
 	start := 0
 	boundaryBefore := rune(0)
+	boundaries := 0
 	for index, r := range text {
 		if !metaOverrideDirectiveBoundary(r) {
 			continue
 		}
+		boundaries++
+		if boundaries > maxMetaOverrideDirectiveBoundaries {
+			return clauses, true
+		}
 		if clause := strings.TrimSpace(text[start:index]); clause != "" {
+			if len(clauses) >= maxMetaOverrideDirectiveClauses {
+				return clauses, true
+			}
 			clauses = append(clauses, metaOverrideDirectiveClause{text: clause, boundaryBefore: boundaryBefore})
 			boundaryBefore = r
 		} else if boundaryBefore == 0 || !metaOverrideSplitAssociationBoundary(r) {
@@ -1310,9 +1332,12 @@ func metaOverrideDirectiveClausesWithBoundaries(text string) []metaOverrideDirec
 		start = index + utf8.RuneLen(r)
 	}
 	if clause := strings.TrimSpace(text[start:]); clause != "" {
+		if len(clauses) >= maxMetaOverrideDirectiveClauses {
+			return clauses, true
+		}
 		clauses = append(clauses, metaOverrideDirectiveClause{text: clause, boundaryBefore: boundaryBefore})
 	}
-	return clauses
+	return clauses, false
 }
 
 func metaOverrideDirectiveBoundary(r rune) bool {
@@ -1334,13 +1359,26 @@ func metaOverrideSplitAssociationBoundary(r rune) bool {
 }
 
 func metaOverrideLastDirectiveClause(text string) string {
-	clauses := metaOverrideDirectiveClauses(text)
-	for index := len(clauses) - 1; index >= 0; index-- {
-		if clause := strings.TrimSpace(clauses[index]); clause != "" {
-			return clause
+	last := ""
+	start := 0
+	boundaries := 0
+	for index, r := range text {
+		if !metaOverrideDirectiveBoundary(r) {
+			continue
 		}
+		boundaries++
+		if boundaries > maxMetaOverrideDirectiveBoundaries {
+			return ""
+		}
+		if clause := strings.TrimSpace(text[start:index]); clause != "" {
+			last = clause
+		}
+		start = index + utf8.RuneLen(r)
 	}
-	return ""
+	if clause := strings.TrimSpace(text[start:]); clause != "" {
+		last = clause
+	}
+	return last
 }
 
 func metaOverrideTrimDirectiveCue(text string) string {
