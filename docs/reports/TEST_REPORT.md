@@ -5,23 +5,34 @@ Last updated: 2026-07-15 (Asia/Shanghai)
 ## Fifth-round evidence status
 
 The fifth-round branch starts from
-`main@67b2470cf9be434adc0ce0c62fa6d2c0f9d21363`. Its implementation-freeze
-commit, exact-commit GitHub CI run, artifact ID/hashes, Tencent Cloud isolated
-Host result, and independent source/artifact review are not yet recorded in
-this report. Current status is:
+`main@67b2470cf9be434adc0ce0c62fa6d2c0f9d21363`. Implementation freeze
+`1466b2e7dfcafbb0547fc7863a419eccccd8091f`, exact-source push CI, PR
+merge-validation CI, and the canonical push artifact are recorded below.
+Tencent Cloud isolated Host validation and independent source/artifact review
+have not run. Current status is:
 
 ```text
-LOCAL ENGINEERING GATES PASS / IMPLEMENTATION FREEZE AND CI PENDING /
+ENGINEERING SOURCE/CI/ARTIFACT GATES PASS /
+REAL HOST AND INDEPENDENT REVIEW NOT RUN /
 METHODOLOGY HANDOFF BLOCKED
 ```
 
+Remote implementation-freeze evidence:
+
+| Evidence | Result |
+|---|---|
+| Push run [29400003434](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29400003434) at `1466b2e7` | `quality-and-artifacts`, `fuzz-long`, and `reproducibility`: **SUCCESS** |
+| PR run [29400080092](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29400080092) | `quality-and-artifacts`, `fuzz-long`, and `reproducibility`: **SUCCESS** |
+| Canonical exact-source artifact | Push artifact ID `8336957771`, `cyber-abuse-guard-linux-amd64-dirty`, `10686558` bytes, expiry `2026-10-13T08:13:03Z`; SO SHA-256 `ccc818561077f2840f3d00d33cbc344ed9055aede725986c8c17b22fdb427d5e` |
+| PR-run artifact | ID `8336942789`; its internal metadata binds GitHub temporary merge commit `226c89e3b932c18f9572822db9cf27a3faab09ec`, so it is not the canonical exact-source artifact |
+| CodeRabbit | **PENDING / REVIEW QUEUED** at evidence freeze; no approval or final review conclusion claimed |
+
 The following local results are `DEVELOPMENT SELF-CHECK` evidence only. They do
-not replace exact-commit GitHub CI, artifact verification, Tencent Cloud Host
-validation, or independent review. General gates were rerun with the repository
-CI toolchain (`GOTOOLCHAIN=go1.26.4`) after the final Tool-schema test change;
-the earlier full safe race and fuzz runs used the installed Go 1.26.0 toolchain.
-No command below started CPA, loaded the real Guard `.so`, ran
-`make integration-test`, or selected a holdout/evaluation test.
+not replace Tencent Cloud Host validation or independent review. General gates
+were rerun with the repository CI toolchain (`GOTOOLCHAIN=go1.26.4`) after the
+final Tool-schema test change; the earlier full safe race and fuzz runs used the
+installed Go 1.26.0 toolchain. No command below started CPA, loaded the real
+Guard `.so`, ran `make integration-test`, or selected a holdout/evaluation test.
 
 | Command | Exit | Result |
 |---|---:|---|
@@ -58,18 +69,19 @@ Two non-PASS first attempts are retained for audit transparency:
   standard-library findings were already fixed in Go 1.26.1/1.26.4. The exact
   CI toolchain rerun under Go 1.26.4 exited 0 as recorded above.
 
-Required fifth-round evidence and remaining remote gates are:
+Fifth-round exact-freeze coverage and remaining remote gates are:
 
-| Gate | Required evidence before handoff |
+| Gate | Executed evidence / remaining status |
 |---|---|
-| HIGH-A scalar `source`/`uri`/`url`/`image_url` order invariance | `make round5-regression`, dedicated permutation fuzz, and bounded benchmark on the exact commit |
-| HIGH-B multipart unknown-field precedence | Fixed `multipart_unknown_field` disposition, plugin privacy/counter tests, evidence-order fuzz, and 1/8 MiB allocation benchmarks |
-| Meta-override families and benign neighbors | Fixed family evidence, wrapper-only allow/audit, persistent-injection, compound-intent, quoted-analysis, bilingual, fuzz, and benchmarks |
-| Tool key-only control | `cag_control_schema=meta_override_control/v1` activates mapping only in established tool/tool-payload provenance; ordinary business JSON keys remain inert and unknown known-schema controls become `tool_schema` incomplete |
-| Sanitized public-taxonomy corpus | `make development-public-jailbreak-corpus`; manifest must remain development-only, never Holdout, and contain no live payloads |
-| General quality | module verify/tidy-diff, safe unit/race, vet, fuzz-smoke, benchmark, privacy, script and artifact checks |
-| Integration | `make integration-compile` only in ordinary CI; it must not start CPA or perform local Host validation |
-| Host/independent review | Tencent Cloud CPA v7.2.75 isolated container, Mock upstream only, then separate source/artifact review |
+| HIGH-A scalar `source`/`uri`/`url`/`image_url` order invariance | **PASS** — `round5-regression`, permutation fuzz, privacy assertions, and bounded benchmark passed locally and in exact-source CI |
+| HIGH-B multipart unknown-field precedence | **PASS** — fixed `multipart_unknown_field` disposition, plugin privacy/counter tests, evidence-order fuzz, and 1/8 MiB allocation benchmarks passed |
+| Meta-override families and benign neighbors | **PASS** — fixed family evidence, wrapper-only allow/audit, persistent injection, compound intent, quoted analysis, bilingual cases, fuzz, and benchmarks passed |
+| Tool key-only control | **PASS** — `meta_override_control/v1` maps all five approved booleans only in tool provenance; false controls remain inert and unknown known-schema controls become `tool_schema` incomplete |
+| Sanitized public-taxonomy corpus | **PASS** — strict validator passed; manifest remains development-only, future-Holdout-ineligible, and contains no live payloads |
+| General quality | **PASS** — module verify/tidy-diff, safe unit/race, vet, fuzz-smoke/long fuzz, benchmark, privacy, scripts, vulncheck, SBOM, package verification, and reproducibility |
+| Integration | **PASS AT COMPILE/SOURCE-CONTRACT LEVEL ONLY** — ordinary CI ran `make integration-compile` and CPA v7.2.75 source contracts; it did not start CPA or load `.so` |
+| Artifact | **VERIFIED DEVELOPMENT EVIDENCE** — canonical push artifact `8336957771`; all listed checksums and sidecars matched; audit bundle body not opened |
+| Host/independent review | **NOT RUN** — reserved for Tencent Cloud CPA v7.2.75 isolated container with Mock upstream, followed by separate source/artifact review |
 
 Ordinary CI deliberately excludes `make consumed-boundary-test` and every
 evaluation-v10/retired-Holdout content path. The target remains only as an
@@ -104,9 +116,16 @@ extractor walk. Existing differential/race/fuzz tests have not reproduced a
 leak, but a single shared semantic parse product is still the intended future
 hardening.
 
-Unit or CI success is not production admission. After all source and artifact
-gates, the maximum permitted status is
-`READY FOR INDEPENDENT SOURCE/ARTIFACT REVIEW`, never `PRODUCTION APPROVED`.
+One task-book evidence gap also remains: base `67b2470` to freeze `1466b2e7`
+is a single composite implementation commit. Exact post-fix regressions are
+green, but no independently preserved pre-fix red-test commit or command log
+exists for the two HIGH cases. This report does not infer historical red status
+from the final green result.
+
+Unit or CI success is not production admission. The engineering evidence package
+can be inspected independently, but the recorded methodology incident keeps the
+formal handoff `BLOCKED FOR HANDOFF`; it must never be labeled
+`PRODUCTION APPROVED`.
 
 ---
 

@@ -14,11 +14,12 @@ English | [简体中文](README_CN.md)
 > [!WARNING]
 > This repository is an **unreleased fifth-round development candidate**. The
 > v0.1.2 release decision is **BLOCKED**, and the only methodologically valid
-> v10 evaluation remains `CONSUMED / FAIL`. Fifth-round source, CI, artifact,
-> Tencent Cloud isolated-Host, and independent-review gates are separate. Do
-> not create a v0.1.2 tag or GitHub Release, and do not deploy this candidate to
-> production. Unit or GitHub CI success would be engineering evidence only,
-> never production admission.
+> v10 evaluation remains `CONSUMED / FAIL`. Fifth-round source, exact-commit CI,
+> and the canonical push artifact are recorded engineering evidence; Tencent
+> Cloud isolated-Host validation and independent review have not run. Do not
+> create a v0.1.2 tag or GitHub Release, and do not deploy this candidate to
+> production. Engineering success is not production admission, and the recorded
+> restricted-corpus methodology incident independently keeps handoff blocked.
 
 When CPA has loaded and registered the plugin, Router ordering reaches it, and
 the self-executor is ready, CPA Cyber Abuse Guard inspects supported model
@@ -41,7 +42,7 @@ is not sent to a public classifier.
 | Unsupported platform | musl/Alpine |
 | Embedded YAML ruleset | `1.0.7`, SHA-256 `7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134` |
 | Classifier policy identity | `classifier-policy-v2`, SHA-256 `5fc25855a868cba206123697c1631ba251575157f37cd79654e9a65c888a750b` |
-| Current validation | Fifth-round local development gates pass on the candidate tree, including safe unit/race, vet, fuzz, benchmark, privacy, Go 1.26.4 vulncheck, source-contract, and integration compile-only checks. Implementation-freeze commit, exact-commit CI, artifact inspection, Tencent Cloud isolated Host validation, and independent review are pending. The restricted-corpus methodology incident independently keeps handoff blocked; this is not production approval. |
+| Current validation | Implementation freeze `1466b2e7dfcafbb0547fc7863a419eccccd8091f` passed local development gates, exact-source push CI `29400003434`, and PR merge-validation CI `29400080092`; `quality-and-artifacts`, `fuzz-long`, and `reproducibility` all succeeded in both runs. Canonical push artifact `8336957771` was downloaded and statically rehashed; SO SHA-256 is `ccc818561077f2840f3d00d33cbc344ed9055aede725986c8c17b22fdb427d5e`. Tencent Cloud isolated Host validation and independent review are not run. The restricted-corpus methodology incident independently keeps handoff blocked; this is not production approval. |
 
 ## Fifth-round boundary and review status
 
@@ -81,6 +82,10 @@ is not sent to a public classifier.
   primary extractor walk. Differential, race, fuzz, and scalar-media tests have
   not reproduced semantic leakage, but a future refactor should emit Parts and
   Segments from one semantic parse product to remove parser-drift risk.
+- The base-to-freeze history contains one composite fifth-round implementation
+  commit. Exact post-fix regressions are green, but no independently preserved
+  pre-fix red-test commit or command log exists. The task-book requirement to
+  prove both HIGH cases red before the fix remains an independent audit item.
 - During this fifth-round review, one over-broad read-only `git grep`
   unexpectedly emitted content from the restricted
   `testdata/holdout/malicious-operational.jsonl` file. No holdout test ran; the
@@ -95,8 +100,9 @@ the native harness installs the real Store ZIP, loads the real Guard `.so`, and
 uses a pure-C second Router/executor fixture. Source or compile-only results do
 not prove native compatibility: fifth-round ordinary CI executes bounded
 source-contract tests and compiles the integration-tagged package without
-starting CPA or loading the `.so`; the exact artifact, Tencent Cloud CPA
-v7.2.75 isolated-Host matrix, and independent review are still pending.
+starting CPA or loading the `.so`. The canonical exact-source artifact has been
+statically verified, but the Tencent Cloud CPA v7.2.75 isolated-Host matrix and
+independent review are still not run.
 
 ## What this project is
 
@@ -192,10 +198,10 @@ reviewed metadata and file fields, and treats every unknown non-file field as
 incomplete schema rather than classifier text.
 
 The earlier v7.2.72 four-protocol HTTP and zero-downstream-call matrix remains
-historical evidence for implementation freeze `61536f9`. It does not validate
-the fifth-round CPA v7.2.75 candidate; its exact-commit CI, artifact, real-Host
-matrix, audit privacy check, and independent verification are separate pending
-gates.
+historical evidence for implementation freeze `61536f9`. Fifth-round
+implementation freeze `1466b2e7` has its own exact-source CI and statically
+verified development artifact, but no fifth-round CPA v7.2.75 real-Host matrix
+or independent verification has run.
 
 Recognized roles keep system safety policy and assistant refusals separate from
 user intent. User-authored adjacent turns and one explicitly linked bounded
@@ -299,17 +305,19 @@ must separately cover commercial mode, retention, permissions, and deletion.
 
 | Evidence | Status |
 |---|---|
-| Fifth-round two-HIGH, meta-override, tool-schema, corpus, race/vet/fuzz/benchmark, artifact, and CPA v7.2.75 Host gates | **PENDING** — no fifth-round CI run, artifact hash, implementation freeze, Tencent isolated-Host conclusion, or independent review is recorded yet |
+| Fifth-round two-HIGH, meta-override, tool-schema, corpus, race/vet/fuzz/benchmark, and source/artifact gates | **GITHUB CI PASS / ARTIFACT HASH VERIFIED** on implementation freeze `1466b2e7`; push run [29400003434](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29400003434) and PR run [29400080092](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29400080092) each passed `quality-and-artifacts`, `fuzz-long`, and `reproducibility`; canonical push artifact ID `8336957771`, SO SHA-256 `ccc818561077f2840f3d00d33cbc344ed9055aede725986c8c17b22fdb427d5e` |
+| Fifth-round CPA v7.2.75 isolated Host and independent review | **NOT RUN / PENDING** — ordinary CI is source-contract plus integration compile-only; no CPA process was started and no `.so` was loaded |
 | Historical safe unit/race boundary, vet, fuzz-smoke, regression, build, packaging, and reproducibility workflows | **GITHUB CI PASS** on earlier implementation freeze `61536f9`; push run [29312969925](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29312969925) and PR run [29312971717](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29312971717); not fifth-round evidence |
-| Safe Go development scripts | `test`, `race`, and `boundary` **DEVELOPMENT SELF-CHECK PASS** on the pre-review implementation tree, WSL Ubuntu 26.04 / Go 1.26.4; exact-freeze coverage is provided by GitHub CI |
-| CPA Store ZIP naming/layout/install source contract | Updated to official CPA v7.2.75 source; fifth-round exact-commit CI evidence pending |
-| CPA Router ordering/fallback source contract | Updated to official CPA v7.2.75 source; fifth-round exact-commit CI evidence pending |
+| Safe Go development scripts | `test`, `race`, and bounded development gates **DEVELOPMENT SELF-CHECK PASS**; the implementation freeze is also covered by exact-source push CI and PR merge validation |
+| CPA Store ZIP naming/layout/install source contract | **GITHUB CI PASS** against official CPA v7.2.75 source; this is not a real Store install or native Host load |
+| CPA Router ordering/fallback source contract | **GITHUB CI PASS** against official CPA v7.2.75 source; this is not the isolated Host matrix |
 | Local executor refusal contract | RPC error envelopes request 403 for `execute`, `execute_stream`, and `count_tokens`; `http_request` has a SOURCE/ADAPTER status-error 405 check with no response only |
 | Historical native plugin loading | **GITHUB CI PASS** for the earlier v7.2.72 freeze; current CPA v7.2.75 Store artifact/load is **PENDING** |
 | Historical OpenAI Chat / Responses / Claude / Gemini server matrix | **GITHUB CI PASS** on the earlier v7.2.72 freeze; fifth-round Host cases are pending and ordinary CI is compile-only |
-| Historical zero Auth Selector / Usage / Provider / upstream calls on blocked requests | **GITHUB CI PASS** on the earlier freeze; current exact-artifact proof is pending |
+| Historical zero Auth Selector / Usage / Provider / upstream calls on blocked requests | **GITHUB CI PASS** on the earlier freeze; the fifth-round exact artifact's real-Host zero-side-effect proof is not run |
 | Historical Multi-Router/fail-open and management proxy 413 matrices | **GITHUB CI PASS** on the earlier freeze — 15 native Router scenarios and proxy rejection before the counted CPA handler |
 | Final official CPA client HTTP 405 for `executor.http_request` | **NOT AVAILABLE / NOT RUN** — `/v1/alpha/search` is provider-specific, normally selects `codex`, and maps every executor error to 502; no current official route maps Guard's 405 error to final 405 |
+| CodeRabbit review on PR #7 | **PENDING / REVIEW QUEUED** at evidence freeze; no CodeRabbit approval or actionable-review conclusion is claimed |
 | Independent release evaluation | v10 consumed and failed; a new unseen set is required |
 | Production release | Blocked |
 
@@ -353,10 +361,14 @@ Historical v7.2.72 source/native evidence boundaries are recorded in
 [CPA_INTEGRATION.md](docs/reports/CPA_INTEGRATION.md) and
 [LEO_VERIFICATION_HANDOFF.md](docs/LEO_VERIFICATION_HANDOFF.md). The older
 [PHASE0_CPA_CONTRACT.md](docs/reports/PHASE0_CPA_CONTRACT.md) remains historical
-Phase 0 evidence. The current candidate is tracked separately in
-[ROUND4_LEO_REVIEW_HANDOFF.md](docs/ROUND4_LEO_REVIEW_HANDOFF.md), whose status
-remains pending. Historical evaluation datasets are frozen; do not rerun or
-tune against individual v10 rows.
+Phase 0 evidence, and
+[ROUND4_LEO_REVIEW_HANDOFF.md](docs/ROUND4_LEO_REVIEW_HANDOFF.md) is a historical
+round-four handoff. The current candidate is tracked by
+[PR #7](https://github.com/yujianwudi/cyber-abuse-guard/pull/7),
+[AUDIT_HANDOFF.md](docs/AUDIT_HANDOFF.md),
+[TEST_REPORT.md](docs/reports/TEST_REPORT.md), and
+[RELEASE_EVIDENCE.md](docs/reports/RELEASE_EVIDENCE.md). Historical evaluation
+datasets are frozen; do not rerun or tune against individual v10 rows.
 
 ## Developer and auditor checks
 
@@ -409,6 +421,14 @@ must not be run for the current blocked candidate.
 
 Development CI may build dirty-suffixed evidence artifacts. No formal v0.1.2
 release artifact exists.
+
+The canonical fifth-round exact-source evidence artifact is the push-run
+artifact `cyber-abuse-guard-linux-amd64-dirty`, ID `8336957771`, size
+`10686558` bytes, container digest
+`sha256:b2662faa01071cef6a111b03d1cff85d3bf4796ed2e7a54aaf584c451f581a8e`,
+expiring `2026-10-13T08:13:03Z`. Its internal `checksums.txt` and sidecars were
+downloaded and rehashed successfully. The audit bundle was hashed as an opaque
+file and was not opened. This is a dirty development artifact, not a Release.
 
 | Artifact | Contract |
 |---|---|
