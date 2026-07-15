@@ -22,7 +22,7 @@ const (
 	cpaLatestModuleSum         = "h1:/2s9euOTOeKUCIPWjHdCsll9vUHkJ/H2bq25Da3DQrg="
 	cpaLatestGoModSum          = "h1:ytvZNWbCv7PrAyR80+RKsDJPODsdL6qxyFaXDBNZdqs="
 	cpaLatestPluginHostPackage = cpaLatestModulePath + "/internal/pluginhost"
-	cpaLatestFixtureSHA256     = "339609fd4f36b60c31330ae24e16d5c3184eb9a24fe991900f361bd30bcac812"
+	cpaLatestFixtureSHA256     = "9d8b420cac74ea54bb54753269bdebf5e9fbc0f8c0192034a8ea4dda83adbb80"
 )
 
 var latestCriticalCPAHostTests = []string{
@@ -96,6 +96,13 @@ func TestLatestCPAHostFailOpenFixtureContract(t *testing.T) {
 	fixtureData, errReadFixture := os.ReadFile(fixturePath)
 	if errReadFixture != nil {
 		t.Fatalf("read shared Host fixture: %v", errReadFixture)
+	}
+	// Git stores the fixture with LF, while a Windows worktree may materialize
+	// it as CRLF. Pin the canonical Git content instead of platform-specific
+	// checkout bytes, and write the same canonical source into the module copy.
+	fixtureData = bytes.ReplaceAll(fixtureData, []byte("\r\n"), []byte("\n"))
+	if bytes.ContainsRune(fixtureData, '\r') {
+		t.Fatal("shared Host fixture contains a non-canonical carriage return")
 	}
 	fixtureHash := sha256.Sum256(fixtureData)
 	if actual := hex.EncodeToString(fixtureHash[:]); actual != cpaLatestFixtureSHA256 {
