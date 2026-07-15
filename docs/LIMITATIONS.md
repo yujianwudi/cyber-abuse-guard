@@ -22,8 +22,8 @@
    inspectable Base64, textual data URLs, JSON escapes, and nested tool JSON are
    limited to two decode layers, eight variants, 128 KiB source, and 64 KiB
    retained decoded text. The plugin does not decompress, expand archives, or
-   parse arbitrary documents. An incomplete recognized text envelope is
-   conservative in enforcing modes. Complete unknown/high-entropy strings are
+   parse arbitrary documents. An incomplete recognized text envelope follows
+   the fixed incomplete-inspection mode contract. Complete unknown/high-entropy strings are
    scanned literally and are not blocked solely because they appear encoded;
    encrypted or novel encodings can therefore evade semantic detection.
 
@@ -35,10 +35,11 @@
 
 6. **Truncated content cannot be fully classified.** Inputs beyond byte, part,
    depth, segment, native RPC, or decode budgets are marked incomplete.
-   Balanced/Strict fail closed for ordinary truncation; Observe/Audit can only
-   report it. A no-copy oversized RPC event cannot include a request hash,
-   model, source format, or body-derived byte count because the body is not
-   copied into Go.
+   Balanced allows and audits incomplete inspection; Strict self-routes and
+   blocks for the fixed incomplete reason. Neither mode may enforce a partial
+   classification or update subject risk from a prefix. A no-copy oversized RPC
+   event cannot include a request hash, model, source format, or body-derived
+   byte count because the body is not copied into Go.
 
 7. **Role provenance is bounded, not universal.** Standard OpenAI, Anthropic,
    and Gemini envelopes use role-aware segments. Unsupported explicit roles and
@@ -47,7 +48,7 @@
    can remain outside the deterministic follow-up window.
 
 8. **CPA router failures are host-level fail-open.** The root development
-   dependency is CPA v7.2.72. CPA may continue other Routers or native routing if
+   dependency is CPA v7.2.75. CPA may continue other Routers or native routing if
    the plugin is not loaded, registration fails, it is fused, the Router returns
    an error, a panic occurs before the host accepts a valid handled result, the
    target is invalid/empty, or the self executor is not ready. The plugin
@@ -75,7 +76,7 @@
     frame; successful chunks would force HTTP 200. The policy executor routes
     `execute`, `execute_stream`, and `count_tokens` to the same policy HTTP 403;
     `http_request` returns an unsupported-method RPC error whose `StatusCode()`
-    is 405; the official adapter returns `(nil, error)`. CPA v7.2.72's public
+    is 405; the official adapter returns `(nil, error)`. CPA v7.2.75's public
     `/v1/alpha/search` consumer normally selects `codex` and maps every executor
     error to HTTP 502. The project-owned `httptest.Server` manually maps the
     status error, so final official CPA client HTTP 405 is `NOT AVAILABLE / NOT
@@ -90,7 +91,7 @@
 13. **No `Retry-After` on executor errors.** ABI-v1 RPC errors cannot attach
     arbitrary downstream response headers.
 
-14. **Exact management routes only.** CPA v7.2.72 rejects dynamic `:`/`*`
+14. **Exact management routes only.** CPA v7.2.75 rejects dynamic `:`/`*`
     plugin routes, so subject unblock uses a fixed path and bounded JSON body.
     CPA host middleware, not the plugin, is the Management Key verification
     authority; ABI v1 does not reveal the configured key to the plugin. Host
@@ -111,7 +112,7 @@
     reserved, but `classifier.enabled: true` is rejected. The plugin makes no
     classifier network request and does not upload prompts to a third party.
 
-17. **No authenticated management UI.** CPA v7.2.72 resource routes are not a
+17. **No authenticated management UI.** CPA v7.2.75 resource routes are not a
     safe place for audit/subject data. This version exposes exact authenticated
     management API routes only.
 
@@ -177,8 +178,11 @@
     garbage collection. The new logical limit is enforced for every request.
 
 29. **Only one host/runtime target is in scope.** The root `go.mod` pins CPA
-    v7.2.72 at tag commit
-    `6279bb8a4c2835ff6ed99c6b85083b2afbefa681`, Linux amd64, and glibc 2.34+.
+    v7.2.75 at tag commit
+    `e57416731aec87051ac00d0812df6aebd0e9d57a`, Linux amd64, and glibc 2.34+.
+    The pinned module checksum is
+    `h1:WcCCeENtQ5F2bT86FVIOZJJbWCkPqrp3idl8kyZqARM=` and the `go.mod` checksum is
+    `h1:f4pcyAej8RoeRhIxJfm+OUMkCKaApiA8WzxR2XVlBh8=`.
     musl/Alpine is unsupported. Source-contract and Windows compile checks do
     not establish native compatibility. Authoritative evidence requires the
     authorized GitHub CI Linux job and Leo's independent isolated real-Host run
@@ -196,11 +200,14 @@
     final-commit reruns by Leo.
 
 31. **Unknown provider shapes are only generically understood.** Strict blocks
-    an unknown `SourceFormat` before interpretation. Balanced/Audit/Observe use
-    a bounded all-nonmetadata-string fallback and expose a counter/Watchdog
-    delta, but a future provider may encode semantics under fields the generic
-    walker cannot identify. Every new CPA/provider source label still requires
-    compatibility review and an explicit canonical mapping.
+    an unknown non-multipart `SourceFormat` before interpretation.
+    Balanced/Audit/Observe use a bounded all-nonmetadata-string fallback and
+    expose a counter/Watchdog delta, but a future provider may encode semantics
+    under fields the generic walker cannot identify. Unknown multipart never
+    guesses text fields: every non-file field is schema-incomplete, Balanced
+    allows+audits, and Strict blocks for the fixed reason. Every new
+    CPA/provider source label still requires compatibility review and an
+    explicit canonical mapping.
 
 32. **Prompt-injection detection remains heuristic.** The post-v10
     `META-OVERRIDE-001` overlay requires combinations of reviewed control-plane
@@ -229,13 +236,15 @@
     harness, real store install, zero Auth Selector/Provider/Usage/Mock Upstream
     counters, Router fixture, and proxy-413 fixture were mistakenly executed in
     WSL using loopback/Mock components and cleaned up without residual fixture
-    processes. Those local results are excluded. Authorized GitHub CI passed the
-    implementation-freeze Host/Router/proxy matrix; Leo independent verification
-    remains not run. No Host result can reverse the frozen v10 failure.
+    processes. Those local results are excluded. Authorized GitHub CI passed an
+    earlier CPA v7.2.72 implementation-freeze Host/Router/proxy matrix. The
+    fourth-round CPA v7.2.75 artifact, CI matrix, and isolated Host evidence are
+    pending; Leo independent verification remains not run. No Host result can
+    reverse the frozen v10 failure.
 
 37. **Classifier-policy identity is source-bound but not yet artifact-bound.**
     The Go-level behavior is identified as `classifier-policy-v2` / SHA-256
-    `bd55065bc3f1fd350148ad8f2f440c8f606aeb02fabd0024d7a350fe23ee4585`,
+    `6a0480acc63617b688484c81baf4991cad48b57ad4414b1a8aeab0f0d196c51c`,
     while ruleset `1.0.7` separately identifies YAML assets. A digest test binds
     the reviewed source list, and authenticated status exposes the policy
     identity. Current build metadata and artifact verification do not yet carry
@@ -279,3 +288,32 @@
     `TestPublishedStoreArchive` against the same Dist identity for repeat-skip
     and tamper-repair. Missing artifacts must fail rather than falling back to
     synthetic bytes.
+
+43. **JSON media suppression cannot avoid the decoder's initial string
+    allocation.** Deferred media candidates have fixed retained bounds and do
+    not classify a prefix. Candidate overflow remains complete only if later
+    evidence proves media; a final non-media object becomes
+    `deferred_text_candidate_limit`. Go's token decoder can still allocate the
+    full encoded string transiently before a later member proves that it is
+    media. Raw-body limits remain the outer memory control.
+
+44. **Multipart schemas are intentionally incomplete by default.** Only the
+    reviewed `openai-image` profile admits `prompt` and `negative_prompt` (plus
+    its two bounded spelling variants) as text. Unknown profiles and unknown
+    non-file fields become fixed incomplete inspection; adding a future
+    provider or field requires source evidence, tests, and a policy-identity
+    refresh.
+
+45. **No-tempfile and no-raw-prompt claims stop at the Guard boundary.** The
+    extractor and plugin audit do not create temp files or persist prompt/media
+    content. CPA v7.2.75 request logging can spool non-multipart bodies and can
+    persist raw bodies for HTTP error responses. Deployment must separately
+    control CPA commercial mode, log directory, retention, and access.
+
+46. **Parser evidence is not Host evidence.** CPA v7.2.75 does not provide a
+    general HTTP path in `ModelRouteRequest`, and its image handler can parse and
+    rebuild multipart before the Router sees it. Unit tests prove the payload
+    delivered to the Guard; they cannot prove ingress boundary/header order,
+    CPA reconstruction, pre-SSE behavior, or Auth/Provider/Usage/upstream side
+    effects. Those claims require the exact CI artifact in the authorized
+    isolated Host matrix.

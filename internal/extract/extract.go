@@ -50,6 +50,16 @@ const (
 	// downstream classifier allocations. This is an implementation bound, not
 	// a separately configurable policy knob.
 	maxTextPartBytes = 16 << 10
+
+	// Ambiguous payload strings are retained only until their containing object
+	// can prove whether they are media. These bounds are deliberately internal:
+	// widening them through configuration would make a JSON member-order fix an
+	// attacker-controlled memory knob. Effective byte limits are additionally
+	// capped by MaxTextPartBytes and MaxScanBytes.
+	maxDeferredCandidateBytes     = 64 << 10
+	maxDeferredCandidatesPerFrame = 64
+	maxDeferredCandidatesTotal    = 128
+	maxDeferredRetainedBytes      = 256 << 10
 )
 
 var (
@@ -291,11 +301,41 @@ type jsonFrame struct {
 	context            contextKind
 	media              bool
 	mediaKind          mediaContextKind
+	deferToParent      bool
+	deferred           []deferredStringCandidate
+	deferredOverflow   bool
 	pendingDirectMedia bool
 	pendingHTTPURL     bool
 	pendingHTTPSURL    bool
 	expectKey          bool
 	key                string
+}
+
+type deferredStringKey uint8
+
+const (
+	deferredStringKeyNone deferredStringKey = iota
+	deferredStringKeyData
+	deferredStringKeyBytes
+	deferredStringKeyBlob
+	deferredStringKeyBinary
+	deferredStringKeyFilename
+	deferredStringKeyFormat
+	deferredStringKeyDetail
+	deferredStringKeyWidth
+	deferredStringKeyHeight
+	deferredStringKeyDuration
+)
+
+// deferredStringCandidate contains request text only in transient memory and
+// only below the fixed retained-byte bounds above. key is a closed enum rather
+// than a caller-controlled field name so no arbitrary schema metadata can
+// cross into errors, counters, or audit records.
+type deferredStringCandidate struct {
+	key     deferredStringKey
+	text    string
+	context contextKind
+	depth   int
 }
 
 type mediaContextKind uint8
@@ -310,13 +350,15 @@ const (
 )
 
 type extractor struct {
-	limits      Limits
-	result      *Result
-	stop        bool
-	skipDecode  bool
-	requestMode bool
-	jsonTokens  int
-	jsonNodes   int
+	limits             Limits
+	result             *Result
+	stop               bool
+	skipDecode         bool
+	requestMode        bool
+	jsonTokens         int
+	jsonNodes          int
+	deferredCandidates int
+	deferredBytes      int
 }
 
 // walkJSON uses Decoder.Token and an explicit stack. Consequently, semantic
@@ -391,14 +433,13 @@ func (x *extractor) walkJSON(data []byte, initial contextKind, baseDepth int, bo
 				return fmt.Errorf("mismatched closing delimiter %q", delim)
 			}
 			stack = stack[:len(stack)-1]
-			if len(stack) > 0 && !top.media {
-				parent := &stack[len(stack)-1]
-				parent.pendingDirectMedia = parent.pendingDirectMedia || top.pendingDirectMedia
-				parent.pendingHTTPURL = parent.pendingHTTPURL || top.pendingHTTPURL
-				parent.pendingHTTPSURL = parent.pendingHTTPSURL || top.pendingHTTPSURL
-				if parent.media {
-					x.markPendingOpaqueMedia(parent)
-				}
+			if len(stack) > 0 {
+				x.closeJSONFrame(&top, &stack[len(stack)-1])
+			} else {
+				x.closeJSONFrame(&top, nil)
+			}
+			if x.stop {
+				return nil
 			}
 			if len(stack) == 0 {
 				rootDone = true
@@ -445,12 +486,24 @@ func (x *extractor) walkJSON(data []byte, initial contextKind, baseDepth int, bo
 					x.markPendingOpaqueMedia(parent)
 				}
 			}
+			deferToParent := false
+			if len(stack) > 0 {
+				parent := stack[len(stack)-1]
+				deferToParent = parent.deferToParent
+				if isDeferredMediaSourceCanonical(canonical) && ctx != contextTool && ctx != contextToolPayload {
+					deferToParent = true
+				}
+				if crossesToolBoundary(parent.context, ctx) {
+					deferToParent = false
+				}
+			}
 			stack = append(stack, jsonFrame{
-				kind:      delim,
-				context:   ctx,
-				media:     media,
-				mediaKind: mediaKind,
-				expectKey: delim == '{',
+				kind:          delim,
+				context:       ctx,
+				media:         media,
+				mediaKind:     mediaKind,
+				deferToParent: deferToParent,
+				expectKey:     delim == '{',
 			})
 			if media && (isOpaquePayloadKeyCanonical(canonical) || (delim == '[' && isDirectMediaValueKeyCanonical(canonical))) {
 				x.markOpaqueMedia(directOpaqueKind(mediaKind))
@@ -461,13 +514,27 @@ func (x *extractor) walkJSON(data []byte, initial contextKind, baseDepth int, bo
 		if text, ok := token.(string); ok {
 			if len(stack) > 0 {
 				frame := &stack[len(stack)-1]
+				canonical := canonicalKey(key)
+				if isTextKeyCanonical(canonical) {
+					x.commitInspectableText(text, canonical, ctx, baseDepth+len(stack))
+					if x.stop {
+						return nil
+					}
+					continue
+				}
 				x.rememberOpaqueMediaCandidate(frame, key, text)
-				if marked, markedKind := marksMediaContext(key, text); marked {
+				if marked, markedKind := marksMediaContext(key, text); marked && x.mayApplyMediaMarker(frame) {
 					frame.media = true
 					frame.mediaKind = markedKind
 					media = true
 					mediaKind = markedKind
-					x.markPendingOpaqueMedia(frame)
+					x.resolveDeferredAsMedia(frame)
+				}
+				if x.deferAmbiguousString(frame, key, text, ctx, media, baseDepth+len(stack)) {
+					continue
+				}
+				if frame.media && x.deferOpaqueTelemetryUntilFrameClose(key, text) {
+					continue
 				}
 			}
 			x.processString(text, key, ctx, media, mediaKind, baseDepth+len(stack))
@@ -481,6 +548,244 @@ func (x *extractor) walkJSON(data []byte, initial contextKind, baseDepth int, bo
 	}
 }
 
+func (x *extractor) closeJSONFrame(frame, parent *jsonFrame) {
+	if frame == nil {
+		return
+	}
+	if frame.media {
+		x.resolveDeferredAsMedia(frame)
+		return
+	}
+	if parent != nil && frame.deferToParent {
+		parent.pendingDirectMedia = parent.pendingDirectMedia || frame.pendingDirectMedia
+		parent.pendingHTTPURL = parent.pendingHTTPURL || frame.pendingHTTPURL
+		parent.pendingHTTPSURL = parent.pendingHTTPSURL || frame.pendingHTTPSURL
+		if parent.media {
+			x.markPendingOpaqueMedia(parent)
+			x.releaseDeferred(frame)
+			frame.deferredOverflow = false
+			return
+		}
+		x.mergeDeferred(parent, frame)
+		return
+	}
+	x.commitDeferred(frame)
+}
+
+func (x *extractor) deferAmbiguousString(frame *jsonFrame, key, text string, ctx contextKind, media bool, semanticDepth int) bool {
+	if frame == nil || media || frame.media || ctx == contextNone || ctx == contextTool || ctx == contextToolPayload {
+		return false
+	}
+	if _, opaque := opaqueDataURLKind(text); opaque {
+		return false
+	}
+	stableKey, ok := deferredStringKeyForCanonical(canonicalKey(key))
+	if !ok {
+		return false
+	}
+
+	// A pending direct-media bit preserves content-free telemetry for actual
+	// payload keys even when the candidate is too large to retain. Deferred
+	// metadata such as filename/format must not invent an opaque payload.
+	if stableKey.isOpaquePayload() {
+		frame.pendingDirectMedia = true
+	}
+	if frame.deferredOverflow {
+		return true
+	}
+	byteLimit := minInt(maxDeferredCandidateBytes, minInt(x.limits.MaxTextPartBytes, x.limits.MaxScanBytes))
+	totalByteLimit := minInt(maxDeferredRetainedBytes, x.limits.MaxScanBytes)
+	if len(text) > byteLimit ||
+		len(frame.deferred) >= maxDeferredCandidatesPerFrame ||
+		x.deferredCandidates >= maxDeferredCandidatesTotal ||
+		x.deferredBytes > totalByteLimit-len(text) {
+		x.markDeferredOverflow(frame)
+		return true
+	}
+
+	frame.deferred = append(frame.deferred, deferredStringCandidate{
+		key:     stableKey,
+		text:    text,
+		context: ctx,
+		depth:   semanticDepth,
+	})
+	x.deferredCandidates++
+	x.deferredBytes += len(text)
+	return true
+}
+
+func (x *extractor) mergeDeferred(parent, child *jsonFrame) {
+	if parent == nil || child == nil {
+		return
+	}
+	if child.deferredOverflow {
+		x.markDeferredOverflow(parent)
+		x.releaseDeferred(child)
+		child.deferredOverflow = false
+		return
+	}
+	if len(child.deferred) == 0 {
+		return
+	}
+	if parent.deferredOverflow {
+		x.releaseDeferred(child)
+		return
+	}
+	if len(parent.deferred)+len(child.deferred) > maxDeferredCandidatesPerFrame {
+		x.markDeferredOverflow(parent)
+		x.releaseDeferred(child)
+		return
+	}
+	parent.deferred = append(parent.deferred, child.deferred...)
+	child.deferred = nil
+}
+
+func (x *extractor) markDeferredOverflow(frame *jsonFrame) {
+	if frame == nil || frame.deferredOverflow {
+		return
+	}
+	x.releaseDeferred(frame)
+	frame.deferredOverflow = true
+}
+
+func (x *extractor) releaseDeferred(frame *jsonFrame) {
+	if frame == nil || len(frame.deferred) == 0 {
+		return
+	}
+	for _, candidate := range frame.deferred {
+		x.deferredCandidates--
+		x.deferredBytes -= len(candidate.text)
+	}
+	if x.deferredCandidates < 0 {
+		x.deferredCandidates = 0
+	}
+	if x.deferredBytes < 0 {
+		x.deferredBytes = 0
+	}
+	frame.deferred = nil
+}
+
+func (x *extractor) resolveDeferredAsMedia(frame *jsonFrame) {
+	if frame == nil || !frame.media {
+		return
+	}
+	x.markPendingOpaqueMedia(frame)
+	x.releaseDeferred(frame)
+	frame.deferredOverflow = false
+}
+
+func (x *extractor) commitDeferred(frame *jsonFrame) {
+	if frame == nil {
+		return
+	}
+	if frame.deferredOverflow {
+		x.releaseDeferred(frame)
+		frame.deferredOverflow = false
+		x.result.addIncomplete(IncompleteDeferredTextCandidateLimit)
+		x.stop = true
+		return
+	}
+	candidates := frame.deferred
+	x.releaseDeferred(frame)
+	for _, candidate := range candidates {
+		x.commitInspectableText(candidate.text, candidate.key.canonical(), candidate.context, candidate.depth)
+		if x.stop {
+			return
+		}
+	}
+}
+
+func (x *extractor) mayApplyMediaMarker(frame *jsonFrame) bool {
+	if frame == nil {
+		return false
+	}
+	// An arbitrary executable tool argument such as {"data":"...","type":
+	// "image"} must not turn itself into opaque media. Provider-native media
+	// containers can still establish media before entering the payload frame.
+	return frame.media || (frame.context != contextTool && frame.context != contextToolPayload)
+}
+
+func (x *extractor) deferOpaqueTelemetryUntilFrameClose(key, text string) bool {
+	if _, exact := opaqueDataURLKind(text); exact {
+		return false
+	}
+	return isHTTPURL(text) || isDirectMediaValueKeyCanonical(canonicalKey(key))
+}
+
+func crossesToolBoundary(parent, child contextKind) bool {
+	if child != contextTool && child != contextToolPayload {
+		return false
+	}
+	return parent != contextTool && parent != contextToolPayload
+}
+
+func isDeferredMediaSourceCanonical(key string) bool {
+	return key == "source"
+}
+
+func deferredStringKeyForCanonical(key string) (deferredStringKey, bool) {
+	switch key {
+	case "data":
+		return deferredStringKeyData, true
+	case "bytes":
+		return deferredStringKeyBytes, true
+	case "blob":
+		return deferredStringKeyBlob, true
+	case "binary":
+		return deferredStringKeyBinary, true
+	case "filename":
+		return deferredStringKeyFilename, true
+	case "format":
+		return deferredStringKeyFormat, true
+	case "detail":
+		return deferredStringKeyDetail, true
+	case "width":
+		return deferredStringKeyWidth, true
+	case "height":
+		return deferredStringKeyHeight, true
+	case "duration":
+		return deferredStringKeyDuration, true
+	default:
+		return deferredStringKeyNone, false
+	}
+}
+
+func (k deferredStringKey) canonical() string {
+	switch k {
+	case deferredStringKeyData:
+		return "data"
+	case deferredStringKeyBytes:
+		return "bytes"
+	case deferredStringKeyBlob:
+		return "blob"
+	case deferredStringKeyBinary:
+		return "binary"
+	case deferredStringKeyFilename:
+		return "filename"
+	case deferredStringKeyFormat:
+		return "format"
+	case deferredStringKeyDetail:
+		return "detail"
+	case deferredStringKeyWidth:
+		return "width"
+	case deferredStringKeyHeight:
+		return "height"
+	case deferredStringKeyDuration:
+		return "duration"
+	default:
+		return ""
+	}
+}
+
+func (k deferredStringKey) isOpaquePayload() bool {
+	switch k {
+	case deferredStringKeyData, deferredStringKeyBytes, deferredStringKeyBlob, deferredStringKeyBinary:
+		return true
+	default:
+		return false
+	}
+}
+
 // rememberOpaqueMediaCandidate retains constant-size evidence for values that
 // appeared before their sibling type/MIME marker. JSON object members are
 // unordered, so a later marker must classify earlier URL/data values exactly as
@@ -489,23 +794,25 @@ func (x *extractor) rememberOpaqueMediaCandidate(frame *jsonFrame, key, value st
 	if frame == nil {
 		return
 	}
+	canonical := canonicalKey(key)
 	if _, opaque := opaqueDataURLKind(value); opaque {
 		// processString records the exact data-URL kind independently of sibling
 		// metadata; retaining a generic direct-media candidate would double count.
 		return
 	}
-	if isHTTPURL(value) {
+	if isHTTPURL(value) && isPotentialMediaURLKeyCanonical(canonical) {
 		if hasFoldedPrefix(strings.TrimSpace(value), "https://") {
 			frame.pendingHTTPSURL = true
 		} else {
 			frame.pendingHTTPURL = true
 		}
-	} else if isDirectMediaValueKeyCanonical(canonicalKey(key)) {
+	} else if isDirectMediaValueKeyCanonical(canonical) {
 		frame.pendingDirectMedia = true
 	}
-	if frame.media {
-		x.markPendingOpaqueMedia(frame)
-	}
+}
+
+func isPotentialMediaURLKeyCanonical(key string) bool {
+	return key == "source" || key == "url" || key == "uri" || isMediaContainerKeyCanonical(key)
 }
 
 func (x *extractor) markPendingOpaqueMedia(frame *jsonFrame) {
@@ -534,12 +841,20 @@ func (x *extractor) valueContext(stack []jsonFrame, initial contextKind) (contex
 
 	key := parent.key
 	keyKind := mediaContextForKey(canonicalKey(key))
-	media := parent.media || keyKind != mediaContextNone
+	ctx := childContext(parent.context, key)
+	media := parent.media
+	if crossesToolBoundary(parent.context, ctx) {
+		// Media inherited from an enclosing conversational block must not turn
+		// executable tool arguments into opaque bytes. A provider-native media
+		// key below the tool boundary can establish media again explicitly.
+		media = false
+	}
+	media = media || keyKind != mediaContextNone
 	mediaKind := parent.mediaKind
 	if keyKind != mediaContextNone {
 		mediaKind = keyKind
 	}
-	return childContext(parent.context, key), media, mediaKind, key
+	return ctx, media, mediaKind, key
 }
 
 func childContext(parent contextKind, key string) contextKind {
@@ -553,7 +868,7 @@ func childContext(parent contextKind, key string) contextKind {
 	if isToolWrapperKeyCanonical(canonical) {
 		return contextTool
 	}
-	if canonical == "data" {
+	if isDeferredPayloadKeyCanonical(canonical) {
 		if parent == contextTool || parent == contextToolPayload {
 			return contextToolPayload
 		}
@@ -568,9 +883,17 @@ func childContext(parent contextKind, key string) contextKind {
 	return parent
 }
 
+func isDeferredPayloadKeyCanonical(key string) bool {
+	switch key {
+	case "data", "bytes", "blob", "binary":
+		return true
+	default:
+		return false
+	}
+}
+
 func (x *extractor) processString(text, key string, ctx contextKind, media bool, mediaKind mediaContextKind, semanticDepth int) {
 	canonical := canonicalKey(key)
-	trimmed := strings.TrimSpace(text)
 	if kind, opaque := opaqueDataURLKind(text); opaque {
 		x.markOpaqueMedia(kind)
 		return
@@ -588,15 +911,22 @@ func (x *extractor) processString(text, key string, ctx contextKind, media bool,
 			return
 		}
 	}
+	if media && ctx == contextNone {
+		if containsBinaryControl(text) {
+			x.result.addIncomplete(IncompleteTextPartByteLimit)
+			return
+		}
+		x.addText(text, canonical)
+		return
+	}
+	x.commitInspectableText(text, canonical, ctx, semanticDepth)
+}
+
+func (x *extractor) commitInspectableText(text, canonical string, ctx contextKind, semanticDepth int) {
+	trimmed := strings.TrimSpace(text)
 	if containsBinaryControl(text) {
 		x.result.addIncomplete(IncompleteTextPartByteLimit)
 		return
-	}
-	if media {
-		if ctx == contextNone {
-			x.addText(text, key)
-			return
-		}
 	}
 	nestedToolString := isToolArgumentCanonical(canonical) || ctx == contextToolPayload
 	if nestedToolString {
@@ -608,7 +938,7 @@ func (x *extractor) processString(text, key string, ctx contextKind, media bool,
 	if ctx == contextNone || (ctx != contextToolPayload && isMetadataKeyCanonical(canonical)) {
 		return
 	}
-	x.addText(text, key)
+	x.addText(text, canonical)
 	if x.stop {
 		return
 	}
@@ -626,7 +956,7 @@ func (x *extractor) processString(text, key string, ctx contextKind, media bool,
 			}
 			continue
 		}
-		x.addText(variant, key)
+		x.addText(variant, canonical)
 		if x.stop {
 			return
 		}
@@ -638,12 +968,41 @@ func (x *extractor) markOpaqueMedia(kind OpaqueMediaKind) {
 	if kind == "" {
 		kind = OpaqueMediaOther
 	}
-	for _, existing := range x.result.OpaqueMediaKinds {
+	insertAt := len(x.result.OpaqueMediaKinds)
+	for index, existing := range x.result.OpaqueMediaKinds {
 		if existing == kind {
 			return
 		}
+		if insertAt == len(x.result.OpaqueMediaKinds) && opaqueMediaKindRank(existing) > opaqueMediaKindRank(kind) {
+			insertAt = index
+		}
 	}
-	x.result.OpaqueMediaKinds = append(x.result.OpaqueMediaKinds, kind)
+	x.result.OpaqueMediaKinds = append(x.result.OpaqueMediaKinds, "")
+	copy(x.result.OpaqueMediaKinds[insertAt+1:], x.result.OpaqueMediaKinds[insertAt:])
+	x.result.OpaqueMediaKinds[insertAt] = kind
+}
+
+func opaqueMediaKindRank(kind OpaqueMediaKind) int {
+	switch kind {
+	case OpaqueMediaHTTPSImageURL:
+		return 0
+	case OpaqueMediaDataURL:
+		return 1
+	case OpaqueMediaBase64Image:
+		return 2
+	case OpaqueMediaAudio:
+		return 3
+	case OpaqueMediaVideo:
+		return 4
+	case OpaqueMediaDocument:
+		return 5
+	case OpaqueMediaRemoteURL:
+		return 6
+	case OpaqueMediaOther:
+		return 7
+	default:
+		return 8
+	}
 }
 
 func (x *extractor) processNestedToolJSON(trimmed string, semanticDepth int) bool {

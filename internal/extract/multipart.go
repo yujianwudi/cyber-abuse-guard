@@ -2,6 +2,7 @@ package extract
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"mime"
 	"mime/multipart"
@@ -12,7 +13,7 @@ import (
 
 const multipartDiscardBufferBytes = 32 << 10
 
-func extractMultipart(body []byte, boundary string, limits Limits) Result {
+func extractMultipart(body []byte, boundary string, profile RequestProfile, limits Limits) Result {
 	result := newRequestResult(body, limits)
 	if reason := preflightMultipart(body, boundary, limits); reason != "" {
 		result.addIncomplete(reason)
@@ -21,7 +22,6 @@ func extractMultipart(body []byte, boundary string, limits Limits) Result {
 	}
 	reader := multipart.NewReader(bytes.NewReader(body), boundary)
 	discardBuffer := make([]byte, multipartDiscardBufferBytes)
-	jsonExtractor := extractor{limits: limits, result: &result, requestMode: true}
 	partCount := 0
 	textFieldCount := 0
 	multipartTextBytes := 0
@@ -67,7 +67,22 @@ func extractMultipart(body []byte, boundary string, limits Limits) Result {
 			_ = part.Close()
 			break
 		}
-		if isMultipartFilePart(name, disposition, hasFilename, partMediaType) {
+		fieldClass := classifyMultipartField(profile.Source, name)
+		fileEvidence := hasMultipartFileEvidence(disposition, hasFilename, partMediaType)
+		textTypeMismatch := fieldClass == multipartFieldText && partMediaType != "" && !strings.HasPrefix(partMediaType, "text/")
+		if fieldClass == multipartFieldText && (fileEvidence || textTypeMismatch) {
+			result.OpaqueMedia = true
+			markMultipartOpaque(&result, name, partMediaType)
+			result.addIncomplete(IncompleteMultipartTextFieldTypeMismatch)
+			if _, err := io.CopyBuffer(io.Discard, part, discardBuffer); err != nil {
+				result.addIncomplete(IncompleteMultipartParseError)
+				_ = part.Close()
+				break
+			}
+			_ = part.Close()
+			continue
+		}
+		if fileEvidence || fieldClass == multipartFieldFile {
 			result.OpaqueMedia = true
 			markMultipartOpaque(&result, name, partMediaType)
 			if _, err := io.CopyBuffer(io.Discard, part, discardBuffer); err != nil {
@@ -78,7 +93,17 @@ func extractMultipart(body []byte, boundary string, limits Limits) Result {
 			_ = part.Close()
 			continue
 		}
-		if isMultipartMetadataField(name) {
+		if fieldClass == multipartFieldMetadata {
+			if _, err := io.CopyBuffer(io.Discard, part, discardBuffer); err != nil {
+				result.addIncomplete(IncompleteMultipartParseError)
+				_ = part.Close()
+				break
+			}
+			_ = part.Close()
+			continue
+		}
+		if fieldClass == multipartFieldUnknown {
+			result.addIncomplete(IncompleteMultipartUnknownField)
 			if _, err := io.CopyBuffer(io.Discard, part, discardBuffer); err != nil {
 				result.addIncomplete(IncompleteMultipartParseError)
 				_ = part.Close()
@@ -118,16 +143,6 @@ func extractMultipart(body []byte, boundary string, limits Limits) Result {
 			break
 		}
 		multipartTextBytes += len(value)
-		if isMultipartJSONField(name) && obviousJSON(value) {
-			if err := jsonExtractor.walkJSON(value, contextText, 0, false); err != nil {
-				result.addIncomplete(IncompleteMultipartParseError)
-				break
-			}
-			if jsonExtractor.stop {
-				break
-			}
-			continue
-		}
 		if !appendMultipartText(&result, string(value), limits, &multipartTextBytes) {
 			break
 		}
@@ -136,6 +151,181 @@ func extractMultipart(body []byte, boundary string, limits Limits) Result {
 	result.BytesScanned = result.TextBytesScanned
 	result.finish()
 	return result
+}
+
+// extractTransformedMultipartJSON handles the bounded execution object CPA may
+// produce after parsing an ingress image multipart request while retaining the
+// original multipart Content-Type. The object remains governed by the same
+// SourceProfile allowlist: a generic JSON walk would turn unknown form values
+// into classifier text and silently bypass multipart schema incompleteness.
+func extractTransformedMultipartJSON(body []byte, profile RequestProfile, limits Limits) Result {
+	result := newRequestResult(body, limits)
+	if reason := transformedJSONStructureReason(body, limits); reason != "" {
+		result.addIncomplete(reason)
+		result.finish()
+		return result
+	}
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	opening, err := decoder.Token()
+	if err != nil || opening != json.Delim('{') {
+		result.addIncomplete(IncompleteMultipartUnknownField)
+		result.finish()
+		return result
+	}
+
+	partCount := 0
+	textFieldCount := 0
+	multipartTextBytes := 0
+	completedObject := true
+
+parts:
+	for decoder.More() {
+		keyToken, keyErr := decoder.Token()
+		key, keyOK := keyToken.(string)
+		if keyErr != nil || !keyOK {
+			result.addIncomplete(IncompleteMultipartParseError)
+			completedObject = false
+			break parts
+		}
+		var raw json.RawMessage
+		if err := decoder.Decode(&raw); err != nil {
+			result.addIncomplete(IncompleteMultipartParseError)
+			completedObject = false
+			break parts
+		}
+		partCount++
+		if partCount > limits.MaxMultipartParts {
+			result.addIncomplete(IncompleteMultipartPartLimit)
+			completedObject = false
+			break parts
+		}
+
+		switch classifyMultipartField(profile.Source, key) {
+		case multipartFieldText:
+			textFieldCount++
+			if textFieldCount > limits.MaxMultipartTextFields {
+				result.addIncomplete(IncompleteMultipartTextLimit)
+				completedObject = false
+				break parts
+			}
+			var value string
+			if err := json.Unmarshal(raw, &value); err != nil {
+				result.addIncomplete(IncompleteMultipartTextFieldTypeMismatch)
+				continue
+			}
+			remainingMultipart := limits.MaxMultipartTextBytes - multipartTextBytes
+			remainingScan := limits.MaxScanBytes - result.TextBytesScanned
+			fieldLimit := minInt(limits.MaxMultipartTextPartBytes, minInt(remainingMultipart, remainingScan))
+			if fieldLimit <= 0 || len(value) > fieldLimit {
+				result.addIncomplete(IncompleteMultipartTextLimit)
+				completedObject = false
+				break parts
+			}
+			if !utf8.ValidString(value) || containsBinaryControl(value) {
+				result.addIncomplete(IncompleteMultipartParseError)
+				completedObject = false
+				break parts
+			}
+			multipartTextBytes += len(value)
+			if !appendMultipartText(&result, value, limits, &multipartTextBytes) {
+				completedObject = false
+				break parts
+			}
+		case multipartFieldMetadata:
+			// Discarded. Metadata is not model-visible classifier text.
+		case multipartFieldFile:
+			result.OpaqueMedia = true
+			markMultipartOpaque(&result, key, "")
+		default:
+			result.addIncomplete(IncompleteMultipartUnknownField)
+		}
+	}
+	if completedObject {
+		closing, err := decoder.Token()
+		if err != nil || closing != json.Delim('}') {
+			result.addIncomplete(IncompleteMultipartParseError)
+		}
+	}
+	result.BytesScanned = result.TextBytesScanned
+	result.finish()
+	return result
+}
+
+func transformedJSONStructureReason(body []byte, limits Limits) IncompleteReason {
+	type structureFrame struct {
+		kind      json.Delim
+		expectKey bool
+	}
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	decoder.UseNumber()
+	stack := make([]structureFrame, 0, minInt(limits.MaxJSONDepth, 16))
+	tokens := 0
+	nodes := 0
+	rootValues := 0
+	for {
+		token, err := decoder.Token()
+		if err != nil {
+			if err == io.EOF {
+				if len(stack) == 0 {
+					return ""
+				}
+				return IncompleteMultipartParseError
+			}
+			return IncompleteMultipartParseError
+		}
+		isClosing := false
+		if delim, ok := token.(json.Delim); ok {
+			isClosing = delim == '}' || delim == ']'
+		}
+		isObjectKey := len(stack) > 0 && stack[len(stack)-1].kind == '{' && stack[len(stack)-1].expectKey && !isClosing
+		if len(stack) == 0 && !isClosing {
+			rootValues++
+			if rootValues > 1 {
+				return IncompleteMultipartParseError
+			}
+		}
+		tokens++
+		if tokens > limits.MaxJSONTokens {
+			return IncompleteJSONTokenLimit
+		}
+		if !isClosing && !isObjectKey {
+			nodes++
+			if nodes > limits.MaxJSONNodes {
+				return IncompleteJSONNodeLimit
+			}
+		}
+		if isClosing {
+			if len(stack) == 0 || stack[len(stack)-1].kind != matchingOpeningDelimiter(token.(json.Delim)) {
+				return IncompleteMultipartParseError
+			}
+			stack = stack[:len(stack)-1]
+			continue
+		}
+		if len(stack) > 0 && stack[len(stack)-1].kind == '{' && stack[len(stack)-1].expectKey {
+			if _, ok := token.(string); !ok {
+				return IncompleteMultipartParseError
+			}
+			stack[len(stack)-1].expectKey = false
+			continue
+		}
+		if len(stack) > 0 && stack[len(stack)-1].kind == '{' {
+			stack[len(stack)-1].expectKey = true
+		}
+		if delim, ok := token.(json.Delim); ok && (delim == '{' || delim == '[') {
+			depth := len(stack) + 1
+			if depth > limits.MaxJSONDepth {
+				return IncompleteJSONDepthLimit
+			}
+			stack = append(stack, structureFrame{kind: delim, expectKey: delim == '{'})
+		}
+	}
+}
+
+func matchingOpeningDelimiter(closing json.Delim) json.Delim {
+	if closing == '}' {
+		return '{'
+	}
+	return '['
 }
 
 // preflightMultipart enforces configured part-header and part-count bounds on
@@ -305,8 +495,8 @@ func mimeHeaderValues(header textproto.MIMEHeader, name string) []string {
 	return result
 }
 
-func isMultipartFilePart(name, disposition string, hasFilename bool, mediaType string) bool {
-	if disposition == "attachment" || hasFilename || isMultipartFileField(name) {
+func hasMultipartFileEvidence(disposition string, hasFilename bool, mediaType string) bool {
+	if disposition == "attachment" || hasFilename {
 		return true
 	}
 	switch {
@@ -323,39 +513,8 @@ func isMultipartFilePart(name, disposition string, hasFilename bool, mediaType s
 	return mediaType != "" && !strings.HasPrefix(mediaType, "text/") && !isJSONMediaType(mediaType)
 }
 
-func isMultipartFileField(name string) bool {
-	canonical := canonicalMultipartField(name)
-	switch canonical {
-	case "image", "images", "mask", "file", "files", "audio", "video", "document", "attachment":
-		return true
-	default:
-		return false
-	}
-}
-
-func isMultipartMetadataField(name string) bool {
-	canonical := canonicalMultipartField(name)
-	switch canonical {
-	case "model", "size", "quality", "n", "responseformat", "style", "user", "stream", "seed", "format", "outputformat":
-		return true
-	default:
-		return false
-	}
-}
-
-func isMultipartJSONField(name string) bool {
-	switch canonicalMultipartField(name) {
-	case "messages", "message", "input", "instructions", "system", "contents", "parts":
-		return true
-	default:
-		return false
-	}
-}
-
 func canonicalMultipartField(name string) string {
-	name = strings.TrimSpace(name)
-	name = strings.TrimSuffix(name, "[]")
-	return canonicalKey(name)
+	return strings.TrimSuffix(name, "[]")
 }
 
 func markMultipartOpaque(result *Result, name, mediaType string) {

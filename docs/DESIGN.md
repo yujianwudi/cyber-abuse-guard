@@ -2,20 +2,26 @@
 
 ## Scope and invariants
 
-Cyber Abuse Guard is an in-process CPA C-ABI v1 plugin for CLIProxyAPI v7.2.72
-(`6279bb8a4c2835ff6ed99c6b85083b2afbefa681`). It reduces the chance that a
+Cyber Abuse Guard is an in-process CPA C-ABI v1 plugin for CLIProxyAPI v7.2.75
+(`e57416731aec87051ac00d0812df6aebd0e9d57a`). It reduces the chance that a
 downstream caller sends clearly malicious, operational cyber-abuse requests to
 an upstream account. It cannot guarantee that an account will not receive a
 warning or be deactivated.
 
+The pinned module checksum is
+`h1:WcCCeENtQ5F2bT86FVIOZJJbWCkPqrp3idl8kyZqARM=` and its `go.mod` checksum is
+`h1:f4pcyAej8RoeRhIxJfm+OUMkCKaApiA8WzxR2XVlBh8=`.
+
 The repository work began from actual baseline
 `a121a444cb0d82cba4e27754914a1f88258e1d7b`. The root module and the isolated
-`integration/pluginstorecontract` module now both pin CPA v7.2.72. Source
+`integration/pluginstorecontract` module now both pin CPA v7.2.75. Source
 contracts, a real shared-object Host harness, and a second Router/executor
 fixture are distinct evidence layers; implementing a harness is not the same as
 executing it. Authoritative native evidence is restricted to the authorized
-GitHub CI Linux job and Leo's independent isolated environment. Current status
-is recorded in `reports/TEST_REPORT.md` and `LEO_VERIFICATION_HANDOFF.md`.
+GitHub CI Linux job and Leo's independent isolated environment. Historical
+evidence remains in `reports/TEST_REPORT.md` and `LEO_VERIFICATION_HANDOFF.md`;
+the current candidate is tracked in `ROUND4_LEO_REVIEW_HANDOFF.md` and remains
+pending until its CI artifact and CPA v7.2.75 Host matrix exist.
 
 This document describes a post-v10 development handoff, not an approved
 release. The methodologically valid v10 evaluation failed its first and only
@@ -50,28 +56,31 @@ JSON RPC capabilities are:
 - `management_api`: expose management-key-protected status, event, stats, test,
   unblock, and delete routes.
 
-The canonical CPA formats `openai`, `openai-response`, `claude`, and `gemini`
-are declared as executor input and output formats. The real-Host harness has
-separate allow/block, stream, token-count, and native error-shape assertions for
-the four corresponding entry protocols.
+The canonical CPA formats `openai`, `openai-response`, `openai-image`,
+`openai-video`, `claude`, and `gemini` are declared as executor input and output
+formats. The real-Host harness retains separate allow/block, stream,
+token-count, and native error-shape assertions for the four original entry
+protocols; the fourth-round image/profile matrix is a distinct pending gate.
 
-For an unknown `SourceFormat`, Strict self-routes before interpretation.
-Balanced, Audit, and Observe still run a bounded generic untrusted-text walk so
-a new label is not a silent bypass; a counter and watchdog delta make it
-visible. This fallback cannot know every future provider's metadata semantics,
-so a new CPA/provider shape requires review and an explicit canonical mapping.
+For an unknown non-multipart `SourceFormat`, Strict self-routes before
+interpretation. Balanced, Audit, and Observe still run a bounded generic
+untrusted-text walk so a new label is not a silent bypass; a counter and
+watchdog delta make it visible. Unknown multipart is different: every non-file
+field becomes schema-incomplete, Balanced allows+audits, and Strict blocks for
+the fixed incomplete reason. Neither path guesses future provider semantics;
+a new CPA/provider shape requires review and an explicit canonical mapping.
 
 For an allowed request, `model.route` returns `Handled: false`. For a blocked
 request, it returns `Handled: true`, `TargetKind: self`. The executor returns an
 RPC error envelope with HTTP status 403 and the stable marker
-`cyber_abuse_guard_blocked`. CPA v7.2.72 turns that error into the native error
+`cyber_abuse_guard_blocked`. CPA v7.2.75 turns that error into the native error
 shape for the entry protocol.
 
 `executor.execute`, `executor.execute_stream`, and `executor.count_tokens` use
 this same policy-403 path. `executor.http_request` produces an unsupported-method
 RPC error whose `StatusCode()` is 405; the official adapter returns `(nil,
 error)`. This is a SOURCE/ADAPTER check, not a final client HTTP result. CPA
-v7.2.72 does expose the provider-specific public consumer
+v7.2.75 does expose the provider-specific public consumer
 `POST /v1/alpha/search`, but ordinary selection is fixed to `codex` and the
 handler maps every `HttpRequest` error to HTTP 502. The project's
 `httptest.Server` manually maps the status error and cannot establish official
@@ -81,7 +90,7 @@ blocker that current CI cannot solve. The real four-protocol HTTP/SSE and zero
 Auth/Usage/Provider/Upstream matrix must be executed against the exact frozen
 handoff commit before it becomes Host evidence.
 
-CPA v7.2.72's `ExecutorResponse` has payload and headers but no HTTP status.
+CPA v7.2.75's `ExecutorResponse` has payload and headers but no HTTP status.
 Consequently, ABI v1 cannot simultaneously return an arbitrary plugin-owned
 JSON body and a non-200 status from `executor.execute`. v0.1.2 favors the
 security property and correct 403 status, using CPA's protocol error wrapper.
@@ -129,11 +138,54 @@ The extractor is format-tolerant and walks JSON tokens with bounded work:
   nearby definition binds them to a dangerous object, asset, or target;
 - malformed complete JSON is a parse error, not automatically malicious;
 - an artificial scan boundary inside an escape or UTF-8 sequence is treated as
-  truncation, not a parse error, so `balanced` and `strict` fail closed;
+  truncation, not a parse error; `balanced` allows+audits without a prefix
+  score, while `strict` blocks for the fixed incomplete reason;
 - over-limit input is marked truncated without panicking.
 
 The original request byte slice is used only during the call. It is never
 stored in events or risk-control state.
+
+### Order-independent JSON media and schema-bound multipart
+
+JSON object members are unordered. Values under the payload-adjacent keys
+`data`, `bytes`, `blob`, `binary`, `filename`, `format`, `detail`, `width`,
+`height`, and `duration` are therefore held as bounded object-level candidates
+until their media meaning is known. A later media marker discards
+the candidates without adding `Parts`, `Segments`, decode variants, or
+`TextBytesScanned`; a final non-media object commits them as inspectable text.
+Candidate overflow retains and classifies no prefix: a final media object stays
+complete/opaque, while a final non-media object gets the fixed
+`deferred_text_candidate_limit` reason. Candidate propagation is limited to
+media-style ownership such as `source`, and crossing a tool/tool-payload
+boundary cuts inherited media meaning. Consequently, tool argument/output
+`data` remains inspectable and cannot hide itself merely by adding a sibling
+`type=image`. Opaque media kinds are deduplicated in a fixed order so equivalent
+member permutations have identical telemetry.
+
+Multipart extraction is selected by a fixed `RequestProfile` derived from the
+canonical `SourceFormat`. CPA v7.2.75's `ModelRouteRequest` has no general HTTP
+path, and the official image handler may parse and rebuild multipart before the
+Router receives it, so endpoint-path inference is neither available nor valid.
+For `openai-image`, inspectable text is limited to `prompt` and
+`negative_prompt` (plus `negative-prompt` and `negative prompt`); reviewed
+metadata/control fields are discarded, and `image`, `image[]`, `images`,
+`images[]`, and `mask` are opaque files. File evidence has precedence. An
+allowlisted text field carrying file evidence becomes
+`multipart_text_field_type_mismatch`; every unknown non-file field becomes
+`multipart_unknown_field`. Neither name nor value is classified or persisted.
+
+Both schema reasons are incomplete inspection. No partial classification or
+subject-risk update is used: Balanced allows+audits as `multipart_schema`,
+Strict self-routes with `cyber_abuse_guard_multipart_schema`, and a complete
+malicious prompt still follows ordinary policy. Parser unit tests prove the
+payload delivered to the plugin; only the CPA v7.2.75 Host matrix can prove
+pre-Router reconstruction and Auth/Provider/Usage/upstream side effects.
+
+The original-body statement above is a Guard boundary, not an end-to-end Host
+logging guarantee. CPA v7.2.75 request logging may temporarily spool a
+non-multipart body and persist a raw body in an HTTP error log. Host validation
+must isolate and inspect that log path, commercial-mode behavior, retention,
+permissions, and cleanup.
 
 ### Bounded decoding and opaque media
 
@@ -235,7 +287,7 @@ attest to local instruction-file integrity.
 Ruleset `1.0.7` identifies the embedded YAML assets only. The complete
 code-level behavior is separately identified as `classifier-policy-v2`,
 SHA-256
-`bd55065bc3f1fd350148ad8f2f440c8f606aeb02fabd0024d7a350fe23ee4585`.
+`6a0480acc63617b688484c81baf4991cad48b57ad4414b1a8aeab0f0d196c51c`.
 Its tested source list binds the classifier, matcher, normalizer, role logic,
 wrapper assessment, behavior graph, semantic composition, bounded extractor,
 rule loader/schema, embedded YAML assets, and module dependency locks. The
@@ -265,7 +317,7 @@ Subject selection is ordered:
    HMACed in memory;
 2. an anonymous bucket.
 
-CPA v7.2.72 does not supply a distinct authenticated principal/key-policy ID or
+CPA v7.2.75 does not supply a distinct authenticated principal/key-policy ID or
 a trustworthy direct-peer address to ModelRouter. v0.1.2 therefore rejects
 `trusted_proxy.enabled: true`; forwarded headers alone are spoofable and are
 never accepted as identity.
@@ -432,7 +484,7 @@ exposed in v0.1.2.
 CPA mounts these below `/v0/management` and enforces its Management Key before
 the plugin handler runs. The test route does not persist its input.
 
-CPA v7.2.72 management routes are exact matches and reject `:` or `*`, so the
+CPA v7.2.75 management routes are exact matches and reject `:` or `*`, so the
 task book's suggested `{hash}` path parameter cannot be registered safely.
 
 CPA's Management Key middleware is the authentication authority. The plugin
@@ -505,7 +557,7 @@ The safe broad Go gate uses `scripts/go-safe-development-test.sh` in `test`,
 `race`, and `boundary` modes so routine development verification does not open
 consumed v4-v9 fixtures. Broad `go test ./...` is not an acceptable substitute.
 
-The CPA v7.2.72 source-contract module first proves that 16 exact upstream Host
+The CPA v7.2.75 source-contract module first proves that 16 exact upstream Host
 tests still exist, then runs those names precisely instead of relying on a broad
 wildcard. It also calls the official `pluginstore.InstallArchive` for both
 synthetic bytes and, when supplied, the real build artifact. These checks cover
@@ -536,8 +588,9 @@ The Host/Router targets and management-proxy fixture were mistakenly executed
 once in WSL outside the authorized evidence path. They used loopback/Mock
 components only and cleanup left no fixture process, but the results are
 excluded: `LOCAL MIS-EXECUTION RECORDED / EXCLUDED; CI REQUIRED / NOT YET
-AUTHORITATIVE`. Separately, exact-freeze GitHub CI passed the Host/Router/proxy
-matrix; Leo independent verification remains not run.
+AUTHORITATIVE`. Separately, an earlier CPA v7.2.72 exact-freeze GitHub CI passed
+the historical Host/Router/proxy matrix. The current CPA v7.2.75 artifact and
+Host matrix remain pending, and Leo independent verification remains not run.
 
 The authorized artifact lifecycle is one chain over the same Dist identity:
 Host Blackbox uses `InstallManifest` for first install and real Host load, then

@@ -20,22 +20,25 @@ const (
 type IncompleteReason string
 
 const (
-	IncompleteParseError                 IncompleteReason = "parse_error"
-	IncompleteScanByteLimit              IncompleteReason = "scan_byte_limit"
-	IncompleteJSONDepthLimit             IncompleteReason = "json_depth_limit"
-	IncompleteJSONTokenLimit             IncompleteReason = "json_token_limit"
-	IncompleteJSONNodeLimit              IncompleteReason = "json_node_limit"
-	IncompleteTextPartLimit              IncompleteReason = "text_part_limit"
-	IncompleteTextPartByteLimit          IncompleteReason = "text_part_byte_limit"
-	IncompleteMultipartBoundaryLimit     IncompleteReason = "multipart_boundary_limit"
-	IncompleteMultipartPartLimit         IncompleteReason = "multipart_part_limit"
-	IncompleteMultipartHeaderLimit       IncompleteReason = "multipart_header_limit"
-	IncompleteMultipartTextLimit         IncompleteReason = "multipart_text_limit"
-	IncompleteMultipartParseError        IncompleteReason = "multipart_parse_error"
-	IncompleteUnsupportedMediaType       IncompleteReason = "unsupported_media_type"
-	IncompleteUnsupportedContentEncoding IncompleteReason = "unsupported_content_encoding"
-	IncompleteRawBodyLimit               IncompleteReason = "raw_body_limit"
-	IncompleteRPCBodyLimit               IncompleteReason = "rpc_body_limit"
+	IncompleteParseError                     IncompleteReason = "parse_error"
+	IncompleteScanByteLimit                  IncompleteReason = "scan_byte_limit"
+	IncompleteJSONDepthLimit                 IncompleteReason = "json_depth_limit"
+	IncompleteJSONTokenLimit                 IncompleteReason = "json_token_limit"
+	IncompleteJSONNodeLimit                  IncompleteReason = "json_node_limit"
+	IncompleteTextPartLimit                  IncompleteReason = "text_part_limit"
+	IncompleteTextPartByteLimit              IncompleteReason = "text_part_byte_limit"
+	IncompleteMultipartBoundaryLimit         IncompleteReason = "multipart_boundary_limit"
+	IncompleteMultipartPartLimit             IncompleteReason = "multipart_part_limit"
+	IncompleteMultipartHeaderLimit           IncompleteReason = "multipart_header_limit"
+	IncompleteMultipartTextLimit             IncompleteReason = "multipart_text_limit"
+	IncompleteMultipartParseError            IncompleteReason = "multipart_parse_error"
+	IncompleteMultipartUnknownField          IncompleteReason = "multipart_unknown_field"
+	IncompleteMultipartTextFieldTypeMismatch IncompleteReason = "multipart_text_field_type_mismatch"
+	IncompleteDeferredTextCandidateLimit     IncompleteReason = "deferred_text_candidate_limit"
+	IncompleteUnsupportedMediaType           IncompleteReason = "unsupported_media_type"
+	IncompleteUnsupportedContentEncoding     IncompleteReason = "unsupported_content_encoding"
+	IncompleteRawBodyLimit                   IncompleteReason = "raw_body_limit"
+	IncompleteRPCBodyLimit                   IncompleteReason = "rpc_body_limit"
 )
 
 var incompleteReasonOrder = [...]IncompleteReason{
@@ -51,6 +54,9 @@ var incompleteReasonOrder = [...]IncompleteReason{
 	IncompleteMultipartHeaderLimit,
 	IncompleteMultipartTextLimit,
 	IncompleteMultipartParseError,
+	IncompleteMultipartUnknownField,
+	IncompleteMultipartTextFieldTypeMismatch,
+	IncompleteDeferredTextCandidateLimit,
 	IncompleteUnsupportedMediaType,
 	IncompleteUnsupportedContentEncoding,
 	IncompleteRawBodyLimit,

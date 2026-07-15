@@ -222,7 +222,7 @@ func validateLegacyAuditPrivacy(db sqliteQueryer) error {
 		if model != "" && !validDigest(model, modelHashPrefix) {
 			return errors.New("model is not a domain-separated SHA-256 correlation value")
 		}
-		if sourceFormat != "" && !oneOf(sourceFormat, "openai", "openai-response", "claude", "anthropic", "gemini", SourceFormatUnknown) {
+		if sourceFormat != "" && !oneOf(sourceFormat, "openai", "openai-response", "openai-image", "openai-video", "claude", "anthropic", "gemini", SourceFormatUnknown) {
 			return errors.New("source_format is not a fixed provider value")
 		}
 	}

@@ -14,17 +14,24 @@ import (
 // parse failures are represented in Result.IncompleteReasons; the returned
 // error is reserved for invalid extractor configuration.
 func ExtractRequest(body []byte, headers http.Header, limits Limits) (Result, error) {
-	return extractRequest(body, headers, limits, contextNone, true)
+	return ExtractProfiledRequest(body, headers, RequestProfile{Source: SourceProfileUnknown}, limits)
+}
+
+// ExtractProfiledRequest dispatches a request with a fixed caller-supplied
+// protocol profile. JSON extraction remains format-tolerant; multipart text is
+// accepted only when the selected profile explicitly classifies the field.
+func ExtractProfiledRequest(body []byte, headers http.Header, profile RequestProfile, limits Limits) (Result, error) {
+	return extractRequest(body, headers, profile, limits, contextNone, true)
 }
 
 // ExtractUntrustedRequest is the conservative request-level entry point for a
 // source whose JSON schema is unknown. Multipart field handling is identical
 // because file detection cannot rely on provider trust.
 func ExtractUntrustedRequest(body []byte, headers http.Header, limits Limits) (Result, error) {
-	return extractRequest(body, headers, limits, contextText, false)
+	return extractRequest(body, headers, RequestProfile{Source: SourceProfileUnknown}, limits, contextText, false)
 }
 
-func extractRequest(body []byte, headers http.Header, limits Limits, initial contextKind, roleIndex bool) (Result, error) {
+func extractRequest(body []byte, headers http.Header, profile RequestProfile, limits Limits, initial contextKind, roleIndex bool) (Result, error) {
 	normalized, err := limits.normalized()
 	if err != nil {
 		return Result{}, err
@@ -77,8 +84,8 @@ func extractRequest(body []byte, headers http.Header, limits Limits, initial con
 		// execution body while retaining the original Content-Type. Accept only a
 		// syntactically complete object/array; malformed JSON continues through the
 		// multipart parser and can never become a complete inspection.
-		if obviousCompleteJSON(body) {
-			return extractRequestJSON(body, normalized, initial, roleIndex), nil
+		if profile.Source != SourceProfileUnknown && obviousCompleteJSON(body) {
+			return extractTransformedMultipartJSON(body, profile, normalized), nil
 		}
 		boundary, ok := params["boundary"]
 		if !ok || boundary == "" {
@@ -91,7 +98,7 @@ func extractRequest(body []byte, headers http.Header, limits Limits, initial con
 			result.finish()
 			return result, nil
 		}
-		return extractMultipart(body, boundary, normalized), nil
+		return extractMultipart(body, boundary, profile, normalized), nil
 	default:
 		result.addIncomplete(IncompleteUnsupportedMediaType)
 		result.finish()

@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"mime"
+	"strings"
 	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
@@ -80,11 +82,12 @@ func (p *Plugin) route(state *runtimeState, request pluginapi.ModelRouteRequest)
 	}
 	started := time.Now()
 	p.counters.total.Add(1)
-	unknownSourceFormat := !supportedSourceFormat(request.SourceFormat)
+	requestProfile, sourceFormatKnown := extractionProfile(request.SourceFormat)
+	unknownSourceFormat := !sourceFormatKnown
 	if unknownSourceFormat {
 		p.counters.unknownSourceFormats.Add(1)
 		p.reportUnknownSourceFormat()
-		if state.config.Mode == config.ModeStrict {
+		if state.config.Mode == config.ModeStrict && !multipartRequest(request.Headers) {
 			requestHash := audit.HashRequest(request.Body)
 			p.counters.blocked.Add(1)
 			p.recordUnknownSourceBlock(state, requestHash, time.Since(started))
@@ -107,7 +110,7 @@ func (p *Plugin) route(state *runtimeState, request pluginapi.ModelRouteRequest)
 	if unknownSourceFormat {
 		extracted, extractErr = extract.ExtractUntrustedRequest(request.Body, request.Headers, limits)
 	} else {
-		extracted, extractErr = extract.ExtractRequest(request.Body, request.Headers, limits)
+		extracted, extractErr = extract.ExtractProfiledRequest(request.Body, request.Headers, requestProfile, limits)
 	}
 	requestHash := audit.HashRequest(request.Body)
 	if extractErr != nil && len(extracted.IncompleteReasons) == 0 {
@@ -300,7 +303,44 @@ func classifierPolicy(cfg config.Config) classifier.Policy {
 }
 
 func supportedSourceFormat(format string) bool {
-	return audit.CanonicalSourceFormat(format) != audit.SourceFormatUnknown
+	_, ok := extractionProfile(format)
+	return ok
+}
+
+func extractionProfile(format string) (extract.RequestProfile, bool) {
+	profile := extract.RequestProfile{Source: extract.SourceProfileUnknown}
+	switch audit.CanonicalSourceFormat(format) {
+	case "openai":
+		profile.Source = extract.SourceProfileOpenAI
+	case "openai-response":
+		profile.Source = extract.SourceProfileOpenAIResponse
+	case "openai-image":
+		profile.Source = extract.SourceProfileOpenAIImage
+	case "openai-video":
+		profile.Source = extract.SourceProfileOpenAIVideo
+	case "claude":
+		profile.Source = extract.SourceProfileClaude
+	case "gemini":
+		profile.Source = extract.SourceProfileGemini
+	default:
+		return profile, false
+	}
+	return profile, true
+}
+
+func multipartRequest(headers map[string][]string) bool {
+	for name, values := range headers {
+		if !strings.EqualFold(strings.TrimSpace(name), "Content-Type") {
+			continue
+		}
+		for _, value := range values {
+			mediaType, _, err := mime.ParseMediaType(value)
+			if err == nil && strings.EqualFold(strings.TrimSpace(mediaType), "multipart/form-data") {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (p *Plugin) reportUnknownSourceFormat() {
@@ -363,7 +403,7 @@ func (p *Plugin) recordIncompleteCounters(reasons []extract.IncompleteReason, de
 		p.counters.incompleteAllowed.Add(1)
 	}
 
-	var parseError, scanLimit, jsonDepth, textPart, multipartLimit, unsupported, rpcBody bool
+	var parseError, scanLimit, jsonDepth, textPart, multipartLimit, multipartSchema, deferredTextLimit, unsupported, rpcBody bool
 	var truncated bool
 	for _, reason := range reasons {
 		switch reason {
@@ -391,6 +431,11 @@ func (p *Plugin) recordIncompleteCounters(reasons []extract.IncompleteReason, de
 			if reason != extract.IncompleteMultipartParseError {
 				truncated = true
 			}
+		case extract.IncompleteMultipartUnknownField, extract.IncompleteMultipartTextFieldTypeMismatch:
+			multipartSchema = true
+		case extract.IncompleteDeferredTextCandidateLimit:
+			deferredTextLimit = true
+			truncated = true
 		case extract.IncompleteUnsupportedMediaType, extract.IncompleteUnsupportedContentEncoding:
 			unsupported = true
 		case extract.IncompleteRPCBodyLimit:
@@ -413,6 +458,12 @@ func (p *Plugin) recordIncompleteCounters(reasons []extract.IncompleteReason, de
 	}
 	if multipartLimit {
 		p.counters.incompleteMultipartLimit.Add(1)
+	}
+	if multipartSchema {
+		p.counters.incompleteMultipartSchema.Add(1)
+	}
+	if deferredTextLimit {
+		p.counters.incompleteDeferredTextLimit.Add(1)
 	}
 	if unsupported {
 		p.counters.incompleteUnsupportedContentType.Add(1)

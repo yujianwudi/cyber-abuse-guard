@@ -1,242 +1,145 @@
 # Multimodal request inspection contract
 
-Last updated: 2026-07-14 (Asia/Shanghai)
+Last updated: 2026-07-15 (Asia/Shanghai)
 
-Status: implementation contract for the second-round candidate. This document
-does not grant production approval and does not replace isolated CPA Host or
-Leo independent verification.
-
-## Scope
-
-The guard inspects request text before CPA provider/auth/usage/upstream work.
-It supports bounded JSON and `multipart/form-data` inspection without fetching,
-decoding, OCRing, transcribing, or classifying opaque media bytes.
-
-The implementation baseline for behavioral comparison is:
+Status: fourth-round development contract. It is not production approval and
+does not replace CPA v7.2.75 isolated-Host or Leo independent verification.
 
 ```text
-61536f9f02c47a4d79031a47dc8a284f040e41c1
+base: 2d81ebdd5943c0334c484a146ce74f0069b1942f
+CPA: v7.2.75 / e57416731aec87051ac00d0812df6aebd0e9d57a
+classifier policy: classifier-policy-v2
+classifier policy SHA-256: 6a0480acc63617b688484c81baf4991cad48b57ad4414b1a8aeab0f0d196c51c
+fourth-round CI/artifact/Store-installed CI Host: PASS; authorized Tencent isolated Host/audit: PENDING
 ```
 
-The working branch starts from merge commit:
+The earlier v7.2.72 multimodal and Host results remain historical evidence in
+`ROUND2_LEO_REVIEW_HANDOFF.md`; they do not validate this candidate.
 
-```text
-9422087b5381bd06be9bc02a32ecdecffceef705
-```
+## State separation
 
-## Four distinct states
+`complete`, `incomplete_inspection`, `opaque_media`, and
+`operational_failure` remain distinct. Opaque media is intentionally not
+interpreted and does not by itself mean extraction failed. Incomplete content
+takes precedence over any prefix classification. Operational failure retains
+its separate runtime/CPA-aware policy and is not re-labelled as multipart or
+JSON incompleteness.
 
-| State | Meaning | Examples |
-|---|---|---|
-| `complete` | All locally inspectable request text was extracted within every bound and classified normally. | Valid bounded JSON; valid bounded multipart prompt plus skipped files. |
-| `incomplete_inspection` | The guard could not prove that all locally inspectable text was examined. | Malformed JSON, text budget, JSON depth/part limit, multipart boundary/header/part limit, unsupported media type, RPC body limit. |
-| `opaque_media` | Media is intentionally not interpreted; this is not by itself an extraction failure. | Image/audio/video Base64, data URL, remote media URL, uploaded image/audio/file bytes. |
-| `operational_failure` | Plugin/runtime execution failed independently of request-content completeness. | Panic, missing runtime, shutdown race, ABI callback failure, unavailable executor, Host fuse. |
+## JSON media semantics
 
-These states must not share one `failClosed` or `Truncated` decision bit.
-Operational failures retain their separate CPA-aware lifecycle policy.
+JSON object members are unordered. Media recognition therefore uses an
+object-level transaction:
 
-## Mode disposition
+1. payload-adjacent values under `data`, `bytes`, `blob`, `binary`, `filename`,
+   `format`, `detail`, `width`, `height`, and `duration` are retained only
+   within fixed internal bounds;
+2. a later media marker commits the object as opaque and discards those
+   candidates without classification;
+3. if the object closes without media evidence, candidates are committed as
+   inspectable text;
+4. candidate overflow retains no prefix. A final media object remains complete
+   and opaque; a final non-media object becomes `deferred_text_candidate_limit`;
+5. child `source` frames may move candidates to their owning media frame, but
+   tool/tool-payload boundaries terminate inherited media meaning.
 
-### Complete inspection
+The same walker is used for `Parts` and role-aware `Segments`; marker-first,
+marker-middle, and marker-last forms must not change either representation,
+`TextBytesScanned`, completeness, or the stable `OpaqueMediaKinds` ordering.
+Provider-native tool payload text such as
+`{"data":"..."}` remains inspectable and cannot label itself as media merely
+by adding `type=image`.
 
-| Mode | Safe text | Audit classification | Block classification |
-|---|---|---|---|
-| `off` | allow | allow | allow |
-| `observe` | allow | observe | observe |
-| `audit` | allow | audit | audit |
-| `balanced` | allow | audit | local block |
-| `strict` | allow or strict-policy result | audit or strict-policy result | local block |
+Opaque media payloads, data URLs, media URLs, and uploaded bytes do not enter
+text decoding, do not consume the text budget, and are represented only by a
+fixed media-kind enum. Real text fields such as caption, text, and prompt remain
+inspectable.
 
-### Incomplete inspection
+## Multipart SourceProfile contract
 
-| Mode | Route result | Primary decision/action |
-|---|---|---|
-| `off` | pass through | no persistence requirement |
-| `observe` | pass through | observe/counter |
-| `audit` | pass through | `audit` |
-| `balanced` | pass through | `audit`, `allow_due_to_incomplete_inspection` |
-| `strict` | local self-route | `block` |
+Multipart text extraction is profile-bound. CPA v7.2.75's
+`ModelRouteRequest` contains `SourceFormat`, headers, body, model and related
+metadata, but no general HTTP path. CPA's image handler may parse and rebuild a
+multipart request before the Router sees it. The Guard therefore maps only a
+canonical `SourceFormat` to a fixed `SourceProfile`; it never guesses a schema
+from a filename, model, field value, or endpoint path.
 
-Incomplete inspection takes precedence over any classification derived from a
-prefix. In particular:
+The current `openai-image` profile is:
 
-1. `balanced` never blocks from partially extracted text.
-2. Incomplete requests do not update subject risk from a partial score.
-3. `strict` may block the incomplete request without depending on its partial
-   classification.
-4. One request produces at most one primary incomplete-inspection audit event.
-
-### Opaque media
-
-The second-round validation configuration uses:
-
-```yaml
-opaque_media_policy: audit
-```
-
-Opaque media does not make an otherwise complete text inspection incomplete.
-With the audit policy, media is passed through in every mode unless complete
-malicious text independently requires a block. Only bounded media kind/count
-metadata may cross the privacy boundary.
-
-## Stable incomplete reasons
-
-The implementation exposes a bounded, deduplicated, stable-order reason set.
-At minimum it distinguishes:
-
-```text
-parse_error
-scan_byte_limit
-json_depth_limit
-json_token_limit
-text_part_limit
-text_part_byte_limit
-multipart_boundary_limit
-multipart_part_limit
-multipart_header_limit
-multipart_text_limit
-multipart_parse_error
-unsupported_media_type
-raw_body_limit
-rpc_body_limit
-```
-
-Raw parser errors, Content-Type parameters, multipart boundaries, field names,
-filenames, URLs, request fragments, and file bytes are never persisted or
-logged.
-
-## Request dispatch
-
-The Router uses one request entry point and parses Content-Type with
-`mime.ParseMediaType`.
-
-| Content-Type | Inspection path |
+| Class | Fields |
 |---|---|
-| `application/json` | Provider-aware bounded JSON extraction. |
-| `application/*+json` | Provider-aware bounded JSON extraction. |
-| missing with an obvious JSON object/array body | Bounded JSON extraction. |
-| `multipart/form-data` | Bounded multipart text extraction and file/media skipping. |
-| unsupported or unsafe to interpret | Incomplete inspection; never reinterpret arbitrary bytes as text. |
+| inspectable text | `prompt`, `negative_prompt` (also the bounded spellings `negative-prompt` and `negative prompt`) |
+| opaque file/media | `image`, `image[]`, `images`, `images[]`, `mask` |
+| metadata/control | `model`, `stream`, `n`, `size`, `quality`, `response_format`, `output_format`, `background`, `style`, `user`, `seed`, `format`, `aspect_ratio`, `resolution`, `input_fidelity`, `moderation`, `output_compression`, `partial_images` |
 
-The guard does not reserialize or replace the payload CPA will execute. It
-observes the payload supplied to the plugin and returns only a route decision.
+Actual file evidence has precedence: filename/filename*, attachment disposition,
+image/audio/video/multipart media types, octet-stream, PDF, or Office MIME.
+However, an allowlisted text field carrying file evidence is not silently
+complete; it becomes `multipart_text_field_type_mismatch` and its bytes are
+discarded as opaque.
 
-## Multipart field policy
+An unknown non-file field is never classifier text. It is discarded with a
+fixed buffer, produces `multipart_unknown_field`, and neither its name nor value
+may enter Parts, Segments, errors, Guard logs, metrics, or plugin audit. An
+unknown profile treats every non-file field this way; explicit file evidence
+can still be safely skipped. This statement does not extend to CPA's own raw
+request/error logging boundary described below.
 
-Known text fields include:
+## Incomplete inspection disposition
 
-```text
-prompt
-negative_prompt
-input
-instructions
-message
-messages
-text
-caption
-```
+Schema uncertainty is content incompleteness, not an operational failure.
 
-Known file/media fields include:
-
-```text
-image
-image[]
-mask
-file
-audio
-video
-```
-
-A part is treated as file/media when any of these hold:
-
-- `filename` or `filename*` is present;
-- the field name is a known file/media field;
-- Content-Type is image, audio, video, application/octet-stream, or nested
-  multipart;
-- Content-Disposition identifies an attachment.
-
-Once classified as file/media, its bytes are discarded under the raw request
-bound and never added to text parts, even if they are valid UTF-8 or contain
-classifier keywords. Known file field names take precedence over misleading
-`text/plain`; binary Content-Type takes precedence over a misleading text field
-name.
-
-## Resource boundaries
-
-The exact constants are tested and reported with the candidate. The design has
-independent limits for:
-
-| Resource | Required behavior |
+| Mode | Unknown/type-mismatched multipart field |
 |---|---|
-| ABI/RPC request | Hard bounded by the native callback copy limit. |
-| Raw body observed | Hard limit independent of text budget. |
-| JSON semantic text | Charged to `max_scan_bytes`. |
-| JSON nesting | Charged to `max_json_depth`. |
-| JSON tokens/nodes | Fixed hard bound. |
-| Text parts | Charged to `max_text_parts`. |
-| Single text part | Fixed bounded chunk/field limit. |
-| Multipart boundary | Fixed length bound; quoted legal boundaries supported. |
-| Multipart parts | Fixed maximum count. |
-| Part headers | Fixed header count and aggregate byte bounds. |
-| Multipart text | Per-field and aggregate text limits. |
-| File/media bytes | Skipped under the raw body bound; never charged to text. |
+| off | pass through |
+| observe | pass through and observe |
+| audit | pass through and audit |
+| balanced | pass through and audit as `multipart_schema` |
+| strict | local self-route block with `cyber_abuse_guard_multipart_schema` |
 
-Reaching a bound sets an incomplete reason, does not panic, does not create a
-temporary file, and does not retain the original body after the request call.
+Incomplete inspection is primary. If a request contains both an apparently
+malicious prompt and an unknown multipart field, no prefix score/rule IDs or
+subject-risk update may be used: balanced allows+audits, strict blocks for the
+fixed incomplete reason. A complete malicious prompt still follows ordinary
+policy and blocks in enforcing modes.
 
-## Text and raw byte accounting
-
-`RawBytesObserved` is bounded resource telemetry. `TextBytesScanned` counts
-only text admitted to local text inspection. Uploaded media/file bytes, media
-Base64, data URLs, remote URLs, filenames, MIME parameters, and boundaries do
-not increase `TextBytesScanned`.
-
-## Audit and counters
-
-Incomplete inspection uses a canonical category derived from the stable reason
-set. `balanced` records `action=audit`; `strict` records `action=block`.
-Persistence may be disabled or degraded without changing the route decision,
-while counters/health remain observable.
-
-The audit schema must never store:
-
-- raw prompt or request body;
-- file or media bytes/Base64;
-- raw URL or filename;
-- Authorization, API key, cookie, OAuth token, or multipart boundary;
-- raw parser error text.
-
-## CPA transformation boundary
-
-The plugin may receive CPA's execution payload after an endpoint handler has
-already parsed or transformed ingress data. Therefore allow-path transparency
-is tested as follows:
+Stable new reasons and counters are:
 
 ```text
-same client input + same CPA configuration
-guard enabled upstream payload/header hash
-equals
-guard disabled/control upstream payload/header hash
+multipart_unknown_field
+multipart_text_field_type_mismatch
+deferred_text_candidate_limit
+
+incomplete_multipart_schema
+incomplete_deferred_text_limit
 ```
 
-The evidence report must identify whether each endpoint exposes original
-ingress bytes or CPA-transformed execution bytes to the plugin. A CPA
-prevalidation 400/404 is `HOST_PREVALIDATION`, not a guard pass.
+## Privacy and resource boundary
 
-## Evidence labels
+The extractor does not create temporary files, fetch URLs, OCR, transcribe,
+decompress, or inspect media bytes. Deferred candidates and multipart discard
+buffers are fixed and bounded. Go's JSON decoder may still allocate the full
+encoded JSON string transiently before the Guard can decide that it is media.
 
-All results use one of:
+`RawBytesObserved` and `TextBytesScanned` are separate. Media Base64, data URLs,
+remote media URLs, filenames, boundaries, MIME parameters, file bytes, metadata
+fields, and unknown multipart values do not consume the text budget. Reaching a
+raw/depth/token/node/part/header/text/deferred bound produces a fixed reason;
+no untrusted field name, value, parser diagnostic, or payload fragment is used
+as a counter label or persisted audit category.
 
-```text
-SOURCE REVIEW
-UNIT TEST
-HOST FIXTURE
-REAL CPA ISOLATED HOST
-GITHUB CI
-LEO INDEPENDENT RERUN
-```
+These guarantees cover the Guard extractor, errors, metrics, and plugin audit.
+They are not an end-to-end CPA logging guarantee. CPA v7.2.75 can temporarily
+spool non-multipart request bodies in its request-logging middleware and can
+persist a raw body in an HTTP error log. Isolated Host tests must use a temporary
+log directory and Leo must review CPA commercial-mode, error-log retention, and
+access controls before any production observation.
 
-No result is labelled `LEO PASS` before Leo performs the independent rerun.
-No production deployment, real provider/account-pool call, release tag, or
-GitHub Release is authorized by this contract.
+## Evidence boundary
+
+Parser unit tests prove member-order and field-profile behavior for the payload
+delivered to the plugin. Host tests separately prove CPA transformation,
+pre-SSE blocking, and Auth/Provider/upstream/usage side effects. Neither class
+of evidence substitutes for the other. The current CI run, artifact hashes,
+Store-installed CPA v7.2.75 matrix, and audit/privacy scan are pending. No result
+is `LEO PASS` or production approval until Leo independently repeats the frozen
+artifact in the authorized CPA v7.2.75 sandbox.
