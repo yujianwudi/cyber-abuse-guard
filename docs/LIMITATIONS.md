@@ -242,16 +242,18 @@
     counters, Router fixture, and proxy-413 fixture were mistakenly executed in
     WSL using loopback/Mock components and cleaned up without residual fixture
     processes. Those local results are excluded. Authorized GitHub CI passed an
-    earlier CPA v7.2.72 implementation-freeze Host/Router/proxy matrix. The
-    fifth-round CPA v7.2.75 artifact and CI evidence are pending; ordinary CI
-    runs bounded source-contract tests and compiles integration-tagged code
-    without starting CPA or loading the `.so`. The Tencent Cloud isolated Host
-    plus independent verification remain not run. No Host result can reverse
-    the frozen v10 failure.
+    earlier CPA v7.2.72 implementation-freeze Host/Router/proxy matrix.
+    Fifth-round exact-source CI passed and canonical CPA v7.2.75 development
+    artifacts were statically verified; ordinary CI runs bounded source-contract
+    tests and compiles integration-tagged code without starting CPA or loading
+    the `.so`. The current audit-fix delta still requires exact-source CI before
+    merge. Tencent Cloud isolated Host validation and independent verification
+    remain not run, and methodology handoff remains blocked. No Host result can
+    reverse the frozen v10 failure.
 
 37. **Classifier-policy identity is source-bound but not yet artifact-bound.**
     The Go-level behavior is identified as `classifier-policy-v2` / SHA-256
-    `5fc25855a868cba206123697c1631ba251575157f37cd79654e9a65c888a750b`,
+    `c2092d0949fcaa1d0f085dfe31a668d45cc4d14efc10427d0f3ebcf3e821a112`,
     while ruleset `1.0.7` separately identifies YAML assets. Ruleset `1.0.7`
     does **not** include the Go-level `META-OVERRIDE-001` overlay, extractor
     semantics, approved tool-schema mappings, or control-plane telemetry. A

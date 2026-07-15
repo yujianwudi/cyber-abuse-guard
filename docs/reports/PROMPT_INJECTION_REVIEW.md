@@ -73,7 +73,7 @@ Ruleset `1.0.7` identifies only embedded YAML Cyber Abuse assets. It does not
 include the Go-level `META-OVERRIDE-001` overlay, extraction semantics,
 tool-schema mappings, or control-plane telemetry. Fifth-round provenance must
 also bind `classifier-policy-v2` /
-`5fc25855a868cba206123697c1631ba251575157f37cd79654e9a65c888a750b`
+`c2092d0949fcaa1d0f085dfe31a668d45cc4d14efc10427d0f3ebcf3e821a112`
 and the exact Git commit.
 
 Ordinary CI no longer invokes the consumed evaluation-v10 boundary target and

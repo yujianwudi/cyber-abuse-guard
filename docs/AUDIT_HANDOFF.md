@@ -30,11 +30,12 @@ canonical_artifact_size: 10686558 bytes
 canonical_artifact_digest: sha256:b2662faa01071cef6a111b03d1cff85d3bf4796ed2e7a54aaf584c451f581a8e
 canonical_artifact_expiry: 2026-10-13T08:13:03Z
 so_sha256: ccc818561077f2840f3d00d33cbc344ed9055aede725986c8c17b22fdb427d5e
-code_rabbit: PENDING / REVIEW QUEUED — no approval claimed
+code_rabbit_initial_audit: 4 MAJOR issues — all verified; fixes in current audit delta
 tencent_isolated_host: NOT RUN
 independent_review: NOT RUN
-tag: NOT CREATED
-github_release: NOT CREATED
+stable_v0.1.2_tag: NOT CREATED / BLOCKED
+development_prerelease: OWNER-AUTHORIZED AFTER MERGE — v0.1.2-dev.round5.1
+github_release: DEVELOPMENT PRERELEASE ONLY / NOT PRODUCTION ADMISSION
 production_deployment: NOT PERFORMED
 final_status: BLOCKED FOR HANDOFF
 ```
@@ -61,7 +62,7 @@ v10 `CONSUMED / FAIL`。
 - Ruleset `1.0.7` 只标识内嵌 YAML Cyber Abuse 资产，不包含 Go 代码中的
   `META-OVERRIDE-001` overlay、Extractor/Multipart 语义、批准的 Tool Schema 映射或
   control-plane counter。第五轮 classifier-policy identity 是
-  `classifier-policy-v2` / `5fc25855a868cba206123697c1631ba251575157f37cd79654e9a65c888a750b`，
+  `classifier-policy-v2` / `c2092d0949fcaa1d0f085dfe31a668d45cc4d14efc10427d0f3ebcf3e821a112`，
   且必须同时核对完整 Git Commit。
 - `testdata/development-public-jailbreak-patterns-v1` 只允许净化 canary、抽象占位符和
   minimal pair，必须保持 `development_only=true`、`future_holdout_eligible=false`、
@@ -83,12 +84,14 @@ v10 `CONSUMED / FAIL`。
   Round 5 回归已由本地与 CI 证明为绿，但没有独立保留两个 HIGH 的修复前红测 Commit 或
   命令日志；任务书中的 red-before-fix 证据要求仍是独立审计项，不能由最终绿测倒推。
 
-本轮还发生了一次独立于历史 holdout-v3 事件的方法学偏差：一条作用域过宽的只读
-`git grep` 意外输出了受限 `testdata/holdout/malicious-operational.jsonl` 的正文。没有运行
-holdout 测试；输出未重定向、未复制到源码/测试/文档、未分析，也未用于调参或形成实现
-结论。后续所有命令均须显式排除 holdout、evaluation-v10、retired/historical 语料。
-因此本轮不得声明“完全未访问受限语料”；即使工程门禁全绿，方法学交接仍为
-`BLOCKED FOR HANDOFF`，不能升级为独立验收通过。
+本轮还发生了独立于历史 holdout-v3 事件的方法学偏差：一条作用域过宽的只读 `git grep`
+意外输出了受限 `testdata/holdout/malicious-operational.jsonl` 正文。没有运行 holdout 测试；
+输出未重定向、未复制到源码/测试/文档、未分析，也未用于调参或形成实现结论。后续发行
+审计中，一条 classifier 源码搜索又意外匹配了历史 holdout gate-test 源码行；它没有打开
+任何 `testdata` 语料、没有运行 holdout/evaluation 测试，输出同样没有用于实现判断。
+其余命令均须显式排除 holdout、evaluation-v10、retired/historical 语料。因此本轮不得
+声明“完全未访问受限语料”；即使工程门禁全绿，方法学交接仍为 `BLOCKED FOR HANDOFF`，
+不能升级为独立验收通过。
 
 当前候选树已完成允许范围内的本地 development self-check：format/diff、module verify、
 Round 5 专项、安全 allowlist unit/race、vet、fuzz-smoke、benchmark、privacy、脚本、Go

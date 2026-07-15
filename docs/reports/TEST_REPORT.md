@@ -25,7 +25,7 @@ Remote implementation-freeze evidence:
 | PR run [29400080092](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29400080092) | `quality-and-artifacts`, `fuzz-long`, and `reproducibility`: **SUCCESS** |
 | Canonical exact-source artifact | Push artifact ID `8336957771`, `cyber-abuse-guard-linux-amd64-dirty`, `10686558` bytes, expiry `2026-10-13T08:13:03Z`; SO SHA-256 `ccc818561077f2840f3d00d33cbc344ed9055aede725986c8c17b22fdb427d5e` |
 | PR-run artifact | ID `8336942789`; its internal metadata binds GitHub temporary merge commit `226c89e3b932c18f9572822db9cf27a3faab09ec`, so it is not the canonical exact-source artifact |
-| CodeRabbit | **PENDING / REVIEW QUEUED** at evidence freeze; no approval or final review conclusion claimed |
+| CodeRabbit initial release audit | **4 MAJOR issues** — two stale evidence documents and two classifier negation defects; all four were independently verified and fixed in the current audit delta, which still requires exact-source CI and follow-up review |
 
 The following local results are `DEVELOPMENT SELF-CHECK` evidence only. They do
 not replace Tencent Cloud Host validation or independent review. General gates
@@ -93,10 +93,12 @@ Fifth-round methodology deviation: one over-broad read-only `git grep`
 unexpectedly emitted content from the restricted
 `testdata/holdout/malicious-operational.jsonl` file. No holdout test ran; the
 output was not redirected, copied into source/tests/docs, analyzed, or used for
-tuning or conclusions. All subsequent gate commands explicitly exclude
-holdout, evaluation-v10, and retired/historical paths. The final report must not
-claim that this round had zero restricted-corpus access, and the methodological
-handoff remains blocked independently of engineering test results.
+tuning or conclusions. During the later release audit, one classifier source
+search also unintentionally matched historical holdout gate-test source lines;
+it opened no `testdata` corpus, selected no holdout/evaluation test, and did not
+influence the fixes. All remaining commands explicitly exclude holdout,
+evaluation-v10, and retired/historical paths. The final report must not claim
+zero restricted-corpus access, and methodology handoff remains blocked.
 
 The Router cannot attest to local `model_instructions_file`, `AGENTS.md`, or
 remote-template integrity before CPA receives a request. Provider
@@ -105,7 +107,7 @@ a host-side versioned schema allowlist with rejection or forced-safe-value
 overrides. Embedded ruleset `1.0.7` covers YAML assets only and excludes the Go
 `META-OVERRIDE-001` overlay and related extractor/tool-schema/control-plane
 logic. The fifth-round policy identity is `classifier-policy-v2` /
-`5fc25855a868cba206123697c1631ba251575157f37cd79654e9a65c888a750b`.
+`c2092d0949fcaa1d0f085dfe31a668d45cc4d14efc10427d0f3ebcf3e821a112`.
 
 Two P2 items remain explicit review scope. First, role-aware classification
 does not compose base taxonomy from system/assistant text into a later user

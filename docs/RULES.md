@@ -201,7 +201,7 @@ policy is separately identified as:
 
 ```text
 classifier_policy_version: classifier-policy-v2
-classifier_policy_sha256: 5fc25855a868cba206123697c1631ba251575157f37cd79654e9a65c888a750b
+classifier_policy_sha256: c2092d0949fcaa1d0f085dfe31a668d45cc4d14efc10427d0f3ebcf3e821a112
 ```
 
 The policy digest test binds the deterministic classifier, matcher,

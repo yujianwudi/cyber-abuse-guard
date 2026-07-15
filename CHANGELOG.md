@@ -7,10 +7,13 @@ v1-v8 are retired or consumed failures. v9 is frozen as
 `CONSUMED / METHODOLOGY INVALID / FAIL` because the exact taxonomy-enum
 validator was missing. The first and only methodologically valid v10 run failed
 with 28/320 benign false positives, 49/320 policy blocks, and 33/320 exact
-classifications. v10 is consumed and cannot be rerun. No `v0.1.2` tag, GitHub
-Release, or production deployment may be created from this candidate. A future
-release attempt requires a new implementation and a new independently authored
-unseen set.
+  classifications. v10 is consumed and cannot be rerun. No stable `v0.1.2` tag,
+  production release, or production deployment may be created from this
+  candidate. The repository owner may publish an explicitly marked development
+  prerelease snapshot such as `v0.1.2-dev.round5.1`; it is not release admission,
+  must not be marked latest, and may contain only dirty development artifacts.
+  A future stable release attempt requires a new implementation and a newly
+  authored independent unseen set.
 
 - Complete the Phase 0 CPA contract alignment without changing the root runtime
   baseline from CPA v7.2.67. Local `execute`, `execute_stream`, and
@@ -44,9 +47,10 @@ unseen set.
 - Record this work as post-v10 developer-visible engineering evidence only.
   The targeted source package tests, vet, module verification, and diff checks
   are recorded in `docs/reports/TEST_REPORT.md`. Server sandbox validation,
-  current-diff real-CPA integration, native loading, deployment, formal
-  Holdout, release packaging, tag, and GitHub Release are pending, not run, or
-  prohibited. The v10 release failure is unchanged.
+  current-diff real-CPA integration, native loading, deployment, and formal
+  Holdout remain pending, not run, or prohibited. A development prerelease may
+  be published only as a blocked audit snapshot; the v10 release failure is
+  unchanged.
 - Document that ruleset `1.0.7` and its canonical SHA-256 identify only the
   embedded YAML cyber-abuse assets. The complete post-v10 classifier policy —
   including the meta overlay plus matcher, normalizer, role, and extractor

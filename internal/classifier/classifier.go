@@ -1674,7 +1674,10 @@ func (c *Classifier) coordinatedCoreNegated(clause analyzedDirectiveClause, rule
 	compactScratch := make([]bool, c.compactMatcher.maxPatternLength)
 	c.compactMatcher.matchCompactWithScratch(earlierRunes, signals, compactScratch)
 	for _, priorRule := range c.rules {
-		if priorRule.category != rule.category || !signals[priorRule.intent] || !signals[priorRule.object] {
+		if !signals[priorRule.intent] || !signals[priorRule.object] {
+			continue
+		}
+		if priorRule.category != rule.category && crossCategoryCoordinatedNegationAmbiguous(earlier) {
 			continue
 		}
 		if clauseNegatesRuleIntent(earlier, priorRule.intentStarts) {
@@ -1709,6 +1712,17 @@ func (c *Classifier) coordinatedCoreNegated(clause analyzedDirectiveClause, rule
 		}
 	}
 	return false
+}
+
+func crossCategoryCoordinatedNegationAmbiguous(text string) bool {
+	spans, complete := metaOverrideQuotedSpans(text)
+	if !complete || len(spans) != 0 {
+		return true
+	}
+	return hasAnyPrefix(strings.TrimSpace(text),
+		"say ", "write ", "print ", "repeat ", "quote ", "output ", "include ", "emit ", "type ",
+		"说", "写", "打印", "重复", "引用", "输出", "包含",
+	)
 }
 
 // continuesPriorRiskDirective is deliberately narrower than a bare second
@@ -2055,7 +2069,7 @@ func hasNegationReversalFraming(text string) bool {
 	text = normalizeNegationSyntax(text)
 	for _, negator := range []string{
 		"must never ", "must not ", "should never ", "should not ", "need not ", "ought not ", "shall not ",
-		"would not ", "could not ", "may not ", "do not ", "never ", "not to ",
+		"would not ", "could not ", "may not ", "will not ", "cannot ", "do not ", "never ", "not to ",
 		"严禁", "禁止", "不得", "不要", "不能", "不会",
 	} {
 		searchFrom := 0

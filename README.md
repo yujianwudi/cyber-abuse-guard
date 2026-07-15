@@ -17,9 +17,11 @@ English | [简体中文](README_CN.md)
 > v10 evaluation remains `CONSUMED / FAIL`. Fifth-round source, exact-commit CI,
 > and the canonical push artifact are recorded engineering evidence; Tencent
 > Cloud isolated-Host validation and independent review have not run. Do not
-> create a v0.1.2 tag or GitHub Release, and do not deploy this candidate to
-> production. Engineering success is not production admission, and the recorded
-> restricted-corpus methodology incident independently keeps handoff blocked.
+> create the stable `v0.1.2` tag or a production release, and do not deploy this
+> candidate to production. An owner-authorized development prerelease must be
+> marked `BLOCKED / NOT FOR DEPLOYMENT` and must use only dirty development
+> artifacts. Engineering success is not production admission, and the recorded
+> restricted-corpus methodology incidents independently keep handoff blocked.
 
 When CPA has loaded and registered the plugin, Router ordering reaches it, and
 the self-executor is ready, CPA Cyber Abuse Guard inspects supported model
@@ -41,7 +43,7 @@ is not sent to a public classifier.
 | Documented build target | Linux amd64, glibc 2.34 or newer, CPA C ABI/RPC schema v1 |
 | Unsupported platform | musl/Alpine |
 | Embedded YAML ruleset | `1.0.7`, SHA-256 `7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134` |
-| Classifier policy identity | `classifier-policy-v2`, SHA-256 `5fc25855a868cba206123697c1631ba251575157f37cd79654e9a65c888a750b` |
+| Classifier policy identity | `classifier-policy-v2`, SHA-256 `c2092d0949fcaa1d0f085dfe31a668d45cc4d14efc10427d0f3ebcf3e821a112` |
 | Current validation | Implementation freeze `1466b2e7dfcafbb0547fc7863a419eccccd8091f` passed local development gates, exact-source push CI `29400003434`, and PR merge-validation CI `29400080092`; `quality-and-artifacts`, `fuzz-long`, and `reproducibility` all succeeded in both runs. Canonical push artifact `8336957771` was downloaded and statically rehashed; SO SHA-256 is `ccc818561077f2840f3d00d33cbc344ed9055aede725986c8c17b22fdb427d5e`. Tencent Cloud isolated Host validation and independent review are not run. The restricted-corpus methodology incident independently keeps handoff blocked; this is not production approval. |
 
 ## Fifth-round boundary and review status
@@ -90,9 +92,13 @@ is not sent to a public classifier.
   unexpectedly emitted content from the restricted
   `testdata/holdout/malicious-operational.jsonl` file. No holdout test ran; the
   output was not redirected, copied into source/tests/docs, analyzed, or used
-  for tuning or conclusions. Subsequent gates explicitly exclude every
-  holdout/evaluation path. This incident means the round cannot truthfully claim
-  zero restricted-corpus access and independently keeps handoff blocked.
+  for tuning or conclusions. During the later release audit, one classifier
+  source search also unintentionally matched historical holdout gate-test source
+  lines; it did not open any `testdata` corpus or run any holdout/evaluation
+  test, and that output was not used for implementation decisions. All remaining
+  commands are explicitly scoped away from holdout/evaluation paths. These
+  incidents mean the round cannot truthfully claim zero restricted-corpus access
+  and independently keep handoff blocked.
 
 The root `go.mod` and `integration/pluginstorecontract` module both pin CPA
 v7.2.75. Source contracts enumerate and run 16 exact official Host tests, while
@@ -419,8 +425,9 @@ must not be run for the current blocked candidate.
 
 ## Artifact contracts
 
-Development CI may build dirty-suffixed evidence artifacts. No formal v0.1.2
-release artifact exists.
+Development CI may build dirty-suffixed evidence artifacts. No formal stable
+v0.1.2 release artifact exists; an owner-authorized development prerelease may
+attach only these clearly dirty, non-production assets.
 
 The canonical fifth-round exact-source evidence artifact is the push-run
 artifact `cyber-abuse-guard-linux-amd64-dirty`, ID `8336957771`, size

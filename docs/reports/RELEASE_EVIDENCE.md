@@ -5,39 +5,47 @@ Last updated: 2026-07-15 (Asia/Shanghai)
 ## Fifth-round evidence addendum
 
 The fifth-round branch is based on
-`main@67b2470cf9be434adc0ce0c62fa6d2c0f9d21363`. Fifth-round implementation
-freeze `1466b2e7dfcafbb0547fc7863a419eccccd8091f`, exact-source push CI, PR
-merge-validation CI, downloadable artifact identity, SO SHA-256, and
-checksum/sidecar verification are recorded below. Tencent Cloud isolated Host
-validation and independent source/artifact review have not run. Artifact hashes
-and GitHub Actions IDs in the later historical section belong to an older
-implementation freeze and must not be reused for this round.
+`main@67b2470cf9be434adc0ce0c62fa6d2c0f9d21363`. The evidence below binds the
+pre-audit implementation freeze `1466b2e7dfcafbb0547fc7863a419eccccd8091f`; it
+does not validate the four fixes in the current audit delta. Before merge, the
+audit-fix source commit and exact-source push/PR CI must be recorded and its
+canonical development artifact, metadata, SO SHA-256, and checksum/sidecars
+must be regenerated and verified. Tencent Cloud isolated Host validation and
+independent source/artifact review have not run. Artifact hashes and GitHub
+Actions IDs in the later historical section belong to an older implementation
+freeze and must not be reused for this round.
 
 ```text
 fifth_round_branch: agent/round5-scalar-media-multipart-meta-override
 fifth_round_base_commit: 67b2470cf9be434adc0ce0c62fa6d2c0f9d21363
-fifth_round_source_commit: 1466b2e7dfcafbb0547fc7863a419eccccd8091f
-fifth_round_implementation_freeze: 1466b2e7dfcafbb0547fc7863a419eccccd8091f
+fifth_round_pre_audit_source_commit: 1466b2e7dfcafbb0547fc7863a419eccccd8091f
+fifth_round_audit_fix_source_commit: PENDING COMMIT / MUST REPLACE BEFORE MERGE
+fifth_round_implementation_freeze: PENDING AUDIT-FIX COMMIT
 fifth_round_pull_request: https://github.com/yujianwudi/cyber-abuse-guard/pull/7
 fifth_round_local_engineering_gates: PASS — DEVELOPMENT SELF-CHECK ONLY
-fifth_round_push_ci: PASS — 29400003434
-fifth_round_pull_request_ci: PASS — 29400080092
-fifth_round_ci_jobs: quality-and-artifacts=PASS; fuzz-long=PASS; reproducibility=PASS (both runs)
-fifth_round_canonical_artifact: VERIFIED — ID 8336957771
-fifth_round_artifact_id_and_hashes: RECORDED / LOCALLY REHASHED
-fifth_round_code_rabbit: PENDING / REVIEW QUEUED
+fifth_round_pre_audit_push_ci: PASS — 29400003434
+fifth_round_pre_audit_pull_request_ci: PASS — 29400080092
+fifth_round_pre_audit_ci_jobs: quality-and-artifacts=PASS; fuzz-long=PASS; reproducibility=PASS (both runs)
+fifth_round_audit_fix_exact_source_ci: PENDING / REQUIRED BEFORE MERGE
+fifth_round_audit_fix_ci_jobs: PENDING / REQUIRED BEFORE MERGE
+fifth_round_pre_audit_canonical_artifact: VERIFIED — ID 8336957771
+fifth_round_audit_fix_canonical_artifact: PENDING REGENERATION AND VERIFICATION
+fifth_round_audit_fix_artifact_id_and_hashes: PENDING REGENERATION
+fifth_round_code_rabbit_initial_audit: 4 MAJOR issues — fixes implemented; exact-source evidence pending
 fifth_round_tencent_isolated_host: NOT RUN
 fifth_round_independent_review: NOT RUN
-fifth_round_tag: NOT CREATED
-fifth_round_github_release: NOT CREATED
+fifth_round_stable_v0.1.2_tag: NOT CREATED / BLOCKED
+fifth_round_development_prerelease: OWNER-AUTHORIZED AFTER MERGE — v0.1.2-dev.round5.1
+fifth_round_github_release: DEVELOPMENT PRERELEASE ONLY / NOT PRODUCTION ADMISSION
 fifth_round_production_deployment: NOT PERFORMED
-fifth_round_status: ENGINEERING SOURCE/CI/ARTIFACT GATES PASS / METHODOLOGY HANDOFF BLOCKED
+fifth_round_status: AUDIT FIXES LOCALLY VALIDATED / EXACT-SOURCE CI AND ARTIFACT PENDING / METHODOLOGY HANDOFF BLOCKED
 ```
 
-## Fifth-round canonical artifact identity
+## Fifth-round pre-audit artifact identity (superseded for the audit-fix delta)
 
-The exact-source canonical artifact is the push-run artifact, not the PR-run
-artifact:
+The artifact below is canonical only for the pre-audit source commit. It cannot
+be attached to the audit-fix commit or the development prerelease. A new
+exact-source push-run artifact must replace it before merge and release:
 
 ```text
 artifact_id: 8336957771
@@ -55,9 +63,10 @@ temporary merge commit `226c89e3b932c18f9572822db9cf27a3faab09ec`.
 It is useful as PR validation evidence but is not the canonical exact-source
 artifact.
 
-The canonical artifact was downloaded and rehashed without deploying or loading
-the plugin. The audit bundle was treated as an opaque file for SHA-256 only; its
-contents were not opened.
+The pre-audit canonical artifact was downloaded and rehashed without deploying
+or loading the plugin. The audit bundle was treated as an opaque file for
+SHA-256 only; its contents were not opened. These hashes are historical and
+must not be reused as validation of the current audit fixes.
 
 | File | SHA-256 | Verification |
 |---|---|---|
@@ -87,11 +96,12 @@ goos/goarch: linux/amd64
 cgo_enabled: true
 ```
 
-The artifact metadata still does not embed classifier-policy identity. The
-fifth-round classifier identity therefore remains a joint binding of
+The pre-audit artifact metadata still does not embed classifier-policy identity,
+and it predates the current classifier-policy digest. The audit-fix classifier
+identity therefore remains a joint binding of
 `classifier-policy-v2`, SHA-256
-`5fc25855a868cba206123697c1631ba251575157f37cd79654e9a65c888a750b`,
-and the exact Git commit above.
+`c2092d0949fcaa1d0f085dfe31a668d45cc4d14efc10427d0f3ebcf3e821a112`,
+and the pending exact audit-fix Git commit.
 
 Ordinary CI is development-only. It runs `make integration-compile` and does
 not start CPA, deploy a plugin, or execute the real Host matrix. Existing
@@ -101,14 +111,17 @@ also excludes `make consumed-boundary-test` and all evaluation-v10/retired
 Holdout content; that target is retained only for separately authorized audit
 work.
 
-A distinct fifth-round methodology deviation must remain attached to every
-artifact/CI claim: one over-broad read-only `git grep` unexpectedly emitted
-content from restricted `testdata/holdout/malicious-operational.jsonl`. No
+Distinct fifth-round methodology deviations must remain attached to every
+artifact/CI claim. One over-broad read-only `git grep` unexpectedly emitted
+content from restricted `testdata/holdout/malicious-operational.jsonl`; no
 holdout test ran, no output was redirected or copied into source/tests/docs,
-and it was not analyzed or used for tuning or conclusions. Subsequent gates
-explicitly exclude all holdout/evaluation paths. Therefore this round cannot
-claim zero restricted-corpus access, and engineering PASS evidence cannot lift
-the methodological `BLOCKED FOR HANDOFF` status.
+and it was not analyzed or used for tuning or conclusions. During the later
+release audit, one classifier source search also unintentionally matched
+historical holdout gate-test source lines; it opened no `testdata` corpus,
+selected no holdout/evaluation test, and did not influence the fixes. All
+remaining commands explicitly exclude holdout/evaluation paths. This round
+cannot claim zero restricted-corpus access, and engineering PASS evidence
+cannot lift the methodological `BLOCKED FOR HANDOFF` status.
 
 Release evidence must bind two separate policy identities:
 
@@ -117,7 +130,7 @@ Release evidence must bind two separate policy identities:
   `META-OVERRIDE-001` overlay, extraction/media/multipart semantics, the
   tool-only `cag_control_schema=meta_override_control/v1` mapping, and fixed
   control-plane telemetry. The fifth-round value is `classifier-policy-v2` /
-  `5fc25855a868cba206123697c1631ba251575157f37cd79654e9a65c888a750b`.
+  `c2092d0949fcaa1d0f085dfe31a668d45cc4d14efc10427d0f3ebcf3e821a112`.
 
 Ruleset `1.0.7` alone does not identify the complete policy. The Tool schema
 marker is valid only inside established tool/tool-payload provenance; it does

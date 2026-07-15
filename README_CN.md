@@ -15,9 +15,10 @@
 > 本仓库当前是**未发布的第五轮开发候选版本**。v0.1.2 的发布结论仍为
 > **BLOCKED**；唯一方法学有效的 v10 正式评估为
 > `CONSUMED / FAIL`。第五轮源码、精确 Commit CI 与 canonical Push Artifact 已形成工程
-> 证据；腾讯云隔离 Host 和独立复核尚未运行。不得创建 v0.1.2 Tag 或 GitHub Release，
-> 也不得把当前候选部署到生产环境。工程门禁成功不构成生产准入，已记录的受限语料
-> 方法学事件还会独立使交接保持阻断。
+> 证据；腾讯云隔离 Host 和独立复核尚未运行。不得创建稳定版 `v0.1.2` Tag 或生产发行，
+> 也不得把当前候选部署到生产环境。经仓库所有者明确授权的开发预发行必须标注
+> `BLOCKED / NOT FOR DEPLOYMENT`，且只能附带 dirty 开发产物。工程门禁成功不构成生产
+> 准入，已记录的受限语料方法学事件还会独立使交接保持阻断。
 
 当 CPA 已加载并注册插件、Router 顺序能够到达本插件且自路由 Executor 已就绪时，
 CPA Cyber Abuse Guard 会在 Provider 解析和账号认证调度之前检查受支持的模型请求。
@@ -36,7 +37,7 @@ CPA Cyber Abuse Guard 会在 Provider 解析和账号认证调度之前检查受
 | 文档化构建目标 | Linux amd64、glibc 2.34 或更高、CPA C ABI/RPC schema v1 |
 | 不支持平台 | musl/Alpine |
 | 内置 YAML 规则集 | `1.0.7`，SHA-256 `7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134` |
-| 分类器策略身份 | `classifier-policy-v2`，SHA-256 `5fc25855a868cba206123697c1631ba251575157f37cd79654e9a65c888a750b` |
+| 分类器策略身份 | `classifier-policy-v2`，SHA-256 `c2092d0949fcaa1d0f085dfe31a668d45cc4d14efc10427d0f3ebcf3e821a112` |
 | 当前验证 | Implementation Freeze `1466b2e7dfcafbb0547fc7863a419eccccd8091f` 已通过本地开发门禁、精确源码 Push CI `29400003434` 与 PR Merge Validation CI `29400080092`；两条 Run 的 `quality-and-artifacts`、`fuzz-long`、`reproducibility` 均成功。Canonical Push Artifact `8336957771` 已下载并静态复算哈希，SO SHA-256 为 `ccc818561077f2840f3d00d33cbc344ed9055aede725986c8c17b22fdb427d5e`。腾讯云隔离 Host 与独立复核未运行；受限语料方法学事件独立使交接保持阻断，不构成生产批准。 |
 
 ## 第五轮边界与复核状态
@@ -70,9 +71,11 @@ CPA Cyber Abuse Guard 会在 Provider 解析和账号认证调度之前检查受
   审计确认，不能根据最终绿测反推。
 - 本轮复核期间，一条范围过宽的只读 `git grep` 意外输出了受限
   `testdata/holdout/malicious-operational.jsonl` 的内容。没有运行 holdout 测试，输出没有
-  重定向、复制进源码/测试/文档、分析，也没有用于调参或结论；后续门禁明确排除全部
-  holdout/evaluation 路径。因此本轮不能声明“完全未访问受限语料”，且该事件独立使交接
-  保持阻断。
+  重定向、复制进源码/测试/文档、分析，也没有用于调参或结论。后续发行审计中，一次
+  classifier 源码搜索又意外匹配了历史 holdout gate-test 源码行；该搜索没有打开任何
+  `testdata` 语料、没有运行 holdout/evaluation 测试，输出也没有用于实现判断。其余命令
+  均明确排除 holdout/evaluation 路径。因此本轮不能声明“完全未访问受限语料”，且这些
+  事件独立使交接保持阻断。
 
 仓库根 `go.mod` 与 `integration/pluginstorecontract` 隔离模块都精确固定 CPA
 v7.2.75。源码契约先列出并固定 16 个官方 Host 关键测试，再运行官方实现；额外 overlay
@@ -349,7 +352,8 @@ ALLOW_DIRTY_BUILD=1 make cpa-router-fixture-blackbox
 
 ## 产物契约
 
-开发态 CI 可以生成带 `-dirty` 后缀的证据产物；当前不存在正式 v0.1.2 发布产物。
+开发态 CI 可以生成带 `-dirty` 后缀的证据产物；当前不存在正式稳定版 v0.1.2 发布产物。
+经仓库所有者授权的开发预发行只能附带这些明确标记为 dirty、不可用于生产的资产。
 
 第五轮 canonical 精确源码证据产物来自 Push Run：
 `cyber-abuse-guard-linux-amd64-dirty`，ID `8336957771`，大小 `10686558` 字节，
