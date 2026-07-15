@@ -1058,12 +1058,14 @@ func TestExtractRequestMultipartFileDetectionMatrix(t *testing.T) {
 		wantReason IncompleteReason
 	}{
 		{
-			name: "RFC 5987 filename star",
-			part: multipartTestPart{name: "upload", disposition: `form-data; name="upload"; filename*=UTF-8''private%20name.png`, contentType: "text/plain", value: []byte(canary)},
+			name:       "RFC 5987 filename star on unknown field",
+			part:       multipartTestPart{name: "upload", disposition: `form-data; name="upload"; filename*=UTF-8''private%20name.png`, contentType: "text/plain", value: []byte(canary)},
+			wantReason: IncompleteMultipartUnknownField,
 		},
 		{
-			name: "media MIME without filename",
-			part: multipartTestPart{name: "upload", contentType: "image/png", value: []byte(canary)},
+			name:       "media MIME without filename on unknown field",
+			part:       multipartTestPart{name: "upload", contentType: "image/png", value: []byte(canary)},
+			wantReason: IncompleteMultipartUnknownField,
 		},
 		{
 			name:       "text field disguised as octet stream",
@@ -1075,8 +1077,9 @@ func TestExtractRequestMultipartFileDetectionMatrix(t *testing.T) {
 			part: multipartTestPart{name: "image", contentType: "text/plain", value: []byte(canary)},
 		},
 		{
-			name: "attachment disposition",
-			part: multipartTestPart{name: "upload", disposition: `attachment; name="upload"`, contentType: "text/plain", value: []byte(canary)},
+			name:       "attachment disposition on unknown field",
+			part:       multipartTestPart{name: "upload", disposition: `attachment; name="upload"`, contentType: "text/plain", value: []byte(canary)},
+			wantReason: IncompleteMultipartUnknownField,
 		},
 	}
 	for _, testCase := range tests {
@@ -1450,16 +1453,13 @@ func FuzzExtractRequestMultipart(f *testing.F) {
 		header := make(textproto.MIMEHeader)
 		header.Set("Content-Disposition", disposition)
 		header.Set("Content-Type", partContentType)
-		parsedDisposition, params, dispositionOK := parsePartDisposition(header)
-		parsedMediaType, mediaTypeOK := parsePartMediaType(header)
+		_, params, dispositionOK := parsePartDisposition(header)
 		name := params["name"]
-		_, hasFilename := params["filename"]
-		fileEvidence := dispositionOK && mediaTypeOK && hasMultipartFileEvidence(parsedDisposition, hasFilename, parsedMediaType)
 		framingComplete := !result.HasIncompleteReason(IncompleteMultipartBoundaryLimit) &&
 			!result.HasIncompleteReason(IncompleteMultipartHeaderLimit) &&
 			!result.HasIncompleteReason(IncompleteMultipartParseError)
-		if framingComplete && dispositionOK && mediaTypeOK && name != "" &&
-			classifyMultipartField(SourceProfileOpenAIImage, name) == multipartFieldUnknown && !fileEvidence {
+		if framingComplete && dispositionOK && name != "" &&
+			classifyMultipartField(SourceProfileOpenAIImage, name) == multipartFieldUnknown {
 			if !result.HasIncompleteReason(IncompleteMultipartUnknownField) {
 				t.Fatalf("unknown field lacked schema reason: %#v", result)
 			}

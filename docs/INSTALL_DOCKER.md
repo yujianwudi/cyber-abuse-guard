@@ -19,15 +19,48 @@ a new independent release evaluation.
 Development artifacts containing `-dirty` are test-only and must not be placed
 in a production plugin directory.
 
+The fifth-round candidate must first pass exact-commit source/artifact gates and
+be handed off for independent review. A later Tencent Cloud server run is
+limited to CPA v7.2.75
+in an isolated container with Mock upstream, no real auth pool, and no real
+Provider. It is a Host acceptance gate, not production observation or release
+approval. Unit tests or GitHub CI success do not authorize this installation
+procedure. The strongest possible handoff state before independent review is
+`READY FOR INDEPENDENT SOURCE/ARTIFACT REVIEW`, never `PRODUCTION APPROVED`.
+
+## Host controls outside the Router boundary
+
+Before any isolated Host validation, the owner must independently enforce:
+
+- a path allowlist for local high-priority instruction files, including
+  `model_instructions_file` and `AGENTS.md`;
+- owner/mode and write-access checks that prevent ordinary business users from
+  replacing those files;
+- SHA-256 or signature binding at startup and before every reload;
+- fixed audit records for instruction/configuration changes;
+- human approval and pinned commit/hash for every remote instruction template;
+- a versioned Provider schema allowlist that rejects or forcibly overwrites
+  unsafe `safetySettings`, `generationConfig`, `options`, and equivalent
+  controls before the request reaches the Router.
+
+The Guard cannot attest to any of those pre-CPA files or configuration values.
+Prompt-keyword scanning is not a substitute. Embedded ruleset `1.0.7` also
+identifies only YAML Cyber Abuse assets; it does not include the Go
+`META-OVERRIDE-001` overlay or the complete classifier/extractor policy.
+
 ## Preconditions
 
-- CPA is exactly `v7.2.72` at commit
-  `6279bb8a4c2835ff6ed99c6b85083b2afbefa681` and was built with
+- CPA is exactly `v7.2.75` at commit
+  `e57416731aec87051ac00d0812df6aebd0e9d57a` and was built with
   `CGO_ENABLED=1`. Assets labelled `_no-plugin` cannot load native plugins.
   The repository root and isolated contract module both pin this version.
-  GitHub CI is configured to load the real Store-installed guard `.so` and a
-  pure-C second Router/executor through the v7.2.72 Host; the authoritative CI
-  result and Leo's independent verification are still required.
+  Ordinary fifth-round GitHub CI compiles integration-tagged code but does not
+  start CPA or load the `.so`. The real Store-installed guard and pure-C second
+  Router/executor targets are reserved for the later authorized Tencent Cloud
+  isolated Host run. The exact-commit CI result, Host result, and independent
+  verification are still required. The pinned module sums are
+  `h1:WcCCeENtQ5F2bT86FVIOZJJbWCkPqrp3idl8kyZqARM=` and
+  `h1:f4pcyAej8RoeRhIxJfm+OUMkCKaApiA8WzxR2XVlBh8=` for `go.mod`.
 - The container is Linux amd64 with glibc 2.34 or newer. Debian Bookworm is the
   intended base; musl/Alpine is unsupported.
 - The deployment host has `curl`, `jq`, `unzip`, `sha256sum`, and `openssl`.
@@ -313,12 +346,13 @@ per-request self-executor readiness checks. A missing plugin, registration
 failure, fused plugin, Router error/panic, invalid or empty target, not-ready
 executor, or earlier handled Router can cause CPA to continue routing.
 
-The GitHub CI suite is designed to make this boundary concrete with a real
-pure-C second Router/executor. It asserts higher-priority bypass,
+The explicit Host harness is designed to make this boundary concrete with a
+real pure-C second Router/executor. It asserts higher-priority bypass,
 same-priority plugin-ID ordering, invalid/error/not-ready continuation, guard
-missing/registration failure/disabled behavior, and native fallback. Panic/fuse
-remain verified by the checksum-pinned official-source Host overlay because ABI
-v1 cannot safely inject those private Go states from a C plugin.
+missing/registration failure/disabled behavior, and native fallback. It is not
+invoked by ordinary fifth-round CI. Panic/fuse remain covered only by the
+checksum-pinned official-source Host overlay because ABI v1 cannot safely
+inject those private Go states from a C plugin.
 
 Also verify from the deployment environment:
 
@@ -332,17 +366,18 @@ Verify New API → CPA using an ordinary harmless request, confirm other plugins
 still behave normally, and compare the current CPA auth-file list with the saved
 inventory. Installation must not create, delete, or modify auth files.
 
-The GitHub CI automation covers OpenAI Chat, OpenAI Responses, Claude, and
-Gemini allow/refusal paths against CPA v7.2.72, including streaming pre-SSE 403,
-Anthropic/Gemini token-count 403, and zero Auth Selector,
-Provider, Usage, and Mock Upstream counters for blocked requests. The
-implementation-freeze GitHub CI result is recorded as PASS; repetition in Leo's
-isolated target environment is still required before any release decision.
+The v7.2.75 Host harness is designed to cover OpenAI Chat, OpenAI Responses,
+Claude, and Gemini allow/refusal paths, including streaming pre-SSE 403,
+Anthropic/Gemini token-count 403, and zero Auth Selector, Provider, Usage, and
+Mock Upstream counters for blocked requests. Ordinary fifth-round CI does not
+execute that harness. Earlier implementation-freeze Host results are historical
+only; the Tencent Cloud isolated v7.2.75 run and independent review remain
+`NOT RUN` before any release decision.
 
 `executor.http_request` is different: current tests reach the official
 `ProviderExecutor.HttpRequest` adapter as `(nil, error)` with `StatusCode()==405`
 and a project-owned `httptest.Server` that manually maps that error to HTTP.
-CPA v7.2.72 does expose `POST /v1/alpha/search`, but its ordinary selection path
+CPA v7.2.75 does expose `POST /v1/alpha/search`, but its ordinary selection path
 is fixed to `codex` and it maps every `HttpRequest` error to HTTP 502. No current
 official public route maps Guard's status error to a final client 405. That
 result is `NOT AVAILABLE / NOT RUN`, cannot be created by the current CI job,

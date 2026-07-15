@@ -1,8 +1,117 @@
-# 独立审计交接说明 — CPA Cyber Abuse Guard v0.1.2 开发树
+# 独立审计交接说明 — CPA Cyber Abuse Guard v0.1.2 第五轮开发树
 
-最后更新：2026-07-14（Asia/Shanghai）
+最后更新：2026-07-15（Asia/Shanghai）
 
-## 1. 当前结论
+## 0. 第五轮当前交接门禁
+
+当前分支以 `main@67b2470cf9be434adc0ce0c62fa6d2c0f9d21363` 为基线。第五轮
+implementation freeze、精确源码 GitHub CI 与 canonical push artifact 已记录；腾讯云二号机
+隔离 Host 和独立复核尚未运行。当前状态是：
+
+```text
+ENGINEERING SOURCE/CI/ARTIFACT GATES PASS /
+REAL HOST AND INDEPENDENT REVIEW NOT RUN /
+METHODOLOGY HANDOFF BLOCKED
+```
+
+第五轮当前证据身份：
+
+```text
+branch: agent/round5-scalar-media-multipart-meta-override
+base_commit: 67b2470cf9be434adc0ce0c62fa6d2c0f9d21363
+implementation_freeze_commit: 1466b2e7dfcafbb0547fc7863a419eccccd8091f
+pull_request: https://github.com/yujianwudi/cyber-abuse-guard/pull/7
+push_ci: PASS — https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29400003434
+pull_request_ci: PASS — https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29400080092
+ci_jobs: quality-and-artifacts=PASS; fuzz-long=PASS; reproducibility=PASS (both runs)
+canonical_artifact_id: 8336957771
+canonical_artifact_name: cyber-abuse-guard-linux-amd64-dirty
+canonical_artifact_size: 10686558 bytes
+canonical_artifact_digest: sha256:b2662faa01071cef6a111b03d1cff85d3bf4796ed2e7a54aaf584c451f581a8e
+canonical_artifact_expiry: 2026-10-13T08:13:03Z
+so_sha256: ccc818561077f2840f3d00d33cbc344ed9055aede725986c8c17b22fdb427d5e
+code_rabbit_initial_audit: 4 MAJOR issues — all verified; fixes in current audit delta
+tencent_isolated_host: NOT RUN
+independent_review: NOT RUN
+stable_v0.1.2_tag: NOT CREATED / BLOCKED
+development_prerelease: OWNER-AUTHORIZED AFTER MERGE — v0.1.2-dev.round5.1
+github_release: DEVELOPMENT PRERELEASE ONLY / NOT PRODUCTION ADMISSION
+production_deployment: NOT PERFORMED
+final_status: BLOCKED FOR HANDOFF
+```
+
+工程证据包可以交给独立审计者检查，但由于本轮受限语料方法学事件，正式交接状态不能升级
+为 `READY FOR INDEPENDENT SOURCE/ARTIFACT REVIEW`，更不得写成 `PRODUCTION APPROVED`。
+CI 或单元测试全绿只证明对应 Commit 与环境的工程门禁，不能替代腾讯云二号机 CPA
+v7.2.75 + Mock upstream Host 验收，也不能替代独立源码/artifact 复核，更不能推翻冻结的
+v10 `CONSUMED / FAIL`。
+
+第五轮审计必须单独确认以下宿主边界：
+
+- Router 无法证明请求进入 CPA 前使用的本地 `model_instructions_file`、`AGENTS.md`、
+  远程指令模板或其他高优先级配置的路径、owner、mode、hash/签名与 reload 历史。宿主须
+  实施路径 allowlist、写权限隔离、SHA-256/签名绑定、启动和每次 reload 前复核、固定变更
+  审计，以及远程模板人工审批并固定 commit/hash。
+- `safetySettings`、`generationConfig`、`options` 等 Provider 配置不能交给 Prompt 关键词
+  猜测；宿主须通过版本化 schema allowlist 拒绝不安全字段/值，或在进入 Router 前强制
+  覆盖为安全值，并在隔离 Host 核对最终生效配置。
+- Key-only Tool 映射仅在已建立的 tool/tool-payload 来源内由
+  `cag_control_schema=meta_override_control/v1` 显式启用；相同 marker 位于普通业务 JSON
+  或 Provider 配置时不具备映射权限。已知 schema 的未知控制键走固定 `tool_schema`
+  incomplete，不把原始 Key 写入审计。
+- Ruleset `1.0.7` 只标识内嵌 YAML Cyber Abuse 资产，不包含 Go 代码中的
+  `META-OVERRIDE-001` overlay、Extractor/Multipart 语义、批准的 Tool Schema 映射或
+  control-plane counter。第五轮 classifier-policy identity 是
+  `classifier-policy-v2` / `c2092d0949fcaa1d0f085dfe31a668d45cc4d14efc10427d0f3ebcf3e821a112`，
+  且必须同时核对完整 Git Commit。
+- `testdata/development-public-jailbreak-patterns-v1` 只允许净化 canary、抽象占位符和
+  minimal pair，必须保持 `development_only=true`、`future_holdout_eligible=false`、
+  `derived_from_public_adversarial_taxonomy=true`、`contains_live_payloads=false`；它不是独立
+  盲测证据。
+- 普通 CI 已移除 `consumed-boundary-test`。该目标仅保留为另行授权的人工审计入口；第五轮
+  日常开发、CI 与 artifact 构建不得访问 evaluation-v10、retired holdout 或历史原始样本。
+- 普通 CI 的 integration-tagged 路径仅运行 `make integration-compile`；另有固定的 Host
+  源码契约测试，但不得调用 `make integration-test`、启动 CPA 或加载真实 `.so`。Store
+  安装和 Host 黑盒矩阵只在后续获授权的腾讯云二号机隔离沙盒执行。
+- Role-aware 路径为避免把 System 安全策略或 Assistant refusal 归因给用户，不会把其中的
+  base Cyber Abuse taxonomy 与后续 User 消息合并。审计必须把这视为 P2 边界，并独立
+  验证所有高优先级指令来源的路径、owner、mode、hash/签名和 reload 过程；不能把该边界
+  描述为插件已覆盖的供应链防护。
+- `Segments` 当前仍在主 extractor walk 后执行第二次有界 JSON parse。已有 differential、
+  race、fuzz 和第五轮标量媒体回归没有复现泄漏，但独立复核应检查两套路径是否存在语义
+  漂移；后续应重构为单次解析产出共享语义结果。
+- Base `67b2470` 到 implementation freeze `1466b2e7` 只有一个综合实现 Commit。修复后
+  Round 5 回归已由本地与 CI 证明为绿，但没有独立保留两个 HIGH 的修复前红测 Commit 或
+  命令日志；任务书中的 red-before-fix 证据要求仍是独立审计项，不能由最终绿测倒推。
+
+本轮还发生了独立于历史 holdout-v3 事件的方法学偏差：一条作用域过宽的只读 `git grep`
+意外输出了受限 `testdata/holdout/malicious-operational.jsonl` 正文。没有运行 holdout 测试；
+输出未重定向、未复制到源码/测试/文档、未分析，也未用于调参或形成实现结论。后续发行
+审计中，一条 classifier 源码搜索又意外匹配了历史 holdout gate-test 源码行；它没有打开
+任何 `testdata` 语料、没有运行 holdout/evaluation 测试，输出同样没有用于实现判断。
+其余命令均须显式排除 holdout、evaluation-v10、retired/historical 语料。因此本轮不得
+声明“完全未访问受限语料”；即使工程门禁全绿，方法学交接仍为 `BLOCKED FOR HANDOFF`，
+不能升级为独立验收通过。
+
+当前候选树已完成允许范围内的本地 development self-check：format/diff、module verify、
+Round 5 专项、安全 allowlist unit/race、vet、fuzz-smoke、benchmark、privacy、脚本、Go
+1.26.4 vulncheck、CPA v7.2.75 源码契约与 integration compile-only 均通过。精确命令、
+exit code、性能值和两次环境性首跑失败记录在 `docs/reports/TEST_REPORT.md`。Implementation
+freeze `1466b2e7` 的 Push/PR CI 六个 Job 全绿；canonical push artifact `8336957771` 已下载，
+`checksums.txt`、SO/ruleset sidecar 和全部列明文件哈希均一致，Audit Bundle 只按不透明文件
+计算哈希、没有打开正文。上述本地和 CI 结果均未启动 CPA、未加载真实 Guard `.so`、未执行
+`make integration-test`、未运行 Host 黑盒或真实上游。
+
+第五轮要求的两个 HIGH、meta-override family、Tool Schema 与 control-plane 实现及测试，
+以 implementation freeze `1466b2e7` 的命令日志、两条 CI Run 和 canonical artifact 为准；
+本文件下方记录的旧轮次 Commit、CPA v7.2.72 Host 与 GitHub CI 结果仅作历史证据，不能
+继承为第五轮真实 Host PASS。
+
+---
+
+## 以下为上一轮冻结交接记录（历史，不是第五轮当前证据）
+
+## 1. 历史结论
 
 当前状态是：
 

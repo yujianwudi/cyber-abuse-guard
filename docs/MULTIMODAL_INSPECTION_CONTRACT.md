@@ -2,15 +2,19 @@
 
 Last updated: 2026-07-15 (Asia/Shanghai)
 
-Status: fourth-round development contract. It is not production approval and
-does not replace CPA v7.2.75 isolated-Host or Leo independent verification.
+Status: fifth-round development contract. Source, CI, and canonical development
+artifact checks are engineering evidence only; this is not production approval
+and does not replace CPA v7.2.75 isolated-Host or independent verification.
 
 ```text
-base: 2d81ebdd5943c0334c484a146ce74f0069b1942f
+base: main@67b2470cf9be434adc0ce0c62fa6d2c0f9d21363
 CPA: v7.2.75 / e57416731aec87051ac00d0812df6aebd0e9d57a
 classifier policy: classifier-policy-v2
-classifier policy SHA-256: 6a0480acc63617b688484c81baf4991cad48b57ad4414b1a8aeab0f0d196c51c
-fourth-round CI/artifact/Store-installed CI Host: PASS; authorized Tencent isolated Host/audit: PENDING
+classifier policy SHA-256: c2092d0949fcaa1d0f085dfe31a668d45cc4d14efc10427d0f3ebcf3e821a112
+fifth-round source/CI/canonical development artifact: PASS before the current audit-fix delta
+current audit-fix delta: targeted red/green regression PASS; exact-source CI required before merge
+CPA v7.2.75 Tencent isolated Host and independent review: NOT RUN
+methodology handoff: BLOCKED
 ```
 
 The earlier v7.2.72 multimodal and Host results remain historical evidence in
@@ -42,9 +46,11 @@ object-level transaction:
 5. child `source` frames may move candidates to their owning media frame, but
    tool/tool-payload boundaries terminate inherited media meaning.
 
-The same walker is used for `Parts` and role-aware `Segments`; marker-first,
-marker-middle, and marker-last forms must not change either representation,
-`TextBytesScanned`, completeness, or the stable `OpaqueMediaKinds` ordering.
+The primary `Parts` walk and the second bounded role-aware `Segments` parse
+independently enforce the same transactional media contract; they are not yet a
+single shared semantic parse product. Marker-first, marker-middle, and
+marker-last forms must not change either representation, `TextBytesScanned`,
+completeness, or the stable `OpaqueMediaKinds` ordering.
 Provider-native tool payload text such as
 `{"data":"..."}` remains inspectable and cannot label itself as media merely
 by adding `type=image`.

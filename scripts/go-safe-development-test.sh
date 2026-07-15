@@ -10,6 +10,7 @@ cd "$root"
 safe_packages=(
   ./cmd/cyber-abuse-guard
   ./cmd/development-adversarial-v11-prep-validator
+  ./cmd/development-public-jailbreak-patterns-v1-validator
   ./internal/audit
   ./internal/buildinfo
   ./internal/config
@@ -78,7 +79,13 @@ expected_safe_classifier_entries=(
   BenchmarkClassifierLargeBenign
   BenchmarkClassifierLargePunctuation
   BenchmarkClassifierRoleAwareConversation
+  BenchmarkMetaOverrideBilingualMixed
+  BenchmarkMetaOverrideLongPrompt
+  BenchmarkMetaOverrideManyParts
+  FuzzDefensiveQuotedSampleBoundary
   FuzzClassifier
+  FuzzMetaOverrideClausePermutation
+  FuzzMetaOverrideEncodingAndPartSplit
   TestAnalyzeDoesNotReturnPromptFragments
   TestAssistantClosedQuoteCannotHideNewOperationalSentence
   TestAssistantOperationalTextInsideClosedQuoteRemainsInert
@@ -178,6 +185,27 @@ expected_safe_classifier_entries=(
   TestRoleAwareSafetyFramingWithBenignContinuationAllows
   TestRoleAwareUnknownProvenanceUsesConservativeFallback
   TestRoleAwareUserFollowUpSkipsAssistantRefusal
+  TestRound5AgenticEscalationAmplifiesButDoesNotReplaceBaseTaxonomy
+  TestRound5AdjacentNegationCandidateFloodFailsClosed
+  TestRound5AdjacentNegationCandidateFloodPerformanceAcceptance
+  TestRound5AdjacentPartsNegationReversalCannotHideAbuse
+  TestRound5AdjacentPartsNegationReversalSurvivesTrailingParts
+  TestRound5AdjacentUserSegmentsNegationReversalCannotHideAbuse
+  TestRound5CoordinatedCrossCategoryProhibitionsRemainBenign
+  TestRound5CrossCategoryNegationDoesNotCoverOperationalTail
+  TestRound5MetaOverrideBenignNearNeighborsAllow
+  TestRound5MetaOverrideBilingualFamilies
+  TestRound5MetaOverrideDefensiveQuotedSamplesRemainInert
+  TestRound5MetaOverrideDefensiveTailCannotAuthorizeExecution
+  TestRound5MetaOverrideFamiliesProduceFixedEvidence
+  TestRound5MetaOverridePerformanceAcceptance
+  TestRound5PersistentBlockSurvivesIncidentalLowScoreTaxonomyTerms
+  TestRound5PersistentInstructionInjectionAcrossLinkedUserSegments
+  TestRound5PersistentInstructionInjectionBlocksOnlyActiveSafetyOverride
+  TestRound5RefusalScopeOutputAndCompoundIntentHardening
+  TestRound5NegationReversalKeepsTrueProhibitionsBenign
+  TestRound5NormalizedContractionsRemainNegationReversals
+  TestRound5WrapperAuditSurvivesIncidentalLowScoreTaxonomyTerms
   TestSafetyLabelsCannotWashOutOperationalAbuse
   TestSameCategoryEvidenceCompositionIsScopedAndConservative
   TestScopedAuthorizationNamingActionCarriesForNonProtectedCategory

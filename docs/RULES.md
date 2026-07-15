@@ -64,6 +64,14 @@ replacement, refusal suppression, unrestricted mode/persona, direct
 completion, scope/placeholder laundering, output control, protected-prompt or
 hidden-reasoning disclosure, and explicit negative authorization.
 
+The fifth-round source extends this bounded family model with
+`benchmark_coercion`, `persistent_instruction_injection`,
+`persona_takeover`, and `agentic_execution_escalation`, and strengthens
+compound-intent routing, refusal/output coercion, scope laundering, and the
+quoted-analysis boundary. These are combination signals: benchmark wording,
+fixed output, persona role-play, tool use, placeholders, or configuration
+management alone remain valid benign neighbors and do not create a block.
+
 When a normal Cyber Abuse candidate already exists, the overlay may raise its
 score without replacing the original category and records an amplifier
 relation. Without an independent base behavior, wrapper-only text never creates
@@ -84,6 +92,11 @@ new `now`/`then` operational turn exits an inert quotation. Defensive
 non-execution language reduces the overlay only when it follows the last quoted
 meta-control phrase; a label placed before later instructions cannot launder
 them. Separate API calls remain stateless.
+
+The management plane may count a fixed low-cardinality
+`control_plane_event=meta_override` dimension. It remains orthogonal to the
+base Cyber Abuse taxonomy, contains no prompt text, repository name, dynamic
+field, target, or prompt hash, and does not change subject-risk semantics.
 
 ## Bounded decoding before matching
 
@@ -134,6 +147,19 @@ become `multipart_text_field_type_mismatch`. These reasons take precedence over
 partial classification: Balanced allows+audits as `multipart_schema`, Strict
 blocks locally, and no partial score/rule IDs or subject-risk update survives.
 
+Approved key-only tool controls are also schema-bound. The classifier does not
+scan every JSON property name. A versioned approved tool schema may map a
+reviewed boolean/numeric/null control to fixed semantic evidence; an unknown
+control key in that known schema becomes `tool_schema` incomplete: Balanced
+allows+audits without classification, while Strict blocks locally without
+classification. Ordinary
+business keys are never promoted to prompt text. The current mapping requires
+`cag_control_schema=meta_override_control/v1` inside an established
+tool/tool-payload object; the marker has no mapping authority outside that
+provenance. Provider fields such as
+`safetySettings`, `generationConfig`, and `options` are deliberately left to a
+host-side versioned schema allowlist and forced-safe-value policy.
+
 ## Decision output and privacy
 
 The classifier returns only action, category, score, ruleset version,
@@ -164,12 +190,18 @@ version and canonical SHA-256 are linked into the binary, exposed by
 authenticated status, compared with source by `verify-release.sh`, and included
 in `build-metadata.json`. A missing or mismatched identity is a release failure.
 
+Ruleset `1.0.7` identifies only the embedded YAML Cyber Abuse assets. It does
+**not** contain the Go-code `META-OVERRIDE-001` overlay, extractor/media and
+multipart semantics, approved tool-schema mappings, or control-plane event
+logic. Those behaviors require the separately verified classifier-policy
+identity and exact Git commit.
+
 This identity covers the embedded YAML rule assets. The complete code-level
 policy is separately identified as:
 
 ```text
 classifier_policy_version: classifier-policy-v2
-classifier_policy_sha256: 6a0480acc63617b688484c81baf4991cad48b57ad4414b1a8aeab0f0d196c51c
+classifier_policy_sha256: c2092d0949fcaa1d0f085dfe31a668d45cc4d14efc10427d0f3ebcf3e821a112
 ```
 
 The policy digest test binds the deterministic classifier, matcher,
@@ -213,6 +245,23 @@ semantics, and expected action/category. The manifest permanently sets
 `development_only=true` and `future_holdout_eligible=false`; this corpus and any
 derived wording must never be reused as a future blind v11.
 
+The fifth-round sanitized public-taxonomy corpus is:
+
+```text
+testdata/development-public-jailbreak-patterns-v1/
+```
+
+Its manifest is required to set `development_only=true`,
+`future_holdout_eligible=false`,
+`derived_from_public_adversarial_taxonomy=true`, and
+`contains_live_payloads=false`. It stores harmless canaries, abstract
+placeholders, and minimal pairs only; it is neither a prompt bank nor blind
+evidence. Validate it with:
+
+```bash
+make development-public-jailbreak-corpus
+```
+
 Holdout data must be separately authored, frozen by SHA-256, schema-validated,
 deduplicated against regression data, scored only in aggregate, and excluded
 from per-row tuning. The task-book release gate additionally requires at least
@@ -244,11 +293,17 @@ The broad development gate must use the sample-safe wrapper rather than
 ```bash
 ./scripts/go-safe-development-test.sh test
 ./scripts/go-safe-development-test.sh race
-./scripts/go-safe-development-test.sh boundary
 ```
 
-The future Makefile aliases are `unit-test`, `race`, and
-`consumed-boundary-test`. The wrapper must not open v4-v9 consumed fixtures.
+The ordinary Makefile aliases are `unit-test` and `race`. The explicit
+`consumed-boundary-test` alias is retained only for separately authorized audit
+work and is excluded from ordinary CI. The wrapper must not open v4-v10
+consumed or retired fixtures during normal development.
+
+Passing unit or CI gates does not authorize deployment. Tencent Cloud isolated
+CPA v7.2.75 + Mock-upstream Host validation and independent source/artifact
+review remain separate gates. The strongest permitted post-gate status is
+`READY FOR INDEPENDENT SOURCE/ARTIFACT REVIEW`, never `PRODUCTION APPROVED`.
 
 Do not run, inspect, print, or obtain through Git history any consumed blind
 sample. Evaluation v10 remains `CONSUMED / FAIL`; only its frozen aggregate
