@@ -47,7 +47,7 @@ is not sent to a public classifier.
 | Round5.2 post-merge evidence | Main CI, exact-main artifact, tag, release flags, and release asset hashes are **EXTERNAL EVIDENCE — GITHUB API METADATA + LINKED RELEASE NOTES** |
 | Runtime baseline | CPA `v7.2.75`, commit `e57416731aec87051ac00d0812df6aebd0e9d57a`, C ABI/RPC schema v1 |
 | CPA v7.2.75 checksums | module `h1:WcCCeENtQ5F2bT86FVIOZJJbWCkPqrp3idl8kyZqARM=`; go.mod `h1:f4pcyAej8RoeRhIxJfm+OUMkCKaApiA8WzxR2XVlBh8=` |
-| Latest CPA source/compile lane | CPA `v7.2.80`, commit `09da52ad509e2c18e7b9540db3b98c2214c280aa`; module `h1:QIa5T/KYvJACHVPPRzXcRwq/HLpbwWYJYpZAC1eY2WA=`; go.mod `h1:ytvZNWbCv7PrAyR80+RKsDJPODsdL6qxyFaXDBNZdqs=`; `CPA_LATEST_VERIFY_REMOTE=1 make cpa-latest-compat` verified `releases/latest` and Tag-to-Commit; pinned checksums, compile-only, Router, official Host/Interactions tests, and checksum-pinned overlays passed locally and in exact-source Push/PR CI; no Host start or `.so` load |
+| Latest CPA source/compile lane | CPA `v7.2.80`, commit `09da52ad509e2c18e7b9540db3b98c2214c280aa`; module `h1:QIa5T/KYvJACHVPPRzXcRwq/HLpbwWYJYpZAC1eY2WA=`; go.mod `h1:ytvZNWbCv7PrAyR80+RKsDJPODsdL6qxyFaXDBNZdqs=`; `CPA_LATEST_VERIFY_REMOTE=1 make cpa-latest-compat` verified `releases/latest` and Tag-to-Commit; pinned checksums, compile-only, Router, upstream CPA source-level Host/Interactions test packages, and checksum-pinned overlays passed locally and in exact-source Push/PR CI; no Host start or `.so` load |
 | Documented build target | Linux amd64, glibc 2.34 or newer, CPA C ABI/RPC schema v1 |
 | Unsupported platform | musl/Alpine |
 | Embedded YAML ruleset | `1.0.7`, SHA-256 `7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134` |

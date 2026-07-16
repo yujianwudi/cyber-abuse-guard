@@ -40,7 +40,7 @@ CPA Cyber Abuse Guard 会在 Provider 解析和账号认证调度之前检查受
 | Round5.2 合并后证据 | Main CI、exact-main artifact、Tag、Release Flags 与发行资产哈希为 **EXTERNAL EVIDENCE — GITHUB API METADATA + LINKED RELEASE NOTES** |
 | 运行基线 | CPA `v7.2.75`，commit `e57416731aec87051ac00d0812df6aebd0e9d57a`，C ABI/RPC schema v1 |
 | CPA v7.2.75 校验 | module `h1:WcCCeENtQ5F2bT86FVIOZJJbWCkPqrp3idl8kyZqARM=`；go.mod `h1:f4pcyAej8RoeRhIxJfm+OUMkCKaApiA8WzxR2XVlBh8=` |
-| 最新 CPA 源码/编译兼容门禁 | CPA `v7.2.80`，commit `09da52ad509e2c18e7b9540db3b98c2214c280aa`；module `h1:QIa5T/KYvJACHVPPRzXcRwq/HLpbwWYJYpZAC1eY2WA=`；go.mod `h1:ytvZNWbCv7PrAyR80+RKsDJPODsdL6qxyFaXDBNZdqs=`；`CPA_LATEST_VERIFY_REMOTE=1 make cpa-latest-compat` 已验证 `releases/latest` 与 Tag→Commit；固定校验和、compile-only、Router、官方 Host/Interactions 测试与 checksum 固定 overlay 已在本地及精确源码 Push/PR CI 通过；未启动 Host 或加载 `.so` |
+| 最新 CPA 源码/编译兼容门禁 | CPA `v7.2.80`，commit `09da52ad509e2c18e7b9540db3b98c2214c280aa`；module `h1:QIa5T/KYvJACHVPPRzXcRwq/HLpbwWYJYpZAC1eY2WA=`；go.mod `h1:ytvZNWbCv7PrAyR80+RKsDJPODsdL6qxyFaXDBNZdqs=`；`CPA_LATEST_VERIFY_REMOTE=1 make cpa-latest-compat` 已验证 `releases/latest` 与 Tag→Commit；固定校验和、compile-only、Router、上游 CPA 源码级 Host/Interactions 测试包与 checksum 固定 overlay 已在本地及精确源码 Push/PR CI 通过；未启动 Host 或加载 `.so` |
 | 文档化构建目标 | Linux amd64、glibc 2.34 或更高、CPA C ABI/RPC schema v1 |
 | 不支持平台 | musl/Alpine |
 | 内置 YAML 规则集 | `1.0.7`，SHA-256 `7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134` |
