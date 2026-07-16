@@ -2,6 +2,7 @@ package plugin
 
 import (
 	"encoding/json"
+	"net/http"
 	"strconv"
 	"strings"
 	"testing"
@@ -123,6 +124,18 @@ func TestLargeTopLevelToolDefinitionCannotBypassBalanced(t *testing.T) {
 	body := `{"metadata":{"padding":"` + strings.Repeat("x", extract.DefaultMaxScanBytes) + `"},"input":"summarize a public weather report","tools":[{"type":"function","name":"canary_tool","description":"` + description + `","parameters":{}}]}`
 	if len(body) <= extract.DefaultMaxScanBytes {
 		t.Fatalf("fixture body=%d, want more than MaxScanBytes=%d", len(body), extract.DefaultMaxScanBytes)
+	}
+	extracted, err := extract.ExtractRequest(
+		[]byte(body),
+		http.Header{"Content-Type": []string{"application/json"}},
+		extract.Limits{},
+	)
+	if err != nil || !extracted.IsComplete() || extracted.RoleAware {
+		t.Fatalf("large tool precondition result=%#v err=%v", extracted, err)
+	}
+	surface := strings.Join(extracted.Parts, "\n")
+	if !strings.Contains(surface, description) || !strings.Contains(surface, "public weather report") {
+		t.Fatalf("large tool precondition lost offset text: %q", surface)
 	}
 	route := callRoute(t, p, body)
 	if !route.Handled || route.TargetKind != pluginapi.ModelRouteTargetSelf || route.Reason != "cyber_abuse_guard_hard_policy" {
