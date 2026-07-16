@@ -804,14 +804,14 @@ func metaOverridePassiveNegatedSubjectHasTarget(prefix string) bool {
 		return false
 	}
 	for _, governor := range []string{
-		"do not keep ", "never keep ", "must not keep ", "should not keep ",
+		"do not keep ", "don't keep ", "never keep ", "must not keep ", "should not keep ",
 	} {
 		if strings.HasPrefix(candidate, governor) {
 			return metaOverridePassiveSubjectEndsWithTarget(candidate[len(governor):])
 		}
 	}
 	for _, governor := range []string{
-		"do not ensure ", "never ensure ", "must not ensure ", "should not ensure ",
+		"do not ensure ", "don't ensure ", "never ensure ", "must not ensure ", "should not ensure ",
 	} {
 		if !strings.HasPrefix(candidate, governor) {
 			continue
@@ -969,7 +969,8 @@ func metaOverridePassiveDirectiveTail(prefix string) string {
 	boundaryEnd := 0
 	for index, r := range prefix {
 		if metaOverrideDirectiveBoundary(r) || r == ',' || r == '，' {
-			boundaryEnd = index + utf8.RuneLen(r)
+			_, width := utf8.DecodeRuneInString(prefix[index:])
+			boundaryEnd = index + width
 		}
 	}
 	return metaOverrideTrimDirectiveGovernor(strings.TrimSpace(prefix[boundaryEnd:]))
@@ -1086,7 +1087,8 @@ func metaOverrideActionOccurrenceIsDescriptive(window string, actionIndex int) b
 	for index, r := range prefix {
 		switch r {
 		case '.', '!', '?', ';', ':', ',', '\n', '\r', '。', '！', '？', '；', '：', '，', '\ufffd':
-			boundaryEnd = index + utf8.RuneLen(r)
+			_, width := utf8.DecodeRuneInString(prefix[index:])
+			boundaryEnd = index + width
 		}
 	}
 	if truncated && boundaryEnd == 0 {
@@ -1329,7 +1331,8 @@ func metaOverrideDirectiveClausesBounded(text string) ([]metaOverrideDirectiveCl
 			// split-association bridge. Colon/newline-only runs remain linked.
 			boundaryBefore = r
 		}
-		start = index + utf8.RuneLen(r)
+		_, width := utf8.DecodeRuneInString(text[index:])
+		start = index + width
 	}
 	if clause := strings.TrimSpace(text[start:]); clause != "" {
 		if len(clauses) >= maxMetaOverrideDirectiveClauses {
@@ -1373,7 +1376,8 @@ func metaOverrideLastDirectiveClause(text string) string {
 		if clause := strings.TrimSpace(text[start:index]); clause != "" {
 			last = clause
 		}
-		start = index + utf8.RuneLen(r)
+		_, width := utf8.DecodeRuneInString(text[index:])
+		start = index + width
 	}
 	if clause := strings.TrimSpace(text[start:]); clause != "" {
 		last = clause

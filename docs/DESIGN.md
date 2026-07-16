@@ -14,11 +14,14 @@ The pinned module checksum is
 
 Pinned latest-compatibility evidence is a separate layer: the isolated
 `integration/cpalatestcontract` module and `make cpa-latest-compat` pin CPA
-v7.2.80 (`09da52ad509e2c18e7b9540db3b98c2214c280aa`) and independently verify
-GitHub's current `releases/latest` and Tag-to-Commit identity before compiling the Guard plus
-integration package before running 16 official Router tests and the shared
-fail-open source overlay. This does not change the v7.2.75 artifact baseline or
-constitute a v7.2.80 native Host/Store load.
+v7.2.80 (`09da52ad509e2c18e7b9540db3b98c2214c280aa`), compile the Guard and
+integration packages, run the real Guard registration/role-routing probes,
+run 17 official Host routing/status tests and 11 official Interactions
+route/handler tests, and apply three checksum-pinned ephemeral overlays. With
+`CPA_LATEST_VERIFY_REMOTE=1`, the same gate
+additionally verifies GitHub's current `releases/latest` and Tag-to-Commit
+identity before those source/compile checks. This does not change the v7.2.75
+artifact baseline or constitute a v7.2.80 native Host/Store load.
 
 The repository work began from actual baseline
 `a121a444cb0d82cba4e27754914a1f88258e1d7b`. The root module and the isolated
@@ -65,11 +68,13 @@ JSON RPC capabilities are:
 - `management_api`: expose management-key-protected status, event, stats, test,
   unblock, and delete routes.
 
-The canonical CPA formats `openai`, `openai-response`, `openai-image`,
-`openai-video`, `claude`, and `gemini` are declared as executor input and output
+The canonical CPA formats `openai`, `openai-response`, `interactions`,
+`openai-image`, `openai-video`, `claude`, and `gemini` are declared as executor input and output
 formats. The real-Host harness retains separate allow/block, stream,
 token-count, and native error-shape assertions for the four original entry
-protocols; the fourth-round image/profile matrix is a distinct pending gate.
+protocols; the image/profile and native Interactions matrices are distinct
+pending Host gates. Interactions is a known format but intentionally uses the
+conservative untrusted-text extractor until a fixed role schema is proven.
 
 For an unknown non-multipart `SourceFormat`, Strict self-routes before
 interpretation. Balanced, Audit, and Observe still run a bounded generic
@@ -439,7 +444,8 @@ OAuth material, user code, or upstream account identity is persisted. Request
 correlation uses SHA-256 of the raw body. Subject correlation uses HMAC-SHA256.
 Requested models use a separate `cyber-abuse-guard/audit/model/v1` hash domain
 and `sha256-model-v1:` prefix. Source format is restricted to the canonical
-`openai`, `openai-response`, `claude`, `gemini`, or `unknown` enum. Legacy
+`openai`, `openai-response`, `interactions`, `openai-image`, `openai-video`,
+`claude`, `gemini`, or `unknown` enum. Legacy
 database reads are sanitized before query or CSV output.
 
 The database schema is versioned. `schema_version` records the active schema;

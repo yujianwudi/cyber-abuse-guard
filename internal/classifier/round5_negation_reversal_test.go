@@ -189,9 +189,9 @@ func TestRound5AdjacentNegationCandidateFloodPerformanceAcceptance(t *testing.T)
 	t.Logf("repeated-intent flood time=%s bytes/op=%d allocs/op=%d",
 		time.Duration(repeatedIntentResult.NsPerOp()), repeatedIntentResult.AllocedBytesPerOp(), repeatedIntentResult.AllocsPerOp())
 
-	largeCandidateClause := "do not deploy ransomware across production endpoints and do not steal browser cookies from a real victim and do not host a cloned login page and do not exfiltrate customer records externally and do not disable EDR and do not exploit a public service and do not flood production and do not install a keylogger " +
-		strings.Repeat("ordinary scheduling context ", maxClassifierNormalizedRunes/len("ordinary scheduling context "))
-	if got := c.Analyze([]string{largeCandidateClause}); got.Action != ActionBlock {
+	largeCandidateClause := "do not deploy ransomware across production endpoints and do not steal browser cookies from a real victim and do not host a cloned login page and do not exfiltrate customer records externally and do not disable EDR and do not exploit a public service and do not flood production and do not install a keylogger "
+	largeCandidateClause += strings.Repeat("x", maxCompactIntentProofBytes-len(largeCandidateClause)+1)
+	if got := c.Analyze([]string{largeCandidateClause}); got.Action != ActionBlock || got.Truncated {
 		t.Fatalf("oversized compact-intent proof did not fail active: %+v", got)
 	}
 	largeCandidateResult := testing.Benchmark(func(b *testing.B) {

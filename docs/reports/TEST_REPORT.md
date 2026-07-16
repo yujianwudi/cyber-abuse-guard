@@ -25,14 +25,14 @@ METHODOLOGY HANDOFF BLOCKED
 
 | Round5.2 evidence | Result |
 |---|---|
-| Source fixes | **IN PROGRESS / PRE-FREEZE** |
+| Source fixes | **COMPLETE / SOURCE FREEZE READY** |
 | Source-freeze commit | **PENDING PRE-MERGE BACKFILL** |
-| Source-bound classifier identity | `classifier-policy-v2` / `fd6ec33f19050fb412e6ba0d976f0ded35c2bc5c7138d9aba6c65c1af3094448`; identity test **PASS** |
-| CPA v7.2.80 latest source/compile lane | **DEVELOPMENT SELF-CHECK PASS / EXACT-SOURCE GITHUB CI PENDING**; GitHub `releases/latest`, Tag-to-Commit, pinned checksums, Guard/integration compile-only, 16 official Router tests, and shared fail-open overlay passed; no Host or `.so` load |
+| Source-bound classifier identity | `classifier-policy-v2` / `e9b87f7e2635495bdbceae469ef89e696b419f0a9a6fd129558a20bc4be947ec`; identity test **PASS** |
+| CPA v7.2.80 latest source/compile lane | **DEVELOPMENT SELF-CHECK PASS / EXACT-SOURCE GITHUB CI PENDING**; `CPA_LATEST_VERIFY_REMOTE=1 make cpa-latest-compat` verified GitHub `releases/latest` and Tag-to-Commit; pinned checksums, Guard/integration compile probes, real Guard registration/route tests, 17 official Host routing/status tests, 11 official Interactions route/handler tests, and three checksum-pinned overlays passed; no Host or `.so` load |
 | Public-reference sanitized corpus | **PASS**; 36 cases = 18 allow + 18 audit, 34 role-aware + 2 conservative-untrusted; development-only and future-Holdout-ineligible |
-| Safe local gate record | **PENDING PRE-MERGE BACKFILL** |
+| Safe local gate record | **PASS** — format/diff/module, Round5, safe test/vet, sanitized public corpus, scripts, and CPA latest remote identity/contracts |
 | Exact-source branch push CI and PR synthetic merge-result CI | **PENDING PRE-MERGE BACKFILL** |
-| PR and CodeRabbit follow-up | **PENDING PRE-MERGE BACKFILL** |
+| PR and CodeRabbit follow-up | PR [#8](https://github.com/yujianwudi/cyber-abuse-guard/pull/8); CodeRabbit CLI `0.6.5` uncommitted review **PASS / 0 issues** |
 | Post-merge main CI and exact-main artifact | **EXTERNAL EVIDENCE — GITHUB API METADATA + LINKED RELEASE NOTES** |
 | Tag, release flags, and release asset hashes | **EXTERNAL EVIDENCE — GITHUB API METADATA + LINKED RELEASE NOTES** |
 
@@ -42,13 +42,13 @@ full local gate record, branch/PR CI, or CodeRabbit follow-up.
 
 | Targeted command | Exit | Scope |
 |---|---:|---|
-| `go test ./internal/classifier -run='^TestClassifierPolicyIdentity$' -count=1` | 0 | Source-bound policy identity `fd6ec33f...` matched the reviewed source list |
-| `go test ./internal/classifier -run='^TestRound5(RepeatedIntentYInflectionsFailActive|NegatedProhibitionModalBridgeFailsActive)$' -count=1` | 0 | Sanitized CANARY regressions preserved active EXFIL-003 risk across `copy/copies/copied` and negated prohibition modal/contraction variants |
+| `go test ./internal/classifier -run='^TestClassifierPolicyIdentity$' -count=1` | 0 | Source-bound policy identity `e9b87f7e...` matched the reviewed source list |
+| `go test ./internal/classifier -run='^TestRound5(RepeatedIntentYInflectionsFailActive\|NegatedProhibitionModalBridgeFailsActive)$' -count=1` | 0 | Sanitized CANARY regressions preserved active EXFIL-003 risk across `copy/copies/copied` and negated prohibition modal/contraction variants |
 | `GOMAXPROCS=1 go test ./internal/classifier -run='^TestMetaOverrideClauseBudget' -count=1 -v` | 0 | Period/semicolon/newline `8 x 32 KiB` inputs rejected defensive credit; about 7-10 ms, 1.36 MiB/op, 40 allocs/op after the bounded-clause fix |
 | `go test ./internal/classifier -run='^TestRound5RefusalScopeOutputAndCompoundIntentHardening$' -count=1` | 0 | Concealed override and filter-boundary/long-padding regressions passed with benign neighbors |
 | `go test ./internal/extract -run='^TestExtractRawPartsToolTransactionSharesPartBudget$' -count=1` | 0 | Shared part budget retained `content=first`, excluded tool argument `second`, and reported truncation |
 | `go test ./cmd/development-public-jailbreak-patterns-v1-validator -count=1` | 0 | 36 sanitized cases: 18 allow, 18 audit, 34 role-aware, 2 conservative-untrusted |
-| `make cpa-latest-compat` | 0 | CPA v7.2.80 `releases/latest`, Tag-to-Commit, checksums, Guard/integration compile-only, 16 official Router tests, and fail-open overlay; no Host or `.so` load |
+| `CPA_LATEST_VERIFY_REMOTE=1 make cpa-latest-compat` | 0 | CPA v7.2.80 `releases/latest`, Tag-to-Commit, checksums, Guard/integration compile probes, real Guard registration/route tests, 17 official Host routing/status tests, 11 official Interactions route/handler tests, and three checksum-pinned overlays; no Host or `.so` load |
 | `ALLOW_DIRTY_BUILD=1 make release-preflight` | 0 | Every tracked shell script has Git mode `100755`; dirty development preflight passed without creating a formal release |
 
 ## Historical round5.1 release evidence
@@ -180,7 +180,7 @@ overrides. Embedded ruleset `1.0.7` covers YAML assets only and excludes the Go
 logic. The historical round5.1 policy identity is `classifier-policy-v2` /
 `c2092d0949fcaa1d0f085dfe31a668d45cc4d14efc10427d0f3ebcf3e821a112`.
 The round5.2 source-bound identity is `classifier-policy-v2` /
-`fd6ec33f19050fb412e6ba0d976f0ded35c2bc5c7138d9aba6c65c1af3094448`;
+`e9b87f7e2635495bdbceae469ef89e696b419f0a9a6fd129558a20bc4be947ec`;
 the exact source-freeze Commit remains a separate pre-merge field.
 
 Two P2 items remain explicit review scope. First, role-aware classification

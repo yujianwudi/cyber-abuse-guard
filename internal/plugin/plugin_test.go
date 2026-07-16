@@ -62,7 +62,7 @@ func TestRegistrationMatchesTargetCPAv7275Contract(t *testing.T) {
 	if result.Capabilities.ExecutorModelScope != "static" {
 		t.Fatalf("executor_model_scope = %q, want static", result.Capabilities.ExecutorModelScope)
 	}
-	wantFormats := []string{"openai", "openai-response", "openai-image", "openai-video", "claude", "gemini"}
+	wantFormats := []string{"openai", "openai-response", "interactions", "openai-image", "openai-video", "claude", "gemini"}
 	if !reflect.DeepEqual(result.Capabilities.ExecutorInputFormats, wantFormats) || !reflect.DeepEqual(result.Capabilities.ExecutorOutputFormats, wantFormats) {
 		t.Fatalf("executor formats = in:%v out:%v, want %v", result.Capabilities.ExecutorInputFormats, result.Capabilities.ExecutorOutputFormats, wantFormats)
 	}

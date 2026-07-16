@@ -297,7 +297,8 @@ func TestRoleAwareTruncatedDefensiveReconstructionKeepsWrapperFinding(t *testing
 		t.Fatal("defensive reconstruction fixture was not structurally eligible")
 	}
 	candidate := c.ClassifyWithPolicy([]string{joined}, ModeBalanced, DefaultThresholds(), DefaultPolicy())
-	if !candidate.Truncated || candidate.Action != ActionAllow {
+	if !candidate.Truncated || candidate.Action != ActionAllow || candidate.Score >= AuditThreshold ||
+		(candidate.Behavior != nil && candidate.Behavior.BaseBehavior) {
 		t.Fatalf("fixture candidate = %+v, want truncated allow before role-aware preservation", candidate)
 	}
 	got := c.AnalyzeSegments(segments)

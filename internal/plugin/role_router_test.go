@@ -19,6 +19,7 @@ func TestRouterUsesRoleAwareConversationClassification(t *testing.T) {
 	overLimitHistory := roleHistoryBody(safe, 64)
 	tests := []struct {
 		name        string
+		mode        string
 		format      string
 		body        string
 		wantHandled bool
@@ -121,6 +122,19 @@ func TestRouterUsesRoleAwareConversationClassification(t *testing.T) {
 			wantHandled: false,
 		},
 		{
+			name:        "interactions benign request is known in strict mode",
+			mode:        "strict",
+			format:      "interactions",
+			body:        `{"model":"models/gemini-3.5-flash","input":"` + safe + `","tools":[{"type":"function","name":"score_sorter","description":"sort football scores","parameters":{}}]}`,
+			wantHandled: false,
+		},
+		{
+			name:        "interactions malicious input uses conservative inspection",
+			format:      "interactions",
+			body:        `{"model":"models/gemini-3.5-flash","input":"` + malicious + `"}`,
+			wantHandled: true,
+		},
+		{
 			name:   "gemini model refusal does not break user follow-up",
 			format: "gemini",
 			body: `{"contents":[
@@ -173,7 +187,11 @@ func TestRouterUsesRoleAwareConversationClassification(t *testing.T) {
 			t.Parallel()
 			p := New()
 			t.Cleanup(p.Shutdown)
-			register(t, p, "mode: balanced\naudit:\n  enabled: false\nsubject_control:\n  enabled: false\n")
+			mode := testCase.mode
+			if mode == "" {
+				mode = "balanced"
+			}
+			register(t, p, "mode: "+mode+"\naudit:\n  enabled: false\nsubject_control:\n  enabled: false\n")
 			if got := callRoleRoute(t, p, testCase.format, testCase.body); got.Handled != testCase.wantHandled {
 				t.Fatalf("route.Handled=%v, want %v; route=%+v", got.Handled, testCase.wantHandled, got)
 			}

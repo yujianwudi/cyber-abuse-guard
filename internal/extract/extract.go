@@ -295,6 +295,7 @@ const (
 	contextText
 	contextTool
 	contextToolPayload
+	contextMetadata
 )
 
 type jsonFrame struct {
@@ -550,7 +551,8 @@ func (x *extractor) walkJSON(data []byte, initial contextKind, baseDepth int, bo
 			}
 		}
 
-		ctx, media, mediaKind, key := x.valueContext(stack, initial)
+		_, containerValue := token.(json.Delim)
+		ctx, media, mediaKind, key := x.valueContext(stack, initial, containerValue)
 		suppressToolSchemaString := false
 		if len(stack) > 0 && stack[len(stack)-1].kind == '{' {
 			top := &stack[len(stack)-1]
@@ -644,6 +646,12 @@ func (x *extractor) walkJSON(data []byte, initial contextKind, baseDepth int, bo
 
 		if text, ok := token.(string); ok {
 			if suppressToolSchemaString {
+				continue
+			}
+			if ctx == contextMetadata {
+				// Known provider metadata containers are never model-visible text.
+				// Skip their complete subtree even under a conservative profile so
+				// large request options cannot consume the semantic text budget.
 				continue
 			}
 			if len(stack) > 0 {
@@ -1559,7 +1567,7 @@ func opaqueMediaKindBit(kind OpaqueMediaKind) uint16 {
 	return uint16(1) << uint(rank)
 }
 
-func (x *extractor) valueContext(stack []jsonFrame, initial contextKind) (contextKind, bool, mediaContextKind, string) {
+func (x *extractor) valueContext(stack []jsonFrame, initial contextKind, containerValue bool) (contextKind, bool, mediaContextKind, string) {
 	if len(stack) == 0 {
 		return initial, false, mediaContextNone, ""
 	}
@@ -1569,8 +1577,19 @@ func (x *extractor) valueContext(stack []jsonFrame, initial contextKind) (contex
 	}
 
 	key := parent.key
-	keyKind := mediaContextForKey(canonicalKey(key))
+	canonical := canonicalKey(key)
+	keyKind := mediaContextForKey(canonical)
 	ctx := childContext(parent.context, key)
+	if ctx == contextMetadata {
+		return ctx, false, mediaContextNone, key
+	}
+	if containerValue && len(stack) == 1 && parent.context == contextNone && isProviderToolDefinitionContainerCanonical(canonical) {
+		// Provider tool declarations are model-visible system context. The
+		// request-level role index intentionally skips raw bodies above the
+		// semantic text budget, so the primary bounded walker must recognize the
+		// root declaration containers without depending on that second parse.
+		ctx = contextTool
+	}
 	media := parent.media
 	if crossesToolBoundary(parent.context, ctx) {
 		// Media inherited from an enclosing conversational block must not turn
@@ -1588,6 +1607,12 @@ func (x *extractor) valueContext(stack []jsonFrame, initial contextKind) (contex
 
 func childContext(parent contextKind, key string) contextKind {
 	canonical := canonicalKey(key)
+	if parent == contextMetadata {
+		return contextMetadata
+	}
+	if isProviderMetadataContainerCanonical(canonical) && parent != contextTool && parent != contextToolPayload {
+		return contextMetadata
+	}
 	if parent == contextToolPayload {
 		return contextToolPayload
 	}
@@ -1678,7 +1703,7 @@ func (x *extractor) commitInspectableTextWithMetadata(text, canonical string, ct
 		}
 	}
 
-	if ctx == contextNone || (!inspectMetadata && ctx != contextToolPayload && isMetadataKeyCanonical(canonical)) {
+	if ctx == contextNone || ctx == contextMetadata || (!inspectMetadata && ctx != contextToolPayload && isMetadataKeyCanonical(canonical)) {
 		return
 	}
 	x.addText(text, canonical)
@@ -1884,6 +1909,15 @@ func isTextContainerCanonical(key string) bool {
 func isToolWrapperKeyCanonical(key string) bool {
 	switch key {
 	case "toolcalls", "toolcall", "tooluse", "function", "functioncall":
+		return true
+	default:
+		return false
+	}
+}
+
+func isProviderToolDefinitionContainerCanonical(key string) bool {
+	switch key {
+	case "tools", "functions":
 		return true
 	default:
 		return false

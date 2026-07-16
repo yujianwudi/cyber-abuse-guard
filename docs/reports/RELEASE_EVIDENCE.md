@@ -18,16 +18,16 @@ backfilled before merge without inventing future values.
 ```text
 round5_2_branch: agent/post-release-reaudit-fixes
 round5_2_base_commit: 89b62b341278073e7b6518b85e41cd7f7c6b682c
-round5_2_source_fixes: IN PROGRESS / PRE-FREEZE
+round5_2_source_fixes: COMPLETE / SOURCE FREEZE READY
 round5_2_source_freeze: PENDING PRE-MERGE BACKFILL
-round5_2_classifier_policy_identity: classifier-policy-v2 / fd6ec33f19050fb412e6ba0d976f0ded35c2bc5c7138d9aba6c65c1af3094448
+round5_2_classifier_policy_identity: classifier-policy-v2 / e9b87f7e2635495bdbceae469ef89e696b419f0a9a6fd129558a20bc4be947ec
 round5_2_cpa_latest_source_compat: v7.2.80 / 09da52ad509e2c18e7b9540db3b98c2214c280aa / DEVELOPMENT SELF-CHECK PASS / GITHUB CI PENDING
 round5_2_public_reference_corpus: 36 sanitized cases / 18 allow / 18 audit / development-only
-round5_2_local_safe_gates: PENDING PRE-MERGE BACKFILL
+round5_2_local_safe_gates: PASS / format-diff-module / round5 / safe test-vet / sanitized public corpus / scripts / CPA latest remote identity and contracts
 round5_2_push_ci: PENDING PRE-MERGE BACKFILL
-round5_2_pull_request: PENDING PRE-MERGE BACKFILL
+round5_2_pull_request: https://github.com/yujianwudi/cyber-abuse-guard/pull/8
 round5_2_pull_request_ci: PENDING PRE-MERGE BACKFILL
-round5_2_code_rabbit_follow_up: PENDING PRE-MERGE BACKFILL
+round5_2_code_rabbit_follow_up: PASS / CLI 0.6.5 / uncommitted / 0 issues
 round5_2_tencent_isolated_host: NOT RUN
 round5_2_independent_review: NOT RUN
 round5_2_post_merge_main_ci: EXTERNAL EVIDENCE — GITHUB API METADATA + LINKED RELEASE NOTES
@@ -35,7 +35,7 @@ round5_2_post_merge_artifact: EXTERNAL EVIDENCE — GITHUB API METADATA + LINKED
 round5_2_tag_and_release: EXTERNAL EVIDENCE — GITHUB API METADATA + LINKED RELEASE NOTES
 stable_v0.1.2_tag: NOT CREATED / BLOCKED
 production_deployment: NOT PERFORMED
-source_freeze_record_status: PENDING PRE-MERGE BACKFILL / BLOCKED FOR HANDOFF
+source_freeze_record_status: LOCAL GATES PASS / SOURCE-FREEZE SHA AND CI PENDING / BLOCKED FOR HANDOFF
 ```
 
 The pre-merge record uses two commits. `S` is the implementation/source freeze:
@@ -58,20 +58,29 @@ The latest-compat lane is separate from the CPA v7.2.75 runtime/artifact
 baseline. It pins CPA v7.2.80 with module checksum
 `h1:QIa5T/KYvJACHVPPRzXcRwq/HLpbwWYJYpZAC1eY2WA=` and go.mod checksum
 `h1:ytvZNWbCv7PrAyR80+RKsDJPODsdL6qxyFaXDBNZdqs=`. The development self-check
-compiled Guard/integration packages, ran the fixed 16 official Router tests,
-and ran the checksum-verified fail-open overlay. No CPA Host or `.so` was
+compiled Guard/integration packages, ran the real Guard registration/route
+tests, 17 fixed official Host routing/status tests, 11 fixed official
+Interactions route/handler tests, and three checksum-pinned ephemeral overlays.
+No CPA Host or `.so` was
 started/loaded; branch/PR CI remains a pre-merge backfill field.
 
-The round5.2 re-audit also reproduced and closed three source-level merge
-blockers with sanitized CANARY inputs. Repeated `copy/copies/copied` forms no
+The round5.2 re-audit also reproduced and closed source-level merge blockers
+with sanitized CANARY inputs. Repeated `copy/copies/copied` forms no
 longer inherit an earlier prohibition; bounded `not allowed/permitted/
 authorized/required/supposed/able to prohibit ...` bridges and common copular/
 do/have contractions no longer hide an active intent; and meta-wrapper
 structural analysis now rejects defensive credit after 128 clauses or 1,024
 directive boundaries. The reachable `8 x 32 KiB` period/semicolon/newline
 CANARY gate fell from about 118-123 ms and 12.1 MiB/op before the fix to about
-7-10 ms and 1.36 MiB/op after it. These are development measurements, not Host
-or production evidence.
+7-10 ms and 1.36 MiB/op after it. A separate ModelRoute regression prevents an
+internal adjacent-negation proof budget from being mislabeled as incomplete and
+downgraded in Balanced mode. The primary request walker now inspects root
+container-valued `tools/functions` even when a large raw body skips the role
+index, including descriptions beyond the 256 KiB raw offset, while nested
+business lookalikes remain inert. CPA `interactions` is registered directly,
+uses a fixed audit enum and conservative extraction profile, and no longer
+depends on translator fallback for executor format readiness. These are
+development/source-contract results, not Host or production evidence.
 
 Release-path hardening in the same source freeze makes every tracked shell
 script executable in Git, runs dirty `release-preflight` in ordinary CI, adds
@@ -313,7 +322,7 @@ Release evidence must bind two separate policy identities:
   `classifier-policy-v2` /
   `c2092d0949fcaa1d0f085dfe31a668d45cc4d14efc10427d0f3ebcf3e821a112`.
   The round5.2 source-bound value is `classifier-policy-v2` /
-  `fd6ec33f19050fb412e6ba0d976f0ded35c2bc5c7138d9aba6c65c1af3094448`;
+  `e9b87f7e2635495bdbceae469ef89e696b419f0a9a6fd129558a20bc4be947ec`;
   the exact source-freeze Commit remains a separate pre-merge field.
 
 Ruleset `1.0.7` alone does not identify the complete policy. The Tool schema
@@ -561,8 +570,10 @@ Container digests are not substitutes for the internal-file hashes above.
 Store ZIP and audit bundle must remain separate. The store ZIP must contain
 exactly one root regular executable `.so`, with no absolute path, `..`,
 backslash escape, symlink, or duplicate entry. Formal release scripts remain
-blocked because v10 failed; development artifacts must be clearly dirty/non-
-release and must not be uploaded as a GitHub Release.
+blocked because v10 failed; development artifacts must be clearly dirty and
+non-production and must not be uploaded as a stable GitHub Release. Under the
+current policy, they may be uploaded only to an explicitly **BLOCKED**
+prerelease audit snapshot.
 
 ## Historical prior-round unresolved limitations
 

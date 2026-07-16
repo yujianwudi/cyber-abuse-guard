@@ -78,13 +78,20 @@ expected="$cpa_version $cpa_module_sum $cpa_go_mod_sum"
   GOWORK=off CGO_ENABLED=1 "$go_bin" test \
     -mod=readonly -modfile="$work/latest-compat.mod" \
     -tags=sqlite_omit_load_extension -run='^$' -count=1 \
-    ./cmd/cyber-abuse-guard ./internal/plugin
+    ./cmd/cyber-abuse-guard
+  GOWORK=off CGO_ENABLED=1 "$go_bin" test \
+    -mod=readonly -modfile="$work/latest-compat.mod" \
+    -tags=sqlite_omit_load_extension -count=1 \
+    -run='^(TestRegistrationMatchesTargetCPAv7275Contract|TestRouterUsesRoleAwareConversationClassification)$' \
+    ./internal/plugin
   GOWORK=off CGO_ENABLED=1 "$go_bin" test \
     -mod=readonly -modfile="$work/latest-compat.mod" \
     -tags=integration,sqlite_omit_load_extension -run='^$' -count=1 \
     ./integration
-  GOWORK=off "$go_bin" -C integration/cpalatestcontract test -count=1 -v \
-    -run='^(TestLatestCPAOfficialHostRoutingSourceContract|TestLatestCPAHostFailOpenFixtureContract)$' .
+  # The isolated package contains only bounded source/compile contracts. Run
+  # the whole package so newly added CPA compatibility contracts cannot be
+  # silently omitted by a stale -run allowlist.
+  GOWORK=off "$go_bin" -C integration/cpalatestcontract test -count=1 -v .
 )
 
 printf 'CPA latest source/compile compatibility PASS: %s@%s\n' "$cpa_version" "$cpa_commit"

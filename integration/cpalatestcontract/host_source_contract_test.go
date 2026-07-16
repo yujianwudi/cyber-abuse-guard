@@ -26,6 +26,7 @@ const (
 )
 
 var latestCriticalCPAHostTests = []string{
+	"TestDecodeEnvelopeResultPreservesPluginHTTPStatus",
 	"TestHostRouteModelAllowsExplicitExecutorPluginTarget",
 	"TestHostRouteModelClonesPluginMetadata",
 	"TestHostRouteModelContinuesAfterUnhandled",

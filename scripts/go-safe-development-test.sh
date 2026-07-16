@@ -84,6 +84,7 @@ expected_round5_extract_entries=(
   TestExtractRequestConflictingMediaMarkersAreOrderInvariant
   TestExtractRequestInheritedMediaKindUsesChildExplicitMarker
   TestExtractTextToolTransactionSharesPartBudget
+  TestRound5LargeTopLevelToolDefinitionsRemainInspectableWithoutRoleIndex
 )
 round5_extract_pattern="$(join_regex "${expected_round5_extract_entries[@]}")"
 listed_round5_extract_tests="$(
@@ -239,6 +240,7 @@ expected_safe_classifier_entries=(
   TestRound5MetaOverrideDefensiveTailCannotAuthorizeExecution
   TestRound5MetaOverrideFamiliesProduceFixedEvidence
   TestRound5MetaOverridePerformanceAcceptance
+  TestRound5MalformedUTF8DirectiveBoundariesConsumeDecodedWidth
   TestRound5NegationCannotHideLaterActiveIntent
   TestRound5PersistentBlockSurvivesIncidentalLowScoreTaxonomyTerms
   TestRound5PersistentInstructionInjectionAcrossLinkedUserSegments

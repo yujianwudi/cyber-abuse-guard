@@ -10,6 +10,7 @@ const (
 	SourceProfileUnknown SourceProfile = iota
 	SourceProfileOpenAI
 	SourceProfileOpenAIResponse
+	SourceProfileInteractions
 	SourceProfileOpenAIImage
 	SourceProfileOpenAIVideo
 	SourceProfileClaude

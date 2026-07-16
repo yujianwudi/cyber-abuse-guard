@@ -322,6 +322,8 @@ func extractionProfile(format string) (extract.RequestProfile, bool) {
 		profile.Source = extract.SourceProfileOpenAI
 	case "openai-response":
 		profile.Source = extract.SourceProfileOpenAIResponse
+	case "interactions":
+		profile.Source = extract.SourceProfileInteractions
 	case "openai-image":
 		profile.Source = extract.SourceProfileOpenAIImage
 	case "openai-video":

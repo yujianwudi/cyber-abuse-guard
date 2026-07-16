@@ -260,7 +260,7 @@
 
 37. **Classifier-policy identity is source-bound but not yet artifact-bound.**
     The round5.2 Go-level source identity is `classifier-policy-v2` / SHA-256
-    `fd6ec33f19050fb412e6ba0d976f0ded35c2bc5c7138d9aba6c65c1af3094448`.
+    `e9b87f7e2635495bdbceae469ef89e696b419f0a9a6fd129558a20bc4be947ec`.
     The historical round5.1 value was `classifier-policy-v2` / SHA-256
     `c2092d0949fcaa1d0f085dfe31a668d45cc4d14efc10427d0f3ebcf3e821a112`.
     Ruleset `1.0.7` separately identifies YAML assets and
@@ -424,9 +424,10 @@
 54. **CPA v7.2.80 compatibility is source/compile evidence only.** The separate
     `integration/cpalatestcontract` module pins `v7.2.80` at commit
     `09da52ad509e2c18e7b9540db3b98c2214c280aa` and exact Go module checksums.
-    The latest-compat lane compiles the Guard and integration packages, runs 16
-    official Router tests, and applies the shared checksum-verified fail-open
-    overlay to an ephemeral official-source copy. It does not start CPA, load a
+    The latest-compat lane compiles the Guard and integration packages, runs
+    the real Guard registration/role-routing probes, 17 official Host
+    routing/status tests, 11 official Interactions route/handler tests, and
+    three checksum-pinned overlays in ephemeral official-source copies. It does not start CPA, load a
     Guard `.so`, install through Store, or prove request reconstruction,
     logging, Auth/Provider/Usage isolation, and upstream behavior on v7.2.80.
     The artifact/runtime baseline remains v7.2.75 until the owner runs the
@@ -449,3 +450,14 @@
     tests, documentation, or release conclusions. The output is permanently
     excluded, but the event must remain disclosed and independently prevents a
     clean restricted-access methodology claim.
+
+57. **Native CPA Interactions remains without exact-artifact Host evidence.**
+    The Guard now registers `interactions` directly, retains it in the fixed
+    audit enum, and scans its mixed schema conservatively without role trust.
+    Source contracts can prove handler/Router field visibility and direct
+    executor-format readiness, but they do not load the release `.so`. On CPA
+    v7.2.80, an `agent` request that the Guard self-routes is rejected by CPA's
+    native-Interactions validator with HTTP 400 before the Guard executor runs;
+    a uniform Guard 403 would require an upstream CPA change. The owner-operated
+    sandbox must separately verify model/agent, stream/non-stream, exact status
+    shapes, first-byte behavior, and zero Auth/Provider/Usage/upstream effects.

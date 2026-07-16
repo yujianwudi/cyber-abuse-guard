@@ -103,8 +103,17 @@ Ruleset `1.0.7` identifies only embedded YAML Cyber Abuse assets. It does not
 include the Go-level `META-OVERRIDE-001` overlay, extraction semantics,
 tool-schema mappings, or control-plane telemetry. Fifth-round provenance must
 also bind `classifier-policy-v2` /
-`fd6ec33f19050fb412e6ba0d976f0ded35c2bc5c7138d9aba6c65c1af3094448`
+`e9b87f7e2635495bdbceae469ef89e696b419f0a9a6fd129558a20bc4be947ec`
 and the exact Git commit.
+
+The final reverse audit also closed a large-request extraction gap relevant to
+Codex/MCP tool inventories. When a raw request exceeds the 256 KiB semantic
+budget, the second role index is intentionally skipped; the primary walker now
+recognizes only root container-valued `tools` and `functions` declarations, so
+model-visible descriptions remain inspected even beyond that raw offset.
+Nested business lookalikes and scalar fields remain inert. Native CPA
+`interactions` is now a fixed supported format and uses conservative no-role
+inspection; this is source-level compatibility, not native Host evidence.
 
 Ordinary CI no longer invokes the consumed evaluation-v10 boundary target and
 uses `make integration-compile` without starting CPA. The pinned CPA v7.2.80
