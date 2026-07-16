@@ -532,7 +532,9 @@ func (c *Classifier) classifyWithPolicy(parts []string, mode Mode, thresholds Th
 					candidate, _ := c.adjacentNegationOverflowResultForSignals(currentSignals, scratchSignals, mode, thresholds, structuredToolPayload)
 					adjacentReversalCandidates++
 					adjacentReversalTerminal = true
-					truncated = true
+					// This caps an internal proof reconstruction after a concrete
+					// intent/object core is already known. It is not input truncation:
+					// marking it as such would let balanced routing discard the hard block.
 					if !hasAdjacentReversal || roleResultBetter(candidate, bestAdjacentReversal) {
 						bestAdjacentReversal = candidate
 						hasAdjacentReversal = true
@@ -547,7 +549,8 @@ func (c *Classifier) classifyWithPolicy(parts []string, mode Mode, thresholds Th
 							candidate = c.adjacentNegationOverflowResult(rule, mode, thresholds, structuredToolPayload)
 						}
 						adjacentReversalTerminal = true
-						truncated = true
+						// Candidate-budget exhaustion has the same fail-active semantics as
+						// the rune cap above and must not masquerade as incomplete inspection.
 					} else {
 						previousText := string(currentRunes)
 						joinedText := previousText + "\n" + string(views.standardRunes)
@@ -1378,7 +1381,6 @@ func (c *Classifier) adjacentNegationOverflowResult(rule compiledRule, mode Mode
 			{ID: rule.id + ":intent", Kind: "intent"},
 			{ID: rule.id + ":object", Kind: "object"},
 		},
-		Truncated: true,
 	}
 	carrier := "text"
 	if structuredToolPayload {

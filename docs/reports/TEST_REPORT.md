@@ -27,7 +27,7 @@ METHODOLOGY HANDOFF BLOCKED
 |---|---|
 | Source fixes | **IN PROGRESS / PRE-FREEZE** |
 | Source-freeze commit | **PENDING PRE-MERGE BACKFILL** |
-| Source-bound classifier identity | `classifier-policy-v2` / `31ecabf97c9581c0d766f126290ca5ab9a07dc6a4c37afd9dd8743871482eead`; identity test **PASS** |
+| Source-bound classifier identity | `classifier-policy-v2` / `fd6ec33f19050fb412e6ba0d976f0ded35c2bc5c7138d9aba6c65c1af3094448`; identity test **PASS** |
 | CPA v7.2.80 latest source/compile lane | **DEVELOPMENT SELF-CHECK PASS / EXACT-SOURCE GITHUB CI PENDING**; GitHub `releases/latest`, Tag-to-Commit, pinned checksums, Guard/integration compile-only, 16 official Router tests, and shared fail-open overlay passed; no Host or `.so` load |
 | Public-reference sanitized corpus | **PASS**; 36 cases = 18 allow + 18 audit, 34 role-aware + 2 conservative-untrusted; development-only and future-Holdout-ineligible |
 | Safe local gate record | **PENDING PRE-MERGE BACKFILL** |
@@ -42,7 +42,7 @@ full local gate record, branch/PR CI, or CodeRabbit follow-up.
 
 | Targeted command | Exit | Scope |
 |---|---:|---|
-| `go test ./internal/classifier -run='^TestClassifierPolicyIdentity$' -count=1` | 0 | Source-bound policy identity `31ecabf9...` matched the reviewed source list |
+| `go test ./internal/classifier -run='^TestClassifierPolicyIdentity$' -count=1` | 0 | Source-bound policy identity `fd6ec33f...` matched the reviewed source list |
 | `go test ./internal/classifier -run='^TestRound5(RepeatedIntentYInflectionsFailActive|NegatedProhibitionModalBridgeFailsActive)$' -count=1` | 0 | Sanitized CANARY regressions preserved active EXFIL-003 risk across `copy/copies/copied` and negated prohibition modal/contraction variants |
 | `GOMAXPROCS=1 go test ./internal/classifier -run='^TestMetaOverrideClauseBudget' -count=1 -v` | 0 | Period/semicolon/newline `8 x 32 KiB` inputs rejected defensive credit; about 7-10 ms, 1.36 MiB/op, 40 allocs/op after the bounded-clause fix |
 | `go test ./internal/classifier -run='^TestRound5RefusalScopeOutputAndCompoundIntentHardening$' -count=1` | 0 | Concealed override and filter-boundary/long-padding regressions passed with benign neighbors |
@@ -180,7 +180,7 @@ overrides. Embedded ruleset `1.0.7` covers YAML assets only and excludes the Go
 logic. The historical round5.1 policy identity is `classifier-policy-v2` /
 `c2092d0949fcaa1d0f085dfe31a668d45cc4d14efc10427d0f3ebcf3e821a112`.
 The round5.2 source-bound identity is `classifier-policy-v2` /
-`31ecabf97c9581c0d766f126290ca5ab9a07dc6a4c37afd9dd8743871482eead`;
+`fd6ec33f19050fb412e6ba0d976f0ded35c2bc5c7138d9aba6c65c1af3094448`;
 the exact source-freeze Commit remains a separate pre-merge field.
 
 Two P2 items remain explicit review scope. First, role-aware classification

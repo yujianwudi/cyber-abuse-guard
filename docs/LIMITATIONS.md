@@ -260,7 +260,7 @@
 
 37. **Classifier-policy identity is source-bound but not yet artifact-bound.**
     The round5.2 Go-level source identity is `classifier-policy-v2` / SHA-256
-    `31ecabf97c9581c0d766f126290ca5ab9a07dc6a4c37afd9dd8743871482eead`.
+    `fd6ec33f19050fb412e6ba0d976f0ded35c2bc5c7138d9aba6c65c1af3094448`.
     The historical round5.1 value was `classifier-policy-v2` / SHA-256
     `c2092d0949fcaa1d0f085dfe31a668d45cc4d14efc10427d0f3ebcf3e821a112`.
     Ruleset `1.0.7` separately identifies YAML assets and

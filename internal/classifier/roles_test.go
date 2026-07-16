@@ -307,6 +307,9 @@ func TestRoleAwareTruncatedDefensiveReconstructionKeepsWrapperFinding(t *testing
 	if got.Action == ActionAllow || got.Score < AuditThreshold {
 		t.Fatalf("truncated defensive reconstruction replaced the wrapper finding: %+v", got)
 	}
+	if !resultContainsRuleID(got, metaOverrideRuleID) || got.Behavior == nil || !got.Behavior.Wrapper {
+		t.Fatalf("truncated defensive reconstruction lost its fixed wrapper evidence: %+v", got)
+	}
 }
 
 func TestRoleAwareUnknownProvenanceUsesConservativeFallback(t *testing.T) {

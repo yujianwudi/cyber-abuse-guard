@@ -51,7 +51,7 @@ is not sent to a public classifier.
 | Documented build target | Linux amd64, glibc 2.34 or newer, CPA C ABI/RPC schema v1 |
 | Unsupported platform | musl/Alpine |
 | Embedded YAML ruleset | `1.0.7`, SHA-256 `7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134` |
-| Round5.2 source-bound classifier policy | `classifier-policy-v2`, SHA-256 `31ecabf97c9581c0d766f126290ca5ab9a07dc6a4c37afd9dd8743871482eead`; exact source-freeze commit remains a separate pre-merge field |
+| Round5.2 source-bound classifier policy | `classifier-policy-v2`, SHA-256 `fd6ec33f19050fb412e6ba0d976f0ded35c2bc5c7138d9aba6c65c1af3094448`; exact source-freeze commit remains a separate pre-merge field |
 | Round5.2 re-audit blockers | Closed three merge blockers in development self-checks: repeated `-y` intent inflections, negated prohibition modal bridges/contractions, and high-cardinality meta-wrapper CPU/allocation amplification; exact-source CI remains pending |
 | Historical round5.1 classifier policy | `classifier-policy-v2`, SHA-256 `c2092d0949fcaa1d0f085dfe31a668d45cc4d14efc10427d0f3ebcf3e821a112` |
 | Round5.2 source-freeze validation | **PENDING PRE-MERGE BACKFILL**. Historical round5.1 evidence is retained below and must not be presented as validation of round5.2. |

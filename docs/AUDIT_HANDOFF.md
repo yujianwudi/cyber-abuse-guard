@@ -28,7 +28,7 @@ branch: agent/post-release-reaudit-fixes
 base_commit: 89b62b341278073e7b6518b85e41cd7f7c6b682c
 source_fixes: IN PROGRESS / PRE-FREEZE
 source_freeze_commit: PENDING PRE-MERGE BACKFILL
-classifier_policy_identity: classifier-policy-v2 / 31ecabf97c9581c0d766f126290ca5ab9a07dc6a4c37afd9dd8743871482eead
+classifier_policy_identity: classifier-policy-v2 / fd6ec33f19050fb412e6ba0d976f0ded35c2bc5c7138d9aba6c65c1af3094448
 cpa_latest_source_compat: v7.2.80 / 09da52ad509e2c18e7b9540db3b98c2214c280aa / DEVELOPMENT SELF-CHECK PASS / GITHUB CI PENDING
 local_safe_gates: PENDING PRE-MERGE BACKFILL
 push_ci: PENDING PRE-MERGE BACKFILL
@@ -114,7 +114,7 @@ integration compile-only、16 个官方 Router 测试和共享 fail-open overlay
 - Ruleset `1.0.7` 只标识内嵌 YAML Cyber Abuse 资产，不包含 Go 代码中的
   `META-OVERRIDE-001` overlay、Extractor/Multipart 语义、批准的 Tool Schema 映射或
   control-plane counter。Round5.2 source-bound classifier-policy identity 是
-`classifier-policy-v2` / `31ecabf97c9581c0d766f126290ca5ab9a07dc6a4c37afd9dd8743871482eead`，
+`classifier-policy-v2` / `fd6ec33f19050fb412e6ba0d976f0ded35c2bc5c7138d9aba6c65c1af3094448`，
   并须与待回填的 source-freeze Git Commit 同时核对。历史 round5.1 值为
   `classifier-policy-v2` / `c2092d0949fcaa1d0f085dfe31a668d45cc4d14efc10427d0f3ebcf3e821a112`。
 - `testdata/development-public-jailbreak-patterns-v1` 现有 36 个净化用例（18 allow / 18

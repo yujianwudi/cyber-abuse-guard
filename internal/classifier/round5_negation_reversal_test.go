@@ -116,7 +116,7 @@ func TestRound5AdjacentNegationCandidateFloodFailsClosed(t *testing.T) {
 	parts := round5AdjacentNegationFloodParts()
 
 	got := c.Analyze(parts)
-	if got.Action != ActionBlock || got.Score < HardThreshold || !got.Truncated {
+	if got.Action != ActionBlock || got.Score < HardThreshold || got.Truncated {
 		t.Fatalf("adjacent negation candidate flood did not fail closed: %+v", got)
 	}
 }
@@ -479,7 +479,7 @@ func TestRound5LargeAdjacentNegationReconstructionFailsClosed(t *testing.T) {
 		{"Do not fail to deploy", "ransomware " + large},
 	} {
 		got := c.Analyze(parts)
-		if got.Action != ActionBlock || got.Score < HardThreshold || !got.Truncated || got.Category != "ransomware_deployment" || !resultContainsRuleID(got, "RANSOM-001") {
+		if got.Action != ActionBlock || got.Score < HardThreshold || got.Truncated || got.Category != "ransomware_deployment" || !resultContainsRuleID(got, "RANSOM-001") {
 			t.Errorf("large adjacent negation did not fail closed with its concrete rule %q: %+v", parts, got)
 		}
 	}
@@ -492,7 +492,7 @@ func TestRound5AdjacentOverflowPreservesAllMatchedCores(t *testing.T) {
 	secondPart := "ransomware across production endpoints"
 
 	result := c.Analyze([]string{firstPart, secondPart})
-	if result.Action != ActionBlock || !result.Truncated {
+	if result.Action != ActionBlock || result.Truncated {
 		t.Fatalf("adjacent overflow did not fail closed: %+v", result)
 	}
 	if result.Category != "ransomware_deployment" {

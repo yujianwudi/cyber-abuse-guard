@@ -20,7 +20,7 @@ round5_2_branch: agent/post-release-reaudit-fixes
 round5_2_base_commit: 89b62b341278073e7b6518b85e41cd7f7c6b682c
 round5_2_source_fixes: IN PROGRESS / PRE-FREEZE
 round5_2_source_freeze: PENDING PRE-MERGE BACKFILL
-round5_2_classifier_policy_identity: classifier-policy-v2 / 31ecabf97c9581c0d766f126290ca5ab9a07dc6a4c37afd9dd8743871482eead
+round5_2_classifier_policy_identity: classifier-policy-v2 / fd6ec33f19050fb412e6ba0d976f0ded35c2bc5c7138d9aba6c65c1af3094448
 round5_2_cpa_latest_source_compat: v7.2.80 / 09da52ad509e2c18e7b9540db3b98c2214c280aa / DEVELOPMENT SELF-CHECK PASS / GITHUB CI PENDING
 round5_2_public_reference_corpus: 36 sanitized cases / 18 allow / 18 audit / development-only
 round5_2_local_safe_gates: PENDING PRE-MERGE BACKFILL
@@ -313,7 +313,7 @@ Release evidence must bind two separate policy identities:
   `classifier-policy-v2` /
   `c2092d0949fcaa1d0f085dfe31a668d45cc4d14efc10427d0f3ebcf3e821a112`.
   The round5.2 source-bound value is `classifier-policy-v2` /
-  `31ecabf97c9581c0d766f126290ca5ab9a07dc6a4c37afd9dd8743871482eead`;
+  `fd6ec33f19050fb412e6ba0d976f0ded35c2bc5c7138d9aba6c65c1af3094448`;
   the exact source-freeze Commit remains a separate pre-merge field.
 
 Ruleset `1.0.7` alone does not identify the complete policy. The Tool schema

@@ -44,7 +44,7 @@ CPA Cyber Abuse Guard 会在 Provider 解析和账号认证调度之前检查受
 | 文档化构建目标 | Linux amd64、glibc 2.34 或更高、CPA C ABI/RPC schema v1 |
 | 不支持平台 | musl/Alpine |
 | 内置 YAML 规则集 | `1.0.7`，SHA-256 `7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134` |
-| Round5.2 source-bound 分类器策略身份 | `classifier-policy-v2`，SHA-256 `31ecabf97c9581c0d766f126290ca5ab9a07dc6a4c37afd9dd8743871482eead`；精确 source-freeze Commit 是单独的合并前字段 |
+| Round5.2 source-bound 分类器策略身份 | `classifier-policy-v2`，SHA-256 `fd6ec33f19050fb412e6ba0d976f0ded35c2bc5c7138d9aba6c65c1af3094448`；精确 source-freeze Commit 是单独的合并前字段 |
 | Round5.2 反审阻断项 | 开发自检已关闭三项合并阻断：重复 `-y` 动词变形、被否定 prohibition 的 modal bridge/缩写，以及高子句密度 meta wrapper 的 CPU/分配放大；精确源码 CI 仍待运行 |
 | 历史 round5.1 分类器策略身份 | `classifier-policy-v2`，SHA-256 `c2092d0949fcaa1d0f085dfe31a668d45cc4d14efc10427d0f3ebcf3e821a112` |
 | Round5.2 source-freeze 验证 | **PENDING PRE-MERGE BACKFILL**。下方 round5.1 证据仅作历史记录，不得作为 round5.2 的验证。 |
