@@ -79,6 +79,8 @@ func CanonicalSourceFormat(sourceFormat string) string {
 		return "openai"
 	case "openai-response":
 		return "openai-response"
+	case "interactions":
+		return "interactions"
 	case "openai-image":
 		return "openai-image"
 	case "openai-video":
@@ -141,7 +143,7 @@ func validateEvent(event Event) error {
 	if event.Model != "" && !validDigest(event.Model, modelHashPrefix) {
 		return errors.New("audit: model is not a domain-separated SHA-256 correlation value")
 	}
-	if event.SourceFormat != "" && !oneOf(event.SourceFormat, "openai", "openai-response", "openai-image", "openai-video", "claude", "gemini", SourceFormatUnknown) {
+	if event.SourceFormat != "" && !oneOf(event.SourceFormat, "openai", "openai-response", "interactions", "openai-image", "openai-video", "claude", "gemini", SourceFormatUnknown) {
 		return errors.New("audit: source_format is not a canonical provider value")
 	}
 	if event.RiskScore < 0 || event.RiskScore > 1_000_000 {

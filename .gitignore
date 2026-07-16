@@ -9,6 +9,7 @@
 *.sqlite3-*
 *.log
 /coverage.out
+*.test
 /integration/.work/
 *.h
 /.cyber-abuse-guard-hmac

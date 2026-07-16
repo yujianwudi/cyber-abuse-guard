@@ -82,6 +82,18 @@ var (
 		"nested_json",
 		"bilingual",
 		"adjacent_turns",
+		"mixed_roles",
+		"semantic_alias",
+		"override_concealment",
+		"filter_boundary_split",
+		"html_comment_modules",
+	}
+	canonicalDevelopmentSourceContexts = []string{
+		"request_body",
+		"local_model_instructions",
+		"managed_agents",
+		"skill_mcp",
+		"remote_template_cache",
 	}
 )
 
@@ -98,6 +110,7 @@ type manifest struct {
 	RequiredProtocols                    []string `json:"required_protocols"`
 	RequiredCarriers                     []string `json:"required_carriers"`
 	RequiredTransforms                   []string `json:"required_transforms"`
+	RequiredSourceContexts               []string `json:"required_source_contexts"`
 }
 
 type fixtureRecord struct {
@@ -108,6 +121,7 @@ type fixtureRecord struct {
 	Protocol          string          `json:"protocol"`
 	Carrier           string          `json:"carrier"`
 	Transform         string          `json:"transform"`
+	SourceContext     string          `json:"source_context,omitempty"`
 	PairID            string          `json:"pair_id"`
 	Purpose           string          `json:"purpose"`
 	HarmlessCanary    bool            `json:"harmless_canary"`
@@ -117,15 +131,16 @@ type fixtureRecord struct {
 }
 
 type validationMetrics struct {
-	Total      int
-	Allow      int
-	Audit      int
-	RoleAware  int
-	Untrusted  int
-	Families   map[string]int
-	Protocols  map[string]int
-	Carriers   map[string]int
-	Transforms map[string]int
+	Total          int
+	Allow          int
+	Audit          int
+	RoleAware      int
+	Untrusted      int
+	Families       map[string]int
+	Protocols      map[string]int
+	Carriers       map[string]int
+	Transforms     map[string]int
+	SourceContexts map[string]int
 }
 
 func main() {
@@ -180,6 +195,7 @@ func validateDevelopmentCorpus(root string) (validationMetrics, error) {
 	metrics := validationMetrics{
 		Families: map[string]int{}, Protocols: map[string]int{},
 		Carriers: map[string]int{}, Transforms: map[string]int{},
+		SourceContexts: map[string]int{},
 	}
 	ids := map[string]struct{}{}
 	pairs := map[string][]fixtureRecord{}
@@ -236,6 +252,7 @@ func validateDevelopmentCorpus(root string) (validationMetrics, error) {
 		metrics.Protocols[record.Protocol]++
 		metrics.Carriers[record.Carrier]++
 		metrics.Transforms[record.Transform]++
+		metrics.SourceContexts[effectiveSourceContext(record)]++
 		if record.Label == "allow" {
 			metrics.Allow++
 		} else {
@@ -289,6 +306,7 @@ func validateManifest(value manifest) error {
 		{label: "required_protocols", actual: value.RequiredProtocols, canonical: canonicalDevelopmentProtocols},
 		{label: "required_carriers", actual: value.RequiredCarriers, canonical: canonicalDevelopmentCarriers},
 		{label: "required_transforms", actual: value.RequiredTransforms, canonical: canonicalDevelopmentTransforms},
+		{label: "required_source_contexts", actual: value.RequiredSourceContexts, canonical: canonicalDevelopmentSourceContexts},
 	} {
 		if err := validateExactEnums(check.label, check.actual, check.canonical); err != nil {
 			return err
@@ -401,6 +419,7 @@ func validateRecord(record fixtureRecord, ids map[string]struct{}, descriptor ma
 		{label: "protocol", value: record.Protocol, manifest: descriptor.RequiredProtocols, canonical: canonicalDevelopmentProtocols},
 		{label: "carrier", value: record.Carrier, manifest: descriptor.RequiredCarriers, canonical: canonicalDevelopmentCarriers},
 		{label: "transform", value: record.Transform, manifest: descriptor.RequiredTransforms, canonical: canonicalDevelopmentTransforms},
+		{label: "source context", value: effectiveSourceContext(record), manifest: descriptor.RequiredSourceContexts, canonical: canonicalDevelopmentSourceContexts},
 	} {
 		if !enumContains(check.manifest, check.value) || !enumContains(check.canonical, check.value) {
 			return fmt.Errorf("development case %s is outside the approved manifest and canonical sets", check.label)
@@ -446,6 +465,13 @@ func enumContains(values []string, want string) bool {
 		}
 	}
 	return false
+}
+
+func effectiveSourceContext(record fixtureRecord) string {
+	if record.SourceContext == "" {
+		return "request_body"
+	}
+	return record.SourceContext
 }
 
 func validateCorpusSafety(raw []byte) error {
@@ -523,13 +549,16 @@ func validateAggregates(descriptor manifest, pairs map[string][]fixtureRecord, m
 		}
 	}
 	for label, required := range map[string][]string{
-		"protocol": descriptor.RequiredProtocols, "carrier": descriptor.RequiredCarriers, "transform": descriptor.RequiredTransforms,
+		"protocol": descriptor.RequiredProtocols, "carrier": descriptor.RequiredCarriers,
+		"transform": descriptor.RequiredTransforms, "source context": descriptor.RequiredSourceContexts,
 	} {
 		actual := metrics.Protocols
 		if label == "carrier" {
 			actual = metrics.Carriers
 		} else if label == "transform" {
 			actual = metrics.Transforms
+		} else if label == "source context" {
+			actual = metrics.SourceContexts
 		}
 		for _, value := range required {
 			if actual[value] == 0 {

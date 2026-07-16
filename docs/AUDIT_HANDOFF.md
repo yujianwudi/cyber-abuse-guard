@@ -1,50 +1,106 @@
 # 独立审计交接说明 — CPA Cyber Abuse Guard v0.1.2 第五轮开发树
 
-最后更新：2026-07-15（Asia/Shanghai）
+最后更新：2026-07-16（Asia/Shanghai）
 
-## 0. 第五轮当前交接门禁
+## 0. Round5.2 当前交接门禁
 
-当前分支以 `main@67b2470cf9be434adc0ce0c62fa6d2c0f9d21363` 为基线。第五轮
-implementation freeze、精确源码 GitHub CI 与 canonical push artifact 已记录；腾讯云二号机
-隔离 Host 和独立复核尚未运行。当前状态是：
+本节刻意只记录可在合并前冻结的 round5.2 证据：source-freeze identity、安全本地门禁、
+精确源码 Branch Push CI、PR 临时 Merge Result CI 与复核状态。它不猜测或自引用未来
+Merge Commit。合并后的 main CI、exact-main artifact、Tag、Release Flags 与发行资产
+哈希，只能以 GitHub API metadata 为权威外部证据；对应 Release notes 只负责链接这些
+记录、列出逐资产 SHA-256 并保留全部未完成门禁。修复分支以历史
+`main@89b62b341278073e7b6518b85e41cd7f7c6b682c` 为基线；下方合并前字段已按 GitHub 与本地
+实际证据回填，不包含未来 Merge Commit。历史 `v0.1.2-dev.round5.1` 是 `BLOCKED / NOT FOR DEPLOYMENT` 的开发预发行，
+其 Tag 必须永久保持指向 `89b62b341278073e7b6518b85e41cd7f7c6b682c`，不得移动或复用。
+当前状态是：
 
 ```text
-ENGINEERING SOURCE/CI/ARTIFACT GATES PASS /
+ROUND5.2 SOURCE FREEZE, LOCAL GATES, PUSH/PR CI, AND REVIEW PASS /
+MERGE, MAIN CI, ARTIFACT, TAG, AND RELEASE PENDING /
 REAL HOST AND INDEPENDENT REVIEW NOT RUN /
 METHODOLOGY HANDOFF BLOCKED
 ```
 
-第五轮当前证据身份：
+Round5.2 当前证据身份：
 
 ```text
-branch: agent/round5-scalar-media-multipart-meta-override
-base_commit: 67b2470cf9be434adc0ce0c62fa6d2c0f9d21363
-implementation_freeze_commit: 1466b2e7dfcafbb0547fc7863a419eccccd8091f
-pull_request: https://github.com/yujianwudi/cyber-abuse-guard/pull/7
-push_ci: PASS — https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29400003434
-pull_request_ci: PASS — https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29400080092
-ci_jobs: quality-and-artifacts=PASS; fuzz-long=PASS; reproducibility=PASS (both runs)
-canonical_artifact_id: 8336957771
-canonical_artifact_name: cyber-abuse-guard-linux-amd64-dirty
-canonical_artifact_size: 10686558 bytes
-canonical_artifact_digest: sha256:b2662faa01071cef6a111b03d1cff85d3bf4796ed2e7a54aaf584c451f581a8e
-canonical_artifact_expiry: 2026-10-13T08:13:03Z
-so_sha256: ccc818561077f2840f3d00d33cbc344ed9055aede725986c8c17b22fdb427d5e
-code_rabbit_initial_audit: 4 MAJOR issues — all verified; fixes in current audit delta
+branch: agent/post-release-reaudit-fixes
+base_commit: 89b62b341278073e7b6518b85e41cd7f7c6b682c
+source_fixes: COMPLETE / SOURCE FREEZE READY
+source_freeze_commit: 170de7f324c2bdf9a473b1866bdfc1e097182301
+classifier_policy_identity: classifier-policy-v2 / e9b87f7e2635495bdbceae469ef89e696b419f0a9a6fd129558a20bc4be947ec
+cpa_latest_source_compat: v7.2.80 / 09da52ad509e2c18e7b9540db3b98c2214c280aa / DEVELOPMENT SELF-CHECK AND EXACT-SOURCE PUSH/PR CI PASS
+local_safe_gates: PASS / format-diff-module / round5 / safe test-vet / sanitized public corpus / scripts / CPA latest remote identity and contracts
+push_ci: https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29467936241 / attempt 1 / SUCCESS / quality-and-artifacts, fuzz-long, reproducibility
+source_freeze_push_artifact: 8363874523 / cyber-abuse-guard-linux-amd64-dirty / 10827848 bytes / sha256:fdec405e991498d4b7fb16557796a22736456c01fb1bd0e31d8eac5800438176 / expires 2026-10-14T03:00:42Z / development-only
+pull_request: https://github.com/yujianwudi/cyber-abuse-guard/pull/8
+pull_request_ci: https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29467938359 / attempt 1 / SUCCESS / base 89b62b341278073e7b6518b85e41cd7f7c6b682c / head 170de7f324c2bdf9a473b1866bdfc1e097182301 / synthetic merge fc8b5649505662e47bedbd85a41fbea306a2df7c / quality-and-artifacts, fuzz-long, reproducibility
+code_rabbit_follow_up: PASS / CLI 0.6.5 / final source delta / 0 issues / GitHub check SUCCESS / 10 of 10 current PR review threads resolved (9 source-freeze + 1 documentation wording)
 tencent_isolated_host: NOT RUN
 independent_review: NOT RUN
+post_merge_main_ci: EXTERNAL EVIDENCE — GITHUB API METADATA + LINKED RELEASE NOTES
+post_merge_artifact: EXTERNAL EVIDENCE — GITHUB API METADATA + LINKED RELEASE NOTES
+tag_and_release: EXTERNAL EVIDENCE — GITHUB API METADATA + LINKED RELEASE NOTES
 stable_v0.1.2_tag: NOT CREATED / BLOCKED
-development_prerelease: OWNER-AUTHORIZED AFTER MERGE — v0.1.2-dev.round5.1
-github_release: DEVELOPMENT PRERELEASE ONLY / NOT PRODUCTION ADMISSION
 production_deployment: NOT PERFORMED
-final_status: BLOCKED FOR HANDOFF
+source_freeze_record_status: PRE-MERGE SOURCE EVIDENCE PASS / REAL HOST AND INDEPENDENT REVIEW NOT RUN / BLOCKED FOR HANDOFF
 ```
 
-工程证据包可以交给独立审计者检查，但由于本轮受限语料方法学事件，正式交接状态不能升级
-为 `READY FOR INDEPENDENT SOURCE/ARTIFACT REVIEW`，更不得写成 `PRODUCTION APPROVED`。
-CI 或单元测试全绿只证明对应 Commit 与环境的工程门禁，不能替代腾讯云二号机 CPA
-v7.2.75 + Mock upstream Host 验收，也不能替代独立源码/artifact 复核，更不能推翻冻结的
-v10 `CONSUMED / FAIL`。
+合并前采用两层冻结，避免证据文档形成无限自引用：
+
+- `S`（implementation/source-freeze）固定所有代码、workflow、测试、脚本与开发语料；本地
+  安全门禁、精确 `S` 的 Branch Push CI、PR 临时 Merge Result CI 和 CodeRabbit 都围绕
+  `S` 建立证据。PR CI 必须同时记录 base SHA、head SHA、临时 merge SHA、Run ID/URL 与
+  三个 Job 结论，不得把 PR artifact 写成 `S` 或最终 main artifact。
+- `D`（evidence-backfill）只允许 README/文档回填 `S` 的真实证据；`S..D` 若包含任何代码、
+  workflow、测试、脚本或 corpus 变化，则 `S` 作废并重新冻结。`D` 自身的最终 PR CI 与
+  CodeRabbit 由 GitHub checks/API 外部证明，不继续提交自引用字段。
+
+合并后的外部证据必须可独立核验：记录 workflow Run ID/URL、event、attempt、overall
+conclusion、head SHA 与全部要求 Job 的结论；记录 artifact ID、API digest、大小、过期时间
+及 attestation（若有）；记录 Tag ref 的对象类型、精确 target SHA、签名/verification 状态
+（预期 lightweight Tag 应明确记为不适用而非伪称已签名）；记录 Release ID/URL 以及
+`draft=false`、`prerelease=true`、`latest=false`。Release notes 只能链接这些 API 记录，
+并列出九个发行资产的逐文件 SHA-256 和仍为 `NOT RUN/BLOCKED` 的门禁，不能单独证明
+main CI、artifact 与 Tag 指向同一 Commit。
+
+历史 round5.1 证据身份：
+
+```text
+historical_prerelease: v0.1.2-dev.round5.1 — BLOCKED / NOT FOR DEPLOYMENT
+historical_release_url: https://github.com/yujianwudi/cyber-abuse-guard/releases/tag/v0.1.2-dev.round5.1
+historical_merge_and_tag_commit: 89b62b341278073e7b6518b85e41cd7f7c6b682c
+historical_implementation_freeze: 174401cd234f960e66ce55b9fc88614d948d5129
+historical_pull_request: https://github.com/yujianwudi/cyber-abuse-guard/pull/7
+historical_main_ci: https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29409182748
+historical_main_ci_attempt_1: FAIL — fuzz timer-boundary context deadline exceeded
+historical_main_ci_attempt_2: PASS — all jobs
+historical_artifact_id: 8340894661
+historical_artifact_digest: sha256:7419fcf0c0745472728d6e9c73d99aa01737930ccf25e26501e17ae4d453db61
+historical_so_sha256: 3176d2af23963a2768672034af02fc1ca9ebe0c3f29a3654aa802ce0f822b6be
+historical_release_flags: prerelease=true; latest=false
+historical_tag_policy: IMMUTABLE / MUST NOT MOVE
+```
+
+Round5.1 的本地 CodeRabbit CLI 后续复核曾记录 0 issues，但 GitHub Bot 评论随后因 PR 已
+关闭而显示 `Review failed — pull request is closed`，因此不得把它写成 CodeRabbit 的公开
+批准。Round5.2 的 CLI `0.6.5` 最终源码 delta 复核为 0 issues，GitHub CodeRabbit 检查为
+SUCCESS，当前 10/10 个 review thread（9 个源码冻结线程 + 1 个文档措辞线程）均已处理并
+关闭；这仍不等于独立源码/artifact 复核。
+
+工程证据包只能按其精确 Commit 和轮次使用。任何历史 round5.1 SHA、CI 或 artifact 都不能
+替代 round5.2 证据。CI 或单元测试全绿也不能替代腾讯云二号机 CPA v7.2.75 + Mock
+upstream Host 验收或独立源码/artifact 复核，更不能推翻唯一方法学有效且已冻结的 v10
+`CONSUMED / FAIL`。
+
+最新版兼容性采用独立门禁，不改变 v7.2.75 运行基线：
+`integration/cpalatestcontract` 与 `scripts/cpa-latest-compat.sh` 精确固定
+CPA v7.2.80 / `09da52ad509e2c18e7b9540db3b98c2214c280aa`，module
+`h1:QIa5T/KYvJACHVPPRzXcRwq/HLpbwWYJYpZAC1eY2WA=`，go.mod
+`h1:ytvZNWbCv7PrAyR80+RKsDJPODsdL6qxyFaXDBNZdqs=`。开发自检已完成 Guard/integration
+compile 探针、真实 Guard registration/route 测试、17 个官方 Host routing/status 测试、
+11 个官方 Interactions route/handler 测试和三个 checksum 固定 overlay；未启动 CPA、
+未加载 `.so`；精确 source-freeze Push CI `29467936241` 与 PR CI `29467938359` 均已通过。
 
 第五轮审计必须单独确认以下宿主边界：
 
@@ -59,15 +115,29 @@ v10 `CONSUMED / FAIL`。
   `cag_control_schema=meta_override_control/v1` 显式启用；相同 marker 位于普通业务 JSON
   或 Provider 配置时不具备映射权限。已知 schema 的未知控制键走固定 `tool_schema`
   incomplete，不把原始 Key 写入审计。
+- Provider-aware 主 JSON walker 仅把根级容器 `tools` / `functions` 识别为模型可见 Tool
+  Definition；即使 raw body 超过 `max_scan_bytes`、第二次 role index 被跳过，位于 256 KiB
+  原始偏移之后的 description/schema 文本仍会进入有界分类。嵌套业务 `catalog.tools/functions`
+  与根级标量同名字段仍保持 inert，避免扩大普通 JSON 误报面。
+- CPA `interactions` 已进入固定 SourceFormat、审计枚举与 Executor input/output formats；其
+  JSON 使用无角色信任的保守遍历，Strict benign 不再因 unknown format 误封。v7.2.80 的
+  agent 请求若被 Guard self/executor 路由，CPA 当前会在 Auth/Provider 前返回固定 400 而非
+  执行 Guard 403；model/agent、stream/non-stream 和零下游计数仍须由服务器沙盒验证。
 - Ruleset `1.0.7` 只标识内嵌 YAML Cyber Abuse 资产，不包含 Go 代码中的
   `META-OVERRIDE-001` overlay、Extractor/Multipart 语义、批准的 Tool Schema 映射或
-  control-plane counter。第五轮 classifier-policy identity 是
-  `classifier-policy-v2` / `c2092d0949fcaa1d0f085dfe31a668d45cc4d14efc10427d0f3ebcf3e821a112`，
-  且必须同时核对完整 Git Commit。
-- `testdata/development-public-jailbreak-patterns-v1` 只允许净化 canary、抽象占位符和
-  minimal pair，必须保持 `development_only=true`、`future_holdout_eligible=false`、
-  `derived_from_public_adversarial_taxonomy=true`、`contains_live_payloads=false`；它不是独立
-  盲测证据。
+  control-plane counter。Round5.2 source-bound classifier-policy identity 是
+`classifier-policy-v2` / `e9b87f7e2635495bdbceae469ef89e696b419f0a9a6fd129558a20bc4be947ec`，
+  并须与 source-freeze Git Commit `170de7f324c2bdf9a473b1866bdfc1e097182301`
+  同时核对。历史 round5.1 值为
+  `classifier-policy-v2` / `c2092d0949fcaa1d0f085dfe31a668d45cc4d14efc10427d0f3ebcf3e821a112`。
+- `testdata/development-public-jailbreak-patterns-v1` 现有 36 个净化用例（18 allow / 18
+  audit），必须保持 `development_only=true`、`future_holdout_eligible=false`、
+  `derived_from_public_adversarial_taxonomy=true`、`contains_live_payloads=false`。其固定公开
+  参考为 `MDX-Tom/gpt-5.6-instruct@5f469e43...`、
+  `yynxxxxx/Codex-X@659415f5...`、
+  `yynxxxxx/Codex-5.5-codex-instruct-5.5@ed0b6dc3...`；只抽象机制，不复制或执行原始
+  payload。`source_context` 只是开发元数据，不能证明攻击来自某仓库或本地文件，也不是
+  独立盲测证据。
 - 普通 CI 已移除 `consumed-boundary-test`。该目标仅保留为另行授权的人工审计入口；第五轮
   日常开发、CI 与 artifact 构建不得访问 evaluation-v10、retired holdout 或历史原始样本。
 - 普通 CI 的 integration-tagged 路径仅运行 `make integration-compile`；另有固定的 Host
@@ -80,9 +150,9 @@ v10 `CONSUMED / FAIL`。
 - `Segments` 当前仍在主 extractor walk 后执行第二次有界 JSON parse。已有 differential、
   race、fuzz 和第五轮标量媒体回归没有复现泄漏，但独立复核应检查两套路径是否存在语义
   漂移；后续应重构为单次解析产出共享语义结果。
-- Base `67b2470` 到 implementation freeze `1466b2e7` 只有一个综合实现 Commit。修复后
-  Round 5 回归已由本地与 CI 证明为绿，但没有独立保留两个 HIGH 的修复前红测 Commit 或
-  命令日志；任务书中的 red-before-fix 证据要求仍是独立审计项，不能由最终绿测倒推。
+- 历史 round5.1 从 Base `67b2470` 到 pre-audit freeze `1466b2e7` 只有一个综合实现
+  Commit。后续修复回归已转绿，但没有独立保留两个 HIGH 的修复前红测 Commit 或命令
+  日志；任务书中的 red-before-fix 证据要求仍是历史独立审计项，不能由最终绿测倒推。
 
 本轮还发生了独立于历史 holdout-v3 事件的方法学偏差：一条作用域过宽的只读 `git grep`
 意外输出了受限 `testdata/holdout/malicious-operational.jsonl` 正文。没有运行 holdout 测试；
@@ -93,19 +163,32 @@ v10 `CONSUMED / FAIL`。
 声明“完全未访问受限语料”；即使工程门禁全绿，方法学交接仍为 `BLOCKED FOR HANDOFF`，
 不能升级为独立验收通过。
 
-当前候选树已完成允许范围内的本地 development self-check：format/diff、module verify、
-Round 5 专项、安全 allowlist unit/race、vet、fuzz-smoke、benchmark、privacy、脚本、Go
-1.26.4 vulncheck、CPA v7.2.75 源码契约与 integration compile-only 均通过。精确命令、
-exit code、性能值和两次环境性首跑失败记录在 `docs/reports/TEST_REPORT.md`。Implementation
-freeze `1466b2e7` 的 Push/PR CI 六个 Job 全绿；canonical push artifact `8336957771` 已下载，
-`checksums.txt`、SO/ruleset sidecar 和全部列明文件哈希均一致，Audit Bundle 只按不透明文件
-计算哈希、没有打开正文。上述本地和 CI 结果均未启动 CPA、未加载真实 Guard `.so`、未执行
-`make integration-test`、未运行 Host 黑盒或真实上游。
+发行后的 round5.2 复审还发生了一次单独的方法学偏差：大小写不敏感的路径排除失效，
+只读状态搜索从 `EVALUATION_V5_REPORT.md` 到 `EVALUATION_V10_REPORT.md` 各输出了恰好一行
+状态。没有打开或输出任何评估语料或样本行，没有运行 evaluation 测试，也没有据此作出
+源码、测试、文档或发行决策。该披露不改变 v10 `CONSUMED / FAIL`，并继续使方法学交接
+保持阻断。
 
-第五轮要求的两个 HIGH、meta-override family、Tool Schema 与 control-plane 实现及测试，
-以 implementation freeze `1466b2e7` 的命令日志、两条 CI Run 和 canonical artifact 为准；
-本文件下方记录的旧轮次 Commit、CPA v7.2.72 Host 与 GitHub CI 结果仅作历史证据，不能
-继承为第五轮真实 Host PASS。
+同一轮复审中，classifier 子代理误启动 `go test -shuffle=on -count=20 ./...`。主线程在进程
+运行约 23 秒时立即 interrupt，并向 PID `265343` 发送 `TERM`；随后同一命令又以 PID
+`266741` 出现，父进程为 WSL `/init`，与孤立的 CodeRabbit/工具会话一致。主线程再次
+interrupt classifier agent，终止所有匹配进程，并复查确认无残留。目前无法确认终止前
+是否有 consumed evaluation/holdout 测试被选择或是否读取了受限 fixture。因此该命令及其
+所有部分结果永久排除，不得用于源码、测试、文档、CI 或发行判断；本轮也不得声明未访问
+受限内容。后续验证已强制只使用显式 safe allowlist。v10 仍为 `CONSUMED / FAIL`，handoff
+继续 `BLOCKED FOR HANDOFF`。
+
+最终独立 diff 审计又发生一次范围错误：只读 `cmd/**/*.go` 搜索打印了部分
+evaluation/holdout author 源码片段与少量合成示例。它没有打开受限 `testdata`、没有运行
+author/evaluation/holdout 工具，也没有被用于实现、测试、文档或发行结论。该输出永久排除，
+但本事件必须保留在交接中，并继续阻止“受限内容零访问”的方法学声明。
+
+历史 round5.1 的允许范围本地检查、精确 CI 和 main artifact 已记录在
+`docs/reports/TEST_REPORT.md` 与 `docs/reports/RELEASE_EVIDENCE.md`，只能证明其精确历史
+Commit。Round5.2 必须在本文件中记录新的 source freeze、本地门禁、Branch Push CI、PR
+Merge Result CI 与复核；合并后的 main CI、exact-main artifact、Tag 和 Release 由 GitHub
+API metadata 独立证明，并由对应 Release notes 链接和汇总。
+历史 round5.1 和更早 CPA v7.2.72 Host 结果均不能继承为 round5.2 PASS。
 
 ---
 

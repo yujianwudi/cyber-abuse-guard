@@ -14,6 +14,19 @@ configuration mutator, or third-party test runner is installed or executed.
 No original jailbreak prompt, live payload, real target, credential, URL/IP,
 or model output is copied into rules, tests, audit, counters, or reports.
 
+The 2026-07-16 read-only refresh fixed these default-branch snapshots without
+executing third-party code or copying prompt payloads:
+
+| Public reference | Fixed commit | Abstract mechanisms used for defensive review |
+|---|---|---|
+| `MDX-Tom/gpt-5.6-instruct` | `5f469e43ef66f540cadb475039fd9ed469aef654` | persistent instruction-file replacement, refusal suppression, unrestricted persona, scope/placeholder laundering, direct completion, benchmark coercion, bilingual compound routing |
+| `yynxxxxx/Codex-X` | `659415f57c55b92f34600a2ae482475804b22760` | remote template/cache and Markdown import, append/replace, managed `AGENTS`, Skill/MCP, activation aliases, agentic execution, segmented continuation, concealment |
+| `yynxxxxx/Codex-5.5-codex-instruct-5.5` | `ed0b6dc37d1994e93788d92f7af63f58bf0b9e2d` | unrestricted developer mode, filter/refusal suppression, default lab authorization, persistent instruction-file injection |
+
+The corresponding Codex-5.5 example shared by the latter two repositories is
+the same Git blob (`b1428e813708188d62fedba02bd49e31397f6296`). This
+deduplication fact is source-review metadata only, not classifier evidence.
+
 The sanitized mechanism-level additions are combination-based rather than a
 jailbreak keyword blocklist:
 
@@ -24,7 +37,10 @@ jailbreak keyword blocklist:
 - `agentic_execution_escalation` as a non-standalone amplifier;
 - compound-intent routing that preserves a harmful second clause; and
 - a stricter defensive quoted-sample boundary whose final effective directive
-  must remain inert analysis.
+  must remain inert analysis;
+- override-concealment phrases mapped into fixed `output_control` evidence; and
+- boundary-split/delayed-continuation phrases that retain evidence through long
+  benign padding without introducing prompt text into telemetry.
 
 Wrapper-only harmless text remains allow/audit and cannot synthesize
 `defense_evasion` or another Cyber Abuse taxonomy. A complete independent base
@@ -52,9 +68,16 @@ The visible corpus at
 }
 ```
 
-It contains only harmless canaries, abstract placeholders, and minimal pairs.
-It and all derived wording are permanently ineligible for future blind
-evaluation.
+It contains 36 harmless cases (18 allow / 18 audit), five protocols, 13
+carriers, 19 transforms, and five effective source contexts: ordinary request
+bodies plus four abstract instruction-source contexts. Added cases cover
+mixed system/developer/tool composition, local model instructions, managed
+`AGENTS`, Skill/MCP payloads, semantic aliases, concealment, filter-boundary
+splits, and HTML-comment modules. The 8 KiB-class benign-padding behavior is
+covered by a generated unit regression rather than copied corpus text. All
+cases and derived wording are permanently ineligible for future blind
+evaluation. `source_context` is development metadata only: it cannot prove a
+runtime request came from one of these repositories, a local file, or a cache.
 
 Two supply-chain/configuration risks remain outside the Router:
 
@@ -63,6 +86,13 @@ Two supply-chain/configuration risks remain outside the Router:
    high-priority instruction template loaded before CPA receives a request.
 2. It cannot prove safe semantics for Provider controls such as
    `safetySettings`, `generationConfig`, or `options`.
+
+It also cannot inspect an instruction that is present only as a URL, `file_id`,
+ZIP/archive member, encrypted/compressed blob, image/audio/video reference, or
+other opaque carrier that CPA does not convert to visible supported text. It is
+stateless across independent requests and cannot stop a local client from
+editing config, `AGENTS`, Skills, MCP registration, or cached templates before
+the request reaches CPA.
 
 The host must therefore use instruction-path allowlists, owner/mode and write
 restrictions, hash/signature binding at startup and reload, audited changes,
@@ -73,14 +103,25 @@ Ruleset `1.0.7` identifies only embedded YAML Cyber Abuse assets. It does not
 include the Go-level `META-OVERRIDE-001` overlay, extraction semantics,
 tool-schema mappings, or control-plane telemetry. Fifth-round provenance must
 also bind `classifier-policy-v2` /
-`c2092d0949fcaa1d0f085dfe31a668d45cc4d14efc10427d0f3ebcf3e821a112`
+`e9b87f7e2635495bdbceae469ef89e696b419f0a9a6fd129558a20bc4be947ec`
 and the exact Git commit.
 
+The final reverse audit also closed a large-request extraction gap relevant to
+Codex/MCP tool inventories. When a raw request exceeds the 256 KiB semantic
+budget, the second role index is intentionally skipped; the primary walker now
+recognizes only root container-valued `tools` and `functions` declarations, so
+model-visible descriptions remain inspected even beyond that raw offset.
+Nested business lookalikes and scalar fields remain inert. Native CPA
+`interactions` is now a fixed supported format and uses conservative no-role
+inspection; this is source-level compatibility, not native Host evidence.
+
 Ordinary CI no longer invokes the consumed evaluation-v10 boundary target and
-uses `make integration-compile` without starting CPA. The fifth-round
-unit/CI/artifact gates, Tencent Cloud CPA v7.2.75 + Mock-upstream Host
-validation, and independent source/artifact review are separate and are not
-production authorization. Until exact evidence is recorded, status is:
+uses `make integration-compile` without starting CPA. The pinned CPA v7.2.80
+lane is source/compile compatibility evidence only; Tencent Cloud CPA v7.2.75
+remains the server Host baseline. The fifth-round unit/CI/artifact gates, that
+owner-operated Host validation, and independent source/artifact review are
+separate and are not production authorization. Until exact evidence is
+recorded, status is:
 
 ```text
 NOT YET READY FOR INDEPENDENT SOURCE/ARTIFACT REVIEW

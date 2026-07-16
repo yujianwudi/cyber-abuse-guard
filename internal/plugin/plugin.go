@@ -719,7 +719,7 @@ func auditDatabasePath(dataDir string) (string, error) {
 }
 
 func currentRegistration() registration {
-	formats := []string{"openai", "openai-response", "openai-image", "openai-video", "claude", "gemini"}
+	formats := []string{"openai", "openai-response", "interactions", "openai-image", "openai-video", "claude", "gemini"}
 	return registration{
 		SchemaVersion: pluginabi.SchemaVersion,
 		Metadata:      currentMetadata(),

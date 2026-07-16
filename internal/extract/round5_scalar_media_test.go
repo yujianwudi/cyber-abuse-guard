@@ -36,6 +36,212 @@ func TestExtractRequestScalarMediaCarrierMemberOrderInvariant(t *testing.T) {
 	}
 }
 
+func TestExtractRequestConflictingMediaMarkersAreOrderInvariant(t *testing.T) {
+	t.Parallel()
+	const carrier = "https://example.test/private-media-canary"
+	tests := []struct {
+		name   string
+		bodies [][]byte
+		want   OpaqueMediaKind
+	}{
+		{
+			name: "ordinary media frame",
+			bodies: [][]byte{
+				[]byte(`{"messages":[{"role":"user","content":[{"type":"image","mime_type":"audio/wav","url":"` + carrier + `"}]}]}`),
+				[]byte(`{"messages":[{"role":"user","content":[{"mime_type":"audio/wav","type":"image","url":"` + carrier + `"}]}]}`),
+				[]byte(`{"messages":[{"role":"user","content":[{"url":"` + carrier + `","type":"image","mime_type":"audio/wav"}]}]}`),
+				[]byte(`{"messages":[{"role":"user","content":[{"url":"` + carrier + `","mime_type":"audio/wav","type":"image"}]}]}`),
+			},
+			want: OpaqueMediaRemoteURL,
+		},
+		{
+			name: "ordinary inherited source frame",
+			bodies: [][]byte{
+				[]byte(`{"messages":[{"role":"user","content":[{"image":{"type":"image","mime_type":"audio/wav","source":{"url":"` + carrier + `"}}}]}]}`),
+				[]byte(`{"messages":[{"role":"user","content":[{"image":{"mime_type":"audio/wav","type":"image","source":{"url":"` + carrier + `"}}}]}]}`),
+				[]byte(`{"messages":[{"role":"user","content":[{"image":{"source":{"url":"` + carrier + `"},"type":"image","mime_type":"audio/wav"}}]}]}`),
+				[]byte(`{"messages":[{"role":"user","content":[{"image":{"source":{"url":"` + carrier + `"},"mime_type":"audio/wav","type":"image"}}]}]}`),
+			},
+			want: OpaqueMediaRemoteURL,
+		},
+		{
+			name: "tool media frame",
+			bodies: [][]byte{
+				[]byte(`{"messages":[{"role":"assistant","tool_calls":[{"function":{"name":"inspect","arguments":{"image":{"type":"image","mime_type":"audio/wav","source":{"url":"` + carrier + `"}}}}}]}]}`),
+				[]byte(`{"messages":[{"role":"assistant","tool_calls":[{"function":{"name":"inspect","arguments":{"image":{"mime_type":"audio/wav","type":"image","source":{"url":"` + carrier + `"}}}}}]}]}`),
+				[]byte(`{"messages":[{"role":"assistant","tool_calls":[{"function":{"name":"inspect","arguments":{"image":{"source":{"url":"` + carrier + `"},"type":"image","mime_type":"audio/wav"}}}}]}]}`),
+				[]byte(`{"messages":[{"role":"assistant","tool_calls":[{"function":{"name":"inspect","arguments":{"image":{"source":{"url":"` + carrier + `"},"mime_type":"audio/wav","type":"image"}}}}]}]}`),
+			},
+			want: OpaqueMediaRemoteURL,
+		},
+		{
+			name: "ordinary object payload",
+			bodies: [][]byte{
+				[]byte(`{"messages":[{"role":"user","content":[{"type":"image","data":{},"mime_type":"audio/wav"}]}]}`),
+				[]byte(`{"messages":[{"role":"user","content":[{"mime_type":"audio/wav","data":{},"type":"image"}]}]}`),
+				[]byte(`{"messages":[{"role":"user","content":[{"data":{},"type":"image","mime_type":"audio/wav"}]}]}`),
+				[]byte(`{"messages":[{"role":"user","content":[{"data":{},"mime_type":"audio/wav","type":"image"}]}]}`),
+				[]byte(`{"messages":[{"role":"user","content":[{"type":"image","wrapper":{"data":{}},"mime_type":"audio/wav"}]}]}`),
+				[]byte(`{"messages":[{"role":"user","content":[{"mime_type":"audio/wav","wrapper":{"data":{}},"type":"image"}]}]}`),
+				[]byte(`{"messages":[{"role":"user","content":[{"wrapper":{"data":{}},"type":"image","mime_type":"audio/wav"}]}]}`),
+				[]byte(`{"messages":[{"role":"user","content":[{"wrapper":{"data":{}},"mime_type":"audio/wav","type":"image"}]}]}`),
+				[]byte(`{"messages":[{"role":"user","content":[{"wrapper":{"bytes":{}},"type":"image","mime_type":"audio/wav"}]}]}`),
+				[]byte(`{"messages":[{"role":"user","content":[{"wrapper":{"blob":{}},"type":"image","mime_type":"audio/wav"}]}]}`),
+				[]byte(`{"messages":[{"role":"user","content":[{"wrapper":{"binary":{}},"type":"image","mime_type":"audio/wav"}]}]}`),
+				[]byte(`{"messages":[{"role":"user","content":[{"outer":{"inner":{"data":{}}},"type":"image","mime_type":"audio/wav"}]}]}`),
+				[]byte(`{"messages":[{"role":"user","content":[{"type":"image","wrapper":[{"data":{}}],"mime_type":"audio/wav"}]}]}`),
+				[]byte(`{"messages":[{"role":"user","content":[{"wrapper":[{"data":{}}],"type":"image","mime_type":"audio/wav"}]}]}`),
+			},
+			want: OpaqueMediaOther,
+		},
+		{
+			name: "ordinary array payload",
+			bodies: [][]byte{
+				[]byte(`{"messages":[{"role":"user","content":[{"type":"image","data":[],"mime_type":"audio/wav"}]}]}`),
+				[]byte(`{"messages":[{"role":"user","content":[{"mime_type":"audio/wav","data":[],"type":"image"}]}]}`),
+				[]byte(`{"messages":[{"role":"user","content":[{"data":[],"type":"image","mime_type":"audio/wav"}]}]}`),
+				[]byte(`{"messages":[{"role":"user","content":[{"data":[],"mime_type":"audio/wav","type":"image"}]}]}`),
+				[]byte(`{"messages":[{"role":"user","content":[{"type":"image","wrapper":{"data":[]},"mime_type":"audio/wav"}]}]}`),
+				[]byte(`{"messages":[{"role":"user","content":[{"mime_type":"audio/wav","wrapper":{"data":[]},"type":"image"}]}]}`),
+				[]byte(`{"messages":[{"role":"user","content":[{"wrapper":{"data":[]},"type":"image","mime_type":"audio/wav"}]}]}`),
+				[]byte(`{"messages":[{"role":"user","content":[{"wrapper":{"data":[]},"mime_type":"audio/wav","type":"image"}]}]}`),
+				[]byte(`{"messages":[{"role":"user","content":[{"wrapper":{"bytes":[]},"type":"image","mime_type":"audio/wav"}]}]}`),
+				[]byte(`{"messages":[{"role":"user","content":[{"wrapper":{"blob":[]},"type":"image","mime_type":"audio/wav"}]}]}`),
+				[]byte(`{"messages":[{"role":"user","content":[{"wrapper":{"binary":[]},"type":"image","mime_type":"audio/wav"}]}]}`),
+				[]byte(`{"messages":[{"role":"user","content":[{"outer":{"inner":{"data":[]}},"type":"image","mime_type":"audio/wav"}]}]}`),
+				[]byte(`{"messages":[{"role":"user","content":[{"type":"image","wrapper":[{"data":[]}],"mime_type":"audio/wav"}]}]}`),
+				[]byte(`{"messages":[{"role":"user","content":[{"wrapper":[{"data":[]}],"type":"image","mime_type":"audio/wav"}]}]}`),
+			},
+			want: OpaqueMediaOther,
+		},
+		{
+			name: "tool object and array payload",
+			bodies: [][]byte{
+				[]byte(`{"messages":[{"role":"assistant","tool_calls":[{"function":{"name":"inspect","arguments":{"image":{"type":"image","data":{},"mime_type":"audio/wav"}}}}]}]}`),
+				[]byte(`{"messages":[{"role":"assistant","tool_calls":[{"function":{"name":"inspect","arguments":{"image":{"mime_type":"audio/wav","data":{},"type":"image"}}}}]}]}`),
+				[]byte(`{"messages":[{"role":"assistant","tool_calls":[{"function":{"name":"inspect","arguments":{"image":{"data":[],"type":"image","mime_type":"audio/wav"}}}}]}]}`),
+				[]byte(`{"messages":[{"role":"assistant","tool_calls":[{"function":{"name":"inspect","arguments":{"image":{"data":[],"mime_type":"audio/wav","type":"image"}}}}]}]}`),
+				[]byte(`{"messages":[{"role":"assistant","tool_calls":[{"function":{"name":"inspect","arguments":{"image":{"type":"image","wrapper":{"data":{}},"mime_type":"audio/wav"}}}}]}]}`),
+				[]byte(`{"messages":[{"role":"assistant","tool_calls":[{"function":{"name":"inspect","arguments":{"image":{"mime_type":"audio/wav","wrapper":{"data":{}},"type":"image"}}}}]}]}`),
+				[]byte(`{"messages":[{"role":"assistant","tool_calls":[{"function":{"name":"inspect","arguments":{"image":{"wrapper":{"data":{}},"type":"image","mime_type":"audio/wav"}}}}]}]}`),
+				[]byte(`{"messages":[{"role":"assistant","tool_calls":[{"function":{"name":"inspect","arguments":{"image":{"wrapper":{"data":{}},"mime_type":"audio/wav","type":"image"}}}}]}]}`),
+				[]byte(`{"messages":[{"role":"assistant","tool_calls":[{"function":{"name":"inspect","arguments":{"image":{"type":"image","wrapper":{"data":[]},"mime_type":"audio/wav"}}}}]}]}`),
+				[]byte(`{"messages":[{"role":"assistant","tool_calls":[{"function":{"name":"inspect","arguments":{"image":{"wrapper":{"data":[]},"type":"image","mime_type":"audio/wav"}}}}]}]}`),
+			},
+			want: OpaqueMediaOther,
+		},
+	}
+
+	for _, testCase := range tests {
+		testCase := testCase
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+			var baseline Result
+			for index, body := range testCase.bodies {
+				result := extractRound5ScalarRequest(t, body, Limits{})
+				if !reflect.DeepEqual(result.OpaqueMediaKinds, []OpaqueMediaKind{testCase.want}) {
+					t.Fatalf("permutation %d conflicting marker kinds=%v, want fixed %s", index, result.OpaqueMediaKinds, testCase.want)
+				}
+				if index == 0 {
+					baseline = result
+					continue
+				}
+				if !reflect.DeepEqual(result.Parts, baseline.Parts) ||
+					!reflect.DeepEqual(result.Segments, baseline.Segments) ||
+					result.TextBytesScanned != baseline.TextBytesScanned ||
+					result.Completeness != baseline.Completeness ||
+					!reflect.DeepEqual(result.OpaqueMediaKinds, baseline.OpaqueMediaKinds) {
+					t.Fatalf("permutation %d changed conflicting media semantics:\nbase=%#v\ngot=%#v", index, baseline, result)
+				}
+			}
+		})
+	}
+}
+
+func TestExtractRequestInheritedMediaKindUsesChildExplicitMarker(t *testing.T) {
+	t.Parallel()
+	const carrier = "https://example.test/child-audio-canary"
+	tests := []struct {
+		name   string
+		bodies [][]byte
+		want   OpaqueMediaKind
+	}{
+		{
+			name: "ordinary inherited frame",
+			bodies: [][]byte{
+				[]byte(`{"messages":[{"role":"user","content":[{"type":"image","source":{"mime_type":"audio/wav","url":"` + carrier + `"}}]}]}`),
+				[]byte(`{"messages":[{"role":"user","content":[{"type":"image","source":{"url":"` + carrier + `","mime_type":"audio/wav"}}]}]}`),
+			},
+			want: OpaqueMediaAudio,
+		},
+		{
+			name: "tool inherited frame",
+			bodies: [][]byte{
+				[]byte(`{"messages":[{"role":"assistant","tool_calls":[{"function":{"name":"inspect","arguments":{"image":{"source":{"mime_type":"audio/wav","url":"` + carrier + `"}}}}}]}]}`),
+				[]byte(`{"messages":[{"role":"assistant","tool_calls":[{"function":{"name":"inspect","arguments":{"image":{"source":{"url":"` + carrier + `","mime_type":"audio/wav"}}}}}]}]}`),
+				[]byte(`{"messages":[{"role":"assistant","tool_calls":[{"function":{"name":"inspect","arguments":{"image":{"source":{"mime_type":"audio/wav","payload":{"url":"` + carrier + `"}}}}}}]}]}`),
+				[]byte(`{"messages":[{"role":"assistant","tool_calls":[{"function":{"name":"inspect","arguments":{"image":{"source":{"payload":{"url":"` + carrier + `"},"mime_type":"audio/wav"}}}}}]}]}`),
+			},
+			want: OpaqueMediaAudio,
+		},
+		{
+			name: "tool child explicit kind survives parent conflict",
+			bodies: [][]byte{
+				[]byte(`{"messages":[{"role":"assistant","tool_calls":[{"function":{"name":"inspect","arguments":{"image":{"type":"image","mime_type":"audio/wav","source":{"mime_type":"video/mp4","url":"` + carrier + `"}}}}}]}]}`),
+				[]byte(`{"messages":[{"role":"assistant","tool_calls":[{"function":{"name":"inspect","arguments":{"image":{"source":{"url":"` + carrier + `","mime_type":"video/mp4"},"type":"image","mime_type":"audio/wav"}}}}]}]}`),
+			},
+			want: OpaqueMediaVideo,
+		},
+		{
+			name: "self-owning image array is not also parent-owned",
+			bodies: [][]byte{
+				[]byte(`{"messages":[{"role":"user","content":[{"image":[],"mime_type":"audio/wav"}]}]}`),
+				[]byte(`{"messages":[{"role":"user","content":[{"mime_type":"audio/wav","image":[]}]}]}`),
+				[]byte(`{"messages":[{"role":"user","content":[{"images":[],"mime_type":"audio/wav"}]}]}`),
+				[]byte(`{"messages":[{"role":"user","content":[{"image_data":[],"mime_type":"audio/wav"}]}]}`),
+			},
+			want: OpaqueMediaBase64Image,
+		},
+		{
+			name: "self-owning audio array is not also parent-owned",
+			bodies: [][]byte{
+				[]byte(`{"messages":[{"role":"user","content":[{"audio":[],"mime_type":"image/png"}]}]}`),
+				[]byte(`{"messages":[{"role":"user","content":[{"mime_type":"image/png","audio":[]}]}]}`),
+			},
+			want: OpaqueMediaAudio,
+		},
+		{
+			name: "self-owning video array is not also parent-owned",
+			bodies: [][]byte{
+				[]byte(`{"messages":[{"role":"user","content":[{"video":[],"mime_type":"audio/wav"}]}]}`),
+				[]byte(`{"messages":[{"role":"user","content":[{"mime_type":"audio/wav","video":[]}]}]}`),
+			},
+			want: OpaqueMediaVideo,
+		},
+		{
+			name: "self-owning document array is not also parent-owned",
+			bodies: [][]byte{
+				[]byte(`{"messages":[{"role":"user","content":[{"file":[],"mime_type":"audio/wav"}]}]}`),
+				[]byte(`{"messages":[{"role":"user","content":[{"mime_type":"audio/wav","document":[]}]}]}`),
+				[]byte(`{"messages":[{"role":"user","content":[{"file_data":[],"mime_type":"audio/wav"}]}]}`),
+			},
+			want: OpaqueMediaDocument,
+		},
+	}
+	for _, testCase := range tests {
+		testCase := testCase
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+			for index, body := range testCase.bodies {
+				result := extractRound5ScalarRequest(t, body, Limits{})
+				if !reflect.DeepEqual(result.OpaqueMediaKinds, []OpaqueMediaKind{testCase.want}) {
+					t.Fatalf("permutation %d inherited child kind=%v, want %s", index, result.OpaqueMediaKinds, testCase.want)
+				}
+			}
+		})
+	}
+}
+
 func TestExtractRequestScalarMediaCarrierNeverEntersPartsOrSegments(t *testing.T) {
 	const caption = "visible user caption"
 	values := []string{
@@ -90,6 +296,36 @@ func TestExtractRequestNonMediaSourceURIFallsBackToText(t *testing.T) {
 			})
 		}
 	}
+
+	t.Run("ordinary wrapper does not reclassify scalar carrier", func(t *testing.T) {
+		const carrier = "https://example.test/inspectable-wrapper-value"
+		bodies := [][]byte{
+			[]byte(`{"messages":[{"role":"user","content":[{"type":"image","wrapper":{"url":"` + carrier + `"},"mime_type":"audio/wav"}]}]}`),
+			[]byte(`{"messages":[{"role":"user","content":[{"wrapper":{"url":"` + carrier + `"},"type":"image","mime_type":"audio/wav"}]}]}`),
+			[]byte(`{"messages":[{"role":"user","content":[{"mime_type":"audio/wav","wrapper":{"url":"` + carrier + `"},"type":"image"}]}]}`),
+		}
+		var baseline Result
+		for index, body := range bodies {
+			result := extractRound5ScalarRequest(t, body, Limits{})
+			if result.OpaqueMedia || len(result.OpaqueMediaKinds) != 0 {
+				t.Fatalf("permutation %d ordinary wrapper scalar became opaque: %#v", index, result)
+			}
+			if !containsPart(result.Parts, carrier) || result.TextBytesScanned != len(carrier) {
+				t.Fatalf("permutation %d ordinary wrapper scalar was not inspectable text: %#v", index, result)
+			}
+			if index == 0 {
+				baseline = result
+				continue
+			}
+			if !reflect.DeepEqual(result.Parts, baseline.Parts) ||
+				!reflect.DeepEqual(result.Segments, baseline.Segments) ||
+				result.TextBytesScanned != baseline.TextBytesScanned ||
+				result.Completeness != baseline.Completeness ||
+				!reflect.DeepEqual(result.OpaqueMediaKinds, baseline.OpaqueMediaKinds) {
+				t.Fatalf("permutation %d changed ordinary wrapper semantics:\nbase=%#v\ngot=%#v", index, baseline, result)
+			}
+		}
+	})
 }
 
 func TestExtractRequestToolSourceURIRemainsInspectable(t *testing.T) {

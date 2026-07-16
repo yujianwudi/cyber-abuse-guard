@@ -11,6 +11,12 @@ independent audit set. The paired cases verify that fixed meta-override evidence
 survives supported carriers and bounded text transforms while benign defensive,
 configuration, formatting, and workflow neighbors remain allowed.
 
+`source_context` is development provenance metadata, not a runtime attribution
+claim. Cases without it mean ordinary `request_body`; added fixtures also cover
+abstract local model instructions, managed `AGENTS` content, Skill/MCP payloads,
+and remote template/cache material. The plugin cannot prove that visible text
+came from any repository or stop a local program from editing those sources.
+
 Run the dedicated gate with:
 
 ```text

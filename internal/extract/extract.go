@@ -295,6 +295,7 @@ const (
 	contextText
 	contextTool
 	contextToolPayload
+	contextMetadata
 )
 
 type jsonFrame struct {
@@ -302,25 +303,33 @@ type jsonFrame struct {
 	context            contextKind
 	media              bool
 	mediaKind          mediaContextKind
+	mediaKindConflict  bool
+	mediaInherited     bool
+	mediaOwnerDepth    int
+	semanticDepth      int
 	deferToParent      bool
 	deferred           []deferredStringCandidate
 	deferredOverflow   bool
 	pendingDirectMedia bool
-	pendingHTTPURL     bool
-	pendingHTTPSURL    bool
-	pendingOpaqueKinds uint16
-	toolSchema         toolControlSchema
-	toolSchemaSeen     bool
-	toolSchemaInvalid  bool
-	toolUnknownField   bool
-	toolControls       toolControlBits
-	toolControlsSeen   toolControlBits
-	toolTextSeen       toolAllowedTextBits
-	toolStrings        []toolStringCandidate
-	toolStringOverflow bool
-	toolSchemaNested   bool
-	expectKey          bool
-	key                string
+	// pendingStructuralMedia records only object/array payloads carried by
+	// data/bytes/blob/binary. It may cross an otherwise ordinary object wrapper;
+	// scalar URLs and deferred text candidates must remain owned by their frame.
+	pendingStructuralMedia bool
+	pendingHTTPURL         bool
+	pendingHTTPSURL        bool
+	pendingOpaqueKinds     uint16
+	toolSchema             toolControlSchema
+	toolSchemaSeen         bool
+	toolSchemaInvalid      bool
+	toolUnknownField       bool
+	toolControls           toolControlBits
+	toolControlsSeen       toolControlBits
+	toolTextSeen           toolAllowedTextBits
+	toolStrings            []toolStringCandidate
+	toolStringOverflow     bool
+	toolSchemaNested       bool
+	expectKey              bool
+	key                    string
 }
 
 type toolControlSchema uint8
@@ -377,7 +386,10 @@ type toolStringCandidate struct {
 	context   contextKind
 	media     bool
 	mediaKind mediaContextKind
-	depth     int
+	// mediaOwnerDepth identifies the frame whose media semantics this candidate
+	// currently inherits. A child-local explicit marker re-owns its descendants.
+	mediaOwnerDepth int
+	depth           int
 }
 
 const (
@@ -539,7 +551,8 @@ func (x *extractor) walkJSON(data []byte, initial contextKind, baseDepth int, bo
 			}
 		}
 
-		ctx, media, mediaKind, key := x.valueContext(stack, initial)
+		_, containerValue := token.(json.Delim)
+		ctx, media, mediaKind, key := x.valueContext(stack, initial, containerValue)
 		suppressToolSchemaString := false
 		if len(stack) > 0 && stack[len(stack)-1].kind == '{' {
 			top := &stack[len(stack)-1]
@@ -560,14 +573,21 @@ func (x *extractor) walkJSON(data []byte, initial contextKind, baseDepth int, bo
 				return nil
 			}
 			canonical := canonicalKey(key)
-			if len(stack) > 0 && isOpaquePayloadKeyCanonical(canonical) {
+			if len(stack) > 0 && isDeferredPayloadKeyCanonical(canonical) {
 				parent := &stack[len(stack)-1]
-				parent.pendingDirectMedia = true
-				if parent.media {
-					x.markPendingOpaqueMedia(parent)
+				// Before a marker is seen, retain the evidence on this frame so a
+				// later sibling marker can claim it. Once media ownership exists,
+				// the post-append path below routes evidence to that owner instead.
+				// Keys such as image/audio already establish their own media owner
+				// and must never also attach the same array to the parent frame.
+				if !parent.media {
+					parent.pendingDirectMedia = true
+					parent.pendingStructuralMedia = true
 				}
 			}
 			deferToParent := false
+			mediaInherited := false
+			mediaOwnerDepth := 0
 			if len(stack) > 0 {
 				parent := stack[len(stack)-1]
 				deferToParent = parent.deferToParent
@@ -577,23 +597,61 @@ func (x *extractor) walkJSON(data []byte, initial contextKind, baseDepth int, bo
 				if crossesToolBoundary(parent.context, ctx) {
 					deferToParent = false
 				}
+				inheritsParentMedia := media && parent.media && mediaContextForKey(canonical) == mediaContextNone &&
+					!crossesToolBoundary(parent.context, ctx)
+				inheritanceAllowed := parent.kind == '[' || deferToParent || isDeferredPayloadKeyCanonical(canonical) ||
+					isToolTransactionContext(parent.context)
+				mediaInherited = inheritsParentMedia && inheritanceAllowed
+				if inheritsParentMedia && !inheritanceAllowed {
+					// Unknown wrappers do not acquire media semantics merely because an
+					// earlier sibling marker classified their parent. Their scalar values
+					// stay inspectable in every member order. Explicit source chains,
+					// media arrays, and direct structural payloads retain inheritance.
+					media = false
+					mediaKind = mediaContextNone
+				}
+				if mediaInherited {
+					mediaOwnerDepth = parent.mediaOwnerDepth
+				}
+			}
+			if media && mediaOwnerDepth == 0 {
+				mediaOwnerDepth = depth
 			}
 			stack = append(stack, jsonFrame{
-				kind:          delim,
-				context:       ctx,
-				media:         media,
-				mediaKind:     mediaKind,
-				deferToParent: deferToParent,
-				expectKey:     delim == '{',
+				kind:            delim,
+				context:         ctx,
+				media:           media,
+				mediaKind:       mediaKind,
+				mediaInherited:  mediaInherited,
+				mediaOwnerDepth: mediaOwnerDepth,
+				semanticDepth:   depth,
+				deferToParent:   deferToParent,
+				expectKey:       delim == '{',
 			})
-			if media && (isOpaquePayloadKeyCanonical(canonical) || (delim == '[' && isDirectMediaValueKeyCanonical(canonical))) {
-				x.markOpaqueMedia(directOpaqueKind(mediaKind))
+			if media && (isOpaquePayloadKeyCanonical(canonical) ||
+				(delim == '[' && isDirectMediaValueKeyCanonical(canonical))) {
+				// Object/array payload evidence must be committed by the frame that
+				// owns the media kind. A later sibling marker can still turn that
+				// kind into the fixed conflict value, so emitting here would make
+				// telemetry depend on JSON member order.
+				for index := len(stack) - 1; index >= 0; index-- {
+					if stack[index].semanticDepth == mediaOwnerDepth {
+						stack[index].pendingDirectMedia = true
+						break
+					}
+				}
 			}
 			continue
 		}
 
 		if text, ok := token.(string); ok {
 			if suppressToolSchemaString {
+				continue
+			}
+			if ctx == contextMetadata {
+				// Known provider metadata containers are never model-visible text.
+				// Skip their complete subtree even under a conservative profile so
+				// large request options cannot consume the semantic text budget.
 				continue
 			}
 			if len(stack) > 0 {
@@ -612,10 +670,9 @@ func (x *extractor) walkJSON(data []byte, initial contextKind, baseDepth int, bo
 				}
 				x.rememberOpaqueMediaCandidate(frame, key, text)
 				if marked, markedKind := marksMediaContext(key, text); marked && x.mayApplyMediaMarker(frame) {
-					frame.media = true
-					frame.mediaKind = markedKind
+					applyMediaMarker(frame, markedKind)
 					media = true
-					mediaKind = markedKind
+					mediaKind = frame.mediaKind
 				}
 				if x.deferAmbiguousString(frame, key, text, ctx, media, baseDepth+len(stack)) {
 					continue
@@ -640,6 +697,10 @@ func (x *extractor) closeJSONFrame(frame, parent *jsonFrame) {
 		return
 	}
 	if isToolTransactionContext(frame.context) {
+		normalizeConflictingToolMedia(frame)
+		if frame.media {
+			x.markPendingOpaqueMedia(frame)
+		}
 		if x.resolveToolSchema(frame) {
 			return
 		}
@@ -650,17 +711,20 @@ func (x *extractor) closeJSONFrame(frame, parent *jsonFrame) {
 		x.commitToolStrings(frame)
 		return
 	}
-	if frame.media {
-		x.resolveDeferredAsMedia(frame)
-		return
+	if parent != nil && !frame.media && !frame.deferToParent &&
+		frame.pendingStructuralMedia &&
+		!crossesToolBoundary(parent.context, frame.context) {
+		// A marker may follow an otherwise ordinary wrapper, so fixed payload
+		// structure discovered below that wrapper must remain available to its
+		// enclosing owner. This bit moves only upward, so crossing an array frame
+		// cannot inject evidence into a sibling. It never crosses a tool boundary;
+		// scalar and deferred evidence always stay local.
+		parent.pendingDirectMedia = true
+		parent.pendingStructuralMedia = true
 	}
-	if parent != nil && frame.deferToParent {
-		parent.pendingDirectMedia = parent.pendingDirectMedia || frame.pendingDirectMedia
-		parent.pendingHTTPURL = parent.pendingHTTPURL || frame.pendingHTTPURL
-		parent.pendingHTTPSURL = parent.pendingHTTPSURL || frame.pendingHTTPSURL
-		parent.pendingOpaqueKinds |= frame.pendingOpaqueKinds
+	if parent != nil && frame.deferToParent && (!frame.media || frame.mediaInherited) {
+		mergePendingMediaEvidence(parent, frame)
 		if parent.media {
-			x.markPendingOpaqueMedia(parent)
 			x.releaseDeferred(frame)
 			frame.deferredOverflow = false
 			return
@@ -668,7 +732,22 @@ func (x *extractor) closeJSONFrame(frame, parent *jsonFrame) {
 		x.mergeDeferred(parent, frame)
 		return
 	}
+	if frame.media {
+		x.resolveDeferredAsMedia(frame)
+		return
+	}
 	x.commitDeferred(frame)
+}
+
+func mergePendingMediaEvidence(parent, child *jsonFrame) {
+	if parent == nil || child == nil {
+		return
+	}
+	parent.pendingDirectMedia = parent.pendingDirectMedia || child.pendingDirectMedia
+	parent.pendingStructuralMedia = parent.pendingStructuralMedia || child.pendingStructuralMedia
+	parent.pendingHTTPURL = parent.pendingHTTPURL || child.pendingHTTPURL
+	parent.pendingHTTPSURL = parent.pendingHTTPSURL || child.pendingHTTPSURL
+	parent.pendingOpaqueKinds |= child.pendingOpaqueKinds
 }
 
 // observeToolSchemaField records only fixed, content-free state for the one
@@ -799,6 +878,7 @@ func (x *extractor) resolveToolSchema(frame *jsonFrame) bool {
 		candidate.context = contextToolPayload
 		candidate.media = false
 		candidate.mediaKind = mediaContextNone
+		candidate.mediaOwnerDepth = 0
 		selected = append(selected, candidate)
 	}
 	for index := len(selected); index < len(original); index++ {
@@ -842,17 +922,66 @@ func isToolTransactionContext(ctx contextKind) bool {
 	return ctx == contextTool || ctx == contextToolPayload
 }
 
+// applyMediaMarker makes conflicting media evidence independent of JSON member
+// order. Once a frame observes two distinct media kinds it remains the fixed
+// generic media kind; a later marker can never replace the conflict result.
+func applyMediaMarker(frame *jsonFrame, markedKind mediaContextKind) {
+	if frame == nil || markedKind == mediaContextNone {
+		return
+	}
+	frame.media = true
+	if frame.mediaInherited {
+		// Inherited media establishes only the enclosing ownership context. The
+		// first explicit marker in this child frame defines the child's own kind;
+		// it does not conflict with the parent's kind.
+		frame.mediaInherited = false
+		frame.mediaKindConflict = false
+		frame.mediaKind = markedKind
+		frame.mediaOwnerDepth = frame.semanticDepth
+		return
+	}
+	if frame.mediaKindConflict {
+		frame.mediaKind = mediaContextOther
+		return
+	}
+	if frame.mediaKind != mediaContextNone && frame.mediaKind != markedKind {
+		frame.mediaKindConflict = true
+		frame.mediaKind = mediaContextOther
+		frame.mediaOwnerDepth = frame.semanticDepth
+		return
+	}
+	frame.mediaKind = markedKind
+	frame.mediaOwnerDepth = frame.semanticDepth
+}
+
+func normalizeConflictingToolMedia(frame *jsonFrame) {
+	if frame == nil || !frame.mediaKindConflict {
+		return
+	}
+	for index := range frame.toolStrings {
+		if frame.toolStrings[index].media && frame.toolStrings[index].mediaOwnerDepth == frame.semanticDepth {
+			frame.toolStrings[index].mediaKind = mediaContextOther
+		}
+	}
+}
+
 func (x *extractor) stageToolString(frame *jsonFrame, canonical, text string, ctx contextKind, media bool, mediaKind mediaContextKind, semanticDepth int) {
 	if frame == nil || !isToolTransactionContext(frame.context) || strings.TrimSpace(text) == "" {
 		return
 	}
 	if marked, markedKind := marksMediaContext(canonical, text); marked && x.mayApplyMediaMarker(frame) {
-		frame.media = true
-		frame.mediaKind = markedKind
+		previousOwnerDepth := frame.mediaOwnerDepth
+		wasInherited := frame.mediaInherited
+		applyMediaMarker(frame, markedKind)
 		for index := range frame.toolStrings {
-			if frame.toolStrings[index].depth == semanticDepth {
-				frame.toolStrings[index].media = true
-				frame.toolStrings[index].mediaKind = markedKind
+			candidate := &frame.toolStrings[index]
+			direct := candidate.depth == semanticDepth
+			ownedByFrame := candidate.media && candidate.mediaOwnerDepth == frame.semanticDepth
+			inheritedByFrame := wasInherited && candidate.media && candidate.mediaOwnerDepth == previousOwnerDepth
+			if direct || ownedByFrame || inheritedByFrame {
+				candidate.media = true
+				candidate.mediaKind = frame.mediaKind
+				candidate.mediaOwnerDepth = frame.semanticDepth
 			}
 		}
 	}
@@ -894,13 +1023,14 @@ func (x *extractor) stageToolString(frame *jsonFrame, canonical, text string, ct
 		mode = toolStringProcessMetadata
 	}
 	x.stageToolStringCandidate(frame, toolStringCandidate{
-		text:      text,
-		mode:      mode,
-		allowed:   allowed,
-		context:   ctx,
-		media:     media,
-		mediaKind: mediaKind,
-		depth:     semanticDepth,
+		text:            text,
+		mode:            mode,
+		allowed:         allowed,
+		context:         ctx,
+		media:           media,
+		mediaKind:       mediaKind,
+		mediaOwnerDepth: frame.mediaOwnerDepth,
+		depth:           semanticDepth,
 	})
 }
 
@@ -1015,21 +1145,21 @@ func (x *extractor) commitToolStrings(frame *jsonFrame) {
 	originalStop := x.stop
 	deferredCandidates := x.deferredCandidates
 	deferredBytes := x.deferredBytes
+	remainingParts := originalLimits.MaxTextParts - len(originalResult.Parts)
+	if remainingParts < 0 {
+		remainingParts = 0
+	}
 	scratch := Result{
-		Parts:        make([]string, 0, minInt(8, originalLimits.MaxTextParts)),
+		Parts:        make([]string, 0, minInt(8, remainingParts)),
 		Completeness: CompletenessComplete,
 	}
+	x.limits.MaxTextParts = remainingParts
 	if x.requestMode {
 		remainingScan := originalLimits.MaxScanBytes - originalResult.TextBytesScanned
 		if remainingScan < 0 {
 			remainingScan = 0
 		}
-		remainingParts := originalLimits.MaxTextParts - len(originalResult.Parts)
-		if remainingParts < 0 {
-			remainingParts = 0
-		}
 		x.limits.MaxScanBytes = remainingScan
-		x.limits.MaxTextParts = remainingParts
 	}
 	x.result = &scratch
 	x.stop = false
@@ -1437,7 +1567,7 @@ func opaqueMediaKindBit(kind OpaqueMediaKind) uint16 {
 	return uint16(1) << uint(rank)
 }
 
-func (x *extractor) valueContext(stack []jsonFrame, initial contextKind) (contextKind, bool, mediaContextKind, string) {
+func (x *extractor) valueContext(stack []jsonFrame, initial contextKind, containerValue bool) (contextKind, bool, mediaContextKind, string) {
 	if len(stack) == 0 {
 		return initial, false, mediaContextNone, ""
 	}
@@ -1447,8 +1577,19 @@ func (x *extractor) valueContext(stack []jsonFrame, initial contextKind) (contex
 	}
 
 	key := parent.key
-	keyKind := mediaContextForKey(canonicalKey(key))
+	canonical := canonicalKey(key)
+	keyKind := mediaContextForKey(canonical)
 	ctx := childContext(parent.context, key)
+	if ctx == contextMetadata {
+		return ctx, false, mediaContextNone, key
+	}
+	if containerValue && len(stack) == 1 && parent.context == contextNone && isProviderToolDefinitionContainerCanonical(canonical) {
+		// Provider tool declarations are model-visible system context. The
+		// request-level role index intentionally skips raw bodies above the
+		// semantic text budget, so the primary bounded walker must recognize the
+		// root declaration containers without depending on that second parse.
+		ctx = contextTool
+	}
 	media := parent.media
 	if crossesToolBoundary(parent.context, ctx) {
 		// Media inherited from an enclosing conversational block must not turn
@@ -1466,6 +1607,12 @@ func (x *extractor) valueContext(stack []jsonFrame, initial contextKind) (contex
 
 func childContext(parent contextKind, key string) contextKind {
 	canonical := canonicalKey(key)
+	if parent == contextMetadata {
+		return contextMetadata
+	}
+	if isProviderMetadataContainerCanonical(canonical) && parent != contextTool && parent != contextToolPayload {
+		return contextMetadata
+	}
 	if parent == contextToolPayload {
 		return contextToolPayload
 	}
@@ -1556,7 +1703,7 @@ func (x *extractor) commitInspectableTextWithMetadata(text, canonical string, ct
 		}
 	}
 
-	if ctx == contextNone || (!inspectMetadata && ctx != contextToolPayload && isMetadataKeyCanonical(canonical)) {
+	if ctx == contextNone || ctx == contextMetadata || (!inspectMetadata && ctx != contextToolPayload && isMetadataKeyCanonical(canonical)) {
 		return
 	}
 	x.addText(text, canonical)
@@ -1762,6 +1909,15 @@ func isTextContainerCanonical(key string) bool {
 func isToolWrapperKeyCanonical(key string) bool {
 	switch key {
 	case "toolcalls", "toolcall", "tooluse", "function", "functioncall":
+		return true
+	default:
+		return false
+	}
+}
+
+func isProviderToolDefinitionContainerCanonical(key string) bool {
+	switch key {
+	case "tools", "functions":
 		return true
 	default:
 		return false

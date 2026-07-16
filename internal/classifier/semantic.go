@@ -498,6 +498,12 @@ func (c *Classifier) semanticDimensions(profile compiledSemanticProfile, windows
 }
 
 func semanticIntentOnlyNegated(text string, intents []string) bool {
+	if len(text) > maxCompactIntentProofBytes {
+		// Semantic suppression is optional defensive credit. Oversized windows
+		// retain the matched semantic intent instead of paying rules x input
+		// rescans to prove that every occurrence is negated.
+		return false
+	}
 	if !containsRuleIntent(text, intents) {
 		return false
 	}

@@ -57,6 +57,18 @@
     "base64",
     "nested_json",
     "bilingual",
-    "adjacent_turns"
+    "adjacent_turns",
+    "mixed_roles",
+    "semantic_alias",
+    "override_concealment",
+    "filter_boundary_split",
+    "html_comment_modules"
+  ],
+  "required_source_contexts": [
+    "request_body",
+    "local_model_instructions",
+    "managed_agents",
+    "skill_mcp",
+    "remote_template_cache"
   ]
 }

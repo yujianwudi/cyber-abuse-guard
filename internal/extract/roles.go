@@ -127,7 +127,7 @@ func extractRoleSegments(body []byte, limits Limits) ([]Segment, bool, bool) {
 			truncated = truncated || partTruncated
 			ambiguous = ambiguous || partAmbiguous
 		default:
-			if canonical := canonicalKey(key); canonical == "tools" || canonical == "functions" {
+			if canonical := canonicalKey(key); isProviderToolDefinitionContainerCanonical(canonical) {
 				// Provider tool declarations are system-level context, not user
 				// intent and not executable invocation arguments. Retain their
 				// semantic descriptions as content so a malicious definition is not

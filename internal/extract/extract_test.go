@@ -420,6 +420,36 @@ func TestExtractTextLimits(t *testing.T) {
 	})
 }
 
+func TestExtractTextToolTransactionSharesPartBudget(t *testing.T) {
+	t.Parallel()
+	body := []byte(`{"content":"first","tool_call":{"arguments":{"x":"second"}}}`)
+	for _, extract := range []struct {
+		name string
+		fn   func([]byte, Limits) (Result, error)
+	}{
+		{name: "provider aware", fn: ExtractText},
+		{name: "untrusted", fn: ExtractUntrustedText},
+	} {
+		extract := extract
+		t.Run(extract.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := extract.fn(body, Limits{MaxTextParts: 1})
+			if err != nil {
+				t.Fatalf("extract error = %v", err)
+			}
+			if len(got.Parts) != 1 || got.Parts[0] != "first" {
+				t.Fatalf("unexpected part retained at the shared budget boundary: %#v", got)
+			}
+			if strings.Contains(strings.Join(got.Parts, ""), "second") {
+				t.Fatalf("tool argument escaped the shared part budget: %#v", got)
+			}
+			if got.IsComplete() || !reflect.DeepEqual(got.IncompleteReasons, []IncompleteReason{IncompleteTextPartLimit}) {
+				t.Fatalf("part-budget overflow was not reported: %#v", got)
+			}
+		})
+	}
+}
+
 func TestExtractTextArtificialScanBoundariesRemainTruncated(t *testing.T) {
 	t.Parallel()
 

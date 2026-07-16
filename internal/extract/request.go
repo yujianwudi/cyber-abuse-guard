@@ -21,7 +21,17 @@ func ExtractRequest(body []byte, headers http.Header, limits Limits) (Result, er
 // protocol profile. JSON extraction remains format-tolerant; multipart text is
 // accepted only when the selected profile explicitly classifies the field.
 func ExtractProfiledRequest(body []byte, headers http.Header, profile RequestProfile, limits Limits) (Result, error) {
-	return extractRequest(body, headers, profile, limits, contextNone, true)
+	initial := contextNone
+	roleIndex := true
+	if profile.Source == SourceProfileInteractions {
+		// Native Interactions is a known CPA format, but its mixed step/content
+		// schema is not yet role-attributed here. Scan every non-metadata string as
+		// untrusted text instead of either rejecting the format or assigning trust
+		// from field names that have not been proven by a fixed schema contract.
+		initial = contextText
+		roleIndex = false
+	}
+	return extractRequest(body, headers, profile, limits, initial, roleIndex)
 }
 
 // ExtractUntrustedRequest is the conservative request-level entry point for a

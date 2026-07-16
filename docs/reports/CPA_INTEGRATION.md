@@ -1,6 +1,40 @@
 # CPA Integration and Store-Contract Report — v0.1.2 candidate
 
-## Status
+## 2026-07-16 latest-compat addendum
+
+The runtime/artifact baseline for the round5.2 development tree remains CPA
+v7.2.75. A separate source/compile compatibility lane now pins the latest
+audited CPA release, `v7.2.80` at commit
+`09da52ad509e2c18e7b9540db3b98c2214c280aa`:
+
+```text
+module: github.com/router-for-me/CLIProxyAPI/v7 v7.2.80
+module_sum: h1:QIa5T/KYvJACHVPPRzXcRwq/HLpbwWYJYpZAC1eY2WA=
+go_mod_sum: h1:ytvZNWbCv7PrAyR80+RKsDJPODsdL6qxyFaXDBNZdqs=
+plugin_abi_rpc_router_store_diff: no breaking change found
+public_plugin_api_delta: UsageRecord.Generate bool (Guard does not register UsagePlugin)
+guard_and_integration_compile_probes: PASS
+guard_registration_and_route_tests: PASS
+official_host_routing_status_contracts: PASS / 17 fixed tests
+official_interactions_route_handler_contracts: PASS / 11 fixed tests
+checksum_pinned_ephemeral_overlays: PASS / 3 fixtures
+native_host_or_guard_so_load: NOT RUN
+```
+
+The reproducible entrypoint is `make cpa-latest-compat`. With
+`CPA_LATEST_VERIFY_REMOTE=1`, it first requires GitHub `releases/latest` to
+resolve to `v7.2.80` and the Tag to resolve to the pinned commit. It then uses a temporary
+modfile, an isolated `integration/cpalatestcontract` module, and three
+checksum-pinned overlays. The official source checks include public
+Interactions route registration, handler/auth-selection behavior, ModelRouter
+field visibility, translator registration, direct plugin-format readiness, and
+plugin HTTP-status preservation. It does not start CPA, load a `.so`, install the
+Store archive, contact a Provider/account, or validate request reconstruction,
+logging, and zero-upstream side effects. Those remain owner-operated server
+sandbox work. The remainder of this report preserves historical v7.2.72
+implementation-freeze evidence and must not be relabeled as v7.2.80 Host proof.
+
+## Historical v7.2.72 implementation-freeze status
 
 **IMPLEMENTED — AUTHORIZED REAL-HOST EVIDENCE REQUIRES GITHUB CI.** The current
 tree builds the dirty-suffixed guard `.so`, produces the one-entry Store ZIP,

@@ -4,14 +4,19 @@
    clearly risky requests that reach upstream. It cannot guarantee that an
    account will never be warned, rate-limited, suspended, or deactivated.
 
-2. **The current candidate failed the formal release gate.** v1-v8 are retired
-   or consumed failures. v9 is a consumed methodology-invalid failure because
+2. **The current candidate remains blocked by the formal release gate.** v1-v8
+   are retired or consumed failures. v9 is a consumed methodology-invalid failure because
    the exact taxonomy-enum validator was missing. The methodologically valid
    v10 first-and-only run failed with 28/320 benign false positives, 49/320
-   policy blocks, and 33/320 exact classifications. v10 cannot be rerun. No
-   `v0.1.2` tag, GitHub Release, or production deployment may be created; a
-   future attempt requires a new implementation and a new independent unseen
-   set.
+   policy blocks, and 33/320 exact classifications. v10 is `CONSUMED / FAIL`
+   and cannot be rerun. No stable `v0.1.2` tag, production release, or
+   production deployment may be created. Historical development prerelease
+   `v0.1.2-dev.round5.1` exists only as `BLOCKED / NOT FOR DEPLOYMENT`
+   evidence at immutable tag target
+   `89b62b341278073e7b6518b85e41cd7f7c6b682c`; it must not be moved or reused.
+   Round5.2 must establish a new source-freeze/pre-merge record. Its post-merge
+   main CI, exact-main artifact, tag, and release evidence are authoritative
+   only in the corresponding GitHub Release notes.
 
 3. **Deterministic language rules are imperfect.** Novel phrasing, languages,
    slang, semantic indirection, encrypted content, unknown encodings, and
@@ -243,18 +248,22 @@
     WSL using loopback/Mock components and cleaned up without residual fixture
     processes. Those local results are excluded. Authorized GitHub CI passed an
     earlier CPA v7.2.72 implementation-freeze Host/Router/proxy matrix.
-    Fifth-round exact-source CI passed and canonical CPA v7.2.75 development
-    artifacts were statically verified; ordinary CI runs bounded source-contract
-    tests and compiles integration-tagged code without starting CPA or loading
-    the `.so`. The current audit-fix delta still requires exact-source CI before
-    merge. Tencent Cloud isolated Host validation and independent verification
-    remain not run, and methodology handoff remains blocked. No Host result can
-    reverse the frozen v10 failure.
+    Historical round5.1 exact-main CI passed on its second attempt and its
+    canonical CPA v7.2.75 dirty development artifact was statically verified;
+    ordinary CI ran bounded source-contract tests and compiled integration-tagged
+    code without starting CPA or loading the `.so`. Round5.2 must record its own
+    source freeze, local gates, branch/PR CI, and review before merge; post-merge
+    main CI and artifact identity belong in the corresponding GitHub Release
+    notes. Tencent Cloud isolated Host validation and independent verification
+    remain not run, and methodology handoff remains blocked. No Host result can reverse
+    the frozen v10 failure.
 
 37. **Classifier-policy identity is source-bound but not yet artifact-bound.**
-    The Go-level behavior is identified as `classifier-policy-v2` / SHA-256
-    `c2092d0949fcaa1d0f085dfe31a668d45cc4d14efc10427d0f3ebcf3e821a112`,
-    while ruleset `1.0.7` separately identifies YAML assets. Ruleset `1.0.7`
+    The round5.2 Go-level source identity is `classifier-policy-v2` / SHA-256
+    `e9b87f7e2635495bdbceae469ef89e696b419f0a9a6fd129558a20bc4be947ec`.
+    The historical round5.1 value was `classifier-policy-v2` / SHA-256
+    `c2092d0949fcaa1d0f085dfe31a668d45cc4d14efc10427d0f3ebcf3e821a112`.
+    Ruleset `1.0.7` separately identifies YAML assets and
     does **not** include the Go-level `META-OVERRIDE-001` overlay, extractor
     semantics, approved tool-schema mappings, or control-plane telemetry. A
     digest test binds the reviewed source list, and authenticated status
@@ -290,8 +299,11 @@
     `.so`; CPA's official store installer rejects the former nested
     `plugins/linux/amd64/...` layout. Documentation, SBOM, build metadata,
     reports, and operator scripts belong in the separate
-    `cyber-abuse-guard-v<version>-audit-bundle.zip`. Neither artifact exists as
-    an approved v0.1.2 release because the release gate remains blocked.
+    `cyber-abuse-guard-v<version>-audit-bundle.zip`. Historical round5.1 dirty
+    versions of these files exist on a blocked development prerelease, but
+    neither is an approved stable v0.1.2 release artifact. Any round5.2
+    exact-main artifact is external post-merge evidence and must be identified
+    in its GitHub Release notes rather than self-claimed by the tagged source.
 
 41. **Visible development corpora are not independent evidence.**
     `testdata/development-adversarial-v11-prep` is deliberately visible,
@@ -349,10 +361,14 @@
     Cloud CPA v7.2.75 + Mock-upstream Host matrix, or independent review, and it
     cannot reverse the frozen v10 failure.
 
-48. **The fifth-round deployment decision is still pending.** No fifth-round
-    Tencent Cloud Host validation, independent source/artifact review,
-    production observation, tag, or Release is recorded here. Even after all
-    source and artifact gates pass, the strongest permitted status is
+48. **The fifth-round deployment decision is still blocked.** Historical
+    `v0.1.2-dev.round5.1` is a prerelease and is not production admission.
+    Round5.2 requires a distinct source-freeze/pre-merge record; its future
+    merge, main CI, exact-main artifact, tag, and Release cannot be self-recorded
+    by this source tree and must be verified from GitHub Release notes. Tencent
+    Cloud Host validation, independent source/artifact review, and production
+    observation remain separate gates. Even after all source and artifact gates
+    pass, the strongest permitted status is
     `READY FOR INDEPENDENT SOURCE/ARTIFACT REVIEW`; it is never
     `PRODUCTION APPROVED`.
 
@@ -379,3 +395,69 @@
     not analyzed or used for tuning or conclusions. Nevertheless, this round
     must not claim zero restricted-corpus access, and the incident independently
     keeps methodological handoff blocked.
+
+52. **The round5.2 evaluation-report exclusion was not case-insensitive.** A
+    read-only status search used an exclusion that failed under case variation
+    and printed exactly one status line from each of
+    `EVALUATION_V5_REPORT.md` through `EVALUATION_V10_REPORT.md`. It did not open
+    or print evaluation corpus rows or sample content, run an evaluation test,
+    classify or extract the corpus, or influence any source, test,
+    documentation, or release decision. This disclosure does not change the
+    frozen v10 `CONSUMED / FAIL` result and independently keeps methodology
+    handoff blocked.
+
+53. **A broad recursive Go test was started and forcibly terminated.** A
+    classifier sub-agent mistakenly launched
+    `go test -shuffle=on -count=20 ./...`. The root process interrupted it after
+    about 23 seconds and sent `TERM` to PID `265343`. The same command then
+    reappeared as PID `266741` with WSL `/init` as its parent, consistent with
+    an orphaned CodeRabbit/tool session. The root interrupted the classifier
+    agent again, terminated every matching process, and verified that none
+    remained. It is unknown whether any consumed evaluation or Holdout test
+    selected or read a restricted fixture before termination. The command and
+    all partial results are permanently inadmissible and did not inform source,
+    tests, documentation, or release decisions. Subsequent validation is
+    restricted to the explicit safe allowlist. The project cannot claim no
+    restricted access; v10 remains `CONSUMED / FAIL`, and methodology handoff
+    remains blocked.
+
+54. **CPA v7.2.80 compatibility is source/compile evidence only.** The separate
+    `integration/cpalatestcontract` module pins `v7.2.80` at commit
+    `09da52ad509e2c18e7b9540db3b98c2214c280aa` and exact Go module checksums.
+    The latest-compat lane compiles the Guard and integration packages, runs
+    the real Guard registration/role-routing probes, 17 official Host
+    routing/status tests, 11 official Interactions route/handler tests, and
+    three checksum-pinned overlays in ephemeral official-source copies. It does not start CPA, load a
+    Guard `.so`, install through Store, or prove request reconstruction,
+    logging, Auth/Provider/Usage isolation, and upstream behavior on v7.2.80.
+    The artifact/runtime baseline remains v7.2.75 until the owner runs the
+    authorized server sandbox matrix.
+
+55. **The public-reference corpus cannot attribute attack origin.** Its 36
+    sanitized cases cover visible mechanism families and abstract source
+    contexts, including local instructions, managed `AGENTS`, Skill/MCP,
+    aliases, concealment, segmented continuation, and HTML-comment modules.
+    `source_context` is test metadata, not a runtime security signal. The Guard
+    cannot infer that text came from a particular GitHub repository, inspect
+    content available only through a URL, `file_id`, archive, encryption,
+    compression, or opaque media, stop a local program from modifying config,
+    or correlate fragments omitted across independent requests.
+
+56. **The final diff audit exposed author-source snippets.** One overly broad
+    read-only `cmd/**/*.go` search printed evaluation/holdout author-source
+    snippets and a few synthetic examples. It did not open restricted
+    `testdata`, execute an author/evaluation/holdout tool, or inform source,
+    tests, documentation, or release conclusions. The output is permanently
+    excluded, but the event must remain disclosed and independently prevents a
+    clean restricted-access methodology claim.
+
+57. **Native CPA Interactions remains without exact-artifact Host evidence.**
+    The Guard now registers `interactions` directly, retains it in the fixed
+    audit enum, and scans its mixed schema conservatively without role trust.
+    Source contracts can prove handler/Router field visibility and direct
+    executor-format readiness, but they do not load the release `.so`. On CPA
+    v7.2.80, an `agent` request that the Guard self-routes is rejected by CPA's
+    native-Interactions validator with HTTP 400 before the Guard executor runs;
+    a uniform Guard 403 would require an upstream CPA change. The owner-operated
+    sandbox must separately verify model/agent, stream/non-stream, exact status
+    shapes, first-byte behavior, and zero Auth/Provider/Usage/upstream effects.

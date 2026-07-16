@@ -12,16 +12,20 @@
 English | [简体中文](README_CN.md)
 
 > [!WARNING]
-> This repository is an **unreleased fifth-round development candidate**. The
-> v0.1.2 release decision is **BLOCKED**, and the only methodologically valid
-> v10 evaluation remains `CONSUMED / FAIL`. Fifth-round source, exact-commit CI,
-> and the canonical push artifact are recorded engineering evidence; Tencent
-> Cloud isolated-Host validation and independent review have not run. Do not
-> create the stable `v0.1.2` tag or a production release, and do not deploy this
-> candidate to production. An owner-authorized development prerelease must be
-> marked `BLOCKED / NOT FOR DEPLOYMENT` and must use only dirty development
-> artifacts. Engineering success is not production admission, and the recorded
-> restricted-corpus methodology incidents independently keep handoff blocked.
+> This source tree carries the **round5.2 source-freeze / pre-merge record**.
+> It records only evidence that can be fixed before merge: source identity,
+> safe local gates, exact-source branch push CI, the PR synthetic merge-result
+> gate, and review state. Post-merge main CI, the exact-main artifact, tag,
+> release flags, and release asset hashes are authoritative only through GitHub
+> API metadata; the corresponding Release notes link those records, list the
+> per-asset hashes, and preserve every incomplete gate. The historical
+> `v0.1.2-dev.round5.1` prerelease is `BLOCKED / NOT FOR DEPLOYMENT`; its tag
+> points to `89b62b341278073e7b6518b85e41cd7f7c6b682c` and must never be moved or
+> reused. The stable v0.1.2 release decision remains **BLOCKED**, and the only
+> methodologically valid v10 evaluation remains `CONSUMED / FAIL`. Do not deploy
+> either candidate to production. Engineering success is not production
+> admission, and the recorded methodology incidents independently keep handoff
+> blocked.
 
 When CPA has loaded and registered the plugin, Router ordering reaches it, and
 the self-executor is ready, CPA Cyber Abuse Guard inspects supported model
@@ -35,16 +39,22 @@ is not sent to a public classifier.
 
 | Item | Current state |
 |---|---|
-| Repository state | Unreleased post-v10 development tree; candidate lineage v0.1.2 |
+| Repository state | Round5.2 source-freeze/pre-merge record on `agent/post-release-reaudit-fixes`; implementation/source freeze `170de7f324c2bdf9a473b1866bdfc1e097182301`, based on historical `main@89b62b341278073e7b6518b85e41cd7f7c6b682c` |
 | Release decision | **BLOCKED / NOT PRODUCTION-READY** |
 | Formal evaluation | v10 `CONSUMED / FAIL`: benign FP 28/320, policy blocked 49/320, exact 33/320 |
+| Historical development prerelease | [`v0.1.2-dev.round5.1`](https://github.com/yujianwudi/cyber-abuse-guard/releases/tag/v0.1.2-dev.round5.1), `prerelease=true`, `latest=false`, tag target `89b62b341278073e7b6518b85e41cd7f7c6b682c`; project-policy historical snapshot, while GitHub reports `isImmutable=false`; not production approval |
+| Round5.2 pre-merge evidence | **PASS** for source freeze `170de7f324c2bdf9a473b1866bdfc1e097182301`, safe local gates, CPA latest compatibility, [Push CI 29467936241](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29467936241), and [PR CI 29467938359](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29467938359) against synthetic merge `fc8b5649505662e47bedbd85a41fbea306a2df7c`; all three jobs passed in both runs; CodeRabbit CLI `0.6.5` raised 0 issues on the final source delta and the GitHub check passed |
+| Round5.2 post-merge evidence | Main CI, exact-main artifact, tag, release flags, and release asset hashes are **EXTERNAL EVIDENCE — GITHUB API METADATA + LINKED RELEASE NOTES** |
 | Runtime baseline | CPA `v7.2.75`, commit `e57416731aec87051ac00d0812df6aebd0e9d57a`, C ABI/RPC schema v1 |
 | CPA v7.2.75 checksums | module `h1:WcCCeENtQ5F2bT86FVIOZJJbWCkPqrp3idl8kyZqARM=`; go.mod `h1:f4pcyAej8RoeRhIxJfm+OUMkCKaApiA8WzxR2XVlBh8=` |
+| Latest CPA source/compile lane | CPA `v7.2.80`, commit `09da52ad509e2c18e7b9540db3b98c2214c280aa`; module `h1:QIa5T/KYvJACHVPPRzXcRwq/HLpbwWYJYpZAC1eY2WA=`; go.mod `h1:ytvZNWbCv7PrAyR80+RKsDJPODsdL6qxyFaXDBNZdqs=`; `CPA_LATEST_VERIFY_REMOTE=1 make cpa-latest-compat` verified `releases/latest` and Tag-to-Commit; pinned checksums, compile-only, Router, upstream CPA source-level Host/Interactions test packages, and checksum-pinned overlays passed locally and in exact-source Push/PR CI; no Host start or `.so` load |
 | Documented build target | Linux amd64, glibc 2.34 or newer, CPA C ABI/RPC schema v1 |
 | Unsupported platform | musl/Alpine |
 | Embedded YAML ruleset | `1.0.7`, SHA-256 `7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134` |
-| Classifier policy identity | `classifier-policy-v2`, SHA-256 `c2092d0949fcaa1d0f085dfe31a668d45cc4d14efc10427d0f3ebcf3e821a112` |
-| Current validation | Implementation freeze `1466b2e7dfcafbb0547fc7863a419eccccd8091f` passed local development gates, exact-source push CI `29400003434`, and PR merge-validation CI `29400080092`; `quality-and-artifacts`, `fuzz-long`, and `reproducibility` all succeeded in both runs. Canonical push artifact `8336957771` was downloaded and statically rehashed; SO SHA-256 is `ccc818561077f2840f3d00d33cbc344ed9055aede725986c8c17b22fdb427d5e`. Tencent Cloud isolated Host validation and independent review are not run. The restricted-corpus methodology incident independently keeps handoff blocked; this is not production approval. |
+| Round5.2 source-bound classifier policy | `classifier-policy-v2`, SHA-256 `e9b87f7e2635495bdbceae469ef89e696b419f0a9a6fd129558a20bc4be947ec`; exact source-freeze commit remains a separate pre-merge field |
+| Round5.2 re-audit blockers | Development self-checks closed classifier reversal/performance defects, the Balanced proof-budget downgrade, a large-request top-level tool-definition blind spot, and missing native `interactions` format registration; exact-source Push/PR CI passed |
+| Historical round5.1 classifier policy | `classifier-policy-v2`, SHA-256 `c2092d0949fcaa1d0f085dfe31a668d45cc4d14efc10427d0f3ebcf3e821a112` |
+| Round5.2 source-freeze validation | **PASS** for local safe gates, exact freeze `170de7f324c2bdf9a473b1866bdfc1e097182301`, Push CI `29467936241`, PR CI `29467938359`, and CodeRabbit; real Host and independent review remain **NOT RUN**, so handoff and production remain blocked. Historical round5.1 evidence is retained below and must not be presented as validation of round5.2. |
 
 ## Fifth-round boundary and review status
 
@@ -67,10 +77,15 @@ is not sent to a public classifier.
   **not** include the Go-level `META-OVERRIDE-001` overlay, extraction semantics,
   tool-schema mappings, or control-plane telemetry. The classifier-policy
   identity and exact Git commit are required alongside the ruleset identity.
-- The visible `development-public-jailbreak-patterns-v1` corpus contains only
-  sanitized canaries and abstract minimal pairs. It is development-only,
-  contains no live payloads, and is permanently ineligible for a future blind
-  Holdout.
+- The visible `development-public-jailbreak-patterns-v1` corpus contains 36
+  sanitized cases (18 allow / 18 audit), five protocols, 13 carriers, 19
+  transforms, and five abstract source contexts. The added evidence covers
+  mixed system/developer/tool composition, local instruction and managed
+  `AGENTS` contexts, Skill/MCP payloads, semantic aliases, concealed overrides,
+  boundary-split continuation, HTML-comment modules, and long benign padding.
+  It remains development-only, contains no live payloads, and is permanently
+  ineligible for a future blind Holdout. `source_context` is test metadata, not
+  proof that runtime text came from a named repository or local file.
 - Ordinary CI no longer invokes any evaluation-v10 boundary target. The manual
   `consumed-boundary-test` target remains only for separately authorized audit
   work and is not a routine development or CI gate.
@@ -99,6 +114,31 @@ is not sent to a public classifier.
   commands are explicitly scoped away from holdout/evaluation paths. These
   incidents mean the round cannot truthfully claim zero restricted-corpus access
   and independently keep handoff blocked.
+- During the post-release round5.2 re-audit, a case-insensitive path exclusion
+  failed and a read-only status search printed exactly one status line from each
+  of `EVALUATION_V5_REPORT.md` through `EVALUATION_V10_REPORT.md`. No evaluation
+  corpus or sample row was opened, printed, classified, extracted, or used for
+  any source, test, documentation, or release decision. This additional
+  disclosure does not change the frozen v10 `CONSUMED / FAIL` result and keeps
+  methodology handoff blocked.
+- During the same re-audit, a classifier sub-agent mistakenly started
+  `go test -shuffle=on -count=20 ./...`. The root process interrupted it after
+  about 23 seconds and sent `TERM` to PID `265343`. The same command then
+  reappeared as PID `266741` with WSL `/init` as its parent, consistent with an
+  orphaned CodeRabbit/tool session. The root interrupted the classifier agent
+  again, terminated every matching process, and verified that none remained.
+  It is not known whether any consumed evaluation or Holdout test selected or
+  read a restricted fixture before termination. The command and every partial
+  result are permanently excluded and were not used for source, tests,
+  documentation, or release decisions. Subsequent validation is restricted to
+  the explicit safe allowlist. The round cannot claim no restricted access;
+  v10 remains `CONSUMED / FAIL`, and handoff remains blocked.
+- During the final independent diff audit, one overly broad read-only
+  `cmd/**/*.go` search printed snippets from evaluation/holdout author source
+  and a few synthetic examples. It did not open `testdata` restricted corpora,
+  run an author/evaluation/holdout tool, or inform any implementation, test,
+  documentation, or release conclusion. The output is permanently excluded;
+  this additional disclosure keeps the methodology claim blocked.
 
 The root `go.mod` and `integration/pluginstorecontract` module both pin CPA
 v7.2.75. Source contracts enumerate and run 16 exact official Host tests, while
@@ -109,6 +149,17 @@ source-contract tests and compiles the integration-tagged package without
 starting CPA or loading the `.so`. The canonical exact-source artifact has been
 statically verified, but the Tencent Cloud CPA v7.2.75 isolated-Host matrix and
 independent review are still not run.
+
+An independent `integration/cpalatestcontract` module and
+`scripts/cpa-latest-compat.sh` pin CPA v7.2.80 separately from that runtime
+baseline. They compile the Guard and integration packages through a temporary
+modfile, run the real Guard registration and role-routing probes, list and run
+17 official Host routing/status tests plus 11 official Interactions
+route/handler tests, and apply three checksum-pinned ephemeral overlays for
+Host fail-open, Interactions handler/translator, and direct executor-format
+behavior. This proves source/compile compatibility only. It does not start CPA,
+load a Guard `.so`, install from Store, or validate end-to-end request
+reconstruction and upstream-isolation behavior on v7.2.80.
 
 ## What this project is
 
@@ -204,10 +255,13 @@ reviewed metadata and file fields, and treats every unknown non-file field as
 incomplete schema rather than classifier text.
 
 The earlier v7.2.72 four-protocol HTTP and zero-downstream-call matrix remains
-historical evidence for implementation freeze `61536f9`. Fifth-round
-implementation freeze `1466b2e7` has its own exact-source CI and statically
-verified development artifact, but no fifth-round CPA v7.2.75 real-Host matrix
-or independent verification has run.
+historical evidence for implementation freeze `61536f9`. Historical round5.1
+merged as `89b62b341278073e7b6518b85e41cd7f7c6b682c` and has exact-main CI and a
+statically verified dirty development artifact. It still has no CPA v7.2.75
+real-Host matrix or independent verification. Round5.2 source-freeze and
+pre-merge evidence belongs in this source tree; its post-merge evidence belongs
+in GitHub API metadata, with links, per-asset hashes, and remaining blocks
+summarized in the corresponding Release notes.
 
 Recognized roles keep system safety policy and assistant refusals separate from
 user intent. User-authored adjacent turns and one explicitly linked bounded
@@ -311,19 +365,23 @@ must separately cover commercial mode, retention, permissions, and deletion.
 
 | Evidence | Status |
 |---|---|
-| Fifth-round two-HIGH, meta-override, tool-schema, corpus, race/vet/fuzz/benchmark, and source/artifact gates | **GITHUB CI PASS / ARTIFACT HASH VERIFIED** on implementation freeze `1466b2e7`; push run [29400003434](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29400003434) and PR run [29400080092](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29400080092) each passed `quality-and-artifacts`, `fuzz-long`, and `reproducibility`; canonical push artifact ID `8336957771`, SO SHA-256 `ccc818561077f2840f3d00d33cbc344ed9055aede725986c8c17b22fdb427d5e` |
+| Round5.2 source-freeze, local gates, branch push CI, PR merge-result CI, PR, and review | Freeze `170de7f324c2bdf9a473b1866bdfc1e097182301`; local safe gates **PASS**; Push CI [29467936241](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29467936241) **PASS**; PR CI [29467938359](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29467938359) **PASS** for base `89b62b341278073e7b6518b85e41cd7f7c6b682c`, head `170de7f324c2bdf9a473b1866bdfc1e097182301`, synthetic merge `fc8b5649505662e47bedbd85a41fbea306a2df7c`; PR [#8](https://github.com/yujianwudi/cyber-abuse-guard/pull/8); CodeRabbit **PASS** |
+| Round5.2 post-merge main CI, exact-main artifact, tag, and release | **EXTERNAL EVIDENCE — GITHUB API METADATA + LINKED RELEASE NOTES**; this source tree does not self-reference future merge/release identities |
+| Historical round5.1 merge and development prerelease | Merge/tag commit `89b62b341278073e7b6518b85e41cd7f7c6b682c`; main run [29409182748](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29409182748) attempt 1 failed at a fuzz timer boundary and attempt 2 passed all jobs; artifact ID `8340894661`, container digest `sha256:7419fcf0c0745472728d6e9c73d99aa01737930ccf25e26501e17ae4d453db61`, SO SHA-256 `3176d2af23963a2768672034af02fc1ca9ebe0c3f29a3654aa802ce0f822b6be`; historical prerelease only |
 | Fifth-round CPA v7.2.75 isolated Host and independent review | **NOT RUN / PENDING** — ordinary CI is source-contract plus integration compile-only; no CPA process was started and no `.so` was loaded |
+| CPA v7.2.80 latest source/compile compatibility | **DEVELOPMENT SELF-CHECK AND EXACT-SOURCE PUSH/PR CI PASS** — `CPA_LATEST_VERIFY_REMOTE=1 make cpa-latest-compat` verified GitHub `releases/latest` and Tag-to-Commit; pinned module checksums, Guard/integration compile probes, real Guard registration/route tests, 17 official Host routing/status tests, 11 official Interactions route/handler tests, and three checksum-pinned overlays also passed; not native Host evidence |
 | Historical safe unit/race boundary, vet, fuzz-smoke, regression, build, packaging, and reproducibility workflows | **GITHUB CI PASS** on earlier implementation freeze `61536f9`; push run [29312969925](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29312969925) and PR run [29312971717](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29312971717); not fifth-round evidence |
 | Safe Go development scripts | `test`, `race`, and bounded development gates **DEVELOPMENT SELF-CHECK PASS**; the implementation freeze is also covered by exact-source push CI and PR merge validation |
 | CPA Store ZIP naming/layout/install source contract | **GITHUB CI PASS** against official CPA v7.2.75 source; this is not a real Store install or native Host load |
 | CPA Router ordering/fallback source contract | **GITHUB CI PASS** against official CPA v7.2.75 source; this is not the isolated Host matrix |
 | Local executor refusal contract | RPC error envelopes request 403 for `execute`, `execute_stream`, and `count_tokens`; `http_request` has a SOURCE/ADAPTER status-error 405 check with no response only |
-| Historical native plugin loading | **GITHUB CI PASS** for the earlier v7.2.72 freeze; current CPA v7.2.75 Store artifact/load is **PENDING** |
+| Native plugin loading evidence | Exact-source v7.2.75 development artifact `8363874523` exists for freeze `170de7f324c2bdf9a473b1866bdfc1e097182301`; real Store installation and Guard `.so` loading in the Tencent isolated Host remain **NOT RUN / PENDING**; historical v7.2.72 evidence cannot substitute |
 | Historical OpenAI Chat / Responses / Claude / Gemini server matrix | **GITHUB CI PASS** on the earlier v7.2.72 freeze; fifth-round Host cases are pending and ordinary CI is compile-only |
 | Historical zero Auth Selector / Usage / Provider / upstream calls on blocked requests | **GITHUB CI PASS** on the earlier freeze; the fifth-round exact artifact's real-Host zero-side-effect proof is not run |
 | Historical Multi-Router/fail-open and management proxy 413 matrices | **GITHUB CI PASS** on the earlier freeze — 15 native Router scenarios and proxy rejection before the counted CPA handler |
 | Final official CPA client HTTP 405 for `executor.http_request` | **NOT AVAILABLE / NOT RUN** — `/v1/alpha/search` is provider-specific, normally selects `codex`, and maps every executor error to 502; no current official route maps Guard's 405 error to final 405 |
-| CodeRabbit review on PR #7 | **PENDING / REVIEW QUEUED** at evidence freeze; no CodeRabbit approval or actionable-review conclusion is claimed |
+| Historical PR #7 CodeRabbit evidence | A local CLI follow-up recorded 0 issues, but the GitHub bot comment later ended with `Review failed — pull request is closed`; no CodeRabbit approval is claimed |
+| Round5.2 CodeRabbit review | **PASS** — CLI `0.6.5` raised 0 issues on the final source delta; the GitHub CodeRabbit check for freeze `170de7f324c2bdf9a473b1866bdfc1e097182301` succeeded |
 | Independent release evaluation | v10 consumed and failed; a new unseen set is required |
 | Production release | Blocked |
 
@@ -369,11 +427,15 @@ Historical v7.2.72 source/native evidence boundaries are recorded in
 [PHASE0_CPA_CONTRACT.md](docs/reports/PHASE0_CPA_CONTRACT.md) remains historical
 Phase 0 evidence, and
 [ROUND4_LEO_REVIEW_HANDOFF.md](docs/ROUND4_LEO_REVIEW_HANDOFF.md) is a historical
-round-four handoff. The current candidate is tracked by
-[PR #7](https://github.com/yujianwudi/cyber-abuse-guard/pull/7),
+round-four handoff. [PR #7](https://github.com/yujianwudi/cyber-abuse-guard/pull/7)
+and `v0.1.2-dev.round5.1` are treated as historical round5.1 snapshots by
+project policy; GitHub currently reports `isImmutable=false`, so API metadata
+and hashes are point-in-time evidence rather than platform-enforced immutability. The
+round5.2 source-freeze/pre-merge record is tracked by
 [AUDIT_HANDOFF.md](docs/AUDIT_HANDOFF.md),
 [TEST_REPORT.md](docs/reports/TEST_REPORT.md), and
-[RELEASE_EVIDENCE.md](docs/reports/RELEASE_EVIDENCE.md). Historical evaluation
+[RELEASE_EVIDENCE.md](docs/reports/RELEASE_EVIDENCE.md); post-merge evidence is
+tracked by GitHub API metadata and linked from its Release notes. Historical evaluation
 datasets are frozen; do not rerun or tune against individual v10 rows.
 
 ## Developer and auditor checks
@@ -398,6 +460,9 @@ go test ./cmd/development-public-jailbreak-patterns-v1-validator \
 
 # Explicit source-only CPA v7.2.75 store and host contracts.
 go -C integration/pluginstorecontract test ./... -count=1
+
+# Latest CPA v7.2.80 source/compile lane; no Host process or .so load.
+make cpa-latest-compat
 
 # Ordinary CI compiles integration-tagged code but does not start CPA.
 make integration-compile
@@ -426,16 +491,23 @@ must not be run for the current blocked candidate.
 ## Artifact contracts
 
 Development CI may build dirty-suffixed evidence artifacts. No formal stable
-v0.1.2 release artifact exists; an owner-authorized development prerelease may
-attach only these clearly dirty, non-production assets.
+v0.1.2 release artifact exists. The historical `v0.1.2-dev.round5.1`
+prerelease attached only dirty, non-production assets and must remain bound to
+its existing tag; it must not be moved to later source.
 
-The canonical fifth-round exact-source evidence artifact is the push-run
-artifact `cyber-abuse-guard-linux-amd64-dirty`, ID `8336957771`, size
-`10686558` bytes, container digest
-`sha256:b2662faa01071cef6a111b03d1cff85d3bf4796ed2e7a54aaf584c451f581a8e`,
-expiring `2026-10-13T08:13:03Z`. Its internal `checksums.txt` and sidecars were
-downloaded and rehashed successfully. The audit bundle was hashed as an opaque
-file and was not opened. This is a dirty development artifact, not a Release.
+The historical round5.1 exact-main artifact is
+`cyber-abuse-guard-linux-amd64-dirty`, ID `8340894661`, size `10691298` bytes,
+container digest
+`sha256:7419fcf0c0745472728d6e9c73d99aa01737930ccf25e26501e17ae4d453db61`,
+expiring `2026-10-13T10:54:12Z`. Its build metadata binds merge commit
+`89b62b341278073e7b6518b85e41cd7f7c6b682c`; the SO SHA-256 is
+`3176d2af23963a2768672034af02fc1ca9ebe0c3f29a3654aa802ce0f822b6be`.
+Release assets were hashed individually; the Actions artifact is recorded only
+by its container digest, without a retained member-to-asset equivalence map.
+This is historical development evidence, not validation of round5.2. Any
+round5.2 exact-main artifact and release asset hashes are intentionally recorded
+in GitHub API metadata and linked/summarized in the corresponding Release notes
+rather than self-claimed here.
 
 | Artifact | Contract |
 |---|---|

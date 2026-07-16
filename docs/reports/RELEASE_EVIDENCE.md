@@ -1,50 +1,162 @@
-# v0.1.2 Fifth-Round Development Evidence and Release Closure
+# v0.1.2 Fifth-Round Development Evidence — Round5.2 Source-Freeze Record / Round5.1 Historical
 
-Last updated: 2026-07-15 (Asia/Shanghai)
+Last updated: 2026-07-16 (Asia/Shanghai)
 
-## Fifth-round evidence addendum
+## Round5.2 source-freeze / pre-merge record
 
-The fifth-round branch is based on
-`main@67b2470cf9be434adc0ce0c62fa6d2c0f9d21363`. Audit-fix implementation
-freeze `174401cd234f960e66ce55b9fc88614d948d5129`, exact-source push CI, PR
-merge-validation CI, canonical development artifact identity, SO SHA-256, and
-checksum/sidecar verification are recorded below. Tencent Cloud isolated Host
-validation and independent source/artifact review have not run. The earlier
-pre-audit and historical artifact hashes remain provenance only and must not be
-reused for this implementation freeze.
+This section is intentionally limited to evidence that can be fixed before
+merge: source-freeze identity, safe local gates, exact-source branch push CI,
+the PR synthetic merge-result gate, and review state.
+It must not guess or self-reference a future merge commit. Post-merge main CI,
+the exact-main artifact, tag, release flags, and release asset hashes are
+authoritative only through GitHub API metadata; the corresponding Release notes
+link those records and preserve per-asset hashes and incomplete gates. The
+working branch is based on historical
+`main@89b62b341278073e7b6518b85e41cd7f7c6b682c`; the pre-merge fields below are
+backfilled from local and GitHub evidence without inventing a future merge commit.
 
 ```text
-fifth_round_branch: agent/round5-scalar-media-multipart-meta-override
-fifth_round_base_commit: 67b2470cf9be434adc0ce0c62fa6d2c0f9d21363
-fifth_round_pre_audit_source_commit: 1466b2e7dfcafbb0547fc7863a419eccccd8091f
-fifth_round_audit_fix_source_commit: 174401cd234f960e66ce55b9fc88614d948d5129
-fifth_round_implementation_freeze: 174401cd234f960e66ce55b9fc88614d948d5129
-fifth_round_pull_request: https://github.com/yujianwudi/cyber-abuse-guard/pull/7
-fifth_round_local_engineering_gates: PASS — DEVELOPMENT SELF-CHECK ONLY
-fifth_round_pre_audit_push_ci: PASS — 29400003434
-fifth_round_pre_audit_pull_request_ci: PASS — 29400080092
-fifth_round_pre_audit_ci_jobs: quality-and-artifacts=PASS; fuzz-long=PASS; reproducibility=PASS (both runs)
-fifth_round_audit_fix_push_ci: PASS — 29406952739
-fifth_round_audit_fix_pull_request_ci: PASS — 29406955151
-fifth_round_audit_fix_ci_jobs: quality-and-artifacts=PASS; fuzz-long=PASS; reproducibility=PASS (both runs)
-fifth_round_pre_audit_canonical_artifact: VERIFIED — ID 8336957771
-fifth_round_audit_fix_canonical_artifact: VERIFIED — ID 8339760603
-fifth_round_audit_fix_artifact_id_and_hashes: RECORDED / LOCALLY REHASHED
-fifth_round_code_rabbit_initial_audit: 4 MAJOR issues — verified and fixed
-fifth_round_code_rabbit_follow_up: 0 issues
-fifth_round_tencent_isolated_host: NOT RUN
-fifth_round_independent_review: NOT RUN
-fifth_round_stable_v0.1.2_tag: NOT CREATED / BLOCKED
-fifth_round_development_prerelease: OWNER-AUTHORIZED AFTER MERGE — v0.1.2-dev.round5.1
-fifth_round_github_release: DEVELOPMENT PRERELEASE ONLY / NOT PRODUCTION ADMISSION
-fifth_round_production_deployment: NOT PERFORMED
-fifth_round_status: ENGINEERING SOURCE/CI/ARTIFACT GATES PASS / METHODOLOGY HANDOFF BLOCKED
+round5_2_branch: agent/post-release-reaudit-fixes
+round5_2_base_commit: 89b62b341278073e7b6518b85e41cd7f7c6b682c
+round5_2_source_fixes: COMPLETE / SOURCE FREEZE READY
+round5_2_source_freeze: 170de7f324c2bdf9a473b1866bdfc1e097182301
+round5_2_classifier_policy_identity: classifier-policy-v2 / e9b87f7e2635495bdbceae469ef89e696b419f0a9a6fd129558a20bc4be947ec
+round5_2_cpa_latest_source_compat: v7.2.80 / 09da52ad509e2c18e7b9540db3b98c2214c280aa / DEVELOPMENT SELF-CHECK AND EXACT-SOURCE PUSH/PR CI PASS
+round5_2_public_reference_corpus: 36 sanitized cases / 18 allow / 18 audit / development-only
+round5_2_local_safe_gates: PASS / format-diff-module / round5 / safe test-vet / sanitized public corpus / scripts / CPA latest remote identity and contracts
+round5_2_push_ci: https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29467936241 / attempt 1 / SUCCESS / quality-and-artifacts, fuzz-long, reproducibility
+round5_2_source_freeze_push_artifact: 8363874523 / cyber-abuse-guard-linux-amd64-dirty / 10827848 bytes / sha256:fdec405e991498d4b7fb16557796a22736456c01fb1bd0e31d8eac5800438176 / expires 2026-10-14T03:00:42Z / development-only
+round5_2_pull_request: https://github.com/yujianwudi/cyber-abuse-guard/pull/8
+round5_2_pull_request_ci: https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29467938359 / attempt 1 / SUCCESS / base 89b62b341278073e7b6518b85e41cd7f7c6b682c / head 170de7f324c2bdf9a473b1866bdfc1e097182301 / synthetic merge fc8b5649505662e47bedbd85a41fbea306a2df7c / quality-and-artifacts, fuzz-long, reproducibility
+round5_2_code_rabbit_follow_up: PASS / CLI 0.6.5 / final source delta / 0 issues / GitHub check SUCCESS / 10 of 10 current PR review threads resolved (9 source-freeze + 1 documentation wording)
+round5_2_tencent_isolated_host: NOT RUN
+round5_2_independent_review: NOT RUN
+round5_2_post_merge_main_ci: EXTERNAL EVIDENCE — GITHUB API METADATA + LINKED RELEASE NOTES
+round5_2_post_merge_artifact: EXTERNAL EVIDENCE — GITHUB API METADATA + LINKED RELEASE NOTES
+round5_2_tag_and_release: EXTERNAL EVIDENCE — GITHUB API METADATA + LINKED RELEASE NOTES
+stable_v0.1.2_tag: NOT CREATED / BLOCKED
+production_deployment: NOT PERFORMED
+source_freeze_record_status: PRE-MERGE SOURCE EVIDENCE PASS / REAL HOST AND INDEPENDENT REVIEW NOT RUN / BLOCKED FOR HANDOFF
 ```
 
-## Fifth-round audit-fix canonical artifact identity
+The pre-merge record uses two commits. `S` is the implementation/source freeze:
+all code, workflows, tests, scripts, and development corpus files are fixed.
+Exact-source branch CI binds to `S`; pull-request CI validates GitHub's synthetic
+merge result and must record base, head, merge SHA, run, and job conclusions.
+`D` is a documentation-only evidence backfill. Any non-document change in
+`S..D` invalidates `S`. Final checks for `D` remain external GitHub evidence
+rather than another self-referential document commit.
 
-The exact-source canonical artifact for the audit-fix implementation freeze is
-the push-run artifact, not the PR-run artifact:
+Post-merge evidence must record API-verifiable workflow run ID, attempt,
+conclusion, event, head SHA, required job conclusions, artifact ID/digest/size/
+expiry and available attestation, tag object type/target/verification status,
+and Release ID plus draft/prerelease/latest flags. Release notes link those
+records, list each of the nine asset SHA-256 values, and preserve every
+`NOT RUN/BLOCKED` gate; notes alone are never proof that main CI, artifact, and
+tag resolve to one commit.
+
+The latest-compat lane is separate from the CPA v7.2.75 runtime/artifact
+baseline. It pins CPA v7.2.80 with module checksum
+`h1:QIa5T/KYvJACHVPPRzXcRwq/HLpbwWYJYpZAC1eY2WA=` and go.mod checksum
+`h1:ytvZNWbCv7PrAyR80+RKsDJPODsdL6qxyFaXDBNZdqs=`. The development self-check
+compiled Guard/integration packages, ran the real Guard registration/route
+tests, 17 fixed official Host routing/status tests, 11 fixed official
+Interactions route/handler tests, and three checksum-pinned ephemeral overlays.
+No CPA Host or `.so` was started/loaded. Exact-source Push CI `29467936241` and
+PR CI `29467938359` both passed all three required jobs.
+
+The round5.2 re-audit also reproduced and closed source-level merge blockers
+with sanitized CANARY inputs. Repeated `copy/copies/copied` forms no
+longer inherit an earlier prohibition; bounded `not allowed/permitted/
+authorized/required/supposed/able to prohibit ...` bridges and common copular/
+do/have contractions no longer hide an active intent; and meta-wrapper
+structural analysis now rejects defensive credit after 128 clauses or 1,024
+directive boundaries. The reachable `8 x 32 KiB` period/semicolon/newline
+CANARY gate fell from about 118-123 ms and 12.1 MiB/op before the fix to about
+7-10 ms and 1.36 MiB/op after it. A separate ModelRoute regression prevents an
+internal adjacent-negation proof budget from being mislabeled as incomplete and
+downgraded in Balanced mode. The primary request walker now inspects root
+container-valued `tools/functions` even when a large raw body skips the role
+index, including descriptions beyond the 256 KiB raw offset, while nested
+business lookalikes remain inert. CPA `interactions` is registered directly,
+uses a fixed audit enum and conservative extraction profile, and no longer
+depends on translator fallback for executor format readiness. These are
+development/source-contract results, not Host or production evidence.
+
+Release-path hardening in the same source freeze makes every tracked shell
+script executable in Git, runs dirty `release-preflight` in ordinary CI, adds
+the previously omitted CPA Host/latest/proxy gates to formal release, and
+verifies both GitHub `releases/latest` and the pinned Tag-to-Commit ref through
+authenticated REST metadata when a token is available.
+
+The sanitized public-reference refresh is fixed to
+`MDX-Tom/gpt-5.6-instruct@5f469e43ef66f540cadb475039fd9ed469aef654`,
+`yynxxxxx/Codex-X@659415f57c55b92f34600a2ae482475804b22760`, and
+`yynxxxxx/Codex-5.5-codex-instruct-5.5@ed0b6dc37d1994e93788d92f7af63f58bf0b9e2d`.
+No third-party installer, mutator, test runner, or prompt payload was executed or
+copied. The 36-case corpus proves only visible sanitized mechanism regression;
+it cannot attribute repository origin or inspect opaque/local-only content.
+
+## Historical round5.1 prerelease closure
+
+[`v0.1.2-dev.round5.1`](https://github.com/yujianwudi/cyber-abuse-guard/releases/tag/v0.1.2-dev.round5.1)
+is treated as a historical development snapshot by project policy. GitHub
+currently reports `isImmutable=false`, so its API metadata and hashes are
+point-in-time evidence rather than platform-enforced immutability. It is explicitly
+`BLOCKED / NOT FOR DEPLOYMENT`, `prerelease=true`, and `latest=false`. Its tag
+must remain at `89b62b341278073e7b6518b85e41cd7f7c6b682c`; moving or reusing that
+tag would break the recorded source/artifact chain. Any later source must use a
+new tag only after its own freeze, CI, merge, and evidence closure.
+
+```text
+historical_round5_1_tag: v0.1.2-dev.round5.1
+historical_round5_1_release: https://github.com/yujianwudi/cyber-abuse-guard/releases/tag/v0.1.2-dev.round5.1
+historical_round5_1_merge_and_tag_commit: 89b62b341278073e7b6518b85e41cd7f7c6b682c
+historical_round5_1_implementation_freeze: 174401cd234f960e66ce55b9fc88614d948d5129
+historical_round5_1_pull_request: https://github.com/yujianwudi/cyber-abuse-guard/pull/7
+historical_round5_1_main_ci: https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29409182748
+historical_round5_1_main_ci_attempt_1: FAIL — fuzz timer-boundary context deadline exceeded
+historical_round5_1_main_ci_attempt_2: PASS — quality-and-artifacts, fuzz-long, reproducibility
+historical_round5_1_artifact_id: 8340894661
+historical_round5_1_artifact_name: cyber-abuse-guard-linux-amd64-dirty
+historical_round5_1_artifact_size: 10691298 bytes
+historical_round5_1_artifact_digest: sha256:7419fcf0c0745472728d6e9c73d99aa01737930ccf25e26501e17ae4d453db61
+historical_round5_1_artifact_expiry: 2026-10-13T10:54:12Z
+historical_round5_1_tencent_isolated_host: NOT RUN
+historical_round5_1_independent_review: NOT RUN
+historical_round5_1_release_flags: prerelease=true; latest=false
+historical_round5_1_production_deployment: NOT PERFORMED
+```
+
+The round5.1 release assets were downloaded and hashed individually. The
+exact-main Actions artifact is recorded above by its archive-level digest, but
+no member-to-release-asset mapping was retained, so this record does **not**
+claim byte-for-byte equivalence between artifact members and release assets.
+The audit bundle remained opaque; only its outer file hash was computed.
+
+| Historical round5.1 release asset | SHA-256 |
+|---|---|
+| `cyber-abuse-guard-v0.1.2-dirty.so` | `3176d2af23963a2768672034af02fc1ca9ebe0c3f29a3654aa802ce0f822b6be` |
+| `cyber-abuse-guard-v0.1.2-dirty.so.sha256` | `55cd48b122b361c34cb8f638bf0823fd5512e5c23090b206e36eb26d5eacf761` |
+| `cyber-abuse-guard_0.1.2-dirty_linux_amd64.zip` | `a954d1c816362197d406b8954736349516dd9e4d270264b1db83b1fe7f36972e` |
+| `cyber-abuse-guard-v0.1.2-dirty-audit-bundle.zip` | `7ea8f90a6b679b0aa5b45f303d5ef068204bea2f2cf5f4ffe9361b12bd596d6f` |
+| `build-metadata.json` | `2577c053211581ba511b1b77e4ef507cf199239985739e74645a1d8fc5385b44` |
+| `checksums.txt` | `25e616eb1712b8dc1c4d03df5abae309e0883204a5351498aa3e29fe5ca7d785` |
+| `ruleset-manifest.json` | `486a4dfad49b4e96a600f908cbea47376baab5c8875324999ae50b6251f1af7e` |
+| `ruleset.sha256` | `a8ff687340617dc18832047f841979a0bd06ff8c50a4bc3c15dd7da37b6fbee2` |
+| `sbom.cdx.json` | `73c8c49742a7478f3ab9ef3ccabbdb4fe34f92f45779b88147322eb4978cfc01` |
+
+The historical local CodeRabbit CLI follow-up recorded 0 issues. GitHub does
+not contain a durable review carrying that exact result: the Bot comment later
+ended `Review failed — pull request is closed`, while a status context showed
+success without a review URL. Therefore no CodeRabbit approval is claimed.
+
+## Historical round5.1 pre-merge audit-fix artifact provenance
+
+Before round5.1 merged, the exact-source artifact for the audit-fix
+implementation freeze was the push-run artifact below, not the PR-run artifact.
+It was later superseded for release purposes by exact-main artifact
+`8340894661` recorded above:
 
 ```text
 artifact_id: 8339760603
@@ -57,9 +169,9 @@ workflow_run: https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29406
 source_commit: 174401cd234f960e66ce55b9fc88614d948d5129
 ```
 
-The canonical artifact was downloaded and rehashed without deploying or loading
-the plugin. The audit bundle was treated as an opaque file for SHA-256 only; its
-contents were not opened.
+This historical pre-merge artifact was downloaded and rehashed without
+deploying or loading the plugin. The audit bundle was treated as an opaque file
+for SHA-256 only; its contents were not opened.
 
 | File | SHA-256 | Verification |
 |---|---|---|
@@ -89,11 +201,12 @@ goos/goarch: linux/amd64
 cgo_enabled: true
 ```
 
-## Fifth-round pre-audit artifact identity (superseded for the audit-fix delta)
+## Historical round5.1 pre-audit artifact identity
 
 The artifact below is canonical only for the pre-audit source commit. It cannot
-be attached to the audit-fix commit or the development prerelease. A new
-exact-source push-run artifact must replace it before merge and release:
+validate the audit-fix commit or the historical development prerelease. It was
+replaced first by the audit-fix push artifact and then by the exact-main
+artifact recorded above:
 
 ```text
 artifact_id: 8336957771
@@ -108,13 +221,14 @@ source_commit: 1466b2e7dfcafbb0547fc7863a419eccccd8091f
 
 The PR-run artifact is ID `8336942789`, but its internal metadata binds GitHub's
 temporary merge commit `226c89e3b932c18f9572822db9cf27a3faab09ec`.
-It is useful as PR validation evidence but is not the canonical exact-source
-artifact.
+It is useful as historical PR validation evidence but is not the release's
+canonical exact-main artifact.
 
 The pre-audit canonical artifact was downloaded and rehashed without deploying
 or loading the plugin. The audit bundle was treated as an opaque file for
 SHA-256 only; its contents were not opened. These hashes are historical and
-must not be reused as validation of the current audit fixes.
+must not be reused as validation of round5.1 after the audit fixes or of any
+round5.2 source.
 
 | File | SHA-256 | Verification |
 |---|---|---|
@@ -144,19 +258,20 @@ goos/goarch: linux/amd64
 cgo_enabled: true
 ```
 
-The audit-fix artifact metadata still does not embed classifier-policy identity.
-The audit-fix classifier identity therefore remains a joint binding of
+The historical audit-fix artifact metadata does not embed classifier-policy
+identity. Its classifier identity therefore remains a joint binding of
 `classifier-policy-v2`, SHA-256
 `c2092d0949fcaa1d0f085dfe31a668d45cc4d14efc10427d0f3ebcf3e821a112`,
 and exact Git commit `174401cd234f960e66ce55b9fc88614d948d5129`.
 
-Ordinary CI is development-only. It runs `make integration-compile` and does
-not start CPA, deploy a plugin, or execute the real Host matrix. Existing
+Historical round5.1 ordinary CI was development-only. It ran
+`make integration-compile` and did not start CPA, deploy a plugin, or execute
+the real Host matrix. Existing
 `make integration-test`/Host targets remain explicit manual targets for the
 later authorized Tencent Cloud CPA v7.2.75 + Mock-upstream sandbox. Ordinary CI
 also excludes `make consumed-boundary-test` and all evaluation-v10/retired
 Holdout content; that target is retained only for separately authorized audit
-work.
+work. Round5.2 must rerun the applicable source and CI gates on its own freeze.
 
 Distinct fifth-round methodology deviations must remain attached to every
 artifact/CI claim. One over-broad read-only `git grep` unexpectedly emitted
@@ -170,14 +285,46 @@ remaining commands explicitly exclude holdout/evaluation paths. This round
 cannot claim zero restricted-corpus access, and engineering PASS evidence
 cannot lift the methodological `BLOCKED FOR HANDOFF` status.
 
+During the post-release round5.2 re-audit, a case-insensitive path exclusion
+failed and a read-only status search printed exactly one status line from each
+of `EVALUATION_V5_REPORT.md` through `EVALUATION_V10_REPORT.md`. No evaluation
+corpus or sample row was opened, printed, classified, extracted, or used for a
+source, test, documentation, or release decision. This additional disclosure
+does not change the frozen v10 `CONSUMED / FAIL` result and keeps methodology
+handoff blocked.
+
+During the same re-audit, a classifier sub-agent mistakenly started
+`go test -shuffle=on -count=20 ./...`. The root process interrupted it after
+about 23 seconds and sent `TERM` to PID `265343`. The same command then
+reappeared as PID `266741` with WSL `/init` as its parent, consistent with an
+orphaned CodeRabbit/tool session. The root interrupted the classifier agent
+again, terminated every matching process, and verified that none remained. It
+is unknown whether a consumed evaluation or Holdout test selected or read a
+restricted fixture before termination. The command and every partial result
+are permanently excluded and did not inform source, tests, documentation, CI,
+or release decisions. Subsequent validation is constrained to the explicit
+safe allowlist. This round cannot claim no restricted access; v10 remains
+`CONSUMED / FAIL`, and methodology handoff remains blocked.
+
+During the final independent diff audit, an overly broad read-only
+`cmd/**/*.go` search printed evaluation/holdout author-source snippets and a
+few synthetic examples. It did not open restricted `testdata`, execute an
+author/evaluation/holdout tool, or inform source, tests, documentation, or
+release conclusions. The output is permanently excluded, but the event remains
+part of the methodology record and prevents a clean zero-access claim.
+
 Release evidence must bind two separate policy identities:
 
 - ruleset `1.0.7` and its YAML asset hash; and
-- the refreshed classifier-policy identity plus exact Git commit for the Go
+- the classifier-policy identity plus exact Git commit for the Go
   `META-OVERRIDE-001` overlay, extraction/media/multipart semantics, the
   tool-only `cag_control_schema=meta_override_control/v1` mapping, and fixed
-  control-plane telemetry. The fifth-round value is `classifier-policy-v2` /
+  control-plane telemetry. The historical round5.1 value is
+  `classifier-policy-v2` /
   `c2092d0949fcaa1d0f085dfe31a668d45cc4d14efc10427d0f3ebcf3e821a112`.
+  The round5.2 source-bound value is `classifier-policy-v2` /
+  `e9b87f7e2635495bdbceae469ef89e696b419f0a9a6fd129558a20bc4be947ec`;
+  the exact source-freeze Commit remains a separate pre-merge field.
 
 Ruleset `1.0.7` alone does not identify the complete policy. The Tool schema
 marker is valid only inside established tool/tool-payload provenance; it does
@@ -197,25 +344,27 @@ bounded JSON parse after the primary extractor walk; current tests have not
 reproduced a leak, but a future single semantic parse product is required to
 remove dual-parser drift risk.
 
-The base-to-freeze history also contains one composite implementation commit.
-Post-fix regressions are green, but no independently preserved pre-fix red-test
-commit or command log exists for the two HIGH cases. That task-book evidence
-criterion remains open for independent audit and is not inferred from the final
-green state.
+The historical round5.1 base-to-pre-audit-freeze history also contains one
+composite implementation commit. Post-fix regressions are green, but no
+independently preserved pre-fix red-test commit or command log exists for the
+two HIGH cases. That task-book evidence criterion remains open for independent
+audit and is not inferred from the final green state.
 
 Unit, CI, reproducibility, and artifact PASS results are necessary engineering
 evidence but never production admission. After every source/artifact gate is
 complete, the highest permitted status is
 `READY FOR INDEPENDENT SOURCE/ARTIFACT REVIEW`, not `PRODUCTION APPROVED`.
 
-Local source evidence is recorded in `TEST_REPORT.md`: final Go 1.26.4
+Historical round5.1 local source evidence is recorded in `TEST_REPORT.md`: Go 1.26.4
 format/diff/module, Round 5, development-corpus, safe unit/vet, vulncheck,
 source-contract, and compile-only checks passed; the full safe race, fuzz,
 benchmark, privacy, and script gates also passed. The first benchmark and
 vulncheck attempts failed for documented environment/toolchain reasons and were
 retained rather than hidden. Exact-source push CI and PR merge-validation CI
-both passed, and the canonical push artifact was downloaded and statically
-rehashed. No Host or deployment claim follows from these results.
+both passed, and its historical artifacts were downloaded and statically
+rehashed. No Host or deployment claim follows from these results. Round5.2
+evidence remains limited to the source-freeze/pre-merge record above until its
+own checks are completed.
 
 ---
 
@@ -422,8 +571,10 @@ Container digests are not substitutes for the internal-file hashes above.
 Store ZIP and audit bundle must remain separate. The store ZIP must contain
 exactly one root regular executable `.so`, with no absolute path, `..`,
 backslash escape, symlink, or duplicate entry. Formal release scripts remain
-blocked because v10 failed; development artifacts must be clearly dirty/non-
-release and must not be uploaded as a GitHub Release.
+blocked because v10 failed; development artifacts must be clearly dirty and
+non-production and must not be uploaded as a stable GitHub Release. Under the
+current policy, they may be uploaded only to an explicitly **BLOCKED**
+prerelease audit snapshot.
 
 ## Historical prior-round unresolved limitations
 
