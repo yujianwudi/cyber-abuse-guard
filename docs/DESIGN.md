@@ -32,8 +32,10 @@ executing it. Authoritative native evidence is restricted to the authorized
 GitHub CI Linux job and Leo's independent isolated environment. Historical
 evidence remains in `reports/TEST_REPORT.md` and `LEO_VERIFICATION_HANDOFF.md`;
 the current candidate is tracked in `AUDIT_HANDOFF.md`,
-`reports/TEST_REPORT.md`, and `reports/RELEASE_EVIDENCE.md`, and remains pending
-until its CI artifact and CPA v7.2.75 Host matrix exist.
+`reports/TEST_REPORT.md`, and `reports/RELEASE_EVIDENCE.md`. Its exact-source
+CI artifact was produced and verified for freeze `170de7f324c2bdf9a473b1866bdfc1e097182301`;
+native compatibility remains pending until the CPA v7.2.75 Host matrix and
+independent source/artifact review exist.
 
 This document describes a post-v10 development handoff, not an approved
 release. The methodologically valid v10 evaluation failed its first and only

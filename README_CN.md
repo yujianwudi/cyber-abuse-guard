@@ -295,13 +295,13 @@ CPA Host 边界仍存在插件无法消除的 Fail Open 条件：插件未加载
 | CPA Store ZIP 命名、布局与安装源码契约 | 针对 CPA v7.2.75 官方源码 **GITHUB CI PASS**；不代表真实 Store 安装或 Native Host 加载 |
 | CPA Router 排序与回退源码契约 | 针对 CPA v7.2.75 官方源码 **GITHUB CI PASS**；不代表隔离 Host 矩阵 |
 | 本地 Executor 拒绝契约 | `execute`、`execute_stream`、`count_tokens` 请求 403；`http_request` 只有 SOURCE/ADAPTER status-error 405（response=nil）检查 |
-| Implementation Freeze 的原生插件加载 | 第五轮 CPA v7.2.75 腾讯云 isolated Host **PENDING**；普通 CI 仅 compile-only，历史 v7.2.72 证据不能替代本轮验证 |
+| Implementation Freeze 的原生插件加载 | 精确源码 v7.2.75 开发 artifact `8363874523` 已绑定 Freeze `170de7f324c2bdf9a473b1866bdfc1e097182301`；腾讯云 isolated Host 中的真实 Store 安装与 Guard `.so` 加载仍为 **NOT RUN / PENDING**，历史 v7.2.72 证据不能替代本轮验证 |
 | 历史 OpenAI Chat / Responses / Claude / Gemini 服务器矩阵 | 较早 v7.2.72 Freeze **GITHUB CI PASS**；第五轮 Host Case 待完成 |
 | 历史阻断后 Auth Selector / Usage / Provider / 上游零调用 | 较早 Freeze **GITHUB CI PASS**；第五轮精确 artifact 的真实 Host 零副作用证明尚未运行 |
 | 历史多 Router / fail-open 动态矩阵 | 较早 Freeze **GITHUB CI PASS**：15 个原生 Router 场景；当前 v7.2.75 复验待完成 |
 | `executor.http_request` 最终官方 CPA 客户端 HTTP 405 | **NOT AVAILABLE / NOT RUN**：`/v1/alpha/search` 是 provider-specific 路由，普通路径固定选择 `codex`，并把所有 Executor Error 映射为 502；当前没有官方路由把 Guard 的 405 Error 映射成最终 405 |
 | 历史 PR #7 CodeRabbit 证据 | 本地 CLI 后续复核记录为 0 issues，但 GitHub Bot 评论后来结束为 `Review failed — pull request is closed`；不声明 CodeRabbit 已批准 |
-| Round5.2 CodeRabbit 复核 | **PASS**：CLI `0.6.5` 对最终源码 delta 为 0 issues；Freeze `170de7f324c2bdf9a473b1866bdfc1e097182301` 的 GitHub CodeRabbit 检查通过，9 个 review thread 均已处理并关闭 |
+| Round5.2 CodeRabbit 复核 | **PASS**：CLI `0.6.5` 对最终源码 delta 为 0 issues；GitHub CodeRabbit 检查通过，当前 10/10 个 review thread（9 个源码冻结线程 + 1 个文档措辞线程）均已处理并关闭 |
 | 独立发布评估 | v10 已消耗且失败；必须使用全新未见盲集 |
 | 生产发布 | 已阻断 |
 

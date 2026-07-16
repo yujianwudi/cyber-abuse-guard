@@ -375,7 +375,7 @@ must separately cover commercial mode, retention, permissions, and deletion.
 | CPA Store ZIP naming/layout/install source contract | **GITHUB CI PASS** against official CPA v7.2.75 source; this is not a real Store install or native Host load |
 | CPA Router ordering/fallback source contract | **GITHUB CI PASS** against official CPA v7.2.75 source; this is not the isolated Host matrix |
 | Local executor refusal contract | RPC error envelopes request 403 for `execute`, `execute_stream`, and `count_tokens`; `http_request` has a SOURCE/ADAPTER status-error 405 check with no response only |
-| Historical native plugin loading | **GITHUB CI PASS** for the earlier v7.2.72 freeze; current CPA v7.2.75 Store artifact/load is **PENDING** |
+| Native plugin loading evidence | Exact-source v7.2.75 development artifact `8363874523` exists for freeze `170de7f324c2bdf9a473b1866bdfc1e097182301`; real Store installation and Guard `.so` loading in the Tencent isolated Host remain **NOT RUN / PENDING**; historical v7.2.72 evidence cannot substitute |
 | Historical OpenAI Chat / Responses / Claude / Gemini server matrix | **GITHUB CI PASS** on the earlier v7.2.72 freeze; fifth-round Host cases are pending and ordinary CI is compile-only |
 | Historical zero Auth Selector / Usage / Provider / upstream calls on blocked requests | **GITHUB CI PASS** on the earlier freeze; the fifth-round exact artifact's real-Host zero-side-effect proof is not run |
 | Historical Multi-Router/fail-open and management proxy 413 matrices | **GITHUB CI PASS** on the earlier freeze — 15 native Router scenarios and proxy rejection before the counted CPA handler |

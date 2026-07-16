@@ -32,9 +32,10 @@ classifier_policy_identity: classifier-policy-v2 / e9b87f7e2635495bdbceae469ef89
 cpa_latest_source_compat: v7.2.80 / 09da52ad509e2c18e7b9540db3b98c2214c280aa / DEVELOPMENT SELF-CHECK AND EXACT-SOURCE PUSH/PR CI PASS
 local_safe_gates: PASS / format-diff-module / round5 / safe test-vet / sanitized public corpus / scripts / CPA latest remote identity and contracts
 push_ci: https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29467936241 / attempt 1 / SUCCESS / quality-and-artifacts, fuzz-long, reproducibility
+source_freeze_push_artifact: 8363874523 / cyber-abuse-guard-linux-amd64-dirty / 10827848 bytes / sha256:fdec405e991498d4b7fb16557796a22736456c01fb1bd0e31d8eac5800438176 / expires 2026-10-14T03:00:42Z / development-only
 pull_request: https://github.com/yujianwudi/cyber-abuse-guard/pull/8
 pull_request_ci: https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29467938359 / attempt 1 / SUCCESS / base 89b62b341278073e7b6518b85e41cd7f7c6b682c / head 170de7f324c2bdf9a473b1866bdfc1e097182301 / synthetic merge fc8b5649505662e47bedbd85a41fbea306a2df7c / quality-and-artifacts, fuzz-long, reproducibility
-code_rabbit_follow_up: PASS / CLI 0.6.5 / final source delta / 0 issues / GitHub check SUCCESS / 9 of 9 review threads resolved
+code_rabbit_follow_up: PASS / CLI 0.6.5 / final source delta / 0 issues / GitHub check SUCCESS / 10 of 10 current PR review threads resolved (9 source-freeze + 1 documentation wording)
 tencent_isolated_host: NOT RUN
 independent_review: NOT RUN
 post_merge_main_ci: EXTERNAL EVIDENCE — GITHUB API METADATA + LINKED RELEASE NOTES
@@ -84,7 +85,8 @@ historical_tag_policy: IMMUTABLE / MUST NOT MOVE
 Round5.1 的本地 CodeRabbit CLI 后续复核曾记录 0 issues，但 GitHub Bot 评论随后因 PR 已
 关闭而显示 `Review failed — pull request is closed`，因此不得把它写成 CodeRabbit 的公开
 批准。Round5.2 的 CLI `0.6.5` 最终源码 delta 复核为 0 issues，GitHub CodeRabbit 检查为
-SUCCESS，9 个 review thread 均已处理并关闭；这仍不等于独立源码/artifact 复核。
+SUCCESS，当前 10/10 个 review thread（9 个源码冻结线程 + 1 个文档措辞线程）均已处理并
+关闭；这仍不等于独立源码/artifact 复核。
 
 工程证据包只能按其精确 Commit 和轮次使用。任何历史 round5.1 SHA、CI 或 artifact 都不能
 替代 round5.2 证据。CI 或单元测试全绿也不能替代腾讯云二号机 CPA v7.2.75 + Mock
@@ -125,7 +127,8 @@ compile 探针、真实 Guard registration/route 测试、17 个官方 Host rout
   `META-OVERRIDE-001` overlay、Extractor/Multipart 语义、批准的 Tool Schema 映射或
   control-plane counter。Round5.2 source-bound classifier-policy identity 是
 `classifier-policy-v2` / `e9b87f7e2635495bdbceae469ef89e696b419f0a9a6fd129558a20bc4be947ec`，
-  并须与待回填的 source-freeze Git Commit 同时核对。历史 round5.1 值为
+  并须与 source-freeze Git Commit `170de7f324c2bdf9a473b1866bdfc1e097182301`
+  同时核对。历史 round5.1 值为
   `classifier-policy-v2` / `c2092d0949fcaa1d0f085dfe31a668d45cc4d14efc10427d0f3ebcf3e821a112`。
 - `testdata/development-public-jailbreak-patterns-v1` 现有 36 个净化用例（18 allow / 18
   audit），必须保持 `development_only=true`、`future_holdout_eligible=false`、
