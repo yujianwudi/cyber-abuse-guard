@@ -39,22 +39,22 @@ is not sent to a public classifier.
 
 | Item | Current state |
 |---|---|
-| Repository state | Round5.2 source-freeze/pre-merge record on `agent/post-release-reaudit-fixes`, based on historical `main@89b62b341278073e7b6518b85e41cd7f7c6b682c`; pending pre-merge fields must be backfilled without guessing future values |
+| Repository state | Round5.2 source-freeze/pre-merge record on `agent/post-release-reaudit-fixes`; implementation/source freeze `170de7f324c2bdf9a473b1866bdfc1e097182301`, based on historical `main@89b62b341278073e7b6518b85e41cd7f7c6b682c` |
 | Release decision | **BLOCKED / NOT PRODUCTION-READY** |
 | Formal evaluation | v10 `CONSUMED / FAIL`: benign FP 28/320, policy blocked 49/320, exact 33/320 |
 | Historical development prerelease | [`v0.1.2-dev.round5.1`](https://github.com/yujianwudi/cyber-abuse-guard/releases/tag/v0.1.2-dev.round5.1), `prerelease=true`, `latest=false`, tag target `89b62b341278073e7b6518b85e41cd7f7c6b682c`; project-policy historical snapshot, while GitHub reports `isImmutable=false`; not production approval |
-| Round5.2 pre-merge evidence | Safe local gates and CPA latest compatibility **PASS**; PR [#8](https://github.com/yujianwudi/cyber-abuse-guard/pull/8) is open; CodeRabbit CLI `0.6.5` raised 0 issues on the final uncommitted diff; source-freeze commit and exact-source branch/PR CI remain **PENDING PRE-MERGE BACKFILL** |
+| Round5.2 pre-merge evidence | **PASS** for source freeze `170de7f324c2bdf9a473b1866bdfc1e097182301`, safe local gates, CPA latest compatibility, [Push CI 29467936241](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29467936241), and [PR CI 29467938359](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29467938359) against synthetic merge `fc8b5649505662e47bedbd85a41fbea306a2df7c`; all three jobs passed in both runs; CodeRabbit CLI `0.6.5` raised 0 issues on the final source delta and the GitHub check passed |
 | Round5.2 post-merge evidence | Main CI, exact-main artifact, tag, release flags, and release asset hashes are **EXTERNAL EVIDENCE — GITHUB API METADATA + LINKED RELEASE NOTES** |
 | Runtime baseline | CPA `v7.2.75`, commit `e57416731aec87051ac00d0812df6aebd0e9d57a`, C ABI/RPC schema v1 |
 | CPA v7.2.75 checksums | module `h1:WcCCeENtQ5F2bT86FVIOZJJbWCkPqrp3idl8kyZqARM=`; go.mod `h1:f4pcyAej8RoeRhIxJfm+OUMkCKaApiA8WzxR2XVlBh8=` |
-| Latest CPA source/compile lane | CPA `v7.2.80`, commit `09da52ad509e2c18e7b9540db3b98c2214c280aa`; module `h1:QIa5T/KYvJACHVPPRzXcRwq/HLpbwWYJYpZAC1eY2WA=`; go.mod `h1:ytvZNWbCv7PrAyR80+RKsDJPODsdL6qxyFaXDBNZdqs=`; `CPA_LATEST_VERIFY_REMOTE=1 make cpa-latest-compat` verified `releases/latest` and Tag-to-Commit; pinned checksums, compile-only, Router, and fail-open checks also passed; source-freeze branch CI pending; no Host start or `.so` load |
+| Latest CPA source/compile lane | CPA `v7.2.80`, commit `09da52ad509e2c18e7b9540db3b98c2214c280aa`; module `h1:QIa5T/KYvJACHVPPRzXcRwq/HLpbwWYJYpZAC1eY2WA=`; go.mod `h1:ytvZNWbCv7PrAyR80+RKsDJPODsdL6qxyFaXDBNZdqs=`; `CPA_LATEST_VERIFY_REMOTE=1 make cpa-latest-compat` verified `releases/latest` and Tag-to-Commit; pinned checksums, compile-only, Router, official Host/Interactions tests, and checksum-pinned overlays passed locally and in exact-source Push/PR CI; no Host start or `.so` load |
 | Documented build target | Linux amd64, glibc 2.34 or newer, CPA C ABI/RPC schema v1 |
 | Unsupported platform | musl/Alpine |
 | Embedded YAML ruleset | `1.0.7`, SHA-256 `7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134` |
 | Round5.2 source-bound classifier policy | `classifier-policy-v2`, SHA-256 `e9b87f7e2635495bdbceae469ef89e696b419f0a9a6fd129558a20bc4be947ec`; exact source-freeze commit remains a separate pre-merge field |
-| Round5.2 re-audit blockers | Development self-checks closed classifier reversal/performance defects, the Balanced proof-budget downgrade, a large-request top-level tool-definition blind spot, and missing native `interactions` format registration; exact-source CI remains pending |
+| Round5.2 re-audit blockers | Development self-checks closed classifier reversal/performance defects, the Balanced proof-budget downgrade, a large-request top-level tool-definition blind spot, and missing native `interactions` format registration; exact-source Push/PR CI passed |
 | Historical round5.1 classifier policy | `classifier-policy-v2`, SHA-256 `c2092d0949fcaa1d0f085dfe31a668d45cc4d14efc10427d0f3ebcf3e821a112` |
-| Round5.2 source-freeze validation | **LOCAL SAFE GATES PASS; SOURCE-FREEZE COMMIT/CI PENDING**. Historical round5.1 evidence is retained below and must not be presented as validation of round5.2. |
+| Round5.2 source-freeze validation | **PASS** for local safe gates, exact freeze `170de7f324c2bdf9a473b1866bdfc1e097182301`, Push CI `29467936241`, PR CI `29467938359`, and CodeRabbit; real Host and independent review remain **NOT RUN**, so handoff and production remain blocked. Historical round5.1 evidence is retained below and must not be presented as validation of round5.2. |
 
 ## Fifth-round boundary and review status
 
@@ -365,11 +365,11 @@ must separately cover commercial mode, retention, permissions, and deletion.
 
 | Evidence | Status |
 |---|---|
-| Round5.2 source-freeze, local gates, branch push CI, PR merge-result CI, PR, and review | **PENDING PRE-MERGE BACKFILL**; no historical round5.1 SHA, run, or artifact may be substituted |
+| Round5.2 source-freeze, local gates, branch push CI, PR merge-result CI, PR, and review | Freeze `170de7f324c2bdf9a473b1866bdfc1e097182301`; local safe gates **PASS**; Push CI [29467936241](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29467936241) **PASS**; PR CI [29467938359](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29467938359) **PASS** for base `89b62b341278073e7b6518b85e41cd7f7c6b682c`, head `170de7f324c2bdf9a473b1866bdfc1e097182301`, synthetic merge `fc8b5649505662e47bedbd85a41fbea306a2df7c`; PR [#8](https://github.com/yujianwudi/cyber-abuse-guard/pull/8); CodeRabbit **PASS** |
 | Round5.2 post-merge main CI, exact-main artifact, tag, and release | **EXTERNAL EVIDENCE — GITHUB API METADATA + LINKED RELEASE NOTES**; this source tree does not self-reference future merge/release identities |
 | Historical round5.1 merge and development prerelease | Merge/tag commit `89b62b341278073e7b6518b85e41cd7f7c6b682c`; main run [29409182748](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29409182748) attempt 1 failed at a fuzz timer boundary and attempt 2 passed all jobs; artifact ID `8340894661`, container digest `sha256:7419fcf0c0745472728d6e9c73d99aa01737930ccf25e26501e17ae4d453db61`, SO SHA-256 `3176d2af23963a2768672034af02fc1ca9ebe0c3f29a3654aa802ce0f822b6be`; historical prerelease only |
 | Fifth-round CPA v7.2.75 isolated Host and independent review | **NOT RUN / PENDING** — ordinary CI is source-contract plus integration compile-only; no CPA process was started and no `.so` was loaded |
-| CPA v7.2.80 latest source/compile compatibility | **DEVELOPMENT SELF-CHECK PASS; EXACT-SOURCE GITHUB CI PENDING** — `CPA_LATEST_VERIFY_REMOTE=1 make cpa-latest-compat` verified GitHub `releases/latest` and Tag-to-Commit; pinned module checksums, Guard/integration compile probes, real Guard registration/route tests, 17 official Host routing/status tests, 11 official Interactions route/handler tests, and three checksum-pinned overlays also passed; not native Host evidence |
+| CPA v7.2.80 latest source/compile compatibility | **DEVELOPMENT SELF-CHECK AND EXACT-SOURCE PUSH/PR CI PASS** — `CPA_LATEST_VERIFY_REMOTE=1 make cpa-latest-compat` verified GitHub `releases/latest` and Tag-to-Commit; pinned module checksums, Guard/integration compile probes, real Guard registration/route tests, 17 official Host routing/status tests, 11 official Interactions route/handler tests, and three checksum-pinned overlays also passed; not native Host evidence |
 | Historical safe unit/race boundary, vet, fuzz-smoke, regression, build, packaging, and reproducibility workflows | **GITHUB CI PASS** on earlier implementation freeze `61536f9`; push run [29312969925](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29312969925) and PR run [29312971717](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29312971717); not fifth-round evidence |
 | Safe Go development scripts | `test`, `race`, and bounded development gates **DEVELOPMENT SELF-CHECK PASS**; the implementation freeze is also covered by exact-source push CI and PR merge validation |
 | CPA Store ZIP naming/layout/install source contract | **GITHUB CI PASS** against official CPA v7.2.75 source; this is not a real Store install or native Host load |
@@ -381,7 +381,7 @@ must separately cover commercial mode, retention, permissions, and deletion.
 | Historical Multi-Router/fail-open and management proxy 413 matrices | **GITHUB CI PASS** on the earlier freeze — 15 native Router scenarios and proxy rejection before the counted CPA handler |
 | Final official CPA client HTTP 405 for `executor.http_request` | **NOT AVAILABLE / NOT RUN** — `/v1/alpha/search` is provider-specific, normally selects `codex`, and maps every executor error to 502; no current official route maps Guard's 405 error to final 405 |
 | Historical PR #7 CodeRabbit evidence | A local CLI follow-up recorded 0 issues, but the GitHub bot comment later ended with `Review failed — pull request is closed`; no CodeRabbit approval is claimed |
-| Round5.2 CodeRabbit review | **PENDING / NOT RUN** |
+| Round5.2 CodeRabbit review | **PASS** — CLI `0.6.5` raised 0 issues on the final source delta; the GitHub CodeRabbit check for freeze `170de7f324c2bdf9a473b1866bdfc1e097182301` succeeded |
 | Independent release evaluation | v10 consumed and failed; a new unseen set is required |
 | Production release | Blocked |
 

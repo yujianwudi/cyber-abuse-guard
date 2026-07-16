@@ -9,14 +9,14 @@
 Merge Commit。合并后的 main CI、exact-main artifact、Tag、Release Flags 与发行资产
 哈希，只能以 GitHub API metadata 为权威外部证据；对应 Release notes 只负责链接这些
 记录、列出逐资产 SHA-256 并保留全部未完成门禁。修复分支以历史
-`main@89b62b341278073e7b6518b85e41cd7f7c6b682c` 为基线；下方待定字段须在合并前回填，
-不得填造未来值。历史 `v0.1.2-dev.round5.1` 是 `BLOCKED / NOT FOR DEPLOYMENT` 的开发预发行，
+`main@89b62b341278073e7b6518b85e41cd7f7c6b682c` 为基线；下方合并前字段已按 GitHub 与本地
+实际证据回填，不包含未来 Merge Commit。历史 `v0.1.2-dev.round5.1` 是 `BLOCKED / NOT FOR DEPLOYMENT` 的开发预发行，
 其 Tag 必须永久保持指向 `89b62b341278073e7b6518b85e41cd7f7c6b682c`，不得移动或复用。
 当前状态是：
 
 ```text
-ROUND5.2 SOURCE FIXES IN PROGRESS /
-FREEZE, CI, PR, MERGE, ARTIFACT, AND RELEASE PENDING /
+ROUND5.2 SOURCE FREEZE, LOCAL GATES, PUSH/PR CI, AND REVIEW PASS /
+MERGE, MAIN CI, ARTIFACT, TAG, AND RELEASE PENDING /
 REAL HOST AND INDEPENDENT REVIEW NOT RUN /
 METHODOLOGY HANDOFF BLOCKED
 ```
@@ -27,14 +27,14 @@ Round5.2 当前证据身份：
 branch: agent/post-release-reaudit-fixes
 base_commit: 89b62b341278073e7b6518b85e41cd7f7c6b682c
 source_fixes: COMPLETE / SOURCE FREEZE READY
-source_freeze_commit: PENDING PRE-MERGE BACKFILL
+source_freeze_commit: 170de7f324c2bdf9a473b1866bdfc1e097182301
 classifier_policy_identity: classifier-policy-v2 / e9b87f7e2635495bdbceae469ef89e696b419f0a9a6fd129558a20bc4be947ec
-cpa_latest_source_compat: v7.2.80 / 09da52ad509e2c18e7b9540db3b98c2214c280aa / DEVELOPMENT SELF-CHECK PASS / GITHUB CI PENDING
+cpa_latest_source_compat: v7.2.80 / 09da52ad509e2c18e7b9540db3b98c2214c280aa / DEVELOPMENT SELF-CHECK AND EXACT-SOURCE PUSH/PR CI PASS
 local_safe_gates: PASS / format-diff-module / round5 / safe test-vet / sanitized public corpus / scripts / CPA latest remote identity and contracts
-push_ci: PENDING PRE-MERGE BACKFILL
+push_ci: https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29467936241 / attempt 1 / SUCCESS / quality-and-artifacts, fuzz-long, reproducibility
 pull_request: https://github.com/yujianwudi/cyber-abuse-guard/pull/8
-pull_request_ci: PENDING PRE-MERGE BACKFILL
-code_rabbit_follow_up: PASS / CLI 0.6.5 / uncommitted / 0 issues
+pull_request_ci: https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29467938359 / attempt 1 / SUCCESS / base 89b62b341278073e7b6518b85e41cd7f7c6b682c / head 170de7f324c2bdf9a473b1866bdfc1e097182301 / synthetic merge fc8b5649505662e47bedbd85a41fbea306a2df7c / quality-and-artifacts, fuzz-long, reproducibility
+code_rabbit_follow_up: PASS / CLI 0.6.5 / final source delta / 0 issues / GitHub check SUCCESS / 9 of 9 review threads resolved
 tencent_isolated_host: NOT RUN
 independent_review: NOT RUN
 post_merge_main_ci: EXTERNAL EVIDENCE — GITHUB API METADATA + LINKED RELEASE NOTES
@@ -42,7 +42,7 @@ post_merge_artifact: EXTERNAL EVIDENCE — GITHUB API METADATA + LINKED RELEASE 
 tag_and_release: EXTERNAL EVIDENCE — GITHUB API METADATA + LINKED RELEASE NOTES
 stable_v0.1.2_tag: NOT CREATED / BLOCKED
 production_deployment: NOT PERFORMED
-source_freeze_record_status: LOCAL GATES PASS / SOURCE-FREEZE SHA AND CI PENDING / BLOCKED FOR HANDOFF
+source_freeze_record_status: PRE-MERGE SOURCE EVIDENCE PASS / REAL HOST AND INDEPENDENT REVIEW NOT RUN / BLOCKED FOR HANDOFF
 ```
 
 合并前采用两层冻结，避免证据文档形成无限自引用：
@@ -83,7 +83,8 @@ historical_tag_policy: IMMUTABLE / MUST NOT MOVE
 
 Round5.1 的本地 CodeRabbit CLI 后续复核曾记录 0 issues，但 GitHub Bot 评论随后因 PR 已
 关闭而显示 `Review failed — pull request is closed`，因此不得把它写成 CodeRabbit 的公开
-批准。Round5.2 CodeRabbit 复核尚未运行。
+批准。Round5.2 的 CLI `0.6.5` 最终源码 delta 复核为 0 issues，GitHub CodeRabbit 检查为
+SUCCESS，9 个 review thread 均已处理并关闭；这仍不等于独立源码/artifact 复核。
 
 工程证据包只能按其精确 Commit 和轮次使用。任何历史 round5.1 SHA、CI 或 artifact 都不能
 替代 round5.2 证据。CI 或单元测试全绿也不能替代腾讯云二号机 CPA v7.2.75 + Mock
@@ -97,7 +98,7 @@ CPA v7.2.80 / `09da52ad509e2c18e7b9540db3b98c2214c280aa`，module
 `h1:ytvZNWbCv7PrAyR80+RKsDJPODsdL6qxyFaXDBNZdqs=`。开发自检已完成 Guard/integration
 compile 探针、真实 Guard registration/route 测试、17 个官方 Host routing/status 测试、
 11 个官方 Interactions route/handler 测试和三个 checksum 固定 overlay；未启动 CPA、
-未加载 `.so`，精确 source-freeze GitHub CI 仍待回填。
+未加载 `.so`；精确 source-freeze Push CI `29467936241` 与 PR CI `29467938359` 均已通过。
 
 第五轮审计必须单独确认以下宿主边界：
 

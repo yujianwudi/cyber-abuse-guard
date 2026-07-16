@@ -32,22 +32,22 @@ CPA Cyber Abuse Guard 会在 Provider 解析和账号认证调度之前检查受
 
 | 项目 | 当前状态 |
 |---|---|
-| 仓库状态 | `agent/post-release-reaudit-fixes` 上的 round5.2 source-freeze/pre-merge record，基于历史 `main@89b62b341278073e7b6518b85e41cd7f7c6b682c`；待定字段必须在合并前回填，不得猜测未来值 |
+| 仓库状态 | `agent/post-release-reaudit-fixes` 上的 round5.2 source-freeze/pre-merge record；实现/源码冻结为 `170de7f324c2bdf9a473b1866bdfc1e097182301`，基于历史 `main@89b62b341278073e7b6518b85e41cd7f7c6b682c` |
 | 发布结论 | **BLOCKED / NOT PRODUCTION-READY** |
 | 正式评估 | v10 `CONSUMED / FAIL`：合法误报 28/320、恶意阻断 49/320、精确分类 33/320 |
 | 历史开发预发行 | [`v0.1.2-dev.round5.1`](https://github.com/yujianwudi/cyber-abuse-guard/releases/tag/v0.1.2-dev.round5.1)，`prerelease=true`、`latest=false`、Tag 指向 `89b62b341278073e7b6518b85e41cd7f7c6b682c`；项目约定为历史快照，但 GitHub 报告 `isImmutable=false`，不是生产批准 |
-| Round5.2 合并前证据 | 安全本地门禁与 CPA 最新兼容检查 **PASS**；PR [#8](https://github.com/yujianwudi/cyber-abuse-guard/pull/8) 已打开；CodeRabbit CLI `0.6.5` 对最终未提交 diff raised 0 issues；Source-freeze Commit 与精确源码 Branch/PR CI 仍为 **PENDING PRE-MERGE BACKFILL** |
+| Round5.2 合并前证据 | Source freeze `170de7f324c2bdf9a473b1866bdfc1e097182301`、安全本地门禁、CPA 最新兼容检查、[Push CI 29467936241](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29467936241) 与 [PR CI 29467938359](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29467938359) 均 **PASS**；PR 临时 merge SHA 为 `fc8b5649505662e47bedbd85a41fbea306a2df7c`，两次 Run 的三个 Job 全绿；CodeRabbit CLI `0.6.5` 对最终源码 delta 为 0 issues，GitHub 检查通过 |
 | Round5.2 合并后证据 | Main CI、exact-main artifact、Tag、Release Flags 与发行资产哈希为 **EXTERNAL EVIDENCE — GITHUB API METADATA + LINKED RELEASE NOTES** |
 | 运行基线 | CPA `v7.2.75`，commit `e57416731aec87051ac00d0812df6aebd0e9d57a`，C ABI/RPC schema v1 |
 | CPA v7.2.75 校验 | module `h1:WcCCeENtQ5F2bT86FVIOZJJbWCkPqrp3idl8kyZqARM=`；go.mod `h1:f4pcyAej8RoeRhIxJfm+OUMkCKaApiA8WzxR2XVlBh8=` |
-| 最新 CPA 源码/编译兼容门禁 | CPA `v7.2.80`，commit `09da52ad509e2c18e7b9540db3b98c2214c280aa`；module `h1:QIa5T/KYvJACHVPPRzXcRwq/HLpbwWYJYpZAC1eY2WA=`；go.mod `h1:ytvZNWbCv7PrAyR80+RKsDJPODsdL6qxyFaXDBNZdqs=`；`CPA_LATEST_VERIFY_REMOTE=1 make cpa-latest-compat` 已验证 `releases/latest` 与 Tag→Commit；固定校验和、compile-only、Router 与 fail-open 检查也已通过，source-freeze Branch CI 待运行；未启动 Host 或加载 `.so` |
+| 最新 CPA 源码/编译兼容门禁 | CPA `v7.2.80`，commit `09da52ad509e2c18e7b9540db3b98c2214c280aa`；module `h1:QIa5T/KYvJACHVPPRzXcRwq/HLpbwWYJYpZAC1eY2WA=`；go.mod `h1:ytvZNWbCv7PrAyR80+RKsDJPODsdL6qxyFaXDBNZdqs=`；`CPA_LATEST_VERIFY_REMOTE=1 make cpa-latest-compat` 已验证 `releases/latest` 与 Tag→Commit；固定校验和、compile-only、Router、官方 Host/Interactions 测试与 checksum 固定 overlay 已在本地及精确源码 Push/PR CI 通过；未启动 Host 或加载 `.so` |
 | 文档化构建目标 | Linux amd64、glibc 2.34 或更高、CPA C ABI/RPC schema v1 |
 | 不支持平台 | musl/Alpine |
 | 内置 YAML 规则集 | `1.0.7`，SHA-256 `7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134` |
 | Round5.2 source-bound 分类器策略身份 | `classifier-policy-v2`，SHA-256 `e9b87f7e2635495bdbceae469ef89e696b419f0a9a6fd129558a20bc4be947ec`；精确 source-freeze Commit 是单独的合并前字段 |
-| Round5.2 反审阻断项 | 开发自检已关闭分类反转/性能缺陷、Balanced proof-budget 降级、大请求顶层 Tool Definition 漏扫和原生 `interactions` 格式注册缺失；精确源码 CI 仍待运行 |
+| Round5.2 反审阻断项 | 开发自检已关闭分类反转/性能缺陷、Balanced proof-budget 降级、大请求顶层 Tool Definition 漏扫和原生 `interactions` 格式注册缺失；精确源码 Push/PR CI 已通过 |
 | 历史 round5.1 分类器策略身份 | `classifier-policy-v2`，SHA-256 `c2092d0949fcaa1d0f085dfe31a668d45cc4d14efc10427d0f3ebcf3e821a112` |
-| Round5.2 source-freeze 验证 | **LOCAL SAFE GATES PASS；SOURCE-FREEZE COMMIT/CI PENDING**。下方 round5.1 证据仅作历史记录，不得作为 round5.2 的验证。 |
+| Round5.2 source-freeze 验证 | 本地安全门禁、精确 Freeze `170de7f324c2bdf9a473b1866bdfc1e097182301`、Push CI `29467936241`、PR CI `29467938359` 与 CodeRabbit 均 **PASS**；真实 Host 与独立复核仍为 **NOT RUN**，所以交接与生产仍阻断。下方 round5.1 证据仅作历史记录，不得作为 round5.2 的验证。 |
 
 ## 第五轮边界与复核状态
 
@@ -285,11 +285,11 @@ CPA Host 边界仍存在插件无法消除的 Fail Open 条件：插件未加载
 
 | 证据 | 状态 |
 |---|---|
-| Round5.2 Source Freeze、本地门禁、Branch Push CI、PR Merge Result CI、PR 与复核 | **PENDING PRE-MERGE BACKFILL**；不得用任何历史 round5.1 SHA、Run 或 artifact 替代 |
+| Round5.2 Source Freeze、本地门禁、Branch Push CI、PR Merge Result CI、PR 与复核 | Freeze `170de7f324c2bdf9a473b1866bdfc1e097182301`；本地安全门禁 **PASS**；Push CI [29467936241](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29467936241) **PASS**；PR CI [29467938359](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29467938359) 对 base `89b62b341278073e7b6518b85e41cd7f7c6b682c`、head `170de7f324c2bdf9a473b1866bdfc1e097182301`、临时 merge `fc8b5649505662e47bedbd85a41fbea306a2df7c` **PASS**；PR [#8](https://github.com/yujianwudi/cyber-abuse-guard/pull/8)；CodeRabbit **PASS** |
 | Round5.2 合并后 main CI、exact-main artifact、Tag 与 Release | **EXTERNAL EVIDENCE — GITHUB API METADATA + LINKED RELEASE NOTES**；本源码树不自引用未来 Merge/Release 身份 |
 | 历史 round5.1 合并与开发预发行 | Merge/Tag Commit `89b62b341278073e7b6518b85e41cd7f7c6b682c`；main Run [29409182748](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29409182748) 的 attempt 1 在 fuzz 计时边界失败，attempt 2 全部 Job 通过；artifact ID `8340894661`、容器 Digest `sha256:7419fcf0c0745472728d6e9c73d99aa01737930ccf25e26501e17ae4d453db61`、SO SHA-256 `3176d2af23963a2768672034af02fc1ca9ebe0c3f29a3654aa802ce0f822b6be`；仅为历史预发行 |
 | 第五轮 CPA v7.2.75 隔离 Host 与独立复核 | **NOT RUN / PENDING**：普通 CI 只有源码契约与 integration compile-only，没有启动 CPA 或加载 `.so` |
-| CPA v7.2.80 最新源码/编译兼容 | **DEVELOPMENT SELF-CHECK PASS；精确源码 GITHUB CI 待运行**：`CPA_LATEST_VERIFY_REMOTE=1 make cpa-latest-compat` 已验证 GitHub `releases/latest` 与 Tag→Commit；固定 module 校验、Guard/integration compile 探针、真实 Guard registration/route 测试、17 个官方 Host routing/status 测试、11 个官方 Interactions route/handler 测试和三个 checksum 固定 overlay 也已通过；不属于 Native Host 证据 |
+| CPA v7.2.80 最新源码/编译兼容 | **DEVELOPMENT SELF-CHECK 与精确源码 PUSH/PR CI PASS**：`CPA_LATEST_VERIFY_REMOTE=1 make cpa-latest-compat` 已验证 GitHub `releases/latest` 与 Tag→Commit；固定 module 校验、Guard/integration compile 探针、真实 Guard registration/route 测试、17 个官方 Host routing/status 测试、11 个官方 Interactions route/handler 测试和三个 checksum 固定 overlay 也已通过；不属于 Native Host 证据 |
 | 历史根模块 Unit、Race、Vet、Fuzz Smoke、回归、构建、打包与可复现性流程 | 较早 Implementation Freeze `61536f9` 的 Push Run [29312969925](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29312969925) 和 PR Run [29312971717](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29312971717) 均 **GITHUB CI PASS**；不属于第五轮证据 |
 | 安全 Go 开发脚本 | `test`、`race` 与有界开发门禁 **DEVELOPMENT SELF-CHECK PASS**；Implementation Freeze 也由精确源码 Push CI 与 PR Merge Validation 覆盖 |
 | CPA Store ZIP 命名、布局与安装源码契约 | 针对 CPA v7.2.75 官方源码 **GITHUB CI PASS**；不代表真实 Store 安装或 Native Host 加载 |
@@ -301,7 +301,7 @@ CPA Host 边界仍存在插件无法消除的 Fail Open 条件：插件未加载
 | 历史多 Router / fail-open 动态矩阵 | 较早 Freeze **GITHUB CI PASS**：15 个原生 Router 场景；当前 v7.2.75 复验待完成 |
 | `executor.http_request` 最终官方 CPA 客户端 HTTP 405 | **NOT AVAILABLE / NOT RUN**：`/v1/alpha/search` 是 provider-specific 路由，普通路径固定选择 `codex`，并把所有 Executor Error 映射为 502；当前没有官方路由把 Guard 的 405 Error 映射成最终 405 |
 | 历史 PR #7 CodeRabbit 证据 | 本地 CLI 后续复核记录为 0 issues，但 GitHub Bot 评论后来结束为 `Review failed — pull request is closed`；不声明 CodeRabbit 已批准 |
-| Round5.2 CodeRabbit 复核 | **PENDING / NOT RUN** |
+| Round5.2 CodeRabbit 复核 | **PASS**：CLI `0.6.5` 对最终源码 delta 为 0 issues；Freeze `170de7f324c2bdf9a473b1866bdfc1e097182301` 的 GitHub CodeRabbit 检查通过，9 个 review thread 均已处理并关闭 |
 | 独立发布评估 | v10 已消耗且失败；必须使用全新未见盲集 |
 | 生产发布 | 已阻断 |
 

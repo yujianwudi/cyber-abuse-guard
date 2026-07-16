@@ -12,22 +12,22 @@ the exact-main artifact, tag, release flags, and release asset hashes are
 authoritative only through GitHub API metadata; the corresponding Release notes
 link those records and preserve per-asset hashes and incomplete gates. The
 working branch is based on historical
-`main@89b62b341278073e7b6518b85e41cd7f7c6b682c`; pending fields below must be
-backfilled before merge without inventing future values.
+`main@89b62b341278073e7b6518b85e41cd7f7c6b682c`; the pre-merge fields below are
+backfilled from local and GitHub evidence without inventing a future merge commit.
 
 ```text
 round5_2_branch: agent/post-release-reaudit-fixes
 round5_2_base_commit: 89b62b341278073e7b6518b85e41cd7f7c6b682c
 round5_2_source_fixes: COMPLETE / SOURCE FREEZE READY
-round5_2_source_freeze: PENDING PRE-MERGE BACKFILL
+round5_2_source_freeze: 170de7f324c2bdf9a473b1866bdfc1e097182301
 round5_2_classifier_policy_identity: classifier-policy-v2 / e9b87f7e2635495bdbceae469ef89e696b419f0a9a6fd129558a20bc4be947ec
-round5_2_cpa_latest_source_compat: v7.2.80 / 09da52ad509e2c18e7b9540db3b98c2214c280aa / DEVELOPMENT SELF-CHECK PASS / GITHUB CI PENDING
+round5_2_cpa_latest_source_compat: v7.2.80 / 09da52ad509e2c18e7b9540db3b98c2214c280aa / DEVELOPMENT SELF-CHECK AND EXACT-SOURCE PUSH/PR CI PASS
 round5_2_public_reference_corpus: 36 sanitized cases / 18 allow / 18 audit / development-only
 round5_2_local_safe_gates: PASS / format-diff-module / round5 / safe test-vet / sanitized public corpus / scripts / CPA latest remote identity and contracts
-round5_2_push_ci: PENDING PRE-MERGE BACKFILL
+round5_2_push_ci: https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29467936241 / attempt 1 / SUCCESS / quality-and-artifacts, fuzz-long, reproducibility
 round5_2_pull_request: https://github.com/yujianwudi/cyber-abuse-guard/pull/8
-round5_2_pull_request_ci: PENDING PRE-MERGE BACKFILL
-round5_2_code_rabbit_follow_up: PASS / CLI 0.6.5 / uncommitted / 0 issues
+round5_2_pull_request_ci: https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29467938359 / attempt 1 / SUCCESS / base 89b62b341278073e7b6518b85e41cd7f7c6b682c / head 170de7f324c2bdf9a473b1866bdfc1e097182301 / synthetic merge fc8b5649505662e47bedbd85a41fbea306a2df7c / quality-and-artifacts, fuzz-long, reproducibility
+round5_2_code_rabbit_follow_up: PASS / CLI 0.6.5 / final source delta / 0 issues / GitHub check SUCCESS / 9 of 9 review threads resolved
 round5_2_tencent_isolated_host: NOT RUN
 round5_2_independent_review: NOT RUN
 round5_2_post_merge_main_ci: EXTERNAL EVIDENCE — GITHUB API METADATA + LINKED RELEASE NOTES
@@ -35,7 +35,7 @@ round5_2_post_merge_artifact: EXTERNAL EVIDENCE — GITHUB API METADATA + LINKED
 round5_2_tag_and_release: EXTERNAL EVIDENCE — GITHUB API METADATA + LINKED RELEASE NOTES
 stable_v0.1.2_tag: NOT CREATED / BLOCKED
 production_deployment: NOT PERFORMED
-source_freeze_record_status: LOCAL GATES PASS / SOURCE-FREEZE SHA AND CI PENDING / BLOCKED FOR HANDOFF
+source_freeze_record_status: PRE-MERGE SOURCE EVIDENCE PASS / REAL HOST AND INDEPENDENT REVIEW NOT RUN / BLOCKED FOR HANDOFF
 ```
 
 The pre-merge record uses two commits. `S` is the implementation/source freeze:
@@ -61,8 +61,8 @@ baseline. It pins CPA v7.2.80 with module checksum
 compiled Guard/integration packages, ran the real Guard registration/route
 tests, 17 fixed official Host routing/status tests, 11 fixed official
 Interactions route/handler tests, and three checksum-pinned ephemeral overlays.
-No CPA Host or `.so` was
-started/loaded; branch/PR CI remains a pre-merge backfill field.
+No CPA Host or `.so` was started/loaded. Exact-source Push CI `29467936241` and
+PR CI `29467938359` both passed all three required jobs.
 
 The round5.2 re-audit also reproduced and closed source-level merge blockers
 with sanitized CANARY inputs. Repeated `copy/copies/copied` forms no

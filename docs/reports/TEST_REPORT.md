@@ -12,13 +12,13 @@ artifact, tag, release flags, and release asset hashes are authoritative only
 through GitHub API metadata; the corresponding Release notes link those records
 and preserve per-asset hashes and incomplete gates. The repair
 branch starts from historical
-`main@89b62b341278073e7b6518b85e41cd7f7c6b682c`; pending fields must be
-backfilled before merge without inventing future values. Tencent Cloud isolated
+`main@89b62b341278073e7b6518b85e41cd7f7c6b682c`; the pre-merge fields below are
+backfilled from actual local and GitHub evidence. Tencent Cloud isolated
 Host validation and independent source/artifact review remain separate gates.
 
 ```text
-ROUND5.2 SOURCE FIXES IN PROGRESS /
-FREEZE, CI, PR, MERGE, ARTIFACT, AND RELEASE PENDING /
+ROUND5.2 SOURCE FREEZE, LOCAL GATES, PUSH/PR CI, AND REVIEW PASS /
+MERGE, MAIN CI, ARTIFACT, TAG, AND RELEASE PENDING /
 REAL HOST AND INDEPENDENT REVIEW NOT RUN /
 METHODOLOGY HANDOFF BLOCKED
 ```
@@ -26,19 +26,19 @@ METHODOLOGY HANDOFF BLOCKED
 | Round5.2 evidence | Result |
 |---|---|
 | Source fixes | **COMPLETE / SOURCE FREEZE READY** |
-| Source-freeze commit | **PENDING PRE-MERGE BACKFILL** |
+| Source-freeze commit | `170de7f324c2bdf9a473b1866bdfc1e097182301` |
 | Source-bound classifier identity | `classifier-policy-v2` / `e9b87f7e2635495bdbceae469ef89e696b419f0a9a6fd129558a20bc4be947ec`; identity test **PASS** |
-| CPA v7.2.80 latest source/compile lane | **DEVELOPMENT SELF-CHECK PASS / EXACT-SOURCE GITHUB CI PENDING**; `CPA_LATEST_VERIFY_REMOTE=1 make cpa-latest-compat` verified GitHub `releases/latest` and Tag-to-Commit; pinned checksums, Guard/integration compile probes, real Guard registration/route tests, 17 official Host routing/status tests, 11 official Interactions route/handler tests, and three checksum-pinned overlays passed; no Host or `.so` load |
+| CPA v7.2.80 latest source/compile lane | **DEVELOPMENT SELF-CHECK AND EXACT-SOURCE PUSH/PR CI PASS**; `CPA_LATEST_VERIFY_REMOTE=1 make cpa-latest-compat` verified GitHub `releases/latest` and Tag-to-Commit; pinned checksums, Guard/integration compile probes, real Guard registration/route tests, 17 official Host routing/status tests, 11 official Interactions route/handler tests, and three checksum-pinned overlays passed; no Host or `.so` load |
 | Public-reference sanitized corpus | **PASS**; 36 cases = 18 allow + 18 audit, 34 role-aware + 2 conservative-untrusted; development-only and future-Holdout-ineligible |
 | Safe local gate record | **PASS** — format/diff/module, Round5, safe test/vet, sanitized public corpus, scripts, and CPA latest remote identity/contracts |
-| Exact-source branch push CI and PR synthetic merge-result CI | **PENDING PRE-MERGE BACKFILL** |
-| PR and CodeRabbit follow-up | PR [#8](https://github.com/yujianwudi/cyber-abuse-guard/pull/8); CodeRabbit CLI `0.6.5` uncommitted review **PASS / 0 issues** |
+| Exact-source branch push CI and PR synthetic merge-result CI | Push [29467936241](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29467936241) attempt 1 **SUCCESS**; PR [29467938359](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29467938359) attempt 1 **SUCCESS** for base `89b62b341278073e7b6518b85e41cd7f7c6b682c`, head `170de7f324c2bdf9a473b1866bdfc1e097182301`, synthetic merge `fc8b5649505662e47bedbd85a41fbea306a2df7c`; `quality-and-artifacts`, `fuzz-long`, and `reproducibility` passed in both runs |
+| PR and CodeRabbit follow-up | PR [#8](https://github.com/yujianwudi/cyber-abuse-guard/pull/8); CodeRabbit CLI `0.6.5` final source-delta review **PASS / 0 issues**; GitHub check **SUCCESS**; 9 of 9 review threads resolved |
 | Post-merge main CI and exact-main artifact | **EXTERNAL EVIDENCE — GITHUB API METADATA + LINKED RELEASE NOTES** |
 | Tag, release flags, and release asset hashes | **EXTERNAL EVIDENCE — GITHUB API METADATA + LINKED RELEASE NOTES** |
 
 Targeted round5.2 checks already completed before the final broad safe-gate
-rerun are recorded below. They do not replace the pending source-freeze commit,
-full local gate record, branch/PR CI, or CodeRabbit follow-up.
+rerun are recorded below. They supplement, but do not replace, the exact
+source-freeze identity, full local gate record, branch/PR CI, or CodeRabbit follow-up.
 
 | Targeted command | Exit | Scope |
 |---|---:|---|
