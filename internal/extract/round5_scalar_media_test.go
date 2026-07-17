@@ -563,25 +563,51 @@ func FuzzExtractRequestScalarMediaCarrierPermutation(f *testing.F) {
 			if containsBinaryControl(normalized) {
 				t.Skip()
 			}
-			if _, opaque := opaqueDataURLKind(normalized); !opaque {
-				_, encoded, incomplete := decodeBoundedText(normalized)
-				if encoded && incomplete {
-					body := []byte(`{"messages":[{"role":"user","content":[{` + jsonQuote(key) + `:` + jsonQuote(normalized) + `}]}]}`)
-					result, err := ExtractRequest(body, round5JSONHeaders(), Limits{})
-					if err != nil {
-						t.Fatal(err)
-					}
-					if result.IsComplete() || result.OpaqueMedia {
-						t.Fatalf("malformed encoded scalar carrier silently completed: %#v", result)
-					}
-					return
+			_, encoded, incomplete := decodeStreamingBoundedText(normalized, true)
+			if encoded && incomplete {
+				body := []byte(`{"messages":[{"role":"user","content":[{` + jsonQuote(key) + `:` + jsonQuote(normalized) + `}]}]}`)
+				result, err := ExtractRequest(body, round5JSONHeaders(), Limits{})
+				if err != nil {
+					t.Fatal(err)
 				}
+				if result.IsComplete() || result.TextCoverage != TextCoverageUnavailable ||
+					!result.HasIncompleteReason(IncompleteTextPartByteLimit) || result.OpaqueMedia {
+					t.Fatalf("malformed encoded scalar carrier silently completed: %#v", result)
+				}
+				if len(result.Parts) != 0 || len(result.Segments) != 0 {
+					t.Fatalf("aborted scalar carrier leaked text: parts=%#v segments=%#v", result.Parts, result.Segments)
+				}
+				return
 			}
 			assertScalarCarrierFallback(t, key, normalized)
 			return
 		}
 		assertScalarMediaPermutations(t, key, normalized, markers[selection], "fuzz visible caption")
 	})
+}
+
+func TestExtractRequestScalarMediaCarrierMalformedTextDataURLFailsClosed(t *testing.T) {
+	const value = "dAtA:;"
+	for _, key := range []string{"source", "uri", "url", "image_url"} {
+		t.Run(key, func(t *testing.T) {
+			body := []byte(`{"messages":[{"role":"user","content":[{` + jsonQuote(key) + `:` + jsonQuote(value) + `}]}]}`)
+			result, err := ExtractRequest(body, round5JSONHeaders(), Limits{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result.IsComplete() || result.Envelope != EnvelopeComplete ||
+				result.TextCoverage != TextCoverageUnavailable ||
+				!reflect.DeepEqual(result.IncompleteReasons, []IncompleteReason{IncompleteTextPartByteLimit}) ||
+				result.TextBytesScanned != 0 || result.RawBytesObserved != int64(len(body)) ||
+				result.LogicalTextParts != 1 || result.ClassificationChunks != 0 ||
+				!result.Truncated || result.OpaqueMedia {
+				t.Fatalf("malformed textual data scalar carrier silently completed: %#v", result)
+			}
+			if len(result.Parts) != 0 || len(result.Segments) != 0 {
+				t.Fatalf("aborted malformed scalar carrier leaked text: parts=%#v segments=%#v", result.Parts, result.Segments)
+			}
+		})
+	}
 }
 
 func TestExtractRequestScalarMediaCarrierBareBinaryBase64FailsClosed(t *testing.T) {
