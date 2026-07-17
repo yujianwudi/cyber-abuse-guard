@@ -25,7 +25,7 @@ printf '%s\n' \
 printf '%s\n' \
   'package classifier' \
   'const ClassifierPolicyVersion = "classifier-policy-v3"' \
-  'const ClassifierPolicySHA256 = "ae6fb2c0bccec618bf91b6274d1cd9b9a483499703f21d068e5590f5255fc4bd"' \
+  'const ClassifierPolicySHA256 = "577dd913862f2d457eb292bfd02c571e0ea7ff47bc5427bc6be389851ddeb388"' \
   >"$fixture/internal/classifier/policy_identity.go"
 printf '%s\n' 'version: "1.0.7"' 'rule_files: [rules.yaml]' >"$fixture/rules/manifest.yaml"
 printf '%s\n' 'version: "1.0.7"' 'rules: []' >"$fixture/rules/rules.yaml"
@@ -119,6 +119,11 @@ formal_with_annotated_tag() {
   RELEASE_ROOT="$fixture"
   ALLOW_DIRTY_BUILD=0
   RELEASE_CANDIDATE_BUILD=0
+  if [[ "${GITHUB_ACTIONS:-false}" == true ]]; then
+    GITHUB_REF_TYPE=tag
+    GITHUB_REF_NAME=v0.15
+    export GITHUB_REF_TYPE GITHUB_REF_NAME
+  fi
   unset SOURCE_DATE_EPOCH
   export RELEASE_ROOT ALLOW_DIRTY_BUILD RELEASE_CANDIDATE_BUILD
   release_init

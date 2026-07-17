@@ -734,7 +734,7 @@ CANDIDATE_ARTIFACTS = (
 )
 CANDIDATE_SCRIPT_SHA256 = {
     "round6-candidate-artifacts.sh": "11a2a358c3154bd8665f6b5ae27d84c6f97fd33763f9cc602b38425c93bce659",
-    "release-candidate-contract-test.sh": "ef436041e8a8a7f96252b25e38f6fb27bc1c50f35099285ad16ce6b96b928f7d",
+    "release-candidate-contract-test.sh": "586acef439504dc758ee4fa241fc37f7460caedfdd5f043c3111eea5fa44d484",
 }
 FORMAL_OPERATION_SCRIPTS = (
     "formal-release.sh",

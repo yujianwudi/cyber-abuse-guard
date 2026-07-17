@@ -38,3 +38,4 @@ Dockerfile* text eol=lf
 /testdata/*private* export-ignore
 /testdata/*blind* export-ignore
 /testdata/*retired* export-ignore
+/scripts/verify-frozen-evaluation-v10-tree.sh export-ignore
