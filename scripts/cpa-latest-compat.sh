@@ -150,8 +150,17 @@ for profile in "${profiles[@]}"; do
       -mod=readonly -modfile="$contract_modfile" -count=1 -v .
   )
 
-  printf 'CPA source/compile compatibility PASS: profile=%s %s@%s latest_required=%s\n' \
-    "$profile" "$cpa_version" "$cpa_commit" "$cpa_must_be_latest"
+  if [[ "$verify_remote" == 1 ]]; then
+    printf 'CPA source/compile compatibility PASS: profile=%s %s@%s remote_latest_verified=%s\n' \
+      "$profile" "$cpa_version" "$cpa_commit" "$cpa_must_be_latest"
+  else
+    printf 'CPA source/compile compatibility PASS: profile=%s %s@%s remote_release_checks=SKIPPED\n' \
+      "$profile" "$cpa_version" "$cpa_commit"
+  fi
 done
 
-printf 'CPA latest source/compile compatibility PASS: profile=%s\n' "${profiles[*]}"
+if [[ "$verify_remote" == 1 ]]; then
+  printf 'CPA latest source/compile compatibility PASS: profile=%s\n' "${profiles[*]}"
+else
+  printf 'CPA source/compile compatibility PASS: profile=%s remote_release_checks=SKIPPED\n' "${profiles[*]}"
+fi

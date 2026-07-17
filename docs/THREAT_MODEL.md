@@ -31,7 +31,7 @@ Earlier v7.2.85/v7.2.84/v7.2.83/v7.2.82/v7.2.81 source/compile profiles are hist
 engineering evidence, not current v0.15 release requirements.
 
 The current classifier identity is `classifier-policy-v3` /
-`e00f64651368bb81a223f1fecbf98b4a6d069bd4bac1f320d22204fbbe5b0601`.
+`99e0ce7f59d2e687ebb3e79e1a71300afee8bb56f723cd8ba3f478c71a64cfd2`.
 
 ## Principal threats and controls
 

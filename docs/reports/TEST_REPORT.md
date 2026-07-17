@@ -15,7 +15,7 @@ v7.2.85/v7.2.84/v7.2.83/v7.2.82/v7.2.81 profiles are historical non-gating engin
 | Push CI | [29578024185](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29578024185) **SUCCESS** |
 | PR CI | [29578025961](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29578025961) **SUCCESS** |
 | Checkpoint interpretation | **PASS for the then-current CPA v7.2.83 latest-source lane before version/release-chain migration; not v7.2.86 or final v0.15 evidence** |
-| Classifier identity | `classifier-policy-v3` / `e00f64651368bb81a223f1fecbf98b4a6d069bd4bac1f320d22204fbbe5b0601` |
+| Classifier identity | `classifier-policy-v3` / `99e0ce7f59d2e687ebb3e79e1a71300afee8bb56f723cd8ba3f478c71a64cfd2` |
 | Final PR head and PR CI | **PENDING** after all version/release-chain changes |
 | Merge final PR to `main` | **NOT RUN / PENDING**; candidate-generation prerequisite, not release approval |
 | Exact post-merge `main` push CI | **NOT RUN / PENDING**; must bind the candidate commit/tree |

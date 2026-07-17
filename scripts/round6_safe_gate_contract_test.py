@@ -25,14 +25,17 @@ from round6_safe_gate_contract import (
     validate_blocked_prerelease_workflow,
     validate_candidate_script,
     validate_candidate_workflow,
+    validate_cpa_compat_script,
     validate_consumed_boundary_files,
     validate_formal_release_workflow,
     validate_frozen_evaluation_tree_script,
     validate_release_mode_contracts,
     validate_release_promote_workflow,
     validate_reproducibility_wrapper_script,
+    validate_round6_doc_fixture_wrapper_script,
     validate_round6_linux_build_script,
     validate_round6_makefile_contract,
+    validate_round6_privacy_fixture_script,
     validate_round6_reproducibility_script,
 )
 
@@ -594,6 +597,20 @@ jobs:
             with self.assertRaisesRegex(ContractError, "formal-only branch"):
                 validate_round6_reproducibility_script(text, source)
 
+    def test_reproducibility_checksums_manifest_is_generated_and_compared(self):
+        original, source = self.reproducibility_script()
+        mutations = (
+            original.replace("        sbom.cdx.json >checksums.txt\n", "", 1),
+            original.replace(
+                'compare_artifact "checksums manifest" checksums.txt\n', "", 1
+            ),
+            original.replace(" build-metadata.json checksums.txt \\\n", " build-metadata.json \\\n", 1),
+        )
+        for text in mutations:
+            self.assertNotEqual(text, original)
+            with self.assertRaisesRegex(ContractError, "checksums manifest"):
+                validate_round6_reproducibility_script(text, source)
+
     def test_reproducibility_wrapper_is_exact_and_only_delegates(self):
         source = Path(__file__).with_name("reproducibility-test.sh")
         text = source.read_text(encoding="utf-8")
@@ -607,6 +624,50 @@ jobs:
         validate_frozen_evaluation_tree_script(text, source)
         with self.assertRaisesRegex(ContractError, "metadata-only contract"):
             validate_frozen_evaluation_tree_script(text + "\ntrue\n", source)
+        without_untracked = text.replace("--untracked-files=all", "--untracked-files=no", 1)
+        self.assertNotEqual(without_untracked, text)
+        with self.assertRaisesRegex(ContractError, "staged, unstaged, and untracked"):
+            validate_frozen_evaluation_tree_script(without_untracked, source)
+
+    def test_round6_privacy_and_document_fixture_hashes_are_frozen(self):
+        root = Path(__file__).parent.parent
+        privacy = root / "scripts/release-evidence-privacy-test.sh"
+        privacy_text = privacy.read_text(encoding="utf-8")
+        validate_round6_privacy_fixture_script(privacy_text, privacy)
+        with self.assertRaisesRegex(ContractError, "privacy fixture"):
+            validate_round6_privacy_fixture_script(privacy_text + "\ntrue\n", privacy)
+
+        wrapper = root / "scripts/round6-doc-consistency-fixture-test.sh"
+        wrapper_text = wrapper.read_text(encoding="utf-8")
+        validate_round6_doc_fixture_wrapper_script(wrapper_text, wrapper, root)
+        with self.assertRaisesRegex(ContractError, "document fixture wrapper"):
+            validate_round6_doc_fixture_wrapper_script(
+                wrapper_text + "\ntrue\n", wrapper, root
+            )
+
+    def test_cpa_local_compatibility_output_cannot_claim_latest_pass(self):
+        source = Path(__file__).with_name("cpa-latest-compat.sh")
+        text = source.read_text(encoding="utf-8")
+        validate_cpa_compat_script(text, source)
+        mutation = text + "\nprintf 'CPA latest source/compile compatibility PASS'\n"
+        with self.assertRaisesRegex(ContractError, "only after remote verification"):
+            validate_cpa_compat_script(mutation, source)
+
+    def test_cpa_compatibility_remote_control_flow_is_frozen(self):
+        source = Path(__file__).with_name("cpa-latest-compat.sh")
+        text = source.read_text(encoding="utf-8")
+        mutations = (
+            text + "\n: <<'ROUND6_INERT'\nremote check bypass fixture\nROUND6_INERT\n",
+            text.replace(
+                'if [[ "$verify_remote" == 1 ]]; then\n  for required_command in curl jq; do',
+                'if false; then\n  for required_command in curl jq; do',
+                1,
+            ),
+        )
+        for mutation in mutations:
+            self.assertNotEqual(mutation, text)
+            with self.assertRaisesRegex(ContractError, "exact reviewed remote-verification contract"):
+                validate_cpa_compat_script(mutation, source)
 
     def test_linux_build_glibc_contract_passes(self):
         source = Path(__file__).with_name("build-linux-amd64.sh")
@@ -704,6 +765,36 @@ jobs:
         with self.assertRaisesRegex(ContractError, "execute the extract benchmark"):
             validate_round6_makefile_contract(text, source)
 
+    def test_round6_module_verify_tidy_diff_is_integration_only(self):
+        source = Path(__file__).parent.parent / "Makefile"
+        original = source.read_text(encoding="utf-8")
+        before, marker, round6 = original.partition("round6-module-verify:")
+        self.assertTrue(marker)
+        mutations = tuple(
+            before + marker + mutation
+            for mutation in (
+                round6.replace(
+                    "\t$(GO) -C integration/pluginstorecontract mod tidy -diff\n",
+                    "",
+                    1,
+                ),
+                round6.replace(
+                    "\t$(GO) -C integration/cpalatestcontract mod tidy -diff\n",
+                    "",
+                    1,
+                ),
+                round6.replace(
+                    "\t$(GO) mod verify\n",
+                    "\t$(GO) mod verify\n\t$(GO) mod tidy -diff\n",
+                    1,
+                ),
+            )
+        )
+        for text in mutations:
+            self.assertNotEqual(text, original)
+            with self.assertRaisesRegex(ContractError, "included integration modules"):
+                validate_round6_makefile_contract(text, source)
+
     def test_round6_makefile_candidate_script_gates_are_reachable(self):
         source = Path(__file__).parent.parent / "Makefile"
         original = source.read_text(encoding="utf-8")
@@ -718,6 +809,22 @@ jobs:
                 text = original.replace(required_line, "", 1)
                 self.assertNotEqual(text, original)
                 with self.assertRaisesRegex(ContractError, "reviewed Round6 script gate"):
+                    validate_round6_makefile_contract(text, source)
+
+    def test_round6_makefile_runs_privacy_safe_mutation_fixtures(self):
+        source = Path(__file__).parent.parent / "Makefile"
+        original = source.read_text(encoding="utf-8")
+        before, marker, round6 = original.rpartition("round6-script-test:")
+        self.assertTrue(marker)
+        for required_line in (
+            "\tbash ./scripts/release-evidence-privacy-test.sh\n",
+            "\tbash ./scripts/round6-doc-consistency-fixture-test.sh\n",
+        ):
+            with self.subTest(required_line=required_line.strip()):
+                mutated_round6 = round6.replace(required_line, "", 1)
+                self.assertNotEqual(mutated_round6, round6)
+                text = before + marker + mutated_round6
+                with self.assertRaisesRegex(ContractError, "privacy-safe mutation fixture"):
                     validate_round6_makefile_contract(text, source)
 
     def candidate_workflow(self) -> str:

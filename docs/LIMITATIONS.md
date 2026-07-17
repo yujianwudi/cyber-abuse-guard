@@ -31,9 +31,13 @@
    limited to two decode layers, eight variants, 128 KiB source, and 64 KiB
    retained decoded text. The plugin does not decompress, expand archives, or
    parse arbitrary documents. An incomplete recognized text envelope follows
-   the fixed incomplete-inspection mode contract. Complete unknown/high-entropy strings are
-   scanned literally and are not blocked solely because they appear encoded;
-   encrypted or novel encodings can therefore evade semantic detection.
+   the fixed incomplete-inspection mode contract. Strings with an unknown
+   encoding shape or high entropy are scanned literally when their schema and
+   role provenance remain supported, and are not blocked solely because they
+   appear encoded. This does not make arbitrarily long `RoleUnknown` fields
+   exactly reconstructable across fields; bounded streaming proof loss may
+   instead yield `classifier_window_incomplete`. Encrypted or novel encodings
+   can therefore still evade semantic detection.
 
 5. **Opaque media is not inspected.** Image/audio/video/document-attachment
    bytes and their meaning are unavailable to the classifier. The plugin never fetches HTTPS media
@@ -256,7 +260,7 @@
 37. **Classifier-policy identity is source- and artifact-bound, but still not
     independent approval.** The current identity is `classifier-policy-v3` /
     SHA-256
-    `e00f64651368bb81a223f1fecbf98b4a6d069bd4bac1f320d22204fbbe5b0601`.
+    `99e0ce7f59d2e687ebb3e79e1a71300afee8bb56f723cd8ba3f478c71a64cfd2`.
     Build metadata and artifact verification carry it. The historical
     round5.2 value was `classifier-policy-v2` /
     `e9b87f7e2635495bdbceae469ef89e696b419f0a9a6fd129558a20bc4be947ec`,

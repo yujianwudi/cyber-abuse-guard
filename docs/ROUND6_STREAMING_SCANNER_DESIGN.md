@@ -10,7 +10,7 @@ workflow and remain unreleased. See
 `round6-prerelease-attestation.json` and `formal-release-attestation.json`.
 
 Current classifier identity is `classifier-policy-v3` /
-`e00f64651368bb81a223f1fecbf98b4a6d069bd4bac1f320d22204fbbe5b0601`;
+`99e0ce7f59d2e687ebb3e79e1a71300afee8bb56f723cd8ba3f478c71a64cfd2`;
 scanner identity is `streaming-scanner-v1`.
 
 Commit `21ceb57e6b6030e56d7820c9a67a8eecd068c669` passed push and PR CI
@@ -97,7 +97,7 @@ The classifier retains one configured window, a derived overlap/carry, and fixed
 
 The compiled overlap must be smaller than the configured window and smaller than the conservative 4096-byte configuration reserve. The exact value is emitted by the Round 6 overlap test and management status.
 
-Cross-window classification never merges different roles or unrelated fields as if they were one prompt. Role-aware reconstructions use complete, bounded logical-field summaries. Long fields continue through window scanning but are not copied into cross-field state. Inside one long logical field, fixed-size rule/outcome/semantic signal facts record whether different windows contributed distinct risk ingredients. If their aggregate reaches the balanced threshold while no individual window did, coverage becomes `classifier_window_incomplete` instead of being reported as complete allow.
+Cross-window classification never merges different roles or unrelated fields as if they were one prompt. Role-aware reconstructions use complete, bounded logical-field summaries. Long fields continue through window scanning but are not copied into cross-field state. Inside one long logical field, fixed-size ordinary-risk and persistent-control-plane signal facts record whether different windows contributed distinct actionable ingredients. Consecutive unknown-role, content-provenance fields retain only those bounded facts (never their text) after a long field makes exact untrusted-parts reconstruction unavailable. A later risk-bearing field, including one that repeats context-sensitive signals, makes an actionable merged potential `classifier_window_incomplete` unless an exact block was already proven inside that same unknown sequence. A known role, a non-content provenance, or a tool-payload boundary clears the conservative unknown-role state; an unknown boundary also clears role-aware user composition.
 
 Assistant/system quoted safety examples use a bounded provisional `Result`, not retained prompt text. A real closing quote discards that provisional result and exposes only the suffix to ordinary classification. If the logical field ends first, the provisional result is committed as ordinary content. Closing detection reads only newly consumed bytes, so an opener replayed in overlap cannot be mistaken for a close.
 
@@ -133,7 +133,12 @@ Default effective limits are:
 - classification work units: at least 2048 and automatically raised when configured limits require more;
 - JSON depth: 32, with independent token/node bounds.
 
-Traversal is O(raw bytes). Text classification is O(model-visible bytes plus bounded matching/reconstruction work). No request text is written to temporary files, audit rows, metrics labels, or logs.
+Traversal is O(raw bytes). Text classification is O(model-visible bytes plus
+bounded matching/reconstruction work). Guard-owned scanner, audit, metrics, and
+plugin-log paths do not write request text to temporary files, audit rows,
+labels, or plugin logs. CPA Host, transport, reverse-proxy, and provider logging
+remain outside this boundary and must be examined separately in sandbox Host
+evidence.
 
 ## Audit and telemetry
 

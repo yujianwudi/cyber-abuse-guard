@@ -468,7 +468,7 @@ CONSUMED_BOUNDARY_LINES = {
     ),
 }
 ROUND6_REPRODUCIBILITY_SCRIPT_SHA256 = (
-    "833d71f62ed69e5e5a354ef0567127ed6304a9f77fb562b275bce3ae52fd0b45"
+    "f801b8b3f530fe00fe7b354fa8726e33fcfdf7bddf70e4b9ee32ac785e09d273"
 )
 ROUND6_REPRODUCIBILITY_ENTRY_MODE_CONTRACT = """reproducibility_mode="${ROUND6_REPRODUCIBILITY_MODE:-release}"
 case "$reproducibility_mode" in
@@ -507,6 +507,12 @@ ROUND6_REPRODUCIBILITY_PACKAGE_BRANCH_CONTRACT = """  if [[ "$RELEASE_BUILD_KIND
       SOURCE_DATE_EPOCH="$RELEASE_SOURCE_DATE_EPOCH" \\
       "$clone/scripts/create-store-archive.sh"
   fi"""
+ROUND6_REPRODUCIBILITY_CHECKSUMS_CONTRACT = (
+    '        sbom.cdx.json >checksums.txt',
+    '      sha256sum -c checksums.txt',
+    'compare_artifact "checksums manifest" checksums.txt',
+    '  for relative in "$so" "$so.sha256" "$store_zip" build-metadata.json checksums.txt \\',
+)
 BLOCKED_STEP_RUN_SHA256 = {
     ("admission", 0): "4830e3f84435dda74c87216010d4ca5021d7c75935a95997acf1e416e3ef47fe",
     ("admission", 1): "7f1817ec7b567df4be63fafd9ee2b2347ac37e01982e41ee3338f64c79cae81a",
@@ -851,8 +857,32 @@ REPRODUCIBILITY_WRAPPER_SCRIPT_SHA256 = (
 )
 FROZEN_EVALUATION_TREE_SCRIPT = "scripts/verify-frozen-evaluation-v10-tree.sh"
 FROZEN_EVALUATION_TREE_SCRIPT_SHA256 = (
-    "be39ad4f8ad0aea3a1e32e28e631cbac614ab03bb29b360985b0bd8c5080255e"
+    "eda0524cfc297095edc018b710fc18a98312914112968dba2d094f0e8a03aac2"
 )
+FROZEN_EVALUATION_STATUS_COMMAND = (
+    'status="$(git -C "$root" status --porcelain=v1 --untracked-files=all -- "${paths[@]}")"'
+)
+ROUND6_DOC_FIXTURE_WRAPPER_SCRIPT = "scripts/round6-doc-consistency-fixture-test.sh"
+ROUND6_DOC_FIXTURE_WRAPPER_SCRIPT_SHA256 = (
+    "43a27e7616b3b9007de336818e27e78a9260406b86b5da55983fb99d4758b46d"
+)
+ROUND6_DOC_FIXTURE_DEPENDENCY_SHA256 = {
+    "scripts/release-doc-consistency-test.sh": "e1ee5204237668125a5da3b7c025f72f6c568ec0cad7a7c0bb581168e84c9fd8",
+    "scripts/release-doc-consistency.sh": "bb16e34ebec34f4fdb5329e6db9a773104fedeb236b28ce759b686eed0cce0f2",
+}
+ROUND6_PRIVACY_FIXTURE_SCRIPT = "scripts/release-evidence-privacy-test.sh"
+ROUND6_PRIVACY_FIXTURE_SCRIPT_SHA256 = (
+    "6306a733095173425ad735bea5d986de21ae2b3f4e6f053dee970d7436f9f762"
+)
+CPA_COMPAT_SCRIPT = "scripts/cpa-latest-compat.sh"
+CPA_COMPAT_SCRIPT_SHA256 = (
+    "4a86b16a36786957bde70b9b4885430f0409e62e16cf8224263e8f0162517650"
+)
+CPA_COMPAT_FINAL_OUTPUT_CONTRACT = """if [[ "$verify_remote" == 1 ]]; then
+  printf 'CPA latest source/compile compatibility PASS: profile=%s\\n' "${profiles[*]}"
+else
+  printf 'CPA source/compile compatibility PASS: profile=%s remote_release_checks=SKIPPED\\n' "${profiles[*]}"
+fi"""
 EXTERNAL_ATTESTATION_SCRIPT_SHA256 = {
     "verify-external-release-attestation.sh": "17d79149b779b01f2e3e733d0deb529927bfe0c6d50b8125abd8b556fd95d476",
     "verify-external-release-attestation-test.sh": "07683ce09cbdef7c15f8d6b31ff1308380ad21c920d8bc745c9b4599f4555aba",
@@ -2218,12 +2248,59 @@ def validate_reproducibility_wrapper_script(text: str, source: Path) -> None:
 
 
 def validate_frozen_evaluation_tree_script(text: str, source: Path) -> None:
+    if text.count(FROZEN_EVALUATION_STATUS_COMMAND) != 1:
+        raise ContractError(
+            "frozen evaluation tree verifier must reject staged, unstaged, and untracked paths: "
+            f"{source}"
+        )
     if (
         hashlib.sha256(text.encode("utf-8")).hexdigest()
         != FROZEN_EVALUATION_TREE_SCRIPT_SHA256
     ):
         raise ContractError(
             f"frozen evaluation tree verifier must match the exact reviewed metadata-only contract: {source}"
+        )
+
+
+def validate_round6_doc_fixture_wrapper_script(
+    text: str, source: Path, root: Path
+) -> None:
+    if (
+        hashlib.sha256(text.encode("utf-8")).hexdigest()
+        != ROUND6_DOC_FIXTURE_WRAPPER_SCRIPT_SHA256
+    ):
+        raise ContractError(
+            f"Round6 document fixture wrapper must match the exact reviewed contract: {source}"
+        )
+    for relative, expected in ROUND6_DOC_FIXTURE_DEPENDENCY_SHA256.items():
+        dependency = root / relative
+        dependency_text = read_regular_text(dependency, root)
+        if hashlib.sha256(dependency_text.encode("utf-8")).hexdigest() != expected:
+            raise ContractError(
+                f"Round6 document fixture dependency changed outside the reviewed contract: {dependency}"
+            )
+
+
+def validate_round6_privacy_fixture_script(text: str, source: Path) -> None:
+    if (
+        hashlib.sha256(text.encode("utf-8")).hexdigest()
+        != ROUND6_PRIVACY_FIXTURE_SCRIPT_SHA256
+    ):
+        raise ContractError(
+            f"Round6 privacy fixture must match the exact reviewed contract: {source}"
+        )
+
+
+def validate_cpa_compat_script(text: str, source: Path) -> None:
+    if text.count(CPA_COMPAT_FINAL_OUTPUT_CONTRACT) != 1 or text.count(
+        "CPA latest source/compile compatibility PASS"
+    ) != 1:
+        raise ContractError(
+            f"CPA compatibility output must claim latest PASS only after remote verification: {source}"
+        )
+    if hashlib.sha256(text.encode("utf-8")).hexdigest() != CPA_COMPAT_SCRIPT_SHA256:
+        raise ContractError(
+            f"CPA compatibility script must match the exact reviewed remote-verification contract: {source}"
         )
 
 
@@ -4063,6 +4140,12 @@ def validate_round6_reproducibility_script(text: str, source: Path) -> None:
             "Round6 reproducibility package-release must remain in the exact formal-only branch: "
             f"{source}"
         )
+    for contract in ROUND6_REPRODUCIBILITY_CHECKSUMS_CONTRACT:
+        if text.count(contract) != 1:
+            raise ContractError(
+                "Round6 reproducibility must generate and compare the exact checksums manifest: "
+                f"{source}"
+            )
     if (
         hashlib.sha256(text.encode("utf-8")).hexdigest()
         != ROUND6_REPRODUCIBILITY_SCRIPT_SHA256
@@ -4184,6 +4267,24 @@ def parse_makefile(
 
 def validate_round6_makefile_contract(text: str, source: Path) -> None:
     dependencies, recipes, _ = parse_makefile(text)
+    module_commands = tuple(
+        " ".join(line.split())
+        for line in recipes.get("round6-module-verify", "").splitlines()
+        if line.strip()
+    )
+    expected_module_commands = (
+        "$(GO) mod verify",
+        "$(GO) list -tags=$(TEST_TAGS) -deps $(ROUND6_SAFE_PACKAGES) >/dev/null",
+        "$(GO) -C integration/pluginstorecontract mod verify",
+        "$(GO) -C integration/pluginstorecontract mod tidy -diff",
+        "$(GO) -C integration/cpalatestcontract mod verify",
+        "$(GO) -C integration/cpalatestcontract mod tidy -diff",
+    )
+    if module_commands != expected_module_commands:
+        raise ContractError(
+            "round6-module-verify must tidy-diff only the two included integration modules: "
+            f"{source}"
+        )
     if dependencies.get("round6-benchmark") != {"benchmark"}:
         raise ContractError(
             f"round6-benchmark must retain the reviewed benchmark dependency: {source}"
@@ -4227,6 +4328,31 @@ def validate_round6_makefile_contract(text: str, source: Path) -> None:
             raise ContractError(
                 f"{target} must preserve the reviewed Round6 script-gate order"
             )
+    round6_commands = tuple(
+        " ".join(line.split())
+        for line in recipes.get("round6-script-test", "").splitlines()
+        if line.strip()
+    )
+    required_mutation_fixtures = (
+        "bash ./scripts/release-evidence-privacy-test.sh",
+        "bash ./scripts/round6-doc-consistency-fixture-test.sh",
+    )
+    positions = []
+    for command in required_mutation_fixtures:
+        matches = [
+            index for index, actual in enumerate(round6_commands) if actual == command
+        ]
+        if len(matches) != 1:
+            raise ContractError(
+                f"round6-script-test must execute the exact reviewed privacy-safe mutation fixture: {command}"
+            )
+        positions.append(matches[0])
+    if positions != sorted(positions) or any(
+        "release-doc-consistency-test.sh" in command for command in round6_commands
+    ):
+        raise ContractError(
+            "round6-script-test must preserve the privacy-safe mutation fixture boundary"
+        )
 
 
 def dotted_name(node: ast.AST, aliases: dict[str, str]) -> str | None:
@@ -4440,6 +4566,13 @@ def audit(root: Path, entrypoints: list[Path]) -> tuple[set[str], set[str]]:
                 validate_frozen_evaluation_tree_script(script_text, script_path)
                 inspected_scripts.add(relative)
                 continue
+            if relative == ROUND6_DOC_FIXTURE_WRAPPER_SCRIPT:
+                script_path = root / relative
+                script_text = read_regular_text(script_path, root)
+                validate_round6_doc_fixture_wrapper_script(script_text, script_path, root)
+                inspected_scripts.add(relative)
+                inspected_scripts.update(ROUND6_DOC_FIXTURE_DEPENDENCY_SHA256)
+                continue
             assert_safe_repo_path(Path(relative), root)
             if (
                 FORBIDDEN_SCRIPT_NAME.search(Path(relative).name)
@@ -4455,6 +4588,10 @@ def audit(root: Path, entrypoints: list[Path]) -> tuple[set[str], set[str]]:
                     validate_candidate_script(script_text, script_path)
                 if relative == REPRODUCIBILITY_WRAPPER_SCRIPT:
                     validate_reproducibility_wrapper_script(script_text, script_path)
+                if relative == ROUND6_PRIVACY_FIXTURE_SCRIPT:
+                    validate_round6_privacy_fixture_script(script_text, script_path)
+                if relative == CPA_COMPAT_SCRIPT:
+                    validate_cpa_compat_script(script_text, script_path)
                 if script_path.name == "round6-reproducibility-test.sh":
                     validate_round6_reproducibility_script(script_text, script_path)
                 if script_path.name == "build-linux-amd64.sh":
@@ -4509,6 +4646,9 @@ def audit(root: Path, entrypoints: list[Path]) -> tuple[set[str], set[str]]:
         FROZEN_EVALUATION_TREE_SCRIPT,
         "scripts/verify-external-release-attestation.sh",
         "scripts/verify-external-release-attestation-test.sh",
+        ROUND6_PRIVACY_FIXTURE_SCRIPT,
+        ROUND6_DOC_FIXTURE_WRAPPER_SCRIPT,
+        *ROUND6_DOC_FIXTURE_DEPENDENCY_SHA256,
     }
     if ci_entrypoint in {path.resolve() for path in entrypoints} and all(
         (root / relative).exists() for relative in required_script_paths

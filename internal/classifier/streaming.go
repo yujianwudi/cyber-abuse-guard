@@ -200,12 +200,16 @@ type streamingFieldSummary struct {
 
 // streamingFieldRiskFacts contains only bounded classifier signal bits and
 // scalar scores. It never retains prompt text and is scoped to one logical
-// field, so evidence cannot cross role or provenance boundaries.
+// field. ScanSession's untrustedRiskFacts may merge these facts only across
+// consecutive unknown-role, content-provenance fields; role and provenance
+// boundaries clear that session aggregate.
 type streamingFieldRiskFacts struct {
-	facts             classificationSignalFacts
-	riskIngredients   []bool
-	riskContributions int
-	windowBlocked     bool
+	facts                     classificationSignalFacts
+	riskIngredients           []bool
+	riskContributions         int
+	controlPlaneIngredients   [4]bool
+	controlPlaneContributions int
+	windowBlocked             bool
 }
 
 func (facts *streamingFieldRiskFacts) mergeWindow(c *Classifier, window classificationSignalFacts, result Result) {
@@ -227,6 +231,7 @@ func (facts *streamingFieldRiskFacts) mergeWindow(c *Classifier, window classifi
 		facts.riskIngredients = make([]bool, c.signalCount)
 	}
 	novelRisk := c.mergeStreamingRiskIngredients(facts.riskIngredients, window.signals)
+	controlPlaneNovel := mergeStreamingControlPlaneIngredients(&facts.controlPlaneIngredients, c, window.signals)
 	for signalID, matched := range window.signals {
 		facts.facts.signals[signalID] = facts.facts.signals[signalID] || matched
 	}
@@ -258,7 +263,30 @@ func (facts *streamingFieldRiskFacts) mergeWindow(c *Classifier, window classifi
 	if (novelRisk || newHarmConflict) && facts.riskContributions < 2 {
 		facts.riskContributions++
 	}
+	if controlPlaneNovel && facts.controlPlaneContributions < 2 {
+		facts.controlPlaneContributions++
+	}
 	facts.windowBlocked = facts.windowBlocked || result.Action == ActionBlock
+}
+
+func mergeStreamingControlPlaneIngredients(destination *[4]bool, c *Classifier, source []bool) bool {
+	if destination == nil || c == nil || len(source) != c.signalCount {
+		return false
+	}
+	signalIDs := [4]int{
+		c.metaOverride.persistentInjection,
+		c.metaOverride.hierarchy,
+		c.metaOverride.refusalSuppression,
+		c.metaOverride.unrestrictedMode,
+	}
+	added := false
+	for index, signalID := range signalIDs {
+		if signalMatched(source, signalID) && !destination[index] {
+			destination[index] = true
+			added = true
+		}
+	}
+	return added
 }
 
 func (facts *streamingFieldRiskFacts) merge(other *streamingFieldRiskFacts) {
@@ -300,6 +328,13 @@ func (facts *streamingFieldRiskFacts) merge(other *streamingFieldRiskFacts) {
 	}
 	newHarmConflict := other.facts.harmConflict && !facts.facts.harmConflict
 	facts.facts.harmConflict = facts.facts.harmConflict || other.facts.harmConflict
+	controlPlaneNovel := false
+	for index, matched := range other.controlPlaneIngredients {
+		if matched && !facts.controlPlaneIngredients[index] {
+			facts.controlPlaneIngredients[index] = true
+			controlPlaneNovel = true
+		}
+	}
 	for signalID, matched := range other.riskIngredients {
 		if matched && !facts.riskIngredients[signalID] {
 			facts.riskIngredients[signalID] = true
@@ -311,6 +346,12 @@ func (facts *streamingFieldRiskFacts) merge(other *streamingFieldRiskFacts) {
 		facts.riskContributions = other.riskContributions
 	case other.riskContributions > 1 || (other.riskContributions > 0 && (novelRisk || newHarmConflict)):
 		facts.riskContributions = 2
+	}
+	switch {
+	case facts.controlPlaneContributions == 0:
+		facts.controlPlaneContributions = other.controlPlaneContributions
+	case other.controlPlaneContributions > 1 || (other.controlPlaneContributions > 0 && controlPlaneNovel):
+		facts.controlPlaneContributions = 2
 	}
 	facts.windowBlocked = facts.windowBlocked || other.windowBlocked
 }
@@ -325,8 +366,10 @@ func (facts *streamingFieldRiskFacts) reset() {
 	clear(facts.facts.unnegatedSemanticIntents)
 	clear(facts.facts.semanticAgencies)
 	clear(facts.riskIngredients)
+	facts.controlPlaneIngredients = [4]bool{}
 	facts.facts.harmConflict = false
 	facts.riskContributions = 0
+	facts.controlPlaneContributions = 0
 	facts.windowBlocked = false
 }
 
@@ -358,19 +401,25 @@ type ScanSession struct {
 	best     Result
 	hasBest  bool
 
-	previousUser          string
-	hasPreviousUser       bool
-	recentUsers           []string
-	linkedMetaUsers       []string
-	mappedToolControls    []string
-	untrustedParts        []string
-	lastMetaUser          string
-	pendingNonUserControl string
-	lastUserControl       string
-	isolatedUserRun       []rune
-	previousUserRisk      streamingFieldRiskFacts
-	hasPreviousUserRisk   bool
-	previousUserComplete  bool
+	previousUser            string
+	hasPreviousUser         bool
+	recentUsers             []string
+	linkedMetaUsers         []string
+	mappedToolControls      []string
+	untrustedParts          []string
+	untrustedRiskFacts      streamingFieldRiskFacts
+	hasUntrustedRisk        bool
+	untrustedRiskIncomplete bool
+	untrustedRiskDirty      bool
+	untrustedControlDirty   bool
+	untrustedExactBlocked   bool
+	lastMetaUser            string
+	pendingNonUserControl   string
+	lastUserControl         string
+	isolatedUserRun         []rune
+	previousUserRisk        streamingFieldRiskFacts
+	hasPreviousUserRisk     bool
+	previousUserComplete    bool
 
 	aborted  bool
 	finished bool
@@ -614,9 +663,13 @@ func (s *ScanSession) finishField(field *streamingField) {
 	field.safetyClosed = 0
 	field.safetyRiskFacts.reset()
 	aggregatePotential := s.classifier.streamingRiskPotential(field.riskFacts.facts, s.policy)
-	if aggregatePotential.blocks(s.mode, s.thresholds) &&
+	ordinaryIncomplete := aggregatePotential.blocks(s.mode, s.thresholds) &&
 		field.riskFacts.riskContributions > 1 &&
-		!field.riskFacts.windowBlocked {
+		!field.riskFacts.windowBlocked
+	controlPlaneIncomplete := aggregatePotential.meta.controlPlaneBlock &&
+		field.riskFacts.controlPlaneContributions > 1 &&
+		!field.riskFacts.windowBlocked
+	if ordinaryIncomplete || controlPlaneIncomplete {
 		s.setCoverage(CoverageUnavailable, CoverageReasonClassifierWindow)
 		return
 	}
@@ -673,8 +726,18 @@ func (s *ScanSession) considerRoleSummary(current *streamingFieldSummary, curren
 	if !current.sampleComplete {
 		s.flushIsolatedUserRun(batch)
 		if current.role == extract.RoleUnknown {
+			s.clearUserCompositionState()
+		}
+		if current.role == extract.RoleUnknown && current.provenance == extract.ProvenanceContent {
 			clear(s.untrustedParts)
 			s.untrustedParts = s.untrustedParts[:0]
+			if !s.considerUntrustedRiskFacts(currentRisk, false) {
+				return
+			}
+		} else {
+			clear(s.untrustedParts)
+			s.untrustedParts = s.untrustedParts[:0]
+			s.clearUntrustedRisk()
 		}
 		if !knownStreamingRoleSegment(extract.Segment{Role: current.role, Provenance: current.provenance}) {
 			s.clearPreviousUserRisk()
@@ -697,11 +760,25 @@ func (s *ScanSession) considerRoleSummary(current *streamingFieldSummary, curren
 
 	text := string(current.sample)
 	segment := extract.Segment{Role: current.role, Provenance: current.provenance, Text: text}
+	if current.role == extract.RoleUnknown && current.provenance == extract.ProvenanceContent {
+		s.flushIsolatedUserRun(batch)
+		s.clearUserCompositionState()
+		s.clearPreviousUserRisk()
+		if !s.considerUntrustedRiskFacts(currentRisk, true) {
+			clear(s.untrustedParts)
+			s.untrustedParts = s.untrustedParts[:0]
+			return
+		}
+		s.considerUntrustedPart(batch, text)
+		return
+	}
 	if current.role == extract.RoleUnknown {
 		s.flushIsolatedUserRun(batch)
 		s.clearUserCompositionState()
 		s.clearPreviousUserRisk()
-		s.considerUntrustedPart(batch, text)
+		clear(s.untrustedParts)
+		s.untrustedParts = s.untrustedParts[:0]
+		s.clearUntrustedRisk()
 		return
 	}
 	if !knownStreamingRoleSegment(segment) {
@@ -710,10 +787,12 @@ func (s *ScanSession) considerRoleSummary(current *streamingFieldSummary, curren
 		s.clearPreviousUserRisk()
 		clear(s.untrustedParts)
 		s.untrustedParts = s.untrustedParts[:0]
+		s.clearUntrustedRisk()
 		return
 	}
 	clear(s.untrustedParts)
 	s.untrustedParts = s.untrustedParts[:0]
+	s.clearUntrustedRisk()
 	if current.provenance == extract.ProvenanceToolPayload {
 		s.considerMappedToolControl(batch, text)
 	} else {
@@ -900,7 +979,71 @@ func (s *ScanSession) considerUntrustedPart(batch *roleClassificationBatch, text
 		s.setCoverage(CoverageUnavailable, CoverageReasonClassifierWindow)
 		return
 	}
+	if candidate.Action == ActionBlock {
+		s.untrustedExactBlocked = true
+	}
 	s.consider(candidate)
+}
+
+// considerUntrustedRiskFacts carries only bounded classifier signals across
+// unknown-role fields. Complete short fields continue to use the exact
+// untrusted-parts reconstruction above; the compact risk state is consulted
+// only once a long/incomplete unknown field makes that reconstruction
+// unavailable. Ordinary risk and persistent control-plane ingredients are
+// tracked separately. Once exact reconstruction is lost, any later risk-bearing
+// field (including one that repeats context-sensitive signals) can make an
+// actionable union unavailable; an exact block already proven within the same
+// sequence remains a block. No prompt text crosses the boundary.
+func (s *ScanSession) considerUntrustedRiskFacts(current *streamingFieldRiskFacts, complete bool) bool {
+	if s == nil || current == nil || s.classifier == nil || s.coverage.State != CoverageComplete {
+		return true
+	}
+	hadPriorRisk := s.hasUntrustedRisk
+	wasIncomplete := s.untrustedRiskIncomplete
+	currentOrdinaryRisk := current.riskContributions > 0 || current.facts.harmConflict
+	currentControlPlaneRisk := current.controlPlaneContributions > 0
+	if len(current.facts.signals) != 0 {
+		s.untrustedRiskFacts.merge(current)
+		s.hasUntrustedRisk = s.untrustedRiskFacts.riskContributions > 0 ||
+			s.untrustedRiskFacts.facts.harmConflict ||
+			s.untrustedRiskFacts.controlPlaneContributions > 0
+	}
+	if !complete && (hadPriorRisk || s.hasUntrustedRisk) {
+		s.untrustedRiskIncomplete = true
+	}
+	crossesIncompleteBoundary := wasIncomplete || (!complete && hadPriorRisk)
+	if currentOrdinaryRisk && crossesIncompleteBoundary {
+		s.untrustedRiskDirty = true
+	}
+	if currentControlPlaneRisk && crossesIncompleteBoundary {
+		s.untrustedControlDirty = true
+	}
+	if !s.untrustedRiskIncomplete || !s.hasUntrustedRisk {
+		return true
+	}
+	potential := s.classifier.streamingRiskPotential(s.untrustedRiskFacts.facts, s.policy)
+	ordinaryIncomplete := s.untrustedRiskDirty && s.untrustedRiskFacts.riskContributions > 0 &&
+		potential.blocks(s.mode, s.thresholds)
+	controlPlaneIncomplete := s.untrustedControlDirty &&
+		s.untrustedRiskFacts.controlPlaneContributions > 0 && potential.meta.controlPlaneBlock
+	if (ordinaryIncomplete || controlPlaneIncomplete) && !s.untrustedRiskFacts.windowBlocked && !s.untrustedExactBlocked {
+		s.setCoverage(CoverageUnavailable, CoverageReasonClassifierWindow)
+		return false
+	}
+	return true
+}
+
+func (s *ScanSession) clearUntrustedRisk() {
+	if s == nil {
+		return
+	}
+	s.untrustedRiskFacts.reset()
+	s.untrustedRiskFacts = streamingFieldRiskFacts{}
+	s.hasUntrustedRisk = false
+	s.untrustedRiskIncomplete = false
+	s.untrustedRiskDirty = false
+	s.untrustedControlDirty = false
+	s.untrustedExactBlocked = false
 }
 
 func isMappedToolControlSemantic(text string) bool {
@@ -1007,6 +1150,7 @@ func (s *ScanSession) clearRoleState() {
 	s.mappedToolControls = nil
 	clear(s.untrustedParts)
 	s.untrustedParts = nil
+	s.clearUntrustedRisk()
 }
 
 type streamingRoleWindowDecision struct {
@@ -1333,6 +1477,11 @@ func (s *ScanSession) considerAdjacent(previous, current *streamingFieldSummary)
 	if previous == nil || current == nil || len(previous.tail) == 0 || len(current.head) == 0 || s.coverage.State != CoverageComplete {
 		return
 	}
+	untrustedContentPair := previous.role == extract.RoleUnknown && current.role == extract.RoleUnknown &&
+		previous.provenance == extract.ProvenanceContent && current.provenance == extract.ProvenanceContent
+	if (previous.role == extract.RoleUnknown || current.role == extract.RoleUnknown) && !untrustedContentPair {
+		return
+	}
 	previousKnown := knownStreamingRoleSegment(extract.Segment{Role: previous.role, Provenance: previous.provenance})
 	currentKnown := knownStreamingRoleSegment(extract.Segment{Role: current.role, Provenance: current.provenance})
 	if previous.sampleComplete && current.sampleComplete &&
@@ -1366,6 +1515,9 @@ func (s *ScanSession) considerAdjacent(previous, current *streamingFieldSummary)
 	if result.Truncated {
 		s.setCoverage(CoverageUnavailable, CoverageReasonClassifierWindow)
 		return
+	}
+	if untrustedContentPair && result.Action == ActionBlock {
+		s.untrustedExactBlocked = true
 	}
 	s.consider(result)
 	if len(previous.sample) != 0 && len(current.sample) != 0 && followUpEligible([]rune(string(previous.sample))) {

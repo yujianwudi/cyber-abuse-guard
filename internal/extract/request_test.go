@@ -720,7 +720,8 @@ func TestExtractRequestCPATransformedJSONWithMultipartHeader(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if unknown.IsComplete() || !unknown.HasIncompleteReason(IncompleteMultipartUnknownField) || len(unknown.Parts) != 0 {
+	if unknown.IsComplete() || !unknown.HasIncompleteReason(IncompleteMultipartUnknownField) ||
+		len(unknown.Parts) != 0 || len(unknown.Segments) != 0 || unknown.TextBytesScanned != 0 {
 		t.Fatalf("CPA transformed unknown field result = %#v", unknown)
 	}
 	if strings.Contains(strings.Join(unknown.Parts, "\n")+unknown.ParseError, unknownCanary) {
@@ -785,7 +786,7 @@ func TestExtractRequestCPATransformedJSONRequiresTopLevelObject(t *testing.T) {
 		if result.IsComplete() || !result.HasIncompleteReason(IncompleteMultipartUnknownField) {
 			t.Fatalf("body=%s result=%#v, want fixed multipart schema incomplete", body, result)
 		}
-		if len(result.Parts) != 0 || len(result.Segments) != 0 {
+		if len(result.Parts) != 0 || len(result.Segments) != 0 || result.TextBytesScanned != 0 {
 			t.Fatalf("body=%s exposed transformed value: %#v", body, result)
 		}
 	}

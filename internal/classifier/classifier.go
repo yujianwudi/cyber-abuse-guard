@@ -151,7 +151,9 @@ type Result struct {
 // classificationSignalFacts is the privacy-safe, bounded semantic summary
 // captured from one classifier part. It contains no prompt bytes and reuses the
 // exact signals and negation analysis already produced by classifyWithPolicy.
-// Streaming callers merge these facts only inside one logical field.
+// Streaming callers merge these facts inside one logical field or across a
+// consecutive unknown-role, content-provenance sequence whose long field
+// cannot retain exact text; role and provenance boundaries are never merged.
 type classificationSignalFacts struct {
 	signals                  []bool
 	unnegatedRuleIntents     []bool

@@ -43,7 +43,7 @@ classifier.
 | CPA Host matrix | Current release target is CPA v7.2.86 only; its real Host + Mock-upstream run is **NOT RUN / PENDING** |
 | Production | Not accessed or modified; no production request, audit database, credential, HMAC key, account pool, or real Provider was used |
 | Scanner identity | `streaming-scanner-v1` |
-| Classifier policy | `classifier-policy-v3` / `e00f64651368bb81a223f1fecbf98b4a6d069bd4bac1f320d22204fbbe5b0601` |
+| Classifier policy | `classifier-policy-v3` / `99e0ce7f59d2e687ebb3e79e1a71300afee8bb56f723cd8ba3f478c71a64cfd2` |
 | Embedded YAML ruleset | `1.0.7` / `7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134` |
 | Audit schema | v3 |
 | Code review | Remote automated review findings have been addressed and locally verified; no independent approval is claimed |

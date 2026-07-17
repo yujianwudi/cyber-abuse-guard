@@ -232,8 +232,13 @@ Only valid UTF-8, printable textual results are added. An incomplete recognized
 text envelope sets the ordinary truncation signal, which enforcing modes treat
 conservatively. There is no decompression, archive expansion, document parser,
 binary-media decoder, redirect handling, DNS resolution, or network fetch.
-Complete unknown or merely high-entropy strings remain literal classifier input
-and do not become an automatic block signal. This avoids treating arbitrary
+Strings with an unknown encoding shape or merely high entropy remain literal
+classifier input when their schema and role provenance are otherwise supported;
+they do not become an automatic block signal. This is not a promise that an
+arbitrarily long `RoleUnknown` field can participate in exact cross-field text
+reconstruction: once the bounded summary cannot retain it, the streaming
+classifier keeps only fixed risk facts and may report
+`classifier_window_incomplete`. The distinction avoids treating arbitrary
 tokens, hashes, and compressed-looking identifiers as malicious, while leaving
 encrypted and novel encodings as an explicit detection limitation.
 
@@ -323,7 +328,7 @@ attest to local instruction-file integrity.
 Ruleset `1.0.7` identifies the embedded YAML assets only. The complete
 code-level behavior is separately identified as `classifier-policy-v3`,
 SHA-256
-`e00f64651368bb81a223f1fecbf98b4a6d069bd4bac1f320d22204fbbe5b0601`.
+`99e0ce7f59d2e687ebb3e79e1a71300afee8bb56f723cd8ba3f478c71a64cfd2`.
 Its tested source list binds the classifier, matcher, normalizer, role logic,
 wrapper assessment, behavior graph, semantic composition, bounded extractor,
 rule loader/schema, embedded YAML assets, and module dependency locks. The
@@ -663,7 +668,7 @@ SSE stream with terminal frames; returning successful chunks would force HTTP
 
 Builds link immutable version, full commit SHA, ruleset version/hash,
 `classifier-policy-v3` /
-`e00f64651368bb81a223f1fecbf98b4a6d069bd4bac1f320d22204fbbe5b0601`,
+`99e0ce7f59d2e687ebb3e79e1a71300afee8bb56f723cd8ba3f478c71a64cfd2`,
 streaming-scanner identity, and dirty state. Build metadata and the verifier bind
 these identities. Candidate mode requires a clean worktree, exact expected
 commit/tree, the commit timestamp, an absent formal `v0.15` tag, and forbids

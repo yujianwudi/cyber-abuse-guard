@@ -112,6 +112,20 @@ for name in a b; do
       SOURCE_DATE_EPOCH="$RELEASE_SOURCE_DATE_EPOCH" \
       "$clone/scripts/create-store-archive.sh"
   fi
+  if [[ "$RELEASE_BUILD_KIND" != formal ]]; then
+    (
+      cd "$clone/dist"
+      sha256sum \
+        "$so" \
+        "$so.sha256" \
+        "$store_zip" \
+        build-metadata.json \
+        ruleset-manifest.json \
+        ruleset.sha256 \
+        sbom.cdx.json >checksums.txt
+      sha256sum -c checksums.txt
+    )
+  fi
   [[ "$(git -C "$clone" rev-parse HEAD)" == "$RELEASE_GIT_COMMIT" ]] ||
     release_die "Round6 reproducibility source $name changed HEAD during the build"
   [[ "$(git -C "$clone" rev-parse 'HEAD^{tree}')" == "$RELEASE_GIT_TREE" ]] ||
@@ -149,6 +163,7 @@ compare_artifact "shared object" "$so"
 compare_artifact "shared-object checksum" "$so.sha256"
 compare_artifact "CPA Store ZIP" "$store_zip"
 compare_artifact "build metadata" build-metadata.json
+compare_artifact "checksums manifest" checksums.txt
 compare_artifact "ruleset manifest" ruleset-manifest.json
 compare_artifact "ruleset checksum" ruleset.sha256
 compare_artifact "SBOM" sbom.cdx.json
@@ -158,7 +173,7 @@ fi
 
 if [[ "$RELEASE_BUILD_KIND" == candidate || "$RELEASE_BUILD_KIND" == formal ]]; then
   root_dist="${DIST_DIR:-$root/dist}"
-  for relative in "$so" "$so.sha256" "$store_zip" build-metadata.json \
+  for relative in "$so" "$so.sha256" "$store_zip" build-metadata.json checksums.txt \
     ruleset-manifest.json ruleset.sha256 sbom.cdx.json; do
     [[ -f "$root_dist/$relative" && ! -L "$root_dist/$relative" ]] || \
       release_die "$RELEASE_BUILD_KIND reproducibility requires the root artifact: $root_dist/$relative"

@@ -1,6 +1,8 @@
 # Round 6 known limitations and release blockers
 
-Status: **BLOCKED / PENDING HOST AND INDEPENDENT AUDIT**.
+Status: **BLOCKED / PENDING HOST AND INDEPENDENT AUDIT**; a candidate-bound
+`evaluation-v11` or later first-and-only `CONSUMED / PASS` attestation is also
+pending.
 
 This document describes exact project version `0.15` and intended formal tag
 `v0.15` (never `v0.15.0`) as a Linux amd64-only development candidate, not a
@@ -10,7 +12,7 @@ production approval. Windows and macOS validation is outside this round. See
 `round6-prerelease-attestation.json` and `formal-release-attestation.json`.
 
 Current classifier identity is `classifier-policy-v3` /
-`e00f64651368bb81a223f1fecbf98b4a6d069bd4bac1f320d22204fbbe5b0601`.
+`99e0ce7f59d2e687ebb3e79e1a71300afee8bb56f723cd8ba3f478c71a64cfd2`.
 
 ## Release blockers
 

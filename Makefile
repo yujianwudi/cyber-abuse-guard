@@ -117,7 +117,9 @@ round6-module-verify:
 	$(GO) mod verify
 	$(GO) list -tags=$(TEST_TAGS) -deps $(ROUND6_SAFE_PACKAGES) >/dev/null
 	$(GO) -C integration/pluginstorecontract mod verify
+	$(GO) -C integration/pluginstorecontract mod tidy -diff
 	$(GO) -C integration/cpalatestcontract mod verify
+	$(GO) -C integration/cpalatestcontract mod tidy -diff
 
 test:
 	GO=$(GO) TEST_TAGS=$(TEST_TAGS) bash ./scripts/go-safe-development-test.sh test
@@ -182,6 +184,8 @@ round6-script-test:
 	./scripts/check-production-health-test.sh
 	GO=$(GO) ./scripts/create-store-archive-test.sh
 	./scripts/generate-hmac-key-test.sh
+	bash ./scripts/release-evidence-privacy-test.sh
+	bash ./scripts/round6-doc-consistency-fixture-test.sh
 
 corpus-regression:
 	$(GO) test -tags=$(TEST_TAGS) ./internal/classifier \

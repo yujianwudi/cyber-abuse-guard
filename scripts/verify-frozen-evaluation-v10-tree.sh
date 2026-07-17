@@ -10,6 +10,16 @@ paths=(
   internal/classifier/evaluation_v10_gate_test.go
   testdata/evaluation-v10
 )
+
+# Check only Git metadata. Any staged, unstaged, or untracked path beneath the
+# frozen boundary invalidates the gate, even when HEAD still has the expected
+# tree OIDs. Do not print the status payload or read any frozen blob contents.
+status="$(git -C "$root" status --porcelain=v1 --untracked-files=all -- "${paths[@]}")"
+if [[ -n "$status" ]]; then
+  printf 'frozen evaluation-v10 paths have staged, unstaged, or untracked changes\n' >&2
+  exit 1
+fi
+
 expected="$(printf '%s\n' \
   $'040000 tree a5b2976adc4a44fa80783f5b8588db1c8c9a157a\tcmd/evaluation-v10-author' \
   $'100644 blob 7bd493672f9f0a2c659cbaa1787c92265bb34031\tdocs/reports/EVALUATION_V10_REPORT.md' \

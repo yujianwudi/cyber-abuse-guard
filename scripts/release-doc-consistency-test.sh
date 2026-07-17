@@ -76,9 +76,13 @@ run_gate() {
 }
 
 must_fail() {
-  local name="$1" fixture="$2"
+  local name="$1" fixture="$2" expected_diagnostic="$3"
   if run_gate "$fixture" >"$work/$name.log" 2>&1; then
     printf 'release document consistency fixture unexpectedly passed: %s\n' "$name" >&2
+    exit 1
+  fi
+  if ! grep -Fq -- "$expected_diagnostic" "$work/$name.log"; then
+    printf 'release document consistency fixture emitted the wrong diagnostic: %s\n' "$name" >&2
     exit 1
   fi
   printf 'release document consistency fixture rejected as expected: %s\n' "$name"
@@ -94,26 +98,31 @@ run_gate "$work/historical-hash"
 
 cp -a "$work/pass" "$work/stale-document"
 sed -i '/formal-release-attestation.json/d' "$work/stale-document/README.md"
-must_fail stale-document "$work/stale-document"
+must_fail stale-document "$work/stale-document" \
+  'README.md must point readers to the formal gate attestation'
 
 cp -a "$work/pass" "$work/alias-policy"
 sed -i 's/version_alias_policy: reject-v0.15.0/version_alias_policy: allow-v0.15.0/' \
   "$work/alias-policy/docs/RELEASE_POLICY.md"
-must_fail alias-policy "$work/alias-policy"
+must_fail alias-policy "$work/alias-policy" \
+  'docs/RELEASE_POLICY.md must contain exactly one policy line: version_alias_policy: reject-v0.15.0'
 
 cp -a "$work/pass" "$work/duplicate-policy-key"
 printf '%s\n' 'version_alias_policy: allow-v0.15.0' \
   >>"$work/duplicate-policy-key/docs/RELEASE_POLICY.md"
-must_fail duplicate-policy-key "$work/duplicate-policy-key"
+must_fail duplicate-policy-key "$work/duplicate-policy-key" \
+  'docs/RELEASE_POLICY.md must contain exactly one policy key: version_alias_policy'
 
 cp -a "$work/pass" "$work/unlabeled-historical-corpus"
 sed -i 's/^# Historical /# /' \
   "$work/unlabeled-historical-corpus/docs/reports/CORPUS_REPORT.md"
-must_fail unlabeled-historical-corpus "$work/unlabeled-historical-corpus"
+must_fail unlabeled-historical-corpus "$work/unlabeled-historical-corpus" \
+  'docs/reports/CORPUS_REPORT.md must be explicitly labeled as historical v0.1.2 evidence'
 
 cp -a "$work/pass" "$work/old-hash"
 sed -i "s/$ruleset_sha256/$old_ruleset_sha256/" \
   "$work/old-hash/docs/reports/TEST_REPORT.md"
-must_fail old-hash "$work/old-hash"
+must_fail old-hash "$work/old-hash" \
+  'docs/reports/TEST_REPORT.md latest ruleset_sha256'
 
 printf 'all release document consistency fixtures passed\n'

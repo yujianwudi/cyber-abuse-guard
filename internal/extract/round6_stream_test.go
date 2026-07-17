@@ -1152,7 +1152,9 @@ func TestRound6TransformedMultipartJSONLongPromptStreamsCompletely(t *testing.T)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !sink.aborted || len(sink.chunks) != 0 || result.TextCoverage != TextCoverageUnavailable || !result.HasIncompleteReason(IncompleteMultipartUnknownField) {
+		if !sink.aborted || len(sink.chunks) != 0 || len(result.Segments) != 0 ||
+			result.TextBytesScanned != 0 || result.TextCoverage != TextCoverageUnavailable ||
+			!result.HasIncompleteReason(IncompleteMultipartUnknownField) {
 			t.Fatalf("result=%#v aborted=%v chunks=%d", result, sink.aborted, len(sink.chunks))
 		}
 	})
