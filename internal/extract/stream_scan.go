@@ -73,18 +73,19 @@ type valueSummary struct {
 }
 
 type shadowPlanner struct {
-	body       []byte
-	limits     Limits
-	position   int
-	shadow     []byte
-	spans      []plannedText
-	tokens     int
-	nodes      int
-	reason     IncompleteReason
-	nextOwner  uint64
-	roleAware  bool
-	unsafeRole bool
-	trustRoles bool
+	body        []byte
+	limits      Limits
+	position    int
+	shadow      []byte
+	spans       []plannedText
+	tokens      int
+	nodes       int
+	reason      IncompleteReason
+	nextOwner   uint64
+	roleAware   bool
+	missingRole bool
+	unsafeRole  bool
+	trustRoles  bool
 }
 
 // ScanProfiledRequest performs complete envelope validation, builds a bounded
@@ -279,7 +280,7 @@ func scanRequestJSON(body []byte, limits Limits, initial contextKind, trustRoles
 	}
 
 	selected, owned := planner.selected(shadowResult.Parts)
-	result.RoleAware = planner.roleAware && !planner.unsafeRole
+	result.RoleAware = planner.roleAware && !planner.missingRole && !planner.unsafeRole
 	if planner.unsafeRole {
 		result.TextCoverage = TextCoverageUnavailable
 		result.addIncomplete(IncompleteRoleAttribution)
@@ -457,6 +458,16 @@ func (p *shadowPlanner) parseObject(ctx planContext, depth int) (valueSummary, e
 		}
 	}
 	if messageOwner != 0 {
+		hasRoleEligibleSpan := false
+		for index := spanStart; index < len(p.spans); index++ {
+			if p.spans[index].messageOwner == messageOwner && p.spans[index].roleEligible {
+				hasRoleEligibleSpan = true
+				break
+			}
+		}
+		if !roleSeen && hasRoleEligibleSpan {
+			p.missingRole = true
+		}
 		role, ok := normalizedMessageRole(roleValue)
 		if roleSeen && !ok {
 			p.unsafeRole = true
@@ -967,6 +978,9 @@ type streamEmitter struct {
 	limits                Limits
 	sink                  ChunkSink
 	result                *Result
+	textLimit             int
+	textLimitReason       IncompleteReason
+	textLimitCoverage     TextCoverage
 	binaryFailureReason   IncompleteReason
 	binaryFailureCoverage TextCoverage
 	decodeFailureReason   IncompleteReason
@@ -1013,6 +1027,9 @@ func (s *streamEmitter) emitSpan(raw []byte, span plannedText) error {
 	}
 	chunkSize := minInt(s.limits.MaxTextPartBytes, s.limits.MaxTextWindowBytes)
 	chunks := (measurement.length + chunkSize - 1) / chunkSize
+	if !s.canAddTextBytes(measurement.length) {
+		return nil
+	}
 	if s.result.TextBytesScanned > s.limits.MaxTotalTextBytes-measurement.length {
 		s.abort(IncompleteTotalTextLimit, TextCoverageExhausted)
 		return nil
@@ -1075,6 +1092,9 @@ func (s *streamEmitter) emitDecoded(value []byte, span plannedText) error {
 	}
 	chunkSize := minInt(s.limits.MaxTextPartBytes, s.limits.MaxTextWindowBytes)
 	chunks := (len(value) + chunkSize - 1) / chunkSize
+	if !s.canAddTextBytes(len(value)) {
+		return nil
+	}
 	if s.result.TextBytesScanned > s.limits.MaxTotalTextBytes-len(value) {
 		s.abort(IncompleteTotalTextLimit, TextCoverageExhausted)
 		return nil
@@ -1113,6 +1133,22 @@ func (s *streamEmitter) emitDecoded(value []byte, span plannedText) error {
 		offset = end
 	}
 	return nil
+}
+
+func (s *streamEmitter) canAddTextBytes(count int) bool {
+	if s.textLimit <= 0 || s.result.TextBytesScanned <= s.textLimit-count {
+		return true
+	}
+	reason := s.textLimitReason
+	if reason == "" {
+		reason = IncompleteTotalTextLimit
+	}
+	coverage := s.textLimitCoverage
+	if coverage == "" {
+		coverage = TextCoverageExhausted
+	}
+	s.abort(reason, coverage)
+	return false
 }
 
 func (s *streamEmitter) canAddClassificationChunk() bool {

@@ -55,7 +55,7 @@ and verified draft consume that same candidate-level attestation. Protected
 promotion may publish only the unchanged draft.
 
 Current policy identity is `classifier-policy-v3` /
-`577dd913862f2d457eb292bfd02c571e0ea7ff47bc5427bc6be389851ddeb388`;
+`7471f3170ac832f8dc839a7da005c5d4d487c1c60f1a01eb7385e93fff49da5f`;
 scanner identity is `streaming-scanner-v1`; ruleset identity remains `1.0.7` /
 `7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134`.
 

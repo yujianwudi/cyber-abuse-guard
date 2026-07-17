@@ -147,7 +147,7 @@ Inspect `$work/audit/build-metadata.json` and require:
 - `ruleset_version` and `ruleset_sha256` match the standalone ruleset manifest;
 - `classifier_policy_version` equals `classifier-policy-v3` and
   `classifier_policy_sha256` equals
-  `577dd913862f2d457eb292bfd02c571e0ea7ff47bc5427bc6be389851ddeb388`;
+  `7471f3170ac832f8dc839a7da005c5d4d487c1c60f1a01eb7385e93fff49da5f`;
 - `$work/release-evidence-final.md` identifies the same commit, annotated tag,
   rules snapshot, source archive, command-log digest, and artifact hashes.
 - `$work/round6-prerelease-attestation.json` binds the exact Host-tested

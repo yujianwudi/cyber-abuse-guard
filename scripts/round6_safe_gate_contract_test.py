@@ -11,6 +11,7 @@ sys.dont_write_bytecode = True
 
 from round6_safe_gate_contract import (
     BLOCKED_PRERELEASE_MARKER,
+    CONSUMED_BOUNDARY_LINES,
     EXTERNAL_ATTESTATION_SCRIPT_SHA256,
     FORMAL_OPERATION_SCRIPTS,
     FORBIDDEN_TARGETS,
@@ -24,6 +25,7 @@ from round6_safe_gate_contract import (
     validate_blocked_prerelease_workflow,
     validate_candidate_script,
     validate_candidate_workflow,
+    validate_consumed_boundary_files,
     validate_formal_release_workflow,
     validate_frozen_evaluation_tree_script,
     validate_release_mode_contracts,
@@ -201,6 +203,67 @@ jobs:
         with self.assertRaisesRegex(ContractError, "forbidden Make target"):
             audit(root, [entrypoint])
 
+    def test_direct_repository_executable_in_workflow_fails_closed(self):
+        root, entrypoint = self.fixture(
+            "safe:\n\t@true\n",
+            "./tools/run-gate",
+            {"tools/run-gate": "#!/usr/bin/env bash\nexit 0\n"},
+        )
+        with self.assertRaisesRegex(ContractError, "direct repository executable"):
+            audit(root, [entrypoint])
+
+    def test_direct_repository_executable_in_make_recipe_fails_closed(self):
+        root, entrypoint = self.fixture(
+            "safe:\n\t./tools/run-gate\n",
+            scripts={"tools/run-gate": "#!/usr/bin/env bash\nexit 0\n"},
+        )
+        with self.assertRaisesRegex(ContractError, "direct repository executable"):
+            audit(root, [entrypoint])
+
+    def test_direct_repository_executable_in_python_subprocess_fails_closed(self):
+        root, entrypoint = self.fixture(
+            "safe:\n\t@true\n",
+            "python3 scripts/driver.py",
+            {
+                "scripts/driver.py": (
+                    "import subprocess\n"
+                    "subprocess.run(['./tools/run-gate'], check=True)\n"
+                ),
+                "tools/run-gate": "#!/usr/bin/env bash\nexit 0\n",
+            },
+        )
+        with self.assertRaisesRegex(ContractError, "direct repository executable"):
+            audit(root, [entrypoint])
+
+    def test_shell_array_execution_substitutions_fail_closed(self):
+        commands = (
+            'values=("$(./tools/run-gate)")\nmake safe',
+            'values=(\n  "$(./tools/run-gate)"\n)\nmake safe',
+            'values=(`./tools/run-gate`)\nmake safe',
+            'values=( <(./tools/run-gate) )\nmake safe',
+        )
+        for command in commands:
+            with self.subTest(command=command):
+                root, entrypoint = self.fixture("safe:\n\t@true\n", command)
+                with self.assertRaisesRegex(
+                    ContractError, "shell array contains executable substitution"
+                ):
+                    audit(root, [entrypoint])
+
+    def test_shell_array_single_quoted_substitution_is_literal(self):
+        root, entrypoint = self.fixture(
+            "safe:\n\t@true\n",
+            "values=('$(literal)' '<(literal)' '>(literal)' '`literal`')\nmake safe",
+        )
+        targets, _ = audit(root, [entrypoint])
+        self.assertEqual(targets, {"safe"})
+
+    def test_even_trailing_backslashes_do_not_hide_next_command(self):
+        command = "printf '%s' safe " + "\\\\" + "\n$runner\nmake safe"
+        root, entrypoint = self.fixture("safe:\n\t@true\n", command)
+        with self.assertRaisesRegex(ContractError, "dynamic command variable"):
+            audit(root, [entrypoint])
+
     def test_python_dynamic_subprocess_fails_closed(self):
         root, entrypoint = self.fixture(
             "safe:\n\t@true\n",
@@ -289,7 +352,23 @@ jobs:
 
     def test_sparse_checkout_missing_private_pattern_fails(self):
         patterns = tuple(
-            pattern for pattern in ROUND6_SPARSE_PATTERNS if pattern != "!/cmd/*private*"
+            pattern
+            for pattern in ROUND6_SPARSE_PATTERNS
+            if pattern != "!/cmd/**/*private*"
+        )
+        root, entrypoint = self.fixture(
+            "safe:\n\t@true\n",
+            workflow=self.workflow("make safe", patterns=patterns),
+        )
+        with self.assertRaisesRegex(ContractError, "sparse checkout differs"):
+            audit(root, [entrypoint])
+
+    def test_sparse_checkout_missing_consumed_pattern_fails(self):
+        self.assertIn("!/internal/classifier/**/*consumed*", ROUND6_SPARSE_PATTERNS)
+        patterns = tuple(
+            pattern
+            for pattern in ROUND6_SPARSE_PATTERNS
+            if pattern != "!/internal/classifier/**/*consumed*"
         )
         root, entrypoint = self.fixture(
             "safe:\n\t@true\n",
@@ -450,10 +529,48 @@ jobs:
 
     def test_reproducibility_sparse_contract_mismatch_fails(self):
         original, source = self.reproducibility_script()
-        text = original.replace(" '!/testdata/*retired*'", "", 1)
+        text = original.replace(" '!/testdata/**/*retired*'", "", 1)
         self.assertNotEqual(text, original)
         with self.assertRaisesRegex(ContractError, "differs from the workflow contract"):
             validate_round6_reproducibility_script(text, source)
+
+    def test_reproducibility_consumed_sparse_contract_mismatch_fails(self):
+        original, source = self.reproducibility_script()
+        text = original.replace(" '!/internal/classifier/**/*consumed*'", "", 1)
+        self.assertNotEqual(text, original)
+        with self.assertRaisesRegex(ContractError, "differs from the workflow contract"):
+            validate_round6_reproducibility_script(text, source)
+
+    def test_reproducibility_entry_mode_contract_is_locked(self):
+        original, source = self.reproducibility_script()
+        text = original.replace(
+            'reproducibility_mode="${ROUND6_REPRODUCIBILITY_MODE:-release}"',
+            'reproducibility_mode="${ROUND6_REPRODUCIBILITY_MODE:-development}"',
+            1,
+        )
+        self.assertNotEqual(text, original)
+        with self.assertRaisesRegex(ContractError, "entry mode"):
+            validate_round6_reproducibility_script(text, source)
+
+    def test_consumed_nonworkflow_boundaries_are_mutation_locked(self):
+        root = Path(__file__).parent.parent
+        validate_consumed_boundary_files(root)
+        for relative, required_lines in CONSUMED_BOUNDARY_LINES.items():
+            for required in required_lines:
+                with self.subTest(relative=relative, required=required):
+                    temporary = tempfile.TemporaryDirectory()
+                    self.addCleanup(temporary.cleanup)
+                    fixture = Path(temporary.name)
+                    for boundary_relative in CONSUMED_BOUNDARY_LINES:
+                        source = root / boundary_relative
+                        destination = fixture / boundary_relative
+                        destination.parent.mkdir(parents=True, exist_ok=True)
+                        text = source.read_text(encoding="utf-8")
+                        if boundary_relative == relative:
+                            text = text.replace(required + "\n", "", 1)
+                        destination.write_text(text, encoding="utf-8")
+                    with self.assertRaisesRegex(ContractError, "consumed exclusion boundary"):
+                        validate_consumed_boundary_files(fixture)
 
     def test_reproducibility_package_release_cannot_escape_formal_branch(self):
         original, source = self.reproducibility_script()
@@ -650,7 +767,7 @@ jobs:
     def test_candidate_workflow_sparse_boundary_and_gate_are_locked(self):
         original = self.candidate_workflow()
         mutations = (
-            original.replace("            !/testdata/*retired*\n", "", 1),
+            original.replace("            !/testdata/**/*retired*\n", "", 1),
             original.replace(
                 "          python3 -B scripts/round6_safe_gate_contract.py --root .\n",
                 "          true\n",
@@ -661,6 +778,15 @@ jobs:
             self.assertNotEqual(workflow, original)
             with self.assertRaisesRegex(ContractError, "sparse|safe-gate"):
                 validate_candidate_workflow(workflow, Path("round6-candidate.yml"))
+
+    def test_candidate_workflow_consumed_boundary_is_locked(self):
+        original = self.candidate_workflow()
+        workflow = original.replace(
+            "            !/internal/classifier/**/*consumed*\n", "", 1
+        )
+        self.assertNotEqual(workflow, original)
+        with self.assertRaisesRegex(ContractError, "sparse"):
+            validate_candidate_workflow(workflow, Path("round6-candidate.yml"))
 
     def test_candidate_builder_reproducibility_and_clean_names_are_locked(self):
         original = self.candidate_workflow()
@@ -790,7 +916,7 @@ jobs:
                 "",
                 1,
             ),
-            original.replace("            !/testdata/*retired*\n", "", 1),
+            original.replace("            !/testdata/**/*retired*\n", "", 1),
         )
         for workflow in mutations:
             self.assertNotEqual(workflow, original)
@@ -799,6 +925,44 @@ jobs:
                 "exact scalar|artifact transfer|exact reviewed text|sparse checkout",
             ):
                 validate_formal_release_workflow(workflow, Path("release.yml"))
+
+    def test_formal_release_no_checkout_admission_is_required_before_build(self):
+        original = self.formal_release_workflow()
+        mutations = (
+            original.replace("    needs: admission\n", "", 1),
+            original.replace(
+                '          [[ "$(jq -r \'.object.sha\' <<<"$main_ref")" == "$DISPATCH_SHA" ]]\n',
+                "",
+                1,
+            ),
+            original.replace(
+                '              .commit == $commit and .tree == $tree and\n',
+                '              .tree == $tree and\n',
+                1,
+            ),
+            original.replace(
+                "      - name: Admit exact main-tip tag and attested Round6 candidate before checkout\n",
+                "      - name: Checkout unadmitted repository code\n"
+                "        uses: actions/checkout@0123456789abcdef0123456789abcdef01234567\n"
+                "      - name: Admit exact main-tip tag and attested Round6 candidate before checkout\n",
+                1,
+            ),
+        )
+        for workflow in mutations:
+            self.assertNotEqual(workflow, original)
+            with self.assertRaisesRegex(
+                ContractError, "admission|exact reviewed text|exact scalar|no-checkout|keys/order"
+            ):
+                validate_formal_release_workflow(workflow, Path("release.yml"))
+
+    def test_formal_release_consumed_sparse_boundary_is_locked(self):
+        original = self.formal_release_workflow()
+        workflow = original.replace(
+            "            !/internal/classifier/**/*consumed*\n", "", 1
+        )
+        self.assertNotEqual(workflow, original)
+        with self.assertRaisesRegex(ContractError, "sparse checkout"):
+            validate_formal_release_workflow(workflow, Path("release.yml"))
 
     def test_formal_operations_cannot_use_candidate_tag_bypass(self):
         root = Path(__file__).parent.parent
@@ -861,6 +1025,27 @@ jobs:
                 ):
                     validate_release_mode_contracts(fixture)
 
+    def test_release_evidence_uses_exact_immutable_attestation_snapshot_contract(self):
+        root = Path(__file__).parent.parent
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        fixture = Path(temporary.name)
+        (fixture / "scripts").mkdir()
+        names = (
+            "release-common.sh",
+        ) + FORMAL_OPERATION_SCRIPTS + tuple(EXTERNAL_ATTESTATION_SCRIPT_SHA256)
+        for name in names:
+            text = (root / "scripts" / name).read_text(encoding="utf-8")
+            if name == "generate-release-evidence.sh":
+                text = text.replace(
+                    'cp --no-dereference -- "$external_attestation_input" \\\n',
+                    'true # removed immutable attestation snapshot copy\n',
+                    1,
+                )
+            (fixture / "scripts" / name).write_text(text, encoding="utf-8")
+        with self.assertRaisesRegex(ContractError, "immutable attestation snapshot"):
+            validate_release_mode_contracts(fixture)
+
     def test_release_promotion_full_contract_passes(self):
         validate_release_promote_workflow(
             self.release_promote_workflow(), Path("release-promote.yml")
@@ -893,6 +1078,7 @@ jobs:
         protected_lines = (
             '          [[ "$DISPATCH_REF" == refs/tags/v0.15 ]]\n',
             '          [[ "$actual_fingerprint" == "$EXPECTED_ASSET_FINGERPRINT" ]]\n',
+            '          [[ "$actual_metadata_fingerprint" == "$EXPECTED_METADATA_FINGERPRINT" ]]\n',
             "          promoted=\"$(gh api --method PATCH \\\n",
         )
         for protected_line in protected_lines:
@@ -918,6 +1104,15 @@ jobs:
         self.addCleanup(temporary.cleanup)
         source = Path(temporary.name) / "round6-blocked-prerelease.yml"
         validate_blocked_prerelease_workflow(self.blocked_workflow(), source)
+
+    def test_blocked_prerelease_consumed_sparse_boundary_is_locked(self):
+        original = self.blocked_workflow()
+        workflow = original.replace(
+            "            !/internal/classifier/**/*consumed*\n", "", 1
+        )
+        self.assertNotEqual(workflow, original)
+        with self.assertRaisesRegex(ContractError, "sparse"):
+            validate_blocked_prerelease_workflow(workflow, Path("round6-prerelease.yml"))
 
     def test_blocked_prerelease_automatic_trigger_fails(self):
         with self.assertRaisesRegex(ContractError, "manual-only"):

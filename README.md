@@ -38,15 +38,15 @@ classifier.
 | Release decision | **BLOCKED / PENDING HOST AND INDEPENDENT AUDIT** |
 | Candidate bytes | Must be clean exact-source Linux amd64 bytes from the private untagged Actions candidate workflow; clean does not mean released |
 | Merge and release | `main` merge is pending and is required before candidate dispatch; no `v0.15` tag or Release |
-| Validation platform | Linux amd64 only; glibc 2.34 or newer is the documented build target |
+| Validation platform | Linux amd64 only; emitted numeric GLIBC ABI versions must be `<= 2.34` |
 | Out of scope | Windows, macOS, musl/Alpine, local deployment, production validation |
 | CPA Host matrix | Current release target is CPA v7.2.83 only; its real Host + Mock-upstream run is **NOT RUN / PENDING** |
 | Production | Not accessed or modified; no production request, audit database, credential, HMAC key, account pool, or real Provider was used |
 | Scanner identity | `streaming-scanner-v1` |
-| Classifier policy | `classifier-policy-v3` / `577dd913862f2d457eb292bfd02c571e0ea7ff47bc5427bc6be389851ddeb388` |
+| Classifier policy | `classifier-policy-v3` / `7471f3170ac832f8dc839a7da005c5d4d487c1c60f1a01eb7385e93fff49da5f` |
 | Embedded YAML ruleset | `1.0.7` / `7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134` |
 | Audit schema | v3 |
-| Code review | Local final-diff CodeRabbit review reported 0 issues; the remote Draft check was skipped, so no remote or independent approval is claimed |
+| Code review | Remote automated review findings have been addressed and locally verified; no independent approval is claimed |
 
 The historical v10 evaluation remains `CONSUMED / FAIL` and cannot be rerun or
 used for tuning. Engineering checks do not override that methodology result or
@@ -158,6 +158,9 @@ policy.
 
 - The Guard does not persist raw prompts, tool payloads, authorization headers,
   plaintext credentials, uploaded code, or provider account identity.
+- This is a Guard-local guarantee, not an end-to-end Host guarantee. CPA may
+  temporarily spool non-multipart request bodies and may persist raw bodies in
+  Host HTTP error logs; see [Decision output and privacy](docs/RULES.md#decision-output-and-privacy).
 - Audit, metrics, and management status expose fixed fields, counters, and
   identities rather than prompt fragments or offsets.
 - Media URLs are never fetched. No request-supplied code is executed.

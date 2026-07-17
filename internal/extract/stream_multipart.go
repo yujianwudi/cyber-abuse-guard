@@ -71,6 +71,9 @@ func scanTransformedMultipartJSON(body []byte, profile RequestProfile, limits Li
 		limits:                limits,
 		sink:                  sink,
 		result:                &result,
+		textLimit:             limits.MaxMultipartTextBytes,
+		textLimitReason:       IncompleteMultipartTextLimit,
+		textLimitCoverage:     TextCoverageExhausted,
 		binaryFailureReason:   IncompleteMultipartParseError,
 		binaryFailureCoverage: TextCoverageUnavailable,
 		decodeFailureReason:   IncompleteMultipartTextLimit,
@@ -501,7 +504,13 @@ func scanMultipartRequest(body []byte, boundary string, profile RequestProfile, 
 		}
 
 		textFieldCount++
-		if textFieldCount > limits.MaxMultipartTextFields || textFieldCount > limits.MaxTextParts {
+		if textFieldCount > limits.MaxMultipartTextFields {
+			abort(TextCoverageExhausted, IncompleteMultipartTextLimit)
+			_, _ = io.CopyBuffer(io.Discard, part, discardBuffer)
+			_ = part.Close()
+			continue
+		}
+		if textFieldCount > limits.MaxTextParts {
 			abort(TextCoverageExhausted, IncompleteTextPartLimit)
 			_, _ = io.CopyBuffer(io.Discard, part, discardBuffer)
 			_ = part.Close()
@@ -597,7 +606,11 @@ func streamMultipartTextField(part *multipart.Part, fieldID uint64, limits Limit
 			if emitErr != nil || !ok {
 				return ok, emitErr
 			}
-			emitter := streamEmitter{limits: limits, sink: sink, result: result}
+			emitter := streamEmitter{
+				limits: limits, sink: sink, result: result,
+				textLimit: limits.MaxMultipartTextBytes, textLimitReason: IncompleteMultipartTextLimit,
+				textLimitCoverage: TextCoverageExhausted,
+			}
 			for index, variant := range variants {
 				if err := emitter.emitOwned(plannedText{
 					id:         derivedFieldID(fieldID, index),
@@ -628,6 +641,11 @@ func streamMultipartTextField(part *multipart.Part, fieldID uint64, limits Limit
 		if result.TextBytesScanned+len(chunk) > limits.MaxTotalTextBytes-encodedSize {
 			result.TextCoverage = TextCoverageExhausted
 			result.addIncomplete(IncompleteTotalTextLimit)
+			return false, nil
+		}
+		if result.TextBytesScanned+len(chunk) > limits.MaxMultipartTextBytes-encodedSize {
+			result.TextCoverage = TextCoverageExhausted
+			result.addIncomplete(IncompleteMultipartTextLimit)
 			return false, nil
 		}
 		if len(chunk) > 0 && len(chunk)+encodedSize > chunkSize {

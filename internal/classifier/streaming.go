@@ -163,37 +163,39 @@ func RequiredChunkStride(c *Classifier, windowBytes int) int {
 }
 
 type streamingField struct {
-	id              uint64
-	role            extract.Role
-	provenance      extract.SegmentProvenance
-	buffer          []byte
-	head            []byte
-	roleSummary     []byte
-	roleComplete    bool
-	compactCarry    []rune
-	pendingBoundary bool
-	safetyActive    bool
-	safetyQuote     rune
-	safetyClosed    rune
-	safetyBest      Result
-	hasSafetyBest   bool
-	newBytes        int
-	totalBytes      int64
-	best            Result
-	hasBest         bool
-	riskFacts       streamingFieldRiskFacts
-	safetyRiskFacts streamingFieldRiskFacts
-	windowFacts     classificationSignalFacts
+	id               uint64
+	role             extract.Role
+	provenance       extract.SegmentProvenance
+	buffer           []byte
+	head             []byte
+	roleSummary      []byte
+	roleComplete     bool
+	compactCarry     []rune
+	pendingBoundary  bool
+	safetyContext    bool
+	safetyQuote      rune
+	safetyClosed     rune
+	adjacentTail     []byte
+	tailSafetyScoped bool
+	safetyBest       Result
+	hasSafetyBest    bool
+	newBytes         int
+	totalBytes       int64
+	best             Result
+	hasBest          bool
+	riskFacts        streamingFieldRiskFacts
+	safetyRiskFacts  streamingFieldRiskFacts
+	windowFacts      classificationSignalFacts
 }
 
 type streamingFieldSummary struct {
-	role           extract.Role
-	provenance     extract.SegmentProvenance
-	head           []byte
-	tail           []byte
-	sample         []byte
-	sampleComplete bool
-	safetyScoped   bool
+	role             extract.Role
+	provenance       extract.SegmentProvenance
+	head             []byte
+	tail             []byte
+	sample           []byte
+	sampleComplete   bool
+	tailSafetyScoped bool
 }
 
 // streamingFieldRiskFacts contains only bounded classifier signal bits and
@@ -604,6 +606,7 @@ func (s *ScanSession) finishField(field *streamingField) {
 			field.best = field.safetyBest
 			field.hasBest = true
 		}
+		field.tailSafetyScoped = false
 	}
 	field.safetyBest = Result{}
 	field.hasSafetyBest = false
@@ -621,13 +624,18 @@ func (s *ScanSession) finishField(field *streamingField) {
 		s.consider(field.best)
 	}
 
+	tail := tailBytes(field.buffer, s.overlap)
+	if field.provenance == extract.ProvenanceContent &&
+		(field.role == extract.RoleAssistant || field.role == extract.RoleSystem) {
+		tail = field.adjacentTail
+	}
 	summary := &streamingFieldSummary{
-		role:           field.role,
-		provenance:     field.provenance,
-		head:           append([]byte(nil), field.head...),
-		tail:           append([]byte(nil), tailBytes(field.buffer, s.overlap)...),
-		sampleComplete: field.roleComplete && int64(len(field.roleSummary)) == field.totalBytes,
-		safetyScoped:   field.safetyActive,
+		role:             field.role,
+		provenance:       field.provenance,
+		head:             append([]byte(nil), field.head...),
+		tail:             append([]byte(nil), tail...),
+		sampleComplete:   field.roleComplete && int64(len(field.roleSummary)) == field.totalBytes,
+		tailSafetyScoped: field.tailSafetyScoped,
 	}
 	if summary.sampleComplete {
 		summary.sample = append([]byte(nil), field.roleSummary...)
@@ -1002,68 +1010,71 @@ func (s *ScanSession) clearRoleState() {
 }
 
 type streamingRoleWindowDecision struct {
-	text                string
-	classify            bool
-	provisional         bool
-	includeCompactCarry bool
+	normalText       string
+	provisionalText  string
+	adjacentText     string
+	normalCarry      bool
+	provisionalCarry bool
+	tailSafetyScoped bool
 }
 
 func (s *ScanSession) classifyWindow(field *streamingField, text []byte) bool {
 	if len(text) == 0 {
 		return true
 	}
-	if s.coverage.Windows >= s.limits.MaxChunks {
-		s.setCoverage(CoverageBudgetExhausted, CoverageReasonClassificationLimit)
-		return false
-	}
-	s.coverage.Windows++
 	reconstructed := field.pendingBoundary
 	uniqueStart := streamingUniqueWindowStart(field, len(text))
 	decision := prepareStreamingRoleWindow(field, string(text), uniqueStart)
-	windowText := decision.text
-	if decision.includeCompactCarry && len(field.compactCarry) != 0 {
-		// The carry contains only the bounded compact suffix of bytes that were
-		// dropped before this overlapping window. Reintroducing it preserves the
-		// compact automaton across arbitrarily long ignorable separators without
-		// retaining the discarded prompt prefix.
-		windowText = string(field.compactCarry) + " " + windowText
-	}
-	if !decision.classify {
-		if reconstructed {
-			s.coverage.BoundaryReconstructions++
-			field.pendingBoundary = false
+	field.tailSafetyScoped = decision.tailSafetyScoped
+	clear(field.adjacentTail)
+	field.adjacentTail = append(field.adjacentTail[:0], tailBytes([]byte(decision.adjacentText), s.overlap)...)
+	classify := func(windowText string, includeCompactCarry, provisional bool) bool {
+		if includeCompactCarry && len(field.compactCarry) != 0 {
+			// The carry contains only the bounded compact suffix of bytes that were
+			// dropped before this overlapping window. Reintroducing it preserves the
+			// compact automaton across arbitrarily long ignorable separators without
+			// retaining the discarded prompt prefix.
+			windowText = string(field.compactCarry) + " " + windowText
+		}
+		if strings.TrimSpace(windowText) == "" {
+			return true
+		}
+		segment := extract.Segment{Role: field.role, Provenance: field.provenance, Text: windowText}
+		if !shouldClassifyRoleSegment(segment) {
+			return true
+		}
+		if s.coverage.Windows >= s.limits.MaxChunks {
+			s.setCoverage(CoverageBudgetExhausted, CoverageReasonClassificationLimit)
+			return false
+		}
+		s.coverage.Windows++
+		result := s.classifier.classifyWithPolicyCaptured(
+			[]string{segment.Text}, s.mode, s.thresholds, s.policy,
+			field.provenance == extract.ProvenanceToolPayload,
+			&field.windowFacts,
+		)
+		if result.Truncated {
+			s.setCoverage(CoverageUnavailable, CoverageReasonClassifierWindow)
+			return false
+		}
+		if provisional {
+			field.safetyRiskFacts.mergeWindow(s.classifier, field.windowFacts, result)
+			if !field.hasSafetyBest || roleResultBetter(result, field.safetyBest) {
+				field.safetyBest = result
+				field.hasSafetyBest = true
+			}
+			return true
+		}
+		field.riskFacts.mergeWindow(s.classifier, field.windowFacts, result)
+		if !field.hasBest || roleResultBetter(result, field.best) {
+			field.best = result
+			field.hasBest = true
 		}
 		return true
 	}
-	segment := extract.Segment{Role: field.role, Provenance: field.provenance, Text: windowText}
-	if !shouldClassifyRoleSegment(segment) {
-		if reconstructed {
-			s.coverage.BoundaryReconstructions++
-			field.pendingBoundary = false
-		}
-		return true
-	}
-	result := s.classifier.classifyWithPolicyCaptured(
-		[]string{segment.Text}, s.mode, s.thresholds, s.policy,
-		field.provenance == extract.ProvenanceToolPayload,
-		&field.windowFacts,
-	)
-	if result.Truncated {
-		s.setCoverage(CoverageUnavailable, CoverageReasonClassifierWindow)
+	if !classify(decision.normalText, decision.normalCarry, false) ||
+		!classify(decision.provisionalText, decision.provisionalCarry, true) {
 		return false
-	}
-	if decision.provisional {
-		field.safetyRiskFacts.mergeWindow(s.classifier, field.windowFacts, result)
-		if !field.hasSafetyBest || roleResultBetter(result, field.safetyBest) {
-			field.safetyBest = result
-			field.hasSafetyBest = true
-		}
-	} else if !field.hasBest || roleResultBetter(result, field.best) {
-		field.riskFacts.mergeWindow(s.classifier, field.windowFacts, result)
-		field.best = result
-		field.hasBest = true
-	} else {
-		field.riskFacts.mergeWindow(s.classifier, field.windowFacts, result)
 	}
 	if reconstructed {
 		s.coverage.BoundaryReconstructions++
@@ -1093,15 +1104,18 @@ func streamingUniqueWindowStart(field *streamingField, textBytes int) int {
 }
 
 // prepareStreamingRoleWindow preserves the narrow assistant/system refusal
-// semantics across window boundaries. Only an explicit clear safety prefix can
-// activate the state. An open quote is provisional rather than trusted: its
-// bounded per-window classification is committed if the field ends unclosed,
-// or discarded if a real closing quote arrives. Text after that close is always
-// classified normally, so a refusal cannot launder an operational suffix.
+// semantics across window boundaries. A remembered safety context authorizes
+// only explicitly introduced quoted spans; it never suppresses the unquoted
+// prefix or suffix around them. An open quote is provisional rather than
+// trusted: its bounded per-window classification is committed if the field ends
+// unclosed, or discarded if a real closing quote arrives.
 func prepareStreamingRoleWindow(field *streamingField, text string, uniqueStart int) streamingRoleWindowDecision {
+	ordinary := streamingRoleWindowDecision{
+		normalText: text, adjacentText: text, normalCarry: true,
+	}
 	if field == nil || field.provenance != extract.ProvenanceContent ||
 		(field.role != extract.RoleAssistant && field.role != extract.RoleSystem) {
-		return streamingRoleWindowDecision{text: text, classify: true, includeCompactCarry: true}
+		return ordinary
 	}
 	if uniqueStart < 0 {
 		uniqueStart = 0
@@ -1112,15 +1126,15 @@ func prepareStreamingRoleWindow(field *streamingField, text string, uniqueStart 
 	normalizedPrefix := strings.ToLower(roleSafetyPunctuation.Replace(text[:uniqueStart]))
 	normalizedUnique := strings.ToLower(roleSafetyPunctuation.Replace(text[uniqueStart:]))
 	normalized := normalizedPrefix + normalizedUnique
-	if !field.safetyActive {
+	if !field.safetyContext {
 		quotedPrefix, explicitlyQuoted := streamingExplicitQuotedSafetyPrefix(field.role, normalized)
 		if isClearNonUserSafetyContent(field.role, normalized) ||
 			(explicitlyQuoted && isClearNonUserSafetyContent(field.role, quotedPrefix)) {
-			field.safetyActive = true
+			field.safetyContext = true
 		}
 	}
-	if !field.safetyActive {
-		return streamingRoleWindowDecision{text: text, classify: true, includeCompactCarry: true}
+	if !field.safetyContext {
+		return ordinary
 	}
 
 	if field.safetyQuote != 0 {
@@ -1133,7 +1147,9 @@ func prepareStreamingRoleWindow(field *streamingField, text string, uniqueStart 
 			field.hasSafetyBest = false
 			field.safetyRiskFacts.reset()
 			suffix := strings.TrimSpace(normalizedUnique[closeIndex+len(quoteText):])
-			return streamingRoleWindowDecision{text: suffix, classify: suffix != ""}
+			return streamingRoleWindowDecision{
+				normalText: suffix, adjacentText: suffix, tailSafetyScoped: suffix == "",
+			}
 		}
 
 		// The retained overlap may replay the original opener. Exclude everything
@@ -1147,7 +1163,7 @@ func prepareStreamingRoleWindow(field *streamingField, text string, uniqueStart 
 		}
 		provisional = strings.TrimSpace(provisional)
 		return streamingRoleWindowDecision{
-			text: provisional, classify: provisional != "", provisional: true, includeCompactCarry: includeCarry,
+			provisionalText: provisional, adjacentText: provisional, provisionalCarry: includeCarry,
 		}
 	}
 
@@ -1157,36 +1173,55 @@ func prepareStreamingRoleWindow(field *streamingField, text string, uniqueStart 
 		// A just-seen close can occur again only in the replayed overlap. Restrict
 		// the reconstruction to that prefix so an unrelated quote in unique text
 		// cannot extend trusted safety scope.
-		if closeIndex := strings.Index(normalizedPrefix, quoteText); closeIndex >= 0 {
+		if closeIndex := strings.LastIndex(normalizedPrefix, quoteText); closeIndex >= 0 {
 			suffix := strings.TrimSpace(normalizedPrefix[closeIndex+len(quoteText):] + normalizedUnique)
-			return streamingRoleWindowDecision{text: suffix, classify: suffix != ""}
+			return streamingRoleWindowDecision{
+				normalText: suffix, adjacentText: suffix, tailSafetyScoped: suffix == "",
+			}
 		}
 		field.safetyClosed = 0
 	}
 
-	quoted, suffix, quote, closed, found := streamingExplicitQuotedSafetyState(field.role, normalized)
-	if !found {
-		return streamingRoleWindowDecision{text: text, classify: true, includeCompactCarry: true}
-	}
-	if !closed {
-		field.safetyQuote = quote
+	remaining := normalized
+	unquoted := make([]string, 0, 2)
+	for {
+		prefix, quoted, suffix, quote, closed, found := streamingExplicitQuotedSafetyState(field.role, remaining)
+		if !found {
+			if len(unquoted) == 0 {
+				return ordinary
+			}
+			remaining = strings.TrimSpace(remaining)
+			if remaining != "" {
+				unquoted = append(unquoted, remaining)
+			}
+			return streamingRoleWindowDecision{
+				normalText: strings.Join(unquoted, "\n"), adjacentText: remaining, normalCarry: true,
+			}
+		}
+		if prefix = strings.TrimSpace(prefix); prefix != "" {
+			unquoted = append(unquoted, prefix)
+		}
 		field.safetyBest = Result{}
 		field.hasSafetyBest = false
 		field.safetyRiskFacts.reset()
-		quoted = strings.TrimSpace(quoted)
-		return streamingRoleWindowDecision{text: quoted, classify: quoted != "", provisional: true}
+		if !closed {
+			field.safetyQuote = quote
+			return streamingRoleWindowDecision{
+				normalText: strings.Join(unquoted, "\n"), provisionalText: strings.TrimSpace(quoted),
+				adjacentText: strings.TrimSpace(quoted), normalCarry: true,
+			}
+		}
+		field.safetyClosed = quote
+		remaining = strings.TrimSpace(suffix)
+		if remaining == "" {
+			return streamingRoleWindowDecision{
+				normalText: strings.Join(unquoted, "\n"), normalCarry: true, tailSafetyScoped: true,
+			}
+		}
 	}
-	field.safetyClosed = quote
-	field.safetyBest = Result{}
-	field.hasSafetyBest = false
-	field.safetyRiskFacts.reset()
-	if suffix == "" {
-		return streamingRoleWindowDecision{}
-	}
-	return streamingRoleWindowDecision{text: suffix, classify: true}
 }
 
-func streamingExplicitQuotedSafetyState(role extract.Role, text string) (quoted, suffix string, quote rune, closed, found bool) {
+func streamingExplicitQuotedSafetyState(role extract.Role, text string) (prefix, quoted, suffix string, quote rune, closed, found bool) {
 	searchStart := 0
 	for _, clause := range splitStrongSafetyClauses(text) {
 		clause = strings.TrimSpace(clause)
@@ -1208,12 +1243,12 @@ func streamingExplicitQuotedSafetyState(role extract.Role, text string) (quoted,
 			payloadOffset := clauseOffset + len(clause) - len(payload)
 			remainder := text[payloadOffset+len(quoteText):]
 			if closeIndex := strings.Index(remainder, quoteText); closeIndex >= 0 {
-				return "", strings.TrimSpace(remainder[closeIndex+len(quoteText):]), delimiter, true, true
+				return text[:payloadOffset], "", strings.TrimSpace(remainder[closeIndex+len(quoteText):]), delimiter, true, true
 			}
-			return remainder, "", delimiter, false, true
+			return text[:payloadOffset], remainder, "", delimiter, false, true
 		}
 	}
-	return "", "", 0, false, false
+	return "", "", "", 0, false, false
 }
 
 // streamingExplicitQuotedSafetyPrefix returns only the text preceding a
@@ -1316,7 +1351,7 @@ func (s *ScanSession) considerAdjacent(previous, current *streamingFieldSummary)
 			previous.provenance == extract.ProvenanceContent && current.provenance == extract.ProvenanceContent
 		if !userPair {
 			if current.role == extract.RoleUser && current.provenance == extract.ProvenanceContent &&
-				!previous.safetyScoped && metaOverridePartsLinked(string(previous.tail), string(current.head)) {
+				!previous.tailSafetyScoped && metaOverridePartsLinked(string(previous.tail), string(current.head)) {
 				s.considerControlPair(&roleClassificationBatch{session: s}, string(previous.tail), string(current.head))
 			}
 			return
@@ -1382,6 +1417,7 @@ func (s *ScanSession) clearActive() {
 	clear(s.active.head)
 	clear(s.active.roleSummary)
 	clear(s.active.compactCarry)
+	clear(s.active.adjacentTail)
 	s.active.riskFacts.reset()
 	s.active.safetyRiskFacts.reset()
 	clear(s.active.windowFacts.signals)

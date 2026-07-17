@@ -25,7 +25,7 @@ printf '%s\n' \
 printf '%s\n' \
   'package classifier' \
   'const ClassifierPolicyVersion = "classifier-policy-v3"' \
-  'const ClassifierPolicySHA256 = "577dd913862f2d457eb292bfd02c571e0ea7ff47bc5427bc6be389851ddeb388"' \
+  'const ClassifierPolicySHA256 = "7471f3170ac832f8dc839a7da005c5d4d487c1c60f1a01eb7385e93fff49da5f"' \
   >"$fixture/internal/classifier/policy_identity.go"
 printf '%s\n' 'version: "1.0.7"' 'rule_files: [rules.yaml]' >"$fixture/rules/manifest.yaml"
 printf '%s\n' 'version: "1.0.7"' 'rules: []' >"$fixture/rules/rules.yaml"
@@ -70,6 +70,24 @@ run_must_fail() {
     exit 1
   fi
   printf 'candidate release contract rejected as expected: %s\n' "$name"
+}
+
+run_must_fail_with() {
+  local name="$1"
+  local expected="$2"
+  local output
+  shift 2
+  if output="$("$@" 2>&1)"; then
+    printf 'candidate release contract unexpectedly passed: %s\n' "$name" >&2
+    exit 1
+  fi
+  if [[ "$output" != *"$expected"* ]]; then
+    printf 'candidate release contract failed for the wrong reason: %s\n' "$name" >&2
+    printf 'expected diagnostic substring: %s\n' "$expected" >&2
+    printf 'actual output:\n%s\n' "$output" >&2
+    exit 1
+  fi
+  printf 'candidate release contract rejected with the expected diagnostic: %s\n' "$name"
 }
 
 candidate_success() {
@@ -141,6 +159,7 @@ run_must_fail formal-build-without-tag formal_without_tag
 
 git -C "$fixture" tag v0.15
 run_must_fail formal-build-with-lightweight-tag formal_without_tag
+run_must_fail candidate-after-lightweight-formal-tag candidate_success
 git -C "$fixture" tag -d v0.15 >/dev/null
 
 git -C "$fixture" tag -a v0.15 -m 'formal v0.15'
@@ -149,7 +168,9 @@ run_must_fail candidate-after-formal-tag candidate_success
 git -C "$fixture" tag -d v0.15 >/dev/null
 
 sed -i 's/Version = "0\.15"/Version = "0.15.0"/' "$fixture/internal/buildinfo/buildinfo.go"
-run_must_fail three-component-project-alias candidate_success
+run_must_fail_with three-component-project-alias \
+  'cannot read the exact two-component source version from internal/buildinfo/buildinfo.go' \
+  candidate_success
 git -C "$fixture" checkout -q -- internal/buildinfo/buildinfo.go
 
 printf 'all candidate release contracts passed\n'

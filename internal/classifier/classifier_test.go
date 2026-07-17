@@ -880,6 +880,24 @@ func TestAnalyzeDoesNotReturnPromptFragments(t *testing.T) {
 	}
 }
 
+func TestResultJSONOmitsZeroCoverage(t *testing.T) {
+	encoded, err := json.Marshal(Result{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), `"coverage"`) {
+		t.Fatalf("zero coverage was serialized: %s", encoded)
+	}
+
+	encoded, err = json.Marshal(Result{Coverage: Coverage{State: CoverageComplete}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(encoded), `"coverage"`) {
+		t.Fatalf("non-zero coverage was omitted: %s", encoded)
+	}
+}
+
 func TestCommonPastTenseOperationalAbuse(t *testing.T) {
 	t.Parallel()
 	c := newDefaultClassifier(t)

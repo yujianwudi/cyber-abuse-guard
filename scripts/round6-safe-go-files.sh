@@ -28,7 +28,7 @@ while IFS= read -r -d '' file; do
     *) continue ;;
   esac
   case "$file" in
-    internal/classifier/*evaluation*|internal/classifier/*holdout*|internal/classifier/*private*|internal/classifier/*retired*|internal/classifier/*blind*)
+    internal/classifier/*evaluation*|internal/classifier/*holdout*|internal/classifier/*consumed*|internal/classifier/*private*|internal/classifier/*retired*|internal/classifier/*blind*)
       continue
       ;;
   esac

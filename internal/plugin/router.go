@@ -96,7 +96,7 @@ func (p *Plugin) route(state *runtimeState, request pluginapi.ModelRouteRequest)
 			p.counters.incompleteInspections.Add(1)
 			p.counters.incompleteBlocked.Add(1)
 			p.counters.coverageIncomplete.Add(1)
-			p.recordUnknownSourceBlock(state, requestHash, time.Since(started))
+			p.recordUnknownSourceBlock(state, requestHash, request.Stream, time.Since(started))
 			p.pending.put(requestHash, "unknown_source_format")
 			return blockedRouteEnvelope("cyber_abuse_guard_unknown_source_format"), nil
 		}
@@ -130,6 +130,7 @@ func (p *Plugin) route(state *runtimeState, request pluginapi.ModelRouteRequest)
 		MaxClassificationChunks: state.config.EffectiveMaxClassificationChunks(),
 		MaxJSONDepth:            state.config.MaxJSONDepth,
 		MaxTextParts:            state.config.MaxTextParts,
+		MaxMultipartTextBytes:   extract.HardMaxMultipartTextBytes,
 	}
 	var extracted extract.Result
 	var extractErr error
@@ -487,7 +488,7 @@ func (p *Plugin) recordStreamingCounters(extracted extract.Result, result classi
 	}
 }
 
-func (p *Plugin) recordUnknownSourceBlock(state *runtimeState, requestHash string, latency time.Duration) {
+func (p *Plugin) recordUnknownSourceBlock(state *runtimeState, requestHash string, stream bool, latency time.Duration) {
 	if state == nil || state.audit == nil || !state.config.Audit.Enabled {
 		return
 	}
@@ -498,6 +499,7 @@ func (p *Plugin) recordUnknownSourceBlock(state *runtimeState, requestHash strin
 		Mode:             string(state.config.Mode),
 		Category:         "unknown_source_format",
 		SourceFormat:     audit.SourceFormatUnknown,
+		Stream:           stream,
 		Classifier:       state.rulesVersion,
 		Decision:         "block_unknown_source_format",
 		Coverage:         "incomplete",

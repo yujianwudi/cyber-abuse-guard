@@ -175,6 +175,19 @@ func TestRound6UnknownAndProvenUserRolesRemainDistinct(t *testing.T) {
 			t.Fatalf("result=%#v roles=%#v err=%v", result, sink.fieldRole, err)
 		}
 	})
+	t.Run("role-less message keeps mixed request globally untrusted", func(t *testing.T) {
+		body := []byte(`{"messages":[{"content":"unattributed text"},{"role":"system","content":"proven system text"}]}`)
+		sink := newRound6RecordingSink()
+		result, err := ScanProfiledRequest(body, round6JSONHeaders(), RequestProfile{Source: SourceProfileOpenAI}, Limits{}, sink)
+		if err != nil || !result.IsComplete() || result.RoleAware || len(sink.fieldRole) != 2 {
+			t.Fatalf("result=%#v roles=%#v err=%v", result, sink.fieldRole, err)
+		}
+		for fieldID, role := range sink.fieldRole {
+			if role != RoleUnknown {
+				t.Fatalf("field %d role=%q want=%q", fieldID, role, RoleUnknown)
+			}
+		}
+	})
 }
 
 func TestRound6OneLogicalFieldMayUseFiveHundredThirteenChunks(t *testing.T) {
@@ -912,7 +925,7 @@ func TestRound6MultipartLongPromptStreamsWhileFileStaysOpaque(t *testing.T) {
 		body,
 		http.Header{"Content-Type": []string{contentType}},
 		RequestProfile{Source: SourceProfileOpenAIImage},
-		Limits{},
+		Limits{MaxMultipartTextBytes: len(prompt)},
 		sink,
 	)
 	if err != nil {
@@ -923,6 +936,47 @@ func TestRound6MultipartLongPromptStreamsWhileFileStaysOpaque(t *testing.T) {
 	}
 	if sink.joined() != prompt || result.TextBytesScanned != len(prompt) || result.ClassificationChunks < 2 {
 		t.Fatalf("bytes=%d chunks=%d streamed=%d", result.TextBytesScanned, result.ClassificationChunks, len(sink.joined()))
+	}
+}
+
+func TestRound6MultipartSpecificTextLimitsAreEnforced(t *testing.T) {
+	t.Run("text field count", func(t *testing.T) {
+		body, contentType := multipartBody(t, []multipartTestPart{
+			{name: "prompt", value: []byte("first")},
+			{name: "negative_prompt", value: []byte("second")},
+		})
+		sink := newRound6RecordingSink()
+		result, err := ScanProfiledRequest(
+			body, http.Header{"Content-Type": []string{contentType}},
+			RequestProfile{Source: SourceProfileOpenAIImage}, Limits{MaxMultipartTextFields: 1}, sink,
+		)
+		if err != nil || !sink.aborted || result.TextCoverage != TextCoverageExhausted ||
+			!result.HasIncompleteReason(IncompleteMultipartTextLimit) || result.HasIncompleteReason(IncompleteTextPartLimit) {
+			t.Fatalf("result=%#v aborted=%v err=%v", result, sink.aborted, err)
+		}
+	})
+
+	wireBody, wireContentType := multipartBody(t, []multipartTestPart{{name: "prompt", value: []byte("0123456789")}})
+	for _, fixture := range []struct {
+		name        string
+		body        []byte
+		contentType string
+	}{
+		{name: "wire multipart", body: wireBody, contentType: wireContentType},
+		{name: "transformed multipart JSON", body: []byte(`{"prompt":"0123456789"}`), contentType: "multipart/form-data; boundary=stale-cpa-boundary"},
+	} {
+		fixture := fixture
+		t.Run(fixture.name, func(t *testing.T) {
+			sink := newRound6RecordingSink()
+			result, err := ScanProfiledRequest(
+				fixture.body, http.Header{"Content-Type": []string{fixture.contentType}},
+				RequestProfile{Source: SourceProfileOpenAIImage}, Limits{MaxMultipartTextBytes: 8}, sink,
+			)
+			if err != nil || !sink.aborted || result.TextCoverage != TextCoverageExhausted ||
+				!result.HasIncompleteReason(IncompleteMultipartTextLimit) {
+				t.Fatalf("result=%#v aborted=%v err=%v", result, sink.aborted, err)
+			}
+		})
 	}
 }
 
@@ -1039,7 +1093,7 @@ func TestRound6TransformedMultipartJSONLongPromptStreamsCompletely(t *testing.T)
 					body,
 					http.Header{"Content-Type": []string{"multipart/form-data; boundary=stale-cpa-boundary"}},
 					RequestProfile{Source: SourceProfileOpenAIImage},
-					Limits{},
+					Limits{MaxMultipartTextBytes: len(prompt)},
 					sink,
 				)
 				if err != nil {

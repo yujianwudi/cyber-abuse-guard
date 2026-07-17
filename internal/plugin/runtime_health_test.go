@@ -220,6 +220,7 @@ func TestStrictUnknownSourceFormatPersistsPrivacyMinimalAudit(t *testing.T) {
 	rawRequest, err := json.Marshal(pluginapi.ModelRouteRequest{
 		SourceFormat:   "future-provider-v9",
 		RequestedModel: "future-model-with-sensitive-label",
+		Stream:         true,
 		Body:           body,
 	})
 	if err != nil {
@@ -246,7 +247,8 @@ func TestStrictUnknownSourceFormatPersistsPrivacyMinimalAudit(t *testing.T) {
 	}
 	if event["action"] != "block" || event["mode"] != "strict" || event["category"] != "unknown_source_format" ||
 		event["decision"] != "block_unknown_source_format" || event["coverage"] != "incomplete" ||
-		event["incomplete_reason"] != "incomplete_inspection" || event["scanner"] != streamingScannerIdentity {
+		event["incomplete_reason"] != "incomplete_inspection" || event["scanner"] != streamingScannerIdentity ||
+		event["stream"] != true {
 		t.Fatalf("strict unknown source event=%#v", event)
 	}
 	counters := p.counters.snapshot()

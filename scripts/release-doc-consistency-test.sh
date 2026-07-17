@@ -44,7 +44,7 @@ make_fixture() {
         'minimum_independent_evaluation: evaluation-v11' \
         'independent_evaluation_required_status: CONSUMED/PASS' \
         'historical_evaluation_v10_policy: immutable-consumed-fail-not-formal-input' \
-        'formal_bundle_content_policy: exclude-evaluation-holdout-private-blind-retired' \
+        'formal_bundle_content_policy: exclude-evaluation-holdout-consumed-private-blind-retired' \
         >"$fixture/$relative"
     elif [[ "$relative" == CHANGELOG.md ]]; then
       printf '# Changelog\n\n## 0.15 - 2026-07-17\n\nround6-prerelease-attestation.json\nformal-release-attestation.json\n' >"$fixture/$relative"
@@ -100,6 +100,11 @@ cp -a "$work/pass" "$work/alias-policy"
 sed -i 's/version_alias_policy: reject-v0.15.0/version_alias_policy: allow-v0.15.0/' \
   "$work/alias-policy/docs/RELEASE_POLICY.md"
 must_fail alias-policy "$work/alias-policy"
+
+cp -a "$work/pass" "$work/duplicate-policy-key"
+printf '%s\n' 'version_alias_policy: allow-v0.15.0' \
+  >>"$work/duplicate-policy-key/docs/RELEASE_POLICY.md"
+must_fail duplicate-policy-key "$work/duplicate-policy-key"
 
 cp -a "$work/pass" "$work/unlabeled-historical-corpus"
 sed -i 's/^# Historical /# /' \

@@ -393,31 +393,83 @@ GITHUB_EXPRESSION = re.compile(r"\$\{\{(.*?)\}\}", re.DOTALL)
 SENSITIVE_EXPRESSION_CONTEXT = re.compile(r"(?i)(?<![A-Za-z0-9_])(?:github|secrets)(?![A-Za-z0-9_])")
 ROUND6_SPARSE_PATTERNS = (
     "/*",
-    "!/cmd/evaluation-*",
-    "!/cmd/holdout-*",
-    "!/cmd/*private*",
-    "!/cmd/*blind*",
-    "!/cmd/*retired*",
-    "!/docs/reports/EVALUATION_*",
-    "!/docs/reports/HOLDOUT_*",
-    "!/docs/reports/HOLDOUT_REPORT.md",
+    "!/cmd/**/*evaluation*",
+    "!/cmd/**/*holdout*",
+    "!/cmd/**/*consumed*",
+    "!/cmd/**/*private*",
+    "!/cmd/**/*blind*",
+    "!/cmd/**/*retired*",
+    "!/docs/**/*EVALUATION_*",
+    "!/docs/**/*HOLDOUT_*",
+    "!/docs/**/*HOLDOUT_REPORT.md",
+    "!/docs/**/*consumed*",
     "!/docs/**/*private*",
     "!/docs/**/*blind*",
     "!/docs/**/*retired*",
-    "!/internal/classifier/evaluation_*",
-    "!/internal/classifier/holdout_*",
-    "!/internal/classifier/*private*",
-    "!/internal/classifier/*blind*",
-    "!/internal/classifier/*retired*",
-    "!/testdata/evaluation-*",
-    "!/testdata/holdout*",
-    "!/testdata/*private*",
-    "!/testdata/*blind*",
-    "!/testdata/*retired*",
+    "!/internal/classifier/**/*evaluation*",
+    "!/internal/classifier/**/*holdout*",
+    "!/internal/classifier/**/*consumed*",
+    "!/internal/classifier/**/*private*",
+    "!/internal/classifier/**/*blind*",
+    "!/internal/classifier/**/*retired*",
+    "!/testdata/**/*evaluation*",
+    "!/testdata/**/*holdout*",
+    "!/testdata/**/*consumed*",
+    "!/testdata/**/*private*",
+    "!/testdata/**/*blind*",
+    "!/testdata/**/*retired*",
 )
+CONSUMED_BOUNDARY_LINES = {
+    ".gitattributes": (
+        "/cmd/**/*consumed* export-ignore",
+        "/docs/**/*consumed* export-ignore",
+        "/internal/classifier/**/*consumed* export-ignore",
+        "/testdata/**/*consumed* export-ignore",
+    ),
+    "scripts/release-common.sh": (
+        "    cmd/*evaluation*|cmd/*holdout*|cmd/*consumed*|cmd/*private*|cmd/*blind*|cmd/*retired*|\\",
+        "    docs/*consumed*|docs/*private*|docs/*blind*|docs/*retired*|\\",
+        "    internal/classifier/*consumed*|internal/classifier/*private*|internal/classifier/*blind*|internal/classifier/*retired*|\\",
+        "    testdata/*evaluation*|testdata/*holdout*|testdata/*consumed*|testdata/*private*|testdata/*blind*|testdata/*retired*)",
+    ),
+    "scripts/package-source-release.sh": (
+        "  ':(exclude,glob)cmd/**/*consumed*'",
+        "  ':(exclude,glob)docs/**/*consumed*'",
+        "  ':(exclude,glob)internal/classifier/**/*consumed*'",
+        "  ':(exclude,glob)testdata/**/*consumed*'",
+        "if grep -Eiq '(^|/)[^/]*(evaluation|holdout|consumed|private|blind|retired)[^/]*($|/)' <<<\"$listing\"; then",
+    ),
+    "Makefile": (
+        "\t\t':(exclude,glob)cmd/**/*consumed*' \\",
+        "\t\t':(exclude,glob)docs/**/*consumed*' \\",
+        "\t\t':(exclude,glob)internal/classifier/**/*consumed*' \\",
+        "\t\t':(exclude,glob)testdata/**/*consumed*' \\",
+    ),
+    "scripts/source-release-exclusion-contract-test.sh": (
+        "  cmd/safe/nested-consumed",
+        "  '!/cmd/**/*consumed*'",
+        "  '!/internal/classifier/**/*consumed*'",
+        "  '!/testdata/**/*consumed*'",
+        'git -C "$sparse_fixture" sparse-checkout set --no-cone "${sparse_patterns[@]}"',
+        "if grep -Eiq '(^|/)[^/]*(evaluation|holdout|consumed|private|blind|retired)[^/]*($|/)' <<<\"$listing\"; then",
+    ),
+    "scripts/round6-safe-go-files.sh": (
+        "    internal/classifier/*evaluation*|internal/classifier/*holdout*|internal/classifier/*consumed*|internal/classifier/*private*|internal/classifier/*retired*|internal/classifier/*blind*)",
+    ),
+}
 ROUND6_REPRODUCIBILITY_SCRIPT_SHA256 = (
-    "76c85ccef22a46724c5c464a21b2a73f65d984467756f903b360e3d474ce3715"
+    "fe26b19139d0cc88a3ff94879e34f63f62e2fb3158c1d0e62e9df5196fd19392"
 )
+ROUND6_REPRODUCIBILITY_ENTRY_MODE_CONTRACT = """reproducibility_mode="${ROUND6_REPRODUCIBILITY_MODE:-release}"
+case "$reproducibility_mode" in
+  development)
+    [[ "${RELEASE_CANDIDATE_BUILD:-0}" == 0 ]] || \\
+      release_die "development reproducibility mode cannot enable candidate builds"
+    ALLOW_DIRTY_BUILD=1
+    ;;
+  release) ;;
+  *) release_die "ROUND6_REPRODUCIBILITY_MODE must be release or development" ;;
+esac"""
 ROUND6_REPRODUCIBILITY_MODE_CONTRACT = """case "$RELEASE_BUILD_KIND" in
   candidate)
     release_assert_candidate_build
@@ -653,7 +705,7 @@ CANDIDATE_STEP_RUN_SHA256 = {
     ("admission", 0): "1010c71654565731433ae574c6ac875b36bcd7c164bbab8aed6fb9d56932108b",
     ("admission", 1): "7f1817ec7b567df4be63fafd9ee2b2347ac37e01982e41ee3338f64c79cae81a",
     ("build", 1): "b38e1f3a74567d8390bde6390c75c7e96a3bd0d5bc13de0e6a7dbbcfeec0a2fe",
-    ("build", 2): "511fa93896dac8f2d1da9c08e746a60f88089218d47d25627f29a8b836ff599c",
+    ("build", 2): "8966c407a8e05f9a88182c2130b24b907e58dd1d874d55fe4f86c9bfedef6457",
     ("build", 4): "e94a8d7e6ec6ca9c30a512aa4f6bd8eb93dd3412b406ea2f64a7d2b91e75022f",
     ("build", 5): "43a1e2b51527edd141c9b4c53ac0c11775f0b8b9948054e5d2f329221a555e60",
     ("build", 6): "f99bfc855f5afa25f227afce3800b41093b1858f9ae4b8027378ebf530470cf8",
@@ -734,7 +786,7 @@ CANDIDATE_ARTIFACTS = (
 )
 CANDIDATE_SCRIPT_SHA256 = {
     "round6-candidate-artifacts.sh": "11a2a358c3154bd8665f6b5ae27d84c6f97fd33763f9cc602b38425c93bce659",
-    "release-candidate-contract-test.sh": "586acef439504dc758ee4fa241fc37f7460caedfdd5f043c3111eea5fa44d484",
+    "release-candidate-contract-test.sh": "97071f60402b835da9e35f3828838315c1b771190d4511eb1a07874aab5558a1",
 }
 FORMAL_OPERATION_SCRIPTS = (
     "formal-release.sh",
@@ -766,6 +818,7 @@ FORMAL_RELEASE_ARTIFACTS = (
     "dist/formal-release-attestation.json.sha256",
 )
 FORMAL_RELEASE_STEP_RUN_SHA256 = {
+    ("admission", 0): "16f8ebb4a21b31c6c7dca3388d6fffb92b19d2fe743fdfb7b900a78b8a22ff29",
     ("build-and-verify", 2): "5bc38a90928a7309be0be55b3834ebf28c2eee7c2fd290ef19bf6d3a8dd3857d",
     ("build-and-verify", 3): "3177c58474d2bd9ee7246a79c02d77fc4afac7b26e13f3193cd456f9cadbb2dd",
     ("build-and-verify", 4): "e2194c0fb1cc2681adff35d6c0a12e10540e17bb7495597ac1f3ccb992bbc53f",
@@ -778,9 +831,9 @@ FORMAL_RELEASE_STEP_RUN_SHA256 = {
     ("publish", 2): "1574a0d0ac458f3e12ab6052955d1027955a8cfad76f5773547da4d4bcb85fb2",
 }
 PROMOTE_STEP_RUN_SHA256 = {
-    ("verify", 0): "5b97351c8f087b8e1d8d2a20c64d7e321302199e9c3e912db4e2459f3ac10e6c",
+    ("verify", 0): "23790f44480f0b622850f051f03c2d50fe343e5bbed41b8bdf7a94ac3f4a9af1",
     ("verify", 2): "81f3c306c6e57ff95c598cb10fcc9c9bd185361a1bb753ab98de0e4e4a8df813",
-    ("promote", 0): "43f534b666b5a2439a06a8d0f7e37390fb100883acaffc73604a01bd6b198ea9",
+    ("promote", 0): "d04544c3a61f3bae7810179742dbd326ae291aa02791347eb4f2ebb5dfccd4b1",
 }
 REPRODUCIBILITY_WRAPPER_SCRIPT = "scripts/reproducibility-test.sh"
 REPRODUCIBILITY_WRAPPER_SCRIPT_SHA256 = (
@@ -794,10 +847,22 @@ EXTERNAL_ATTESTATION_SCRIPT_SHA256 = {
     "verify-external-release-attestation.sh": "af83353e3fd44cd01adcd0830de1f69237d8bb360152ff9777301f1cbab68862",
     "verify-external-release-attestation-test.sh": "5708ec5ce91847d3c8a150b872da24c135de3aeeadc90330c58a1e255e594a19",
 }
+GENERATE_RELEASE_EVIDENCE_SCRIPT_SHA256 = "af5f8ddc3e695b07e85c74bc10410777ce59c6232d740e61d65df184d3d79ab2"
 
 
 class ContractError(RuntimeError):
     pass
+
+
+def validate_consumed_boundary_files(root: Path) -> None:
+    for relative, required_lines in CONSUMED_BOUNDARY_LINES.items():
+        source = root / relative
+        lines = read_regular_text(source, root).splitlines()
+        for required in required_lines:
+            if lines.count(required) != 1:
+                raise ContractError(
+                    f"consumed exclusion boundary differs from the reviewed contract: {relative}"
+                )
 
 
 def yaml_location(node: Node | None, source: Path) -> str:
@@ -1314,6 +1379,202 @@ def command_indexes(tokens: list[str]) -> set[int]:
     return indexes
 
 
+SHELL_NEUTRAL_STATE = (("normal", 0),)
+
+
+def shell_state_neutral(state: tuple[tuple[str, int], ...]) -> bool:
+    return state == SHELL_NEUTRAL_STATE
+
+
+def scan_shell_command_fragment(
+    text: str, state: tuple[tuple[str, int], ...]
+) -> tuple[str, tuple[tuple[str, int], ...]]:
+    contexts = [[mode, depth] for mode, depth in state]
+    index = 0
+    code_end = len(text)
+    while index < len(text):
+        mode, depth = contexts[-1]
+        character = text[index]
+        if mode == "single":
+            if character == "'":
+                contexts[-1][0] = "normal"
+            index += 1
+            continue
+        if mode == "backtick":
+            if character == "\\":
+                index += 2 if index + 1 < len(text) else 1
+                continue
+            if character == "`":
+                contexts.pop()
+                index += 1
+                continue
+            if character == "$" and text[index + 1 : index + 2] == "(":
+                contexts.append(["normal", 1])
+                index += 2
+                continue
+            index += 1
+            continue
+        if character == "\\":
+            index += 2 if index + 1 < len(text) else 1
+            continue
+        if character == "$" and text[index + 1 : index + 2] == "(":
+            contexts.append(["normal", 1])
+            index += 2
+            continue
+        if mode == "double":
+            if character == '"':
+                contexts[-1][0] = "normal"
+            elif character == "`":
+                contexts.append(["backtick", -1])
+            index += 1
+            continue
+        if character == "'":
+            contexts[-1][0] = "single"
+            index += 1
+            continue
+        if character == '"':
+            contexts[-1][0] = "double"
+            index += 1
+            continue
+        if character == "`":
+            contexts.append(["backtick", -1])
+            index += 1
+            continue
+        if (
+            character == "#"
+            and (index == 0 or text[index - 1].isspace() or text[index - 1] in ";|&(")
+        ):
+            code_end = index
+            break
+        if character in "<>" and text[index + 1 : index + 2] == "(":
+            contexts.append(["normal", 1])
+            index += 2
+            continue
+        if depth > 0 and character == "(":
+            contexts[-1][1] += 1
+        elif depth > 0 and character == ")":
+            contexts[-1][1] -= 1
+            if contexts[-1][1] == 0:
+                contexts.pop()
+        index += 1
+    return text[:code_end].rstrip(), tuple((mode, depth) for mode, depth in contexts)
+
+
+def shell_line_continuation(
+    text: str, state: tuple[tuple[str, int], ...]
+) -> tuple[str, tuple[tuple[str, int], ...], bool]:
+    code, next_state = scan_shell_command_fragment(text, state)
+    trailing = len(code) - len(code.rstrip("\\"))
+    in_single = next_state[-1][0] == "single"
+    return code, next_state, trailing % 2 == 1 and not in_single
+
+
+def scan_shell_array_fragment(
+    text: str, source: Path, state: tuple[bool, bool]
+) -> tuple[bool, bool]:
+    in_single, in_double = state
+    index = 0
+    while index < len(text):
+        character = text[index]
+        if in_single:
+            if character == "'":
+                in_single = False
+            index += 1
+            continue
+        if character == "\\":
+            index += 2 if index + 1 < len(text) else 1
+            continue
+        if character == "'" and not in_double:
+            in_single = True
+            index += 1
+            continue
+        if character == '"':
+            in_double = not in_double
+            index += 1
+            continue
+        if (
+            character == "#"
+            and not in_double
+            and (index == 0 or text[index - 1].isspace() or text[index - 1] in ";|&(")
+        ):
+            break
+        if character == "`" or (
+            character == "$"
+            and text[index + 1 : index + 2] == "("
+            and text[index + 1 : index + 3] != "(("
+        ) or (
+            not in_double
+            and character in "<>"
+            and text[index + 1 : index + 2] == "("
+        ):
+            raise ContractError(
+                f"shell array contains executable substitution that cannot be audited safely: {source}"
+            )
+        index += 1
+    return in_single, in_double
+
+
+def auditable_shell_commands(text: str, source: Path) -> tuple[str, ...]:
+    commands: list[str] = []
+    pending = ""
+    heredocs: list[tuple[str, bool]] = []
+    in_array = False
+    array_state = (False, False)
+    command_state = SHELL_NEUTRAL_STATE
+    array_start = re.compile(
+        r"^(?:(?:local|readonly|declare)(?:\s+-[aA])?\s+)?"
+        r"[A-Za-z_][A-Za-z0-9_]*\+?=\("
+    )
+    for raw in text.splitlines():
+        if heredocs:
+            delimiter, strip_tabs = heredocs[0]
+            candidate = raw.lstrip("\t") if strip_tabs else raw
+            if candidate == delimiter:
+                heredocs.pop(0)
+                if not heredocs and shell_state_neutral(command_state) and pending:
+                    commands.append(pending)
+                    pending = ""
+            continue
+
+        line = raw.strip()
+        if not line or (line.startswith("#") and shell_state_neutral(command_state)):
+            continue
+        if in_array:
+            array_state = scan_shell_array_fragment(line, source, array_state)
+            if array_state == (False, False) and re.fullmatch(
+                r"\)\s*;?(?:\s+#.*)?", line
+            ):
+                in_array = False
+            continue
+        if shell_state_neutral(command_state) and not pending and array_start.match(line):
+            array_state = scan_shell_array_fragment(line, source, (False, False))
+            if array_state != (False, False) or not re.search(
+                r"\)\s*;?(?:\s+#.*)?$", line
+            ):
+                in_array = True
+            continue
+
+        line, command_state, continued = shell_line_continuation(line, command_state)
+        if not line:
+            continue
+        if continued:
+            line = line[:-1].rstrip()
+        pending = f"{pending} {line}".strip() if pending else line
+        for match in HEREDOC.finditer(line):
+            delimiter = match.group("delimiter")
+            if delimiter[:1] in {"'", '"'}:
+                delimiter = delimiter[1:-1]
+            heredocs.append((delimiter, match.group("strip_tabs") == "-"))
+        if continued or heredocs or not shell_state_neutral(command_state):
+            continue
+        commands.append(pending)
+        pending = ""
+
+    if pending or heredocs or in_array or not shell_state_neutral(command_state):
+        raise ContractError(f"unterminated shell construct cannot be audited safely: {source}")
+    return tuple(commands)
+
+
 def reject_dynamic_dispatch(text: str, source: Path) -> set[str]:
     if re.search(r"(?m)(?:^|[;&|])\s*(?:env\s+[^\n;&|]*\s+)?(?:bash|sh)\s+[^\n;&|]*-c(?:\s|$)", text):
         raise ContractError(f"dynamic shell dispatch cannot be audited safely: {source}")
@@ -1329,11 +1590,9 @@ def reject_dynamic_dispatch(text: str, source: Path) -> set[str]:
     variable_command = re.compile(
         r"^\s*(?:(?:if|while|until|then)\s+|!\s+)?[\"']?\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?"
     )
-    previous_continues = False
-    for line in text.splitlines():
-        current_continues = line.rstrip().endswith("\\")
+    for line in auditable_shell_commands(text, source):
         match = variable_command.search(line)
-        if match and not previous_continues and not extract_script_references(line):
+        if match and not extract_script_references(line):
             variable = match.group(1)
             if variable in static_variables:
                 scripts.add(static_variables[variable])
@@ -1342,13 +1601,23 @@ def reject_dynamic_dispatch(text: str, source: Path) -> set[str]:
                     f"dynamic command variable cannot be audited safely in {source}: ${variable}"
                 )
 
-        if not re.search(r"(?:^|\s)(?:python(?:3(?:\.\d+)?)?|bash|sh|source|\.)(?:\s|$)", line):
-            previous_continues = current_continues
+        if not re.search(
+            r"(?:^|\s)(?:python(?:3(?:\.\d+)?)?|bash|sh|source|\.)(?:\s|$)",
+            line,
+        ) and not re.search(r"(?:^|[\s;&|])\.\.?/", line):
             continue
         tokens = shell_tokens(line)
         for index in command_indexes(tokens):
             token = tokens[index]
             name = Path(token).name
+            if token.startswith(("./", "../")):
+                references = extract_script_references(token)
+                normalized = token.removeprefix("./")
+                if len(references) != 1 or normalized not in references:
+                    raise ContractError(
+                        f"direct repository executable cannot be audited safely in {source}: {token!r}"
+                    )
+                scripts.update(references)
             if re.fullmatch(r"python(?:3(?:\.\d+)?)?", name):
                 script = interpreter_script(tokens, index, "python")
                 if script:
@@ -1361,7 +1630,6 @@ def reject_dynamic_dispatch(text: str, source: Path) -> set[str]:
                 script = interpreter_script(tokens, index, "shell")
                 if script:
                     scripts.add(script)
-        previous_continues = current_continues
     return scripts
 
 
@@ -1983,7 +2251,8 @@ def validate_release_mode_contracts(root: Path) -> None:
     for required in (
         '[[ "$RELEASE_BUILD_KIND" == candidate ]]',
         '[[ "$RELEASE_DIRTY" == false ]]',
-        '[[ "$(git -C "$RELEASE_ROOT" cat-file -t "refs/tags/$formal_tag" 2>/dev/null || true)" != tag ]]',
+        'if git -C "$RELEASE_ROOT" show-ref --verify --quiet "refs/tags/$formal_tag"; then',
+        'release_die "candidate builds are forbidden after any formal tag ref $formal_tag exists"',
     ):
         if required not in candidate_body:
             raise ContractError(
@@ -2015,6 +2284,13 @@ def validate_release_mode_contracts(root: Path) -> None:
             raise ContractError(
                 f"formal operation {script_name} may not enable candidate build mode"
             )
+
+    evidence_path = root / "scripts/generate-release-evidence.sh"
+    evidence_text = read_regular_text(evidence_path, root)
+    if hashlib.sha256(evidence_text.encode("utf-8")).hexdigest() != GENERATE_RELEASE_EVIDENCE_SCRIPT_SHA256:
+        raise ContractError(
+            "release evidence generator must match the immutable attestation snapshot contract"
+        )
 
 
 def validate_run_hash(
@@ -2073,15 +2349,80 @@ def validate_formal_release_workflow(text: str, source: Path) -> None:
         require_yaml_scalar(env[env_name], SAFE_WORKFLOW_ENV[env_name], source, f"env.{env_name}")
 
     jobs = require_yaml_keys(
-        root["jobs"], ("build-and-verify", "publish"), source, "jobs"
+        root["jobs"], ("admission", "build-and-verify", "publish"), source, "jobs"
     )
+    admission_path = "jobs.admission"
+    admission = require_yaml_keys(
+        jobs["admission"],
+        ("permissions", "runs-on", "timeout-minutes", "steps"),
+        source,
+        admission_path,
+    )
+    admission_permissions = require_yaml_keys(
+        admission["permissions"], ("contents",), source, f"{admission_path}.permissions"
+    )
+    require_yaml_scalar(
+        admission_permissions["contents"],
+        "read",
+        source,
+        f"{admission_path}.permissions.contents",
+    )
+    require_yaml_scalar(
+        admission["runs-on"], "ubuntu-24.04", source, f"{admission_path}.runs-on"
+    )
+    require_yaml_scalar(
+        admission["timeout-minutes"],
+        "10",
+        source,
+        f"{admission_path}.timeout-minutes",
+        tag="tag:yaml.org,2002:int",
+    )
+    admission_steps = yaml_sequence(admission["steps"], source, f"{admission_path}.steps")
+    if len(admission_steps) != 1:
+        raise ContractError("formal release admission must contain exactly one no-checkout step")
+    admission_step = require_yaml_keys(
+        admission_steps[0],
+        ("name", "env", "run"),
+        source,
+        f"{admission_path}.steps[0]",
+    )
+    require_yaml_scalar(
+        admission_step["name"],
+        "Admit exact main-tip tag and attested Round6 candidate before checkout",
+        source,
+        f"{admission_path}.steps[0].name",
+    )
+    expected_admission_env = (
+        ("GH_TOKEN", "${{ github.token }}"),
+        ("DISPATCH_REF", "${{ github.ref }}"),
+        ("DISPATCH_SHA", "${{ github.sha }}"),
+        ("WORKFLOW_REF", "${{ github.workflow_ref }}"),
+        ("WORKFLOW_SHA", "${{ github.workflow_sha }}"),
+    )
+    if exact_string_mapping(
+        admission_step["env"], source, f"{admission_path}.steps[0].env"
+    ) != expected_admission_env:
+        raise ContractError("formal release no-checkout admission environment changed")
+    admission_run = yaml_scalar(
+        admission_step["run"], source, f"{admission_path}.steps[0].run"
+    )
+    validate_run_hash(
+        admission_step,
+        FORMAL_RELEASE_STEP_RUN_SHA256[("admission", 0)],
+        source,
+        f"{admission_path}.steps[0]",
+    )
+    if re.search(r"(?i)actions/checkout@|(?:^|[\s;&|])(?:\./)?scripts/|(?:^|[\s;&|])(?:g?make)(?=\s|$)", admission_run):
+        raise ContractError("formal release admission must remain no-checkout and repository-code-free")
+
     build_path = "jobs.build-and-verify"
     build = require_yaml_keys(
         jobs["build-and-verify"],
-        ("permissions", "env", "runs-on", "timeout-minutes", "steps"),
+        ("needs", "permissions", "env", "runs-on", "timeout-minutes", "steps"),
         source,
         build_path,
     )
+    require_yaml_scalar(build["needs"], "admission", source, f"{build_path}.needs")
     build_permissions = require_yaml_keys(
         build["permissions"], ("actions", "contents"), source, f"{build_path}.permissions"
     )
@@ -2493,7 +2834,7 @@ def validate_release_promote_workflow(text: str, source: Path) -> None:
     )
     outputs = require_yaml_keys(
         verify["outputs"],
-        ("release_id", "asset_fingerprint", "formal_run_id"),
+        ("release_id", "asset_fingerprint", "metadata_fingerprint", "formal_run_id"),
         source,
         "jobs.verify.outputs",
     )
@@ -2505,6 +2846,12 @@ def validate_release_promote_workflow(text: str, source: Path) -> None:
         "${{ steps.verify.outputs.asset_fingerprint }}",
         source,
         "jobs.verify.outputs.asset_fingerprint",
+    )
+    require_yaml_scalar(
+        outputs["metadata_fingerprint"],
+        "${{ steps.verify.outputs.metadata_fingerprint }}",
+        source,
+        "jobs.verify.outputs.metadata_fingerprint",
     )
     require_yaml_scalar(
         outputs["formal_run_id"],
@@ -2629,6 +2976,7 @@ def validate_release_promote_workflow(text: str, source: Path) -> None:
         ("GH_TOKEN", "${{ github.token }}"),
         ("RELEASE_ID", "${{ needs.verify.outputs.release_id }}"),
         ("EXPECTED_ASSET_FINGERPRINT", "${{ needs.verify.outputs.asset_fingerprint }}"),
+        ("EXPECTED_METADATA_FINGERPRINT", "${{ needs.verify.outputs.metadata_fingerprint }}"),
         ("EXPECTED_COMMIT", "${{ inputs.expected_commit }}"),
     )
     if exact_string_mapping(promote_step["env"], source, "jobs.promote.steps[0].env") != expected_promote_env:
@@ -3326,7 +3674,7 @@ def unwrap_shell_command(segment: list[str]) -> tuple[str, list[str]] | None:
         break
     if cursor >= len(segment):
         return None
-    return Path(segment[cursor]).name, segment[cursor + 1 :]
+    return segment[cursor], segment[cursor + 1 :]
 
 
 def option_subcommand(args: list[str], value_options: set[str]) -> str | None:
@@ -3353,7 +3701,8 @@ def mutating_command_reason(segment: list[str]) -> str | None:
     unwrapped = unwrap_shell_command(segment)
     if unwrapped is None:
         return None
-    executable, args = unwrapped
+    executable_path, args = unwrapped
+    executable = Path(executable_path).name
     if executable in {"sh", "bash", "dash", "zsh"} and any(
         token == "-c"
         or (token.startswith("-") and not token.startswith("--") and "c" in token[1:])
@@ -3669,6 +4018,11 @@ def validate_round6_reproducibility_script(text: str, source: Path) -> None:
     if patterns != ROUND6_SPARSE_PATTERNS:
         raise ContractError(
             f"Round6 reproducibility sparse checkout differs from the workflow contract: {source}"
+        )
+    if text.count(ROUND6_REPRODUCIBILITY_ENTRY_MODE_CONTRACT) != 1:
+        raise ContractError(
+            "Round6 reproducibility entry mode must keep development separate from release: "
+            f"{source}"
         )
     if text.count(ROUND6_REPRODUCIBILITY_MODE_CONTRACT) != 1:
         raise ContractError(
@@ -3987,6 +4341,8 @@ def default_entrypoints(root: Path) -> list[Path]:
 
 def audit(root: Path, entrypoints: list[Path]) -> tuple[set[str], set[str]]:
     root = root.resolve()
+    if (root / ".github/workflows/round6-candidate.yml").exists():
+        validate_consumed_boundary_files(root)
     makefile_text = read_regular_text(root / "Makefile", root)
     dependencies, recipes, dynamic_dependencies = parse_makefile(makefile_text)
     validate_release_mode_contracts(root)

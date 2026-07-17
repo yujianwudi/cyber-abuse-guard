@@ -34,6 +34,7 @@ jobs:
     outputs:
       release_id: ${{ steps.verify.outputs.release_id }}
       asset_fingerprint: ${{ steps.verify.outputs.asset_fingerprint }}
+      metadata_fingerprint: ${{ steps.verify.outputs.metadata_fingerprint }}
       formal_run_id: ${{ steps.verify.outputs.formal_run_id }}
     steps:
       - name: Verify immutable draft, provenance, and release assets
@@ -161,6 +162,9 @@ jobs:
             "$(jq -r '.artifacts.store_zip_sha256' "$formal")" ]]
           [[ "$(sha256sum "$verify_dir/release-evidence-final.md" | awk '{print $1}')" == \
             "$(jq -r '.artifacts.release_evidence_sha256' "$formal")" ]]
+          jq -e --rawfile reviewed_body "$verify_dir/release-evidence-final.md" \
+            '.body == $reviewed_body and (.target_commitish | type == "string" and length > 0)' \
+            <<<"$release" >/dev/null
 
           formal_run_id="$(jq -r '.workflow.run_id' "$formal")"
           formal_run="$(gh api \
@@ -179,8 +183,12 @@ jobs:
           release_id="$(jq -er '.id | select(type == "number")' <<<"$release")"
           asset_fingerprint="$(jq -S -c '[.assets[] | {id,name,size,digest,state}] | sort_by(.name)' \
             <<<"$release" | sha256sum | awk '{print $1}')"
+          metadata_fingerprint="$(jq -S -c \
+            '{tag_name,name,body,target_commitish,draft,prerelease}' \
+            <<<"$release" | sha256sum | awk '{print $1}')"
           printf 'release_id=%s\n' "$release_id" >>"$GITHUB_OUTPUT"
           printf 'asset_fingerprint=%s\n' "$asset_fingerprint" >>"$GITHUB_OUTPUT"
+          printf 'metadata_fingerprint=%s\n' "$metadata_fingerprint" >>"$GITHUB_OUTPUT"
           printf 'formal_run_id=%s\n' "$formal_run_id" >>"$GITHUB_OUTPUT"
       - name: Download the exact formal workflow artifact
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
@@ -219,11 +227,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_ID: ${{ needs.verify.outputs.release_id }}
           EXPECTED_ASSET_FINGERPRINT: ${{ needs.verify.outputs.asset_fingerprint }}
+          EXPECTED_METADATA_FINGERPRINT: ${{ needs.verify.outputs.metadata_fingerprint }}
           EXPECTED_COMMIT: ${{ inputs.expected_commit }}
         run: |
           set -euo pipefail
           [[ "$RELEASE_ID" =~ ^[1-9][0-9]*$ ]]
           [[ "$EXPECTED_ASSET_FINGERPRINT" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$EXPECTED_METADATA_FINGERPRINT" =~ ^[0-9a-f]{64}$ ]]
           release="$(gh api \
             --header 'Accept: application/vnd.github+json' \
             --header 'X-GitHub-Api-Version: 2022-11-28' \
@@ -234,6 +244,10 @@ jobs:
           actual_fingerprint="$(jq -S -c '[.assets[] | {id,name,size,digest,state}] | sort_by(.name)' \
             <<<"$release" | sha256sum | awk '{print $1}')"
           [[ "$actual_fingerprint" == "$EXPECTED_ASSET_FINGERPRINT" ]]
+          actual_metadata_fingerprint="$(jq -S -c \
+            '{tag_name,name,body,target_commitish,draft,prerelease}' \
+            <<<"$release" | sha256sum | awk '{print $1}')"
+          [[ "$actual_metadata_fingerprint" == "$EXPECTED_METADATA_FINGERPRINT" ]]
 
           tag_ref="$(gh api \
             --header 'Accept: application/vnd.github+json' \

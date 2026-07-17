@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/yujianwudi/cyber-abuse-guard/internal/extract"
 )
 
 func TestRound6ManagementTestUsesStreamingCoverageBeyondLegacyMaxScan(t *testing.T) {
@@ -78,6 +80,7 @@ func TestRound6StatusExposesEffectiveLimitsAndDisabledVerifiedFinding(t *testing
 	if !ok || limits["max_raw_bytes"] != float64(maxRPCRequestBytes) ||
 		limits["max_text_window_bytes"] != float64(16<<10) ||
 		limits["max_total_text_bytes"] != float64(8<<20) ||
+		limits["max_multipart_text_bytes"] != float64(extract.HardMaxMultipartTextBytes) ||
 		limits["legacy_max_scan_bytes_mode"] != "legacy_max_scan_bytes_clamped" {
 		t.Fatalf("effective limits=%#v", status["effective_limits"])
 	}

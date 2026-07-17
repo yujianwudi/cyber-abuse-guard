@@ -322,7 +322,7 @@ attest to local instruction-file integrity.
 Ruleset `1.0.7` identifies the embedded YAML assets only. The complete
 code-level behavior is separately identified as `classifier-policy-v3`,
 SHA-256
-`577dd913862f2d457eb292bfd02c571e0ea7ff47bc5427bc6be389851ddeb388`.
+`7471f3170ac832f8dc839a7da005c5d4d487c1c60f1a01eb7385e93fff49da5f`.
 Its tested source list binds the classifier, matcher, normalizer, role logic,
 wrapper assessment, behavior graph, semantic composition, bounded extractor,
 rule loader/schema, embedded YAML assets, and module dependency locks. The
@@ -662,7 +662,7 @@ SSE stream with terminal frames; returning successful chunks would force HTTP
 
 Builds link immutable version, full commit SHA, ruleset version/hash,
 `classifier-policy-v3` /
-`577dd913862f2d457eb292bfd02c571e0ea7ff47bc5427bc6be389851ddeb388`,
+`7471f3170ac832f8dc839a7da005c5d4d487c1c60f1a01eb7385e93fff49da5f`,
 streaming-scanner identity, and dirty state. Build metadata and the verifier bind
 these identities. Candidate mode requires a clean worktree, exact expected
 commit/tree, the commit timestamp, an absent formal `v0.15` tag, and forbids

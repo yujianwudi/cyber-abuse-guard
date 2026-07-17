@@ -223,6 +223,9 @@ func (l Limits) normalized() (Limits, error) {
 			l.MaxTextWindowBytes = HardMaxTextWindowBytes
 		}
 	}
+	if l.MaxTextWindowBytes < MinTextWindowBytes || l.MaxTextWindowBytes > HardMaxTextWindowBytes {
+		return Limits{}, fmt.Errorf("%w: MaxTextWindowBytes must be between %d and %d", ErrInvalidLimits, MinTextWindowBytes, HardMaxTextWindowBytes)
+	}
 	if l.MaxTotalTextBytes == 0 {
 		l.MaxTotalTextBytes = DefaultMaxTotalTextBytes
 	}
@@ -272,9 +275,6 @@ func (l Limits) normalized() (Limits, error) {
 	}
 	if l.MaxRawBytes < 1 || l.MaxRawBytes > HardMaxRawBytes {
 		return Limits{}, fmt.Errorf("%w: MaxRawBytes must be between 1 and %d", ErrInvalidLimits, HardMaxRawBytes)
-	}
-	if l.MaxTextWindowBytes < MinTextWindowBytes || l.MaxTextWindowBytes > HardMaxTextWindowBytes {
-		return Limits{}, fmt.Errorf("%w: MaxTextWindowBytes must be between %d and %d", ErrInvalidLimits, MinTextWindowBytes, HardMaxTextWindowBytes)
 	}
 	if l.MaxTotalTextBytes < 1 || l.MaxTotalTextBytes > HardMaxTotalTextBytes {
 		return Limits{}, fmt.Errorf("%w: MaxTotalTextBytes must be between 1 and %d", ErrInvalidLimits, HardMaxTotalTextBytes)

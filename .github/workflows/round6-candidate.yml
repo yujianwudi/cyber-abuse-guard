@@ -104,27 +104,31 @@ jobs:
           sparse-checkout-cone-mode: false
           sparse-checkout: |
             /*
-            !/cmd/evaluation-*
-            !/cmd/holdout-*
-            !/cmd/*private*
-            !/cmd/*blind*
-            !/cmd/*retired*
-            !/docs/reports/EVALUATION_*
-            !/docs/reports/HOLDOUT_*
-            !/docs/reports/HOLDOUT_REPORT.md
+            !/cmd/**/*evaluation*
+            !/cmd/**/*holdout*
+            !/cmd/**/*consumed*
+            !/cmd/**/*private*
+            !/cmd/**/*blind*
+            !/cmd/**/*retired*
+            !/docs/**/*EVALUATION_*
+            !/docs/**/*HOLDOUT_*
+            !/docs/**/*HOLDOUT_REPORT.md
+            !/docs/**/*consumed*
             !/docs/**/*private*
             !/docs/**/*blind*
             !/docs/**/*retired*
-            !/internal/classifier/evaluation_*
-            !/internal/classifier/holdout_*
-            !/internal/classifier/*private*
-            !/internal/classifier/*blind*
-            !/internal/classifier/*retired*
-            !/testdata/evaluation-*
-            !/testdata/holdout*
-            !/testdata/*private*
-            !/testdata/*blind*
-            !/testdata/*retired*
+            !/internal/classifier/**/*evaluation*
+            !/internal/classifier/**/*holdout*
+            !/internal/classifier/**/*consumed*
+            !/internal/classifier/**/*private*
+            !/internal/classifier/**/*blind*
+            !/internal/classifier/**/*retired*
+            !/testdata/**/*evaluation*
+            !/testdata/**/*holdout*
+            !/testdata/**/*consumed*
+            !/testdata/**/*private*
+            !/testdata/**/*blind*
+            !/testdata/**/*retired*
       - name: Recheck restricted-data and workflow contracts
         run: |
           python3 -B scripts/round6_safe_gate_contract_test.py
@@ -137,7 +141,7 @@ jobs:
           [[ "$(git rev-parse HEAD)" == "$EXPECTED_COMMIT" ]]
           [[ "$(git rev-parse 'HEAD^{tree}')" == "$EXPECTED_TREE" ]]
           [[ -z "$(git status --porcelain)" ]]
-          [[ "$(git cat-file -t refs/tags/v0.15 2>/dev/null || true)" != tag ]]
+          ! git show-ref --verify --quiet refs/tags/v0.15
       - name: Set up pinned Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:

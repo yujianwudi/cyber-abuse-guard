@@ -78,12 +78,12 @@ release_ruleset_hash() {
 
 release_round6_safe_sparse_path() {
   case "$1" in
-    cmd/evaluation-*|cmd/holdout-*|cmd/*private*|cmd/*blind*|cmd/*retired*|\
-    docs/reports/EVALUATION_*|docs/reports/HOLDOUT_*|docs/reports/HOLDOUT_REPORT.md|\
-    docs/*private*|docs/*blind*|docs/*retired*|\
-    internal/classifier/evaluation_*|internal/classifier/holdout_*|\
-    internal/classifier/*private*|internal/classifier/*blind*|internal/classifier/*retired*|\
-    testdata/evaluation-*|testdata/holdout*|testdata/*private*|testdata/*blind*|testdata/*retired*)
+    cmd/*evaluation*|cmd/*holdout*|cmd/*consumed*|cmd/*private*|cmd/*blind*|cmd/*retired*|\
+    docs/*EVALUATION_*|docs/*HOLDOUT_*|docs/*HOLDOUT_REPORT.md|\
+    docs/*consumed*|docs/*private*|docs/*blind*|docs/*retired*|\
+    internal/classifier/*evaluation*|internal/classifier/*holdout*|\
+    internal/classifier/*consumed*|internal/classifier/*private*|internal/classifier/*blind*|internal/classifier/*retired*|\
+    testdata/*evaluation*|testdata/*holdout*|testdata/*consumed*|testdata/*private*|testdata/*blind*|testdata/*retired*)
       return 0
       ;;
     *)
@@ -261,8 +261,9 @@ release_assert_candidate_build() {
   [[ "$RELEASE_DIRTY" == false ]] || \
     release_die "candidate builds must use clean release bytes"
   local formal_tag="v$RELEASE_SOURCE_VERSION"
-  [[ "$(git -C "$RELEASE_ROOT" cat-file -t "refs/tags/$formal_tag" 2>/dev/null || true)" != tag ]] || \
-    release_die "candidate builds are forbidden after the formal tag $formal_tag exists"
+  if git -C "$RELEASE_ROOT" show-ref --verify --quiet "refs/tags/$formal_tag"; then
+    release_die "candidate builds are forbidden after any formal tag ref $formal_tag exists"
+  fi
 }
 
 release_assert_source_unchanged() {

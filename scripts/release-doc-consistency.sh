@@ -65,9 +65,12 @@ required_policy_lines=(
   "minimum_independent_evaluation: evaluation-v11"
   "independent_evaluation_required_status: CONSUMED/PASS"
   "historical_evaluation_v10_policy: immutable-consumed-fail-not-formal-input"
-  "formal_bundle_content_policy: exclude-evaluation-holdout-private-blind-retired"
+  "formal_bundle_content_policy: exclude-evaluation-holdout-consumed-private-blind-retired"
 )
 for line in "${required_policy_lines[@]}"; do
+  key="${line%%:*}"
+  [[ "$(grep -Ec "^${key}:" "$policy")" == 1 ]] || \
+    fail "docs/RELEASE_POLICY.md must contain exactly one policy key: $key"
   [[ "$(grep -Fxc "$line" "$policy")" == 1 ]] || \
     fail "docs/RELEASE_POLICY.md must contain exactly one policy line: $line"
 done

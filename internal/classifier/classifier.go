@@ -143,7 +143,7 @@ type Result struct {
 	Context           ContextFlags      `json:"context"`
 	Evidence          []Evidence        `json:"evidence,omitempty"`
 	Behavior          *BehaviorGraph    `json:"behavior,omitempty"`
-	Coverage          Coverage          `json:"coverage,omitempty"`
+	Coverage          Coverage          `json:"coverage,omitempty,omitzero"`
 	FindingConfidence FindingConfidence `json:"finding_confidence,omitempty"`
 	Truncated         bool              `json:"truncated,omitempty"`
 }
@@ -1831,22 +1831,6 @@ func (c *Classifier) mergeStreamingRiskIngredients(destination, source []bool) b
 	}
 	mark(c.implementationRequest)
 	mark(c.outcomeRequest)
-	for _, signalID := range []int{
-		c.metaOverride.hierarchy,
-		c.metaOverride.refusalSuppression,
-		c.metaOverride.unrestrictedMode,
-		c.metaOverride.directCompletion,
-		c.metaOverride.scopeLaundering,
-		c.metaOverride.outputControl,
-		c.metaOverride.secretDisclosure,
-		c.metaOverride.negativeAuthorization,
-		c.metaOverride.benchmarkCoercion,
-		c.metaOverride.persistentInjection,
-		c.metaOverride.personaTakeover,
-		c.metaOverride.agenticEscalation,
-	} {
-		mark(signalID)
-	}
 	for _, profile := range c.semanticProfiles {
 		for _, evidence := range profile.evidence {
 			mark(evidence.signalID)

@@ -171,7 +171,7 @@ func TestExtractRequestLongFinalNonMediaCandidateIsFullyInspectable(t *testing.T
 	if !result.IsComplete() || result.HasIncompleteReason(IncompleteDeferredTextCandidateLimit) {
 		t.Fatalf("large final-nonmedia candidate result=%#v", result)
 	}
-	if !strings.Contains(strings.Join(result.Parts, "\n"), payload[:64]) || result.TextBytesScanned < len(payload) {
+	if !strings.Contains(strings.Join(result.Parts, ""), payload) || result.TextBytesScanned != len(payload) {
 		t.Fatalf("large final-nonmedia candidate was not fully inspectable: %#v", result)
 	}
 }

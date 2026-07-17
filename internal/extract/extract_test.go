@@ -536,9 +536,14 @@ func TestExtractTextInvalidJSON(t *testing.T) {
 func TestExtractTextInvalidLimits(t *testing.T) {
 	t.Parallel()
 
-	_, err := ExtractText([]byte(`{}`), Limits{MaxJSONDepth: -1})
-	if !errors.Is(err, ErrInvalidLimits) {
-		t.Fatalf("error = %v, want ErrInvalidLimits", err)
+	for _, limits := range []Limits{
+		{MaxJSONDepth: -1},
+		{MaxTextWindowBytes: ClassificationOverlapReserveBytes},
+	} {
+		_, err := ExtractText([]byte(`{}`), limits)
+		if !errors.Is(err, ErrInvalidLimits) {
+			t.Fatalf("limits=%+v error=%v, want ErrInvalidLimits", limits, err)
+		}
 	}
 }
 

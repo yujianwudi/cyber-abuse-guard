@@ -311,6 +311,7 @@ func (p *Plugin) managementStatus(state *runtimeState) []byte {
 			"max_raw_bytes":                    maxRPCRequestBytes,
 			"max_text_window_bytes":            state.config.EffectiveTextWindowBytes(),
 			"max_total_text_bytes":             state.config.MaxTotalTextBytes,
+			"max_multipart_text_bytes":         extract.HardMaxMultipartTextBytes,
 			"max_classification_chunks":        state.config.EffectiveMaxClassificationChunks(),
 			"max_text_parts":                   state.config.MaxTextParts,
 			"legacy_max_scan_bytes_mode":       state.config.TextWindowMigrationMode(),

@@ -168,6 +168,16 @@ func validateEvent(event Event) error {
 	if !validIncompleteReason(event.IncompleteReason) {
 		return fmt.Errorf("audit: invalid incomplete_reason %q", event.IncompleteReason)
 	}
+	switch event.Coverage {
+	case "complete":
+		if event.IncompleteReason != "" {
+			return errors.New("audit: complete coverage must not include incomplete_reason")
+		}
+	case "incomplete":
+		if event.IncompleteReason == "" {
+			return errors.New("audit: incomplete coverage requires incomplete_reason")
+		}
+	}
 	if !oneOf(event.Scanner, "legacy", "streaming-scanner-v1") {
 		return fmt.Errorf("audit: invalid scanner %q", event.Scanner)
 	}

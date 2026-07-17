@@ -13,11 +13,24 @@ if [[ "${ALLOW_DIRTY_BUILD:-0}" != 0 ]]; then
 fi
 [[ -z "$(git -C "$root" status --porcelain --untracked-files=normal)" ]] || \
   release_die "round6-reproducibility-test requires a clean committed source tree"
+reproducibility_mode="${ROUND6_REPRODUCIBILITY_MODE:-release}"
+case "$reproducibility_mode" in
+  development)
+    [[ "${RELEASE_CANDIDATE_BUILD:-0}" == 0 ]] || \
+      release_die "development reproducibility mode cannot enable candidate builds"
+    ALLOW_DIRTY_BUILD=1
+    ;;
+  release) ;;
+  *) release_die "ROUND6_REPRODUCIBILITY_MODE must be release or development" ;;
+esac
 # The root may be the CI partial/sparse checkout. release_init remains clean and
 # verifies that every skip-worktree path belongs to the explicit restricted-data
 # exclusion set; arbitrary sparse omissions still fail closed.
 ROUND6_SAFE_SPARSE_BUILD=1
 release_init
+if [[ "$reproducibility_mode" == development && "$RELEASE_BUILD_KIND" != development ]]; then
+  release_die "development reproducibility mode did not select a development build"
+fi
 
 work="$(mktemp -d)"
 clone_a="$work/source-a"
@@ -34,12 +47,12 @@ round6_sparse_worktree() {
   git -C "$root" worktree add --quiet --detach --no-checkout "$destination" "$RELEASE_GIT_COMMIT"
   git -C "$destination" sparse-checkout set --no-cone \
     '/*' \
-    '!/cmd/evaluation-*' '!/cmd/holdout-*' '!/cmd/*private*' '!/cmd/*blind*' '!/cmd/*retired*' \
-    '!/docs/reports/EVALUATION_*' '!/docs/reports/HOLDOUT_*' '!/docs/reports/HOLDOUT_REPORT.md' \
-    '!/docs/**/*private*' '!/docs/**/*blind*' '!/docs/**/*retired*' \
-    '!/internal/classifier/evaluation_*' '!/internal/classifier/holdout_*' \
-    '!/internal/classifier/*private*' '!/internal/classifier/*blind*' '!/internal/classifier/*retired*' \
-    '!/testdata/evaluation-*' '!/testdata/holdout*' '!/testdata/*private*' '!/testdata/*blind*' '!/testdata/*retired*'
+    '!/cmd/**/*evaluation*' '!/cmd/**/*holdout*' '!/cmd/**/*consumed*' '!/cmd/**/*private*' '!/cmd/**/*blind*' '!/cmd/**/*retired*' \
+    '!/docs/**/*EVALUATION_*' '!/docs/**/*HOLDOUT_*' '!/docs/**/*HOLDOUT_REPORT.md' \
+    '!/docs/**/*consumed*' '!/docs/**/*private*' '!/docs/**/*blind*' '!/docs/**/*retired*' \
+    '!/internal/classifier/**/*evaluation*' '!/internal/classifier/**/*holdout*' \
+    '!/internal/classifier/**/*consumed*' '!/internal/classifier/**/*private*' '!/internal/classifier/**/*blind*' '!/internal/classifier/**/*retired*' \
+    '!/testdata/**/*evaluation*' '!/testdata/**/*holdout*' '!/testdata/**/*consumed*' '!/testdata/**/*private*' '!/testdata/**/*blind*' '!/testdata/**/*retired*'
   git -C "$destination" checkout --quiet "$RELEASE_GIT_COMMIT"
 }
 

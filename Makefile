@@ -79,27 +79,31 @@ git-diff-check:
 
 round6-git-diff-check:
 	git diff --check -- . \
-		':(exclude)cmd/evaluation-*' \
-		':(exclude)cmd/holdout-*' \
-		':(exclude)cmd/*private*' \
-		':(exclude)cmd/*blind*' \
-		':(exclude)cmd/*retired*' \
-		':(exclude)docs/reports/EVALUATION_*' \
-		':(exclude)docs/reports/HOLDOUT_*' \
-		':(exclude)docs/reports/HOLDOUT_REPORT.md' \
-		':(exclude)docs/**/*private*' \
-		':(exclude)docs/**/*blind*' \
-		':(exclude)docs/**/*retired*' \
-		':(exclude)internal/classifier/evaluation_*' \
-		':(exclude)internal/classifier/holdout_*' \
-		':(exclude)internal/classifier/*private*' \
-		':(exclude)internal/classifier/*blind*' \
-		':(exclude)internal/classifier/*retired*' \
-		':(exclude)testdata/evaluation-*' \
-		':(exclude)testdata/holdout*' \
-		':(exclude)testdata/*private*' \
-		':(exclude)testdata/*blind*' \
-		':(exclude)testdata/*retired*'
+		':(exclude,glob)cmd/**/*evaluation*' \
+		':(exclude,glob)cmd/**/*holdout*' \
+		':(exclude,glob)cmd/**/*consumed*' \
+		':(exclude,glob)cmd/**/*private*' \
+		':(exclude,glob)cmd/**/*blind*' \
+		':(exclude,glob)cmd/**/*retired*' \
+		':(exclude,glob)docs/**/*EVALUATION_*' \
+		':(exclude,glob)docs/**/*HOLDOUT_*' \
+		':(exclude,glob)docs/**/*HOLDOUT_REPORT.md' \
+		':(exclude,glob)docs/**/*consumed*' \
+		':(exclude,glob)docs/**/*private*' \
+		':(exclude,glob)docs/**/*blind*' \
+		':(exclude,glob)docs/**/*retired*' \
+		':(exclude,glob)internal/classifier/**/*evaluation*' \
+		':(exclude,glob)internal/classifier/**/*holdout*' \
+		':(exclude,glob)internal/classifier/**/*consumed*' \
+		':(exclude,glob)internal/classifier/**/*private*' \
+		':(exclude,glob)internal/classifier/**/*blind*' \
+		':(exclude,glob)internal/classifier/**/*retired*' \
+		':(exclude,glob)testdata/**/*evaluation*' \
+		':(exclude,glob)testdata/**/*holdout*' \
+		':(exclude,glob)testdata/**/*consumed*' \
+		':(exclude,glob)testdata/**/*private*' \
+		':(exclude,glob)testdata/**/*blind*' \
+		':(exclude,glob)testdata/**/*retired*'
 
 module-verify:
 	$(GO) mod verify
@@ -404,6 +408,7 @@ round6-regression:
 		TestRound6StreamingPreservesThreeTurnRoleSemanticsAfterSixtyFourFields \
 		TestRound6StreamingPreservesBoundedRoleCompositionsAfterSixtyFourFields \
 		TestRound6StreamingQuotedSafetyPrefixDoesNotLaunderEarlierInstruction \
+		TestRound6StreamingPriorSafetyWindowDoesNotLaunderLaterInstruction \
 		TestRound6StreamingSplitSyntheticCoreBecomesIncomplete \
 		TestRound6StreamingSplitSyntheticQualifiersBecomeIncomplete \
 		TestRound6StreamingStrictSplitSyntheticCoreBecomesIncomplete \
@@ -412,12 +417,13 @@ round6-regression:
 		TestRound6StreamingSyntheticFactsStayInsideLogicalField \
 		TestRound6StreamingSyntheticSafetyQuoteTransactions \
 		TestRound6StreamingLateHarmConflictBecomesIncomplete \
-		TestRound6StreamingLateMetaAmplifierBecomesIncomplete \
+		TestRound6StreamingUnrelatedMetaWindowsDoNotCompose \
 		TestRound6StreamingLateUnnegatedSyntheticIntentBecomesIncomplete \
 		TestRound6StreamingUnclosedSafetyQuoteHarmConflictBecomesIncomplete \
 		TestRound6StreamingLongPriorUserCoreAndFollowUpBecomesIncomplete \
 		TestRound6StreamingLongAssistantTailDoesNotComposeBaseBehaviorWithUser \
 		TestRound6StreamingClosedSafetyQuoteTailStaysInertAcrossNextUserField \
+		TestRound6StreamingUnquotedTailAfterSafetyQuoteLinksNextUserField \
 		TestRound6StreamingInvalidOrderIsOperationalError \
 		TestRound6StreamingUntrustedFallbackPreservesAdjacentProofBudget \
 		TestRound6StreamingUntrustedOverSixtyFourRetainsEarlyAndLateProofs \

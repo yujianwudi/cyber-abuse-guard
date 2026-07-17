@@ -21,27 +21,31 @@ trap cleanup EXIT
 
 archive_pathspecs=(
   .
-  ':(exclude)cmd/evaluation-*'
-  ':(exclude)cmd/holdout-*'
-  ':(exclude)cmd/*private*'
-  ':(exclude)cmd/*blind*'
-  ':(exclude)cmd/*retired*'
-  ':(exclude)docs/reports/EVALUATION_*'
-  ':(exclude)docs/reports/HOLDOUT_*'
-  ':(exclude)docs/reports/HOLDOUT_REPORT.md'
-  ':(exclude)docs/**/*private*'
-  ':(exclude)docs/**/*blind*'
-  ':(exclude)docs/**/*retired*'
-  ':(exclude)internal/classifier/evaluation_*'
-  ':(exclude)internal/classifier/holdout_*'
-  ':(exclude)internal/classifier/*private*'
-  ':(exclude)internal/classifier/*blind*'
-  ':(exclude)internal/classifier/*retired*'
-  ':(exclude)testdata/evaluation-*'
-  ':(exclude)testdata/holdout*'
-  ':(exclude)testdata/*private*'
-  ':(exclude)testdata/*blind*'
-  ':(exclude)testdata/*retired*'
+  ':(exclude,glob)cmd/**/*evaluation*'
+  ':(exclude,glob)cmd/**/*holdout*'
+  ':(exclude,glob)cmd/**/*consumed*'
+  ':(exclude,glob)cmd/**/*private*'
+  ':(exclude,glob)cmd/**/*blind*'
+  ':(exclude,glob)cmd/**/*retired*'
+  ':(exclude,glob)docs/**/*EVALUATION_*'
+  ':(exclude,glob)docs/**/*HOLDOUT_*'
+  ':(exclude,glob)docs/**/*HOLDOUT_REPORT.md'
+  ':(exclude,glob)docs/**/*consumed*'
+  ':(exclude,glob)docs/**/*private*'
+  ':(exclude,glob)docs/**/*blind*'
+  ':(exclude,glob)docs/**/*retired*'
+  ':(exclude,glob)internal/classifier/**/*evaluation*'
+  ':(exclude,glob)internal/classifier/**/*holdout*'
+  ':(exclude,glob)internal/classifier/**/*consumed*'
+  ':(exclude,glob)internal/classifier/**/*private*'
+  ':(exclude,glob)internal/classifier/**/*blind*'
+  ':(exclude,glob)internal/classifier/**/*retired*'
+  ':(exclude,glob)testdata/**/*evaluation*'
+  ':(exclude,glob)testdata/**/*holdout*'
+  ':(exclude,glob)testdata/**/*consumed*'
+  ':(exclude,glob)testdata/**/*private*'
+  ':(exclude,glob)testdata/**/*blind*'
+  ':(exclude,glob)testdata/**/*retired*'
 )
 git -C "$root" archive --format=tar.gz \
   --prefix="cyber-abuse-guard-v${RELEASE_SOURCE_VERSION}/" \
@@ -55,8 +59,8 @@ fi
 if grep -Eiq '(^|/)(\.git($|/)|dist($|/)|build($|/)|[^/]*\.(db|sqlite|sqlite3|key|pem|p12|pfx|jks|keystore|log)($|[-.])|\.env($|[./]))' <<<"$listing"; then
   release_die "source release archive contains a forbidden repository, build, database, secret, or log path"
 fi
-if grep -Eiq '(^|/)[^/]*(evaluation|holdout|private|blind|retired)[^/]*($|/)' <<<"$listing"; then
-  release_die "source release archive contains evaluation, holdout, private, blind, or retired material"
+if grep -Eiq '(^|/)[^/]*(evaluation|holdout|consumed|private|blind|retired)[^/]*($|/)' <<<"$listing"; then
+  release_die "source release archive contains evaluation, holdout, consumed, private, blind, or retired material"
 fi
 if tar -tvzf "$temporary" | grep -Eq '^l'; then
   release_die "source release archive contains a symbolic link"

@@ -8,8 +8,8 @@ plugins:
     cyber-abuse-guard:
       enabled: true
       priority: 300
-      # First production deployment: observe for 24-48h, then audit for
-      # 24-48h, then balanced after review. Do not start directly in strict.
+      # Sandbox/candidate default only. Production rollout remains prohibited
+      # until the documented Host, audit, evaluation, and formal-release gates pass.
       mode: observe
 
       # Legacy compatibility alias. It now selects the bounded text window;

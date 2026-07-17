@@ -17,25 +17,29 @@ Dockerfile* text eol=lf
 # Formal source archives must not export consumed evaluation, holdout, blind,
 # private, or retired material. The release packager repeats these exclusions
 # explicitly and verifies the resulting archive fail-closed.
-/cmd/evaluation-* export-ignore
-/cmd/holdout-* export-ignore
-/cmd/*private* export-ignore
-/cmd/*blind* export-ignore
-/cmd/*retired* export-ignore
-/docs/reports/EVALUATION_* export-ignore
-/docs/reports/HOLDOUT_* export-ignore
-/docs/reports/HOLDOUT_REPORT.md export-ignore
+/cmd/**/*evaluation* export-ignore
+/cmd/**/*holdout* export-ignore
+/cmd/**/*consumed* export-ignore
+/cmd/**/*private* export-ignore
+/cmd/**/*blind* export-ignore
+/cmd/**/*retired* export-ignore
+/docs/**/*EVALUATION_* export-ignore
+/docs/**/*HOLDOUT_* export-ignore
+/docs/**/*HOLDOUT_REPORT.md export-ignore
+/docs/**/*consumed* export-ignore
 /docs/**/*private* export-ignore
 /docs/**/*blind* export-ignore
 /docs/**/*retired* export-ignore
-/internal/classifier/evaluation_* export-ignore
-/internal/classifier/holdout_* export-ignore
-/internal/classifier/*private* export-ignore
-/internal/classifier/*blind* export-ignore
-/internal/classifier/*retired* export-ignore
-/testdata/evaluation-* export-ignore
-/testdata/holdout* export-ignore
-/testdata/*private* export-ignore
-/testdata/*blind* export-ignore
-/testdata/*retired* export-ignore
+/internal/classifier/**/*evaluation* export-ignore
+/internal/classifier/**/*holdout* export-ignore
+/internal/classifier/**/*consumed* export-ignore
+/internal/classifier/**/*private* export-ignore
+/internal/classifier/**/*blind* export-ignore
+/internal/classifier/**/*retired* export-ignore
+/testdata/**/*evaluation* export-ignore
+/testdata/**/*holdout* export-ignore
+/testdata/**/*consumed* export-ignore
+/testdata/**/*private* export-ignore
+/testdata/**/*blind* export-ignore
+/testdata/**/*retired* export-ignore
 /scripts/verify-frozen-evaluation-v10-tree.sh export-ignore

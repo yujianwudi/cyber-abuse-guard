@@ -10,7 +10,7 @@ workflow and remain unreleased. See
 `round6-prerelease-attestation.json` and `formal-release-attestation.json`.
 
 Current classifier identity is `classifier-policy-v3` /
-`577dd913862f2d457eb292bfd02c571e0ea7ff47bc5427bc6be389851ddeb388`;
+`7471f3170ac832f8dc839a7da005c5d4d487c1c60f1a01eb7385e93fff49da5f`;
 scanner identity is `streaming-scanner-v1`.
 
 Commit `21ceb57e6b6030e56d7820c9a67a8eecd068c669` passed push and PR CI

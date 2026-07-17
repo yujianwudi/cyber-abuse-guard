@@ -4,7 +4,7 @@ set -euo pipefail
 root="$(cd "${BASH_SOURCE[0]%/*}/.." && pwd -P)"
 # shellcheck source=release-common.sh
 source "$root/scripts/release-common.sh"
-release_require_commands git sha256sum awk date mktemp chmod mv rm mkdir basename jq make
+release_require_commands git sha256sum awk date mktemp chmod mv rm mkdir basename jq make cp
 release_init
 release_assert_tag
 release_assert_formal_build
@@ -43,10 +43,46 @@ hash_file() {
   sha256sum "$1" | awk '{print $1}'
 }
 
-external_attestation="${RELEASE_EXTERNAL_ATTESTATION:-}"
-[[ -n "$external_attestation" ]] || \
+temporary=""
+attestation_snapshot_dir=""
+cleanup() {
+  if [[ -n "$temporary" ]]; then
+    rm -f -- "$temporary"
+  fi
+  if [[ -n "$attestation_snapshot_dir" ]]; then
+    rm -rf -- "$attestation_snapshot_dir"
+  fi
+}
+trap cleanup EXIT
+
+external_attestation_input="${RELEASE_EXTERNAL_ATTESTATION:-}"
+[[ -n "$external_attestation_input" ]] || \
   release_die "RELEASE_EXTERNAL_ATTESTATION is required for final evidence"
-make -C "$root" external-release-attestation >/dev/null
+external_attestation_checksum="${external_attestation_input}.sha256"
+[[ -f "$external_attestation_input" && ! -L "$external_attestation_input" ]] || \
+  release_die "external release attestation input must be a regular non-symlink file"
+[[ -f "$external_attestation_checksum" && ! -L "$external_attestation_checksum" ]] || \
+  release_die "external release attestation checksum input must be a regular non-symlink file"
+[[ "$(basename -- "$external_attestation_input")" == round6-prerelease-attestation.json ]] || \
+  release_die "external release attestation input has an unexpected filename"
+[[ "$(basename -- "$external_attestation_checksum")" == round6-prerelease-attestation.json.sha256 ]] || \
+  release_die "external release attestation checksum input has an unexpected filename"
+
+attestation_snapshot_dir="$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/cag-attestation-snapshot.XXXXXX")"
+chmod 0700 "$attestation_snapshot_dir"
+cp --no-dereference -- "$external_attestation_input" \
+  "$attestation_snapshot_dir/round6-prerelease-attestation.json"
+cp --no-dereference -- "$external_attestation_checksum" \
+  "$attestation_snapshot_dir/round6-prerelease-attestation.json.sha256"
+external_attestation="$attestation_snapshot_dir/round6-prerelease-attestation.json"
+[[ -f "$external_attestation" && ! -L "$external_attestation" ]] || \
+  release_die "external release attestation snapshot must be a regular non-symlink file"
+[[ -f "${external_attestation}.sha256" && ! -L "${external_attestation}.sha256" ]] || \
+  release_die "external release attestation checksum snapshot must be a regular non-symlink file"
+chmod 0400 "$external_attestation" "${external_attestation}.sha256"
+
+RELEASE_EXTERNAL_ATTESTATION="$external_attestation" \
+  make -C "$root" external-release-attestation >/dev/null
 external_attestation_sha256="$(hash_file "$external_attestation")"
 candidate_tag="$(jq -r '.tag' "$external_attestation")"
 candidate_run_id="$(jq -r '.candidate_run_id' "$external_attestation")"
@@ -74,10 +110,6 @@ fi
 
 evidence="$dist/release-evidence-final.md"
 temporary="$(mktemp "$dist/.release-evidence-final.XXXXXX")"
-cleanup() {
-  rm -f -- "$temporary"
-}
-trap cleanup EXIT
 
 {
   printf '# CPA Cyber Abuse Guard v%s final release evidence\n\n' "$RELEASE_SOURCE_VERSION"
