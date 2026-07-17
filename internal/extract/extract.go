@@ -78,7 +78,12 @@ var (
 
 // Limits bounds both raw input processing and semantic traversal. A zero field
 // uses its secure task-book default; negative or excessively large values are
-// rejected.
+// rejected. In streaming extraction, MaxTextPartBytes and
+// MaxMultipartTextPartBytes bound each retained/emitted chunk rather than the
+// cumulative length of one logical field. MaxTotalTextBytes and
+// MaxMultipartTextBytes are the cumulative coverage bounds. The distinction is
+// what lets long prompts remain fully inspectable without retaining them as one
+// attacker-sized allocation.
 type Limits struct {
 	MaxScanBytes            int
 	MaxRawBytes             int

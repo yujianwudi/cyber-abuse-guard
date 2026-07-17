@@ -13,12 +13,16 @@ archive="$work/source.tar"
 consumed_paths=(
   cmd/consumed-contract-probe
   cmd/safe/nested-consumed
+  cmd/safe/nested-Consumed
   docs/reports/consumed-contract-probe.md
   docs/safe/nested-consumed
+  docs/safe/nested-Consumed
   internal/classifier/consumed_contract_probe_test.go
   internal/classifier/safe/nested-consumed
+  internal/classifier/safe/nested-Consumed
   testdata/consumed-contract-probe.json
   testdata/safe/nested-consumed
+  testdata/safe/nested-Consumed
 )
 for path in "${consumed_paths[@]}"; do
   [[ "$(git -C "$root" check-attr export-ignore -- "$path")" == \
@@ -44,6 +48,12 @@ restricted_paths=(
   docs/safe/nested-retired/report.md
   internal/classifier/safe/nested-consumed/payload.go
   testdata/safe/nested-blind/payload.json
+  cmd/safe/nested-Evaluation/payload.go
+  cmd/safe/nested-HoldOut/payload.go
+  cmd/safe/nested-Consumed/payload.go
+  docs/safe/nested-Private/report.md
+  internal/classifier/safe/nested-Blind/payload.go
+  testdata/safe/nested-Retired/payload.json
 )
 mkdir -p "$sparse_fixture/public"
 printf 'synthetic safe neighbor\n' >"$sparse_fixture/public/safe.txt"
@@ -58,31 +68,31 @@ git -C "$sparse_fixture" \
   commit --quiet --message fixture
 sparse_patterns=(
   '/*'
-  '!/cmd/**/*evaluation*'
-  '!/cmd/**/*holdout*'
-  '!/cmd/**/*consumed*'
-  '!/cmd/**/*private*'
-  '!/cmd/**/*blind*'
-  '!/cmd/**/*retired*'
-  '!/docs/**/*EVALUATION_*'
-  '!/docs/**/*HOLDOUT_*'
-  '!/docs/**/*HOLDOUT_REPORT.md'
-  '!/docs/**/*consumed*'
-  '!/docs/**/*private*'
-  '!/docs/**/*blind*'
-  '!/docs/**/*retired*'
-  '!/internal/classifier/**/*evaluation*'
-  '!/internal/classifier/**/*holdout*'
-  '!/internal/classifier/**/*consumed*'
-  '!/internal/classifier/**/*private*'
-  '!/internal/classifier/**/*blind*'
-  '!/internal/classifier/**/*retired*'
-  '!/testdata/**/*evaluation*'
-  '!/testdata/**/*holdout*'
-  '!/testdata/**/*consumed*'
-  '!/testdata/**/*private*'
-  '!/testdata/**/*blind*'
-  '!/testdata/**/*retired*'
+  '!/cmd/**/*[Ee][Vv][Aa][Ll][Uu][Aa][Tt][Ii][Oo][Nn]*'
+  '!/cmd/**/*[Hh][Oo][Ll][Dd][Oo][Uu][Tt]*'
+  '!/cmd/**/*[Cc][Oo][Nn][Ss][Uu][Mm][Ee][Dd]*'
+  '!/cmd/**/*[Pp][Rr][Ii][Vv][Aa][Tt][Ee]*'
+  '!/cmd/**/*[Bb][Ll][Ii][Nn][Dd]*'
+  '!/cmd/**/*[Rr][Ee][Tt][Ii][Rr][Ee][Dd]*'
+  '!/docs/**/*[Ee][Vv][Aa][Ll][Uu][Aa][Tt][Ii][Oo][Nn]*'
+  '!/docs/**/*[Hh][Oo][Ll][Dd][Oo][Uu][Tt]*'
+  '!/docs/**/*[Hh][Oo][Ll][Dd][Oo][Uu][Tt]_[Rr][Ee][Pp][Oo][Rr][Tt].[Mm][Dd]'
+  '!/docs/**/*[Cc][Oo][Nn][Ss][Uu][Mm][Ee][Dd]*'
+  '!/docs/**/*[Pp][Rr][Ii][Vv][Aa][Tt][Ee]*'
+  '!/docs/**/*[Bb][Ll][Ii][Nn][Dd]*'
+  '!/docs/**/*[Rr][Ee][Tt][Ii][Rr][Ee][Dd]*'
+  '!/internal/classifier/**/*[Ee][Vv][Aa][Ll][Uu][Aa][Tt][Ii][Oo][Nn]*'
+  '!/internal/classifier/**/*[Hh][Oo][Ll][Dd][Oo][Uu][Tt]*'
+  '!/internal/classifier/**/*[Cc][Oo][Nn][Ss][Uu][Mm][Ee][Dd]*'
+  '!/internal/classifier/**/*[Pp][Rr][Ii][Vv][Aa][Tt][Ee]*'
+  '!/internal/classifier/**/*[Bb][Ll][Ii][Nn][Dd]*'
+  '!/internal/classifier/**/*[Rr][Ee][Tt][Ii][Rr][Ee][Dd]*'
+  '!/testdata/**/*[Ee][Vv][Aa][Ll][Uu][Aa][Tt][Ii][Oo][Nn]*'
+  '!/testdata/**/*[Hh][Oo][Ll][Dd][Oo][Uu][Tt]*'
+  '!/testdata/**/*[Cc][Oo][Nn][Ss][Uu][Mm][Ee][Dd]*'
+  '!/testdata/**/*[Pp][Rr][Ii][Vv][Aa][Tt][Ee]*'
+  '!/testdata/**/*[Bb][Ll][Ii][Nn][Dd]*'
+  '!/testdata/**/*[Rr][Ee][Tt][Ii][Rr][Ee][Dd]*'
 )
 git -C "$sparse_fixture" sparse-checkout set --no-cone "${sparse_patterns[@]}"
 [[ -f "$sparse_fixture/public/safe.txt" ]] || \

@@ -17,7 +17,8 @@ release still requires a newly authored independent unseen set.
 - Record `21ceb57e6b6030e56d7820c9a67a8eecd068c669` (tree
   `e55437442f30bdb1b6b748b9611c6760172784cd`) as a passed
   **pre-version-migration checkpoint**: push CI `29578024185` and PR CI
-  `29578025961` passed. This checkpoint is engineering evidence only and is not
+  `29578025961` passed, including the then-current CPA v7.2.83 latest-source
+  lane. This checkpoint is engineering evidence only and is not
   the final v0.15 source, artifact, Host, audit, tag, or release identity.
 - Migrate the active project/build/release identity from the historical `0.1.2`
   development line to exact version `0.15`, Linux amd64 only. Historical
@@ -65,7 +66,7 @@ release still requires a newly authored independent unseen set.
   `streaming-scanner-v1`, effective-limit status, and fixed low-cardinality
   counters.
 - Publish classifier identity `classifier-policy-v3` /
-  `7471f3170ac832f8dc839a7da005c5d4d487c1c60f1a01eb7385e93fff49da5f`.
+  `5d3456e8494c7da3e5209729a07c41fd8ee5a467613c0d5b02d08391e463092d`.
 - Compact the transactional shadow plan by collapsing caller-controlled keys
   and semantic values to closed representatives, skipping metadata spans, and
   using short base-36 markers. Residual allocation remains bounded by structural
@@ -93,7 +94,7 @@ release still requires a newly authored independent unseen set.
   carried by `round6-prerelease-attestation.json` and
   `formal-release-attestation.json`; reusable source documents do not hardcode
   future PASS hashes or Release state.
-- Require the CPA v7.2.83 Host + Mock record, the independent
+- Require the CPA v7.2.85 Host + Mock record, the independent
   audit, and a candidate-bound external `evaluation-v11` or later first-and-only
   `CONSUMED / PASS` report to cite the same candidate identity. If a durable development handoff
   is needed after those gates pass, an existing annotated
@@ -112,15 +113,15 @@ release still requires a newly authored independent unseen set.
   views beyond the 128 KiB source / 64 KiB retained decoded budget are
   incomplete, and legacy `ExtractText` keeps materialized `Parts` segmentation
   semantics while production routing uses streaming APIs.
-- Make CPA v7.2.83 the only current source/compile and real Linux Host +
+- Make CPA v7.2.85 the only current source/compile and real Linux Host +
   Mock-upstream release target; its Host matrix is **NOT RUN / PENDING**. Earlier
-  v7.2.82/v7.2.81 compatibility results remain historical non-gating engineering
+  v7.2.84/v7.2.83/v7.2.82/v7.2.81 compatibility results remain historical non-gating engineering
   evidence. The final PR must merge to `main` and pass exact-main push CI before
   candidate dispatch. Do not create a development tag or Release before the
-  v7.2.83 Host gate, independent audit, and candidate-level evaluation pass.
-- Record the final local CodeRabbit diff review as **0 issues**. The remote
-  Draft check was skipped, so this is not a remote CodeRabbit approval and not
-  an independent audit.
+  v7.2.85 Host gate, independent audit, and candidate-level evaluation pass.
+- Require the final PR head to have no unresolved, non-outdated actionable
+  review threads before merge. Automated review is advisory and does not
+  constitute independent approval.
 - Add the Round 6 design, configuration migration, limitations, release-gate,
   and development-handoff documents.
 

@@ -86,8 +86,8 @@ BLOCKED_PRERELEASE_INPUT_ORDER = (
     "candidate_run_id",
     "expected_so_sha256",
     "expected_store_zip_sha256",
-    "host_v7283_validation",
-    "host_v7283_evidence_sha256",
+    "host_v7285_validation",
+    "host_v7285_evidence_sha256",
     "independent_audit_validation",
     "independent_audit_sha256",
     "independent_evaluation_validation",
@@ -98,7 +98,7 @@ BLOCKED_PRERELEASE_INPUT_ORDER = (
 BLOCKED_PRERELEASE_INPUTS = set(BLOCKED_PRERELEASE_INPUT_ORDER)
 BLOCKED_PRERELEASE_IF_LINES = (
     "if: >-",
-    "inputs.host_v7283_validation == 'PASS' &&",
+    "inputs.host_v7285_validation == 'PASS' &&",
     "inputs.independent_audit_validation == 'PASS' &&",
     "inputs.independent_evaluation_validation == 'PASS' &&",
     "inputs.authorize_blocked_prerelease == true",
@@ -115,8 +115,8 @@ ADMISSION_INPUT_ENV = (
     "DISPATCH_SHA: ${{ github.sha }}",
     "WORKFLOW_REF: ${{ github.workflow_ref }}",
     "WORKFLOW_SHA: ${{ github.workflow_sha }}",
-    "HOST_V7283: ${{ inputs.host_v7283_validation }}",
-    "HOST_V7283_SHA256: ${{ inputs.host_v7283_evidence_sha256 }}",
+    "HOST_V7285: ${{ inputs.host_v7285_validation }}",
+    "HOST_V7285_SHA256: ${{ inputs.host_v7285_evidence_sha256 }}",
     "INDEPENDENT_AUDIT: ${{ inputs.independent_audit_validation }}",
     "INDEPENDENT_AUDIT_SHA256: ${{ inputs.independent_audit_sha256 }}",
     "INDEPENDENT_EVALUATION: ${{ inputs.independent_evaluation_validation }}",
@@ -136,11 +136,11 @@ ADMISSION_INPUT_COMMANDS = (
     '[[ "$DISPATCH_SHA" == "$EXPECTED_COMMIT" ]]',
     '[[ "$WORKFLOW_SHA" == "$EXPECTED_COMMIT" ]]',
     '[[ "$WORKFLOW_REF" == "${GITHUB_REPOSITORY}/.github/workflows/round6-blocked-prerelease.yml@refs/tags/$TAG" ]]',
-    '[[ "$HOST_V7283" == PASS ]]',
+    '[[ "$HOST_V7285" == PASS ]]',
     '[[ "$INDEPENDENT_AUDIT" == PASS ]]',
     '[[ "$INDEPENDENT_EVALUATION" == PASS ]]',
     '[[ "$AUTHORIZED" == true ]]',
-    '[[ "$HOST_V7283_SHA256" =~ ^[0-9a-f]{64}$ ]]',
+    '[[ "$HOST_V7285_SHA256" =~ ^[0-9a-f]{64}$ ]]',
     '[[ "$INDEPENDENT_AUDIT_SHA256" =~ ^[0-9a-f]{64}$ ]]',
     '[[ "$INDEPENDENT_EVALUATION_ID" =~ ^evaluation-v(1[1-9]|[2-9][0-9]|[1-9][0-9]{2,})$ ]]',
     '[[ "$INDEPENDENT_EVALUATION_SHA256" =~ ^[0-9a-f]{64}$ ]]',
@@ -326,7 +326,7 @@ BLOCKED_STEP_CONTRACTS = {
         ),
         ("Run source and Round6 regression gates", ("name", "run"), None),
         (
-            "Verify current CPA v7.2.83 source compatibility",
+            "Verify current CPA v7.2.85 source compatibility",
             ("name", "env", "run"),
             None,
         ),
@@ -393,72 +393,82 @@ GITHUB_EXPRESSION = re.compile(r"\$\{\{(.*?)\}\}", re.DOTALL)
 SENSITIVE_EXPRESSION_CONTEXT = re.compile(r"(?i)(?<![A-Za-z0-9_])(?:github|secrets)(?![A-Za-z0-9_])")
 ROUND6_SPARSE_PATTERNS = (
     "/*",
-    "!/cmd/**/*evaluation*",
-    "!/cmd/**/*holdout*",
-    "!/cmd/**/*consumed*",
-    "!/cmd/**/*private*",
-    "!/cmd/**/*blind*",
-    "!/cmd/**/*retired*",
-    "!/docs/**/*EVALUATION_*",
-    "!/docs/**/*HOLDOUT_*",
-    "!/docs/**/*HOLDOUT_REPORT.md",
-    "!/docs/**/*consumed*",
-    "!/docs/**/*private*",
-    "!/docs/**/*blind*",
-    "!/docs/**/*retired*",
-    "!/internal/classifier/**/*evaluation*",
-    "!/internal/classifier/**/*holdout*",
-    "!/internal/classifier/**/*consumed*",
-    "!/internal/classifier/**/*private*",
-    "!/internal/classifier/**/*blind*",
-    "!/internal/classifier/**/*retired*",
-    "!/testdata/**/*evaluation*",
-    "!/testdata/**/*holdout*",
-    "!/testdata/**/*consumed*",
-    "!/testdata/**/*private*",
-    "!/testdata/**/*blind*",
-    "!/testdata/**/*retired*",
+    "!/cmd/**/*[Ee][Vv][Aa][Ll][Uu][Aa][Tt][Ii][Oo][Nn]*",
+    "!/cmd/**/*[Hh][Oo][Ll][Dd][Oo][Uu][Tt]*",
+    "!/cmd/**/*[Cc][Oo][Nn][Ss][Uu][Mm][Ee][Dd]*",
+    "!/cmd/**/*[Pp][Rr][Ii][Vv][Aa][Tt][Ee]*",
+    "!/cmd/**/*[Bb][Ll][Ii][Nn][Dd]*",
+    "!/cmd/**/*[Rr][Ee][Tt][Ii][Rr][Ee][Dd]*",
+    "!/docs/**/*[Ee][Vv][Aa][Ll][Uu][Aa][Tt][Ii][Oo][Nn]*",
+    "!/docs/**/*[Hh][Oo][Ll][Dd][Oo][Uu][Tt]*",
+    "!/docs/**/*[Hh][Oo][Ll][Dd][Oo][Uu][Tt]_[Rr][Ee][Pp][Oo][Rr][Tt].[Mm][Dd]",
+    "!/docs/**/*[Cc][Oo][Nn][Ss][Uu][Mm][Ee][Dd]*",
+    "!/docs/**/*[Pp][Rr][Ii][Vv][Aa][Tt][Ee]*",
+    "!/docs/**/*[Bb][Ll][Ii][Nn][Dd]*",
+    "!/docs/**/*[Rr][Ee][Tt][Ii][Rr][Ee][Dd]*",
+    "!/internal/classifier/**/*[Ee][Vv][Aa][Ll][Uu][Aa][Tt][Ii][Oo][Nn]*",
+    "!/internal/classifier/**/*[Hh][Oo][Ll][Dd][Oo][Uu][Tt]*",
+    "!/internal/classifier/**/*[Cc][Oo][Nn][Ss][Uu][Mm][Ee][Dd]*",
+    "!/internal/classifier/**/*[Pp][Rr][Ii][Vv][Aa][Tt][Ee]*",
+    "!/internal/classifier/**/*[Bb][Ll][Ii][Nn][Dd]*",
+    "!/internal/classifier/**/*[Rr][Ee][Tt][Ii][Rr][Ee][Dd]*",
+    "!/testdata/**/*[Ee][Vv][Aa][Ll][Uu][Aa][Tt][Ii][Oo][Nn]*",
+    "!/testdata/**/*[Hh][Oo][Ll][Dd][Oo][Uu][Tt]*",
+    "!/testdata/**/*[Cc][Oo][Nn][Ss][Uu][Mm][Ee][Dd]*",
+    "!/testdata/**/*[Pp][Rr][Ii][Vv][Aa][Tt][Ee]*",
+    "!/testdata/**/*[Bb][Ll][Ii][Nn][Dd]*",
+    "!/testdata/**/*[Rr][Ee][Tt][Ii][Rr][Ee][Dd]*",
 )
 CONSUMED_BOUNDARY_LINES = {
     ".gitattributes": (
-        "/cmd/**/*consumed* export-ignore",
-        "/docs/**/*consumed* export-ignore",
-        "/internal/classifier/**/*consumed* export-ignore",
-        "/testdata/**/*consumed* export-ignore",
+        "/cmd/**/*[Cc][Oo][Nn][Ss][Uu][Mm][Ee][Dd]* export-ignore",
+        "/docs/**/*[Cc][Oo][Nn][Ss][Uu][Mm][Ee][Dd]* export-ignore",
+        "/internal/classifier/**/*[Cc][Oo][Nn][Ss][Uu][Mm][Ee][Dd]* export-ignore",
+        "/testdata/**/*[Cc][Oo][Nn][Ss][Uu][Mm][Ee][Dd]* export-ignore",
     ),
     "scripts/release-common.sh": (
+        '  local path="${1,,}"',
+        '  case "$path" in',
         "    cmd/*evaluation*|cmd/*holdout*|cmd/*consumed*|cmd/*private*|cmd/*blind*|cmd/*retired*|\\",
         "    docs/*consumed*|docs/*private*|docs/*blind*|docs/*retired*|\\",
         "    internal/classifier/*consumed*|internal/classifier/*private*|internal/classifier/*blind*|internal/classifier/*retired*|\\",
         "    testdata/*evaluation*|testdata/*holdout*|testdata/*consumed*|testdata/*private*|testdata/*blind*|testdata/*retired*)",
     ),
     "scripts/package-source-release.sh": (
-        "  ':(exclude,glob)cmd/**/*consumed*'",
-        "  ':(exclude,glob)docs/**/*consumed*'",
-        "  ':(exclude,glob)internal/classifier/**/*consumed*'",
-        "  ':(exclude,glob)testdata/**/*consumed*'",
+        "  ':(exclude,glob,icase)cmd/**/*consumed*'",
+        "  ':(exclude,glob,icase)docs/**/*consumed*'",
+        "  ':(exclude,glob,icase)internal/classifier/**/*consumed*'",
+        "  ':(exclude,glob,icase)testdata/**/*consumed*'",
         "if grep -Eiq '(^|/)[^/]*(evaluation|holdout|consumed|private|blind|retired)[^/]*($|/)' <<<\"$listing\"; then",
     ),
     "Makefile": (
-        "\t\t':(exclude,glob)cmd/**/*consumed*' \\",
-        "\t\t':(exclude,glob)docs/**/*consumed*' \\",
-        "\t\t':(exclude,glob)internal/classifier/**/*consumed*' \\",
-        "\t\t':(exclude,glob)testdata/**/*consumed*' \\",
+        "\t\t':(exclude,glob,icase)cmd/**/*consumed*' \\",
+        "\t\t':(exclude,glob,icase)docs/**/*consumed*' \\",
+        "\t\t':(exclude,glob,icase)internal/classifier/**/*consumed*' \\",
+        "\t\t':(exclude,glob,icase)testdata/**/*consumed*' \\",
     ),
     "scripts/source-release-exclusion-contract-test.sh": (
         "  cmd/safe/nested-consumed",
-        "  '!/cmd/**/*consumed*'",
-        "  '!/internal/classifier/**/*consumed*'",
-        "  '!/testdata/**/*consumed*'",
+        "  cmd/safe/nested-Consumed",
+        "  cmd/safe/nested-Evaluation/payload.go",
+        "  cmd/safe/nested-Consumed/payload.go",
+        "  cmd/safe/nested-HoldOut/payload.go",
+        "  docs/safe/nested-Private/report.md",
+        "  internal/classifier/safe/nested-Blind/payload.go",
+        "  testdata/safe/nested-Retired/payload.json",
+        "  '!/cmd/**/*[Cc][Oo][Nn][Ss][Uu][Mm][Ee][Dd]*'",
+        "  '!/internal/classifier/**/*[Cc][Oo][Nn][Ss][Uu][Mm][Ee][Dd]*'",
+        "  '!/testdata/**/*[Cc][Oo][Nn][Ss][Uu][Mm][Ee][Dd]*'",
         'git -C "$sparse_fixture" sparse-checkout set --no-cone "${sparse_patterns[@]}"',
         "if grep -Eiq '(^|/)[^/]*(evaluation|holdout|consumed|private|blind|retired)[^/]*($|/)' <<<\"$listing\"; then",
     ),
     "scripts/round6-safe-go-files.sh": (
+        '  case "${file,,}" in',
         "    internal/classifier/*evaluation*|internal/classifier/*holdout*|internal/classifier/*consumed*|internal/classifier/*private*|internal/classifier/*retired*|internal/classifier/*blind*)",
     ),
 }
 ROUND6_REPRODUCIBILITY_SCRIPT_SHA256 = (
-    "fe26b19139d0cc88a3ff94879e34f63f62e2fb3158c1d0e62e9df5196fd19392"
+    "833d71f62ed69e5e5a354ef0567127ed6304a9f77fb562b275bce3ae52fd0b45"
 )
 ROUND6_REPRODUCIBILITY_ENTRY_MODE_CONTRACT = """reproducibility_mode="${ROUND6_REPRODUCIBILITY_MODE:-release}"
 case "$reproducibility_mode" in
@@ -498,7 +508,7 @@ ROUND6_REPRODUCIBILITY_PACKAGE_BRANCH_CONTRACT = """  if [[ "$RELEASE_BUILD_KIND
       "$clone/scripts/create-store-archive.sh"
   fi"""
 BLOCKED_STEP_RUN_SHA256 = {
-    ("admission", 0): "76c5b72d3dfabe90710519c0d299697ec6423adbbea3848974c9b737da674878",
+    ("admission", 0): "b9cbfd38ae0b0f54cdf78ec2c307253847a321deafd3edca49bb5c8b00ec6601",
     ("admission", 1): "7f1817ec7b567df4be63fafd9ee2b2347ac37e01982e41ee3338f64c79cae81a",
     ("admission", 2): "5a315540eb55c2663caeba1fa2f77a80df0f4d2fd6c786c656149d22f638c2f2",
     ("verify", 1): "b38e1f3a74567d8390bde6390c75c7e96a3bd0d5bc13de0e6a7dbbcfeec0a2fe",
@@ -511,8 +521,8 @@ BLOCKED_STEP_RUN_SHA256 = {
     ("verify", 10): "d6bd0b9f43ef190a6545893891fe514928b3e354a438f357602e2d3a89565bd0",
     ("verify", 11): "72ba08821693dcb100be3d4dcfaac32d485191186d46fa22119ae7a7b60990b9",
     ("verify", 12): "25116143b78146e257b7eb89c5466266132755433249c07664c0cdbf01944c7d",
-    ("publish", 1): "107b129aaca0970fb78ee7f1e90ba96f6fe7d34e4121670193a3bf5183627695",
-    ("publish", 3): "40e809494a1e4c8b41cacf1be26a21b6347252addcb5498cffdf21b7358b250e",
+    ("publish", 1): "486348379a6ffebfb3a6277b355acd7983004c81498c486ea600856e38707ef6",
+    ("publish", 3): "572a7675883180e939e4bac5400af8014154e93543ab11dfc5202a50d8f51022",
 }
 BLOCKED_STEP_RUN_STYLE = {
     ("admission", 0): "|",
@@ -544,8 +554,8 @@ BLOCKED_STEP_ENV = {
         ("DISPATCH_SHA", "${{ github.sha }}"),
         ("WORKFLOW_REF", "${{ github.workflow_ref }}"),
         ("WORKFLOW_SHA", "${{ github.workflow_sha }}"),
-        ("HOST_V7283", "${{ inputs.host_v7283_validation }}"),
-        ("HOST_V7283_SHA256", "${{ inputs.host_v7283_evidence_sha256 }}"),
+        ("HOST_V7285", "${{ inputs.host_v7285_validation }}"),
+        ("HOST_V7285_SHA256", "${{ inputs.host_v7285_evidence_sha256 }}"),
         ("INDEPENDENT_AUDIT", "${{ inputs.independent_audit_validation }}"),
         ("INDEPENDENT_AUDIT_SHA256", "${{ inputs.independent_audit_sha256 }}"),
         ("INDEPENDENT_EVALUATION", "${{ inputs.independent_evaluation_validation }}"),
@@ -606,7 +616,7 @@ BLOCKED_STEP_ENV = {
         ("TAG", "${{ inputs.tag }}"),
         ("CI_RUN_ID", "${{ inputs.ci_run_id }}"),
         ("CANDIDATE_RUN_ID", "${{ inputs.candidate_run_id }}"),
-        ("HOST_V7283_SHA256", "${{ inputs.host_v7283_evidence_sha256 }}"),
+        ("HOST_V7285_SHA256", "${{ inputs.host_v7285_evidence_sha256 }}"),
         ("INDEPENDENT_AUDIT_SHA256", "${{ inputs.independent_audit_sha256 }}"),
         ("INDEPENDENT_EVALUATION_ID", "${{ inputs.independent_evaluation_id }}"),
         ("INDEPENDENT_EVALUATION_SHA256", "${{ inputs.independent_evaluation_sha256 }}"),
@@ -621,7 +631,7 @@ BLOCKED_STEP_ENV = {
         ("EXPECTED_STORE_ZIP_SHA256", "${{ inputs.expected_store_zip_sha256 }}"),
         ("CI_RUN_ID", "${{ inputs.ci_run_id }}"),
         ("CANDIDATE_RUN_ID", "${{ inputs.candidate_run_id }}"),
-        ("HOST_V7283_SHA256", "${{ inputs.host_v7283_evidence_sha256 }}"),
+        ("HOST_V7285_SHA256", "${{ inputs.host_v7285_evidence_sha256 }}"),
         ("INDEPENDENT_AUDIT_SHA256", "${{ inputs.independent_audit_sha256 }}"),
         ("INDEPENDENT_EVALUATION_ID", "${{ inputs.independent_evaluation_id }}"),
         ("INDEPENDENT_EVALUATION_SHA256", "${{ inputs.independent_evaluation_sha256 }}"),
@@ -675,7 +685,7 @@ CANDIDATE_STEP_CONTRACTS = {
         ),
         ("Install bounded candidate dependencies", ("name", "run"), None),
         (
-            "Recheck source, regressions, and latest CPA v7.2.83 contract",
+            "Recheck source, regressions, and latest CPA v7.2.85 contract",
             ("name", "env", "run"),
             None,
         ),
@@ -818,11 +828,11 @@ FORMAL_RELEASE_ARTIFACTS = (
     "dist/formal-release-attestation.json.sha256",
 )
 FORMAL_RELEASE_STEP_RUN_SHA256 = {
-    ("admission", 0): "16f8ebb4a21b31c6c7dca3388d6fffb92b19d2fe743fdfb7b900a78b8a22ff29",
+    ("admission", 0): "1ab4e67da6e600016c7645a4ac6fa7e9c5a008eada019417d9522a9b258086d3",
     ("build-and-verify", 2): "5bc38a90928a7309be0be55b3834ebf28c2eee7c2fd290ef19bf6d3a8dd3857d",
     ("build-and-verify", 3): "3177c58474d2bd9ee7246a79c02d77fc4afac7b26e13f3193cd456f9cadbb2dd",
     ("build-and-verify", 4): "e2194c0fb1cc2681adff35d6c0a12e10540e17bb7495597ac1f3ccb992bbc53f",
-    ("build-and-verify", 5): "f3ae1159d54ec14d35c70bc3177d5ac0e520093449e15878391b413818857561",
+    ("build-and-verify", 5): "16f59f25d193f0098efe4009bb21dbb52a387fb00b7581a6e800e65907efb51c",
     ("build-and-verify", 7): "2ecb4e3db81c81773248547deb2121bd998a7c1aeae69036485603c1760c53e2",
     ("build-and-verify", 8): "2824c61aa8a13293fe96c4a6f7586466ca90eb0f527182265f9be7df66586ccf",
     ("build-and-verify", 9): "85ab9b21007e3d06b5c4720274e1fe5753a3634b5611185736e4fc83b738dc38",
@@ -844,10 +854,10 @@ FROZEN_EVALUATION_TREE_SCRIPT_SHA256 = (
     "be39ad4f8ad0aea3a1e32e28e631cbac614ab03bb29b360985b0bd8c5080255e"
 )
 EXTERNAL_ATTESTATION_SCRIPT_SHA256 = {
-    "verify-external-release-attestation.sh": "af83353e3fd44cd01adcd0830de1f69237d8bb360152ff9777301f1cbab68862",
-    "verify-external-release-attestation-test.sh": "5708ec5ce91847d3c8a150b872da24c135de3aeeadc90330c58a1e255e594a19",
+    "verify-external-release-attestation.sh": "79727cc729df0941dc8a202b2738d5bc8977ef0864965e143bea647344775313",
+    "verify-external-release-attestation-test.sh": "a81f3fed32e26f9cc36f9b58d128b369e73f4ca1e9fce9b5583e5977cd68280f",
 }
-GENERATE_RELEASE_EVIDENCE_SCRIPT_SHA256 = "af5f8ddc3e695b07e85c74bc10410777ce59c6232d740e61d65df184d3d79ab2"
+GENERATE_RELEASE_EVIDENCE_SCRIPT_SHA256 = "9fce4bafaf6264902862d3d05b9fc24532cbb4b84a1669ddd5a4e1b3ae2b753a"
 
 
 class ContractError(RuntimeError):
@@ -1242,7 +1252,8 @@ def logical_shell_commands(text: str) -> tuple[str, ...]:
         if not line:
             continue
         pending = f"{pending} {line}".strip() if pending else line
-        if pending.endswith("\\"):
+        trailing = len(pending) - len(pending.rstrip("\\"))
+        if trailing % 2 == 1:
             pending = pending[:-1].rstrip()
             continue
         commands.append(pending)
@@ -3015,7 +3026,7 @@ def validate_blocked_prerelease_structure(
         "on.workflow_dispatch.inputs",
     )
     choice_inputs = {
-        "host_v7283_validation",
+        "host_v7285_validation",
         "independent_audit_validation",
         "independent_evaluation_validation",
     }
@@ -3147,7 +3158,7 @@ def validate_blocked_prerelease_structure(
                 f"{job_path}.environment",
             )
             expected_publish_if = (
-                "inputs.host_v7283_validation == 'PASS' && "
+                "inputs.host_v7285_validation == 'PASS' && "
                 "inputs.independent_audit_validation == 'PASS' && "
                 "inputs.independent_evaluation_validation == 'PASS' && "
                 "inputs.authorize_blocked_prerelease == true"
@@ -3456,51 +3467,69 @@ HEREDOC = re.compile(
 )
 
 
-def mutation_shell_commands(text: str) -> tuple[str, ...]:
+def mutation_shell_commands(
+    text: str, source: Path = Path("<workflow>")
+) -> tuple[str, ...]:
     commands: list[str] = []
     pending = ""
     heredocs: list[tuple[str, bool]] = []
+    in_array = False
+    array_state = (False, False)
+    command_state = SHELL_NEUTRAL_STATE
+    array_start = re.compile(
+        r"^(?:(?:local|readonly|declare)(?:\s+-[aA])?\s+)?"
+        r"[A-Za-z_][A-Za-z0-9_]*\+?=\("
+    )
     for raw in text.splitlines():
         if heredocs:
             delimiter, strip_tabs = heredocs[0]
             candidate = raw.lstrip("\t") if strip_tabs else raw
             if candidate == delimiter:
                 heredocs.pop(0)
+                if not heredocs and shell_state_neutral(command_state) and pending:
+                    shell_tokens(pending)
+                    commands.append(pending)
+                    pending = ""
             continue
 
         line = raw.strip()
-        if not line or line.startswith("#"):
+        if not line or (line.startswith("#") and shell_state_neutral(command_state)):
             continue
-        continued = line.endswith("\\")
+        if in_array:
+            array_state = scan_shell_array_fragment(line, source, array_state)
+            if array_state == (False, False) and re.fullmatch(
+                r"\)\s*;?(?:\s+#.*)?", line
+            ):
+                in_array = False
+            continue
+        if shell_state_neutral(command_state) and not pending and array_start.match(line):
+            array_state = scan_shell_array_fragment(line, source, (False, False))
+            if array_state != (False, False) or not re.search(
+                r"\)\s*;?(?:\s+#.*)?$", line
+            ):
+                in_array = True
+            continue
+
+        line, command_state, continued = shell_line_continuation(line, command_state)
+        if not line:
+            continue
         if continued:
             line = line[:-1].rstrip()
         pending = f"{pending} {line}".strip() if pending else line
-        if continued:
-            continue
-
-        try:
-            shell_tokens(pending)
-        except ContractError as exc:
-            cause = exc.__cause__
-            if isinstance(cause, ValueError) and str(cause) in {
-                "No closing quotation",
-                "No escaped character",
-            }:
-                continue
-            raise
-
-        commands.append(pending)
-        for match in HEREDOC.finditer(pending):
+        for match in HEREDOC.finditer(line):
             delimiter = match.group("delimiter")
             if delimiter[:1] in {"'", '"'}:
                 delimiter = delimiter[1:-1]
             heredocs.append((delimiter, match.group("strip_tabs") == "-"))
+        if continued or heredocs or not shell_state_neutral(command_state):
+            continue
+
+        shell_tokens(pending)
+        commands.append(pending)
         pending = ""
 
-    if pending:
-        raise ContractError("unterminated shell command in blocked prerelease workflow")
-    if heredocs:
-        raise ContractError("unterminated heredoc in blocked prerelease workflow")
+    if pending or heredocs or in_array or not shell_state_neutral(command_state):
+        raise ContractError("unterminated shell construct in blocked prerelease workflow")
     return tuple(commands)
 
 

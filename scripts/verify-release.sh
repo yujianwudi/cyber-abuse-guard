@@ -241,8 +241,8 @@ if grep -Eiq '(^|/)(\.git|.*\.db($|[-.])|.*secret.*|.*hmac.*|.*\.key|.*\.pem|\.e
   echo "audit bundle contains a forbidden repository, database, or secret-like path" >&2
   exit 1
 fi
-if grep -Eiq '(^|/)[^/]*(evaluation|holdout|private|blind|retired)[^/]*($|/)' <<<"$bundle_listing"; then
-  echo "audit bundle contains evaluation, holdout, private, blind, or retired material" >&2
+if grep -Eiq '(^|/)[^/]*(evaluation|holdout|consumed|private|blind|retired)[^/]*($|/)' <<<"$bundle_listing"; then
+  echo "audit bundle contains evaluation, holdout, consumed, private, blind, or retired material" >&2
   exit 1
 fi
 

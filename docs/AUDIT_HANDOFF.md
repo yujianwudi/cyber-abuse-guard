@@ -6,20 +6,20 @@
 **BLOCKED / PENDING HOST AND INDEPENDENT AUDIT**，尚未合并 `main`，也没有创建
 `v0.15` 标签或 GitHub Release。
 
-当前 Round 6 source/compile 与真实 Host 发行目标仅为 CPA v7.2.83
-(`9f4f53ca5a4d1474e3f7eb61d6ffc984995f1f66`)。早期 v7.2.82/v7.2.81
+当前 Round 6 source/compile 与真实 Host 发行目标仅为 CPA v7.2.85
+(`baffbe2cc703fa694c0c72baad13715b9bd28e57`)。早期 v7.2.84/v7.2.83/v7.2.82/v7.2.81
 profile 只保留为历史非门禁工程证据。
 
-The checked-in isolated module uses v7.2.83. Commit
+The checked-in isolated module now uses v7.2.85. Historical commit
 `21ceb57e6b6030e56d7820c9a67a8eecd068c669`, tree
 `e55437442f30bdb1b6b748b9611c6760172784cd`, passed push CI
 [29578024185](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29578024185)
-and PR CI
+and PR CI for the then-current v7.2.83 latest-source lane
 [29578025961](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29578025961).
 This is a **passed pre-version-migration checkpoint**, not final v0.15 evidence.
 Final PR-head Linux CI, merge to `main`, exact post-merge main push CI, the
 private untagged clean-candidate artifact, the
-v7.2.83 real Host + Mock matrix, and independent review remain **PENDING / NOT
+v7.2.85 real Host + Mock matrix, and independent review remain **PENDING / NOT
 RUN**. The v7.2.80 PASS records below
 are historical Round 5.2 source/compile evidence and are not relabeled as
 current Round 6 matrix or Host evidence.
@@ -31,7 +31,7 @@ project_version: 0.15
 formal_tag: v0.15
 streaming_scanner: streaming-scanner-v1
 classifier_policy: classifier-policy-v3
-classifier_policy_sha256: 7471f3170ac832f8dc839a7da005c5d4d487c1c60f1a01eb7385e93fff49da5f
+classifier_policy_sha256: 5d3456e8494c7da3e5209729a07c41fd8ee5a467613c0d5b02d08391e463092d
 ruleset: 1.0.7 / 7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134
 historical_v10: CONSUMED / FAIL / MUST NOT RERUN / NOT A FORMAL INPUT
 ```
@@ -44,7 +44,7 @@ historical_v10: CONSUMED / FAIL / MUST NOT RERUN / NOT A FORMAL INPUT
 4. 从 `refs/heads/main` dispatch 候选 workflow，生成私有、无标签、干净精确源码的
    Linux amd64 Actions 候选产物及
    `candidate-manifest.json`；
-5. CPA v7.2.83 Host + Mock 记录绑定 candidate SO SHA-256，并证明
+5. CPA v7.2.85 Host + Mock 记录绑定 candidate SO SHA-256，并证明
    Auth Selector、Provider、Usage、Mock Upstream
    四层零调用；
 6. 独立源码、产物、Host 审计；
@@ -55,8 +55,8 @@ historical_v10: CONSUMED / FAIL / MUST NOT RERUN / NOT A FORMAL INPUT
 9. `round6-prerelease-attestation.json` 必须绑定该 evaluation ID 与报告 SHA-256，之后才允许
    注解正式标签 `v0.15`、已验证 draft 与受保护 promotion。
 
-本地最终差异 CodeRabbit 复核记录为 0 issues；远端 Draft check 已跳过，因此不得写成
-远端 CodeRabbit 批准，更不等于独立审计。
+最终 PR head 合并前必须没有未解决且未过时的可操作审查线程。自动化审查只作为开发
+反馈，不得写成远端或独立批准。
 
 中立源码策略见 [RELEASE_POLICY.md](RELEASE_POLICY.md)。未来外部决策资产固定命名为
 `round6-prerelease-attestation.json` 与 `formal-release-attestation.json`；本源码文档不

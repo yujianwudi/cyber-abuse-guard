@@ -985,11 +985,27 @@ func TestExtractRequestMultipartResourceLimits(t *testing.T) {
 		}
 	})
 
-	t.Run("text field uses internal chunks", func(t *testing.T) {
+	t.Run("text field uses bounded internal chunks", func(t *testing.T) {
 		body, contentType := multipartBody(t, []multipartTestPart{{name: "prompt", value: []byte(strings.Repeat("p", 32))}})
-		result, err := extractOpenAIImageRequest(body, http.Header{"Content-Type": []string{contentType}}, Limits{MaxMultipartTextPartBytes: 8})
-		if err != nil || !result.IsComplete() || result.TextBytesScanned != 32 || result.ClassificationChunks != 4 {
-			t.Fatalf("result=%#v err=%v", result, err)
+		for _, testCase := range []struct {
+			name   string
+			limits Limits
+		}{
+			{
+				name:   "generic chunk bound",
+				limits: Limits{MaxTextPartBytes: 8, MaxMultipartTextPartBytes: 16},
+			},
+			{
+				name:   "multipart chunk bound",
+				limits: Limits{MaxTextPartBytes: 16, MaxMultipartTextPartBytes: 8},
+			},
+		} {
+			t.Run(testCase.name, func(t *testing.T) {
+				result, err := extractOpenAIImageRequest(body, http.Header{"Content-Type": []string{contentType}}, testCase.limits)
+				if err != nil || !result.IsComplete() || result.TextBytesScanned != 32 || result.ClassificationChunks != 4 {
+					t.Fatalf("result=%#v err=%v", result, err)
+				}
+			})
 		}
 	})
 }

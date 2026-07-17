@@ -1,23 +1,24 @@
 # CPA Integration and Store-Contract Report — v0.15 Round 6 candidate
 
-## 2026-07-17 v7.2.83 matrix status
+## 2026-07-17 v7.2.85 matrix status
 
 Exact project version is `0.15`; the only formal tag is `v0.15`, never
-`v0.15.0`. Round 6 pins CPA v7.2.83 primary at commit
-`9f4f53ca5a4d1474e3f7eb61d6ffc984995f1f66`, with module sum
-`h1:fCGraERLPW08Kl8aP3F/A5XQC34ZPD0mEfxpTvevF7Y=` and go.mod sum
+`v0.15.0`. Round 6 pins CPA v7.2.85 primary at commit
+`baffbe2cc703fa694c0c72baad13715b9bd28e57`, with module sum
+`h1:P2ScGZcDxKTii2ZMHEL3QuVw3WB1CYU0Ap9GHf6pUiM=` and go.mod sum
 `h1:ytvZNWbCv7PrAyR80+RKsDJPODsdL6qxyFaXDBNZdqs=`. It is the only current
-source/compile and real-Host release target. Earlier v7.2.82/v7.2.81 profiles
+source/compile and real-Host release target. Earlier v7.2.84/v7.2.83/v7.2.82/v7.2.81 profiles
 are retained only as historical non-gating engineering evidence.
 
 Commit `21ceb57e6b6030e56d7820c9a67a8eecd068c669` passed push CI
 [29578024185](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29578024185)
 and PR CI
 [29578025961](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29578025961)
-with the current matrix. This is a passed **pre-version-migration checkpoint**,
+with the then-current v7.2.83 latest-source matrix. This is a passed
+**pre-version-migration checkpoint**,
 not final v0.15 evidence. Final PR-head Linux CI, merge to `main`, exact
 post-merge main push CI, the private untagged clean candidate artifact, and the
-CPA v7.2.83 native Host + Mock matrix remain **PENDING / NOT RUN**. The v7.2.80
+CPA v7.2.85 native Host + Mock matrix remain **PENDING / NOT RUN**. The v7.2.80
 results in the dated addendum below remain historical source/compile evidence;
 they are not current Round 6 matrix or native Host evidence.
 
@@ -29,7 +30,7 @@ final PR head + PR CI
 -> exact post-merge main push CI
 -> dispatch candidate from refs/heads/main
 -> private untagged clean candidate + candidate-manifest.json
--> v7.2.83 Host + Mock record over one SO SHA-256
+-> v7.2.85 Host + Mock record over one SO SHA-256
 -> independent source/artifact/Host audit
 -> candidate-bound external evaluation-v11+ CONSUMED / PASS
 -> optional annotated v0.15-dev.round6[.N] draft prerelease
@@ -41,8 +42,9 @@ For each blocked request, every Host record must prove zero deltas at Auth
 Selector, Provider execution, usage accounting, and Mock upstream. Candidate
 bytes are clean but unreleased. Historical v10 remains `CONSUMED / FAIL` and
 cannot be rerun or used as a formal input. Formal source/audit bundles exclude
-evaluation, Holdout, private, blind, and retired material. The local final-diff CodeRabbit review reported 0 issues; the
-remote Draft check was skipped and no independent approval is claimed.
+evaluation, Holdout, private, blind, and retired material. The final PR head
+must have no unresolved, non-outdated actionable review threads before merge;
+automated review is advisory and no independent approval is claimed.
 
 See [RELEASE_POLICY.md](../RELEASE_POLICY.md). The Host/audit and formal decision
 assets are `round6-prerelease-attestation.json` and
@@ -50,7 +52,7 @@ assets are `round6-prerelease-attestation.json` and
 future PASS fields.
 
 Current classifier identity is `classifier-policy-v3` /
-`7471f3170ac832f8dc839a7da005c5d4d487c1c60f1a01eb7385e93fff49da5f`.
+`5d3456e8494c7da3e5209729a07c41fd8ee5a467613c0d5b02d08391e463092d`.
 
 ## Frozen 2026-07-16 Round5.2 latest-compat addendum
 

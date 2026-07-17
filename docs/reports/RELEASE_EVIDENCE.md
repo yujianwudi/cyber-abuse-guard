@@ -6,8 +6,8 @@ Last updated: 2026-07-17 (Asia/Shanghai)
 
 Exact project version is `0.15`; the only formal tag is `v0.15`, never
 `v0.15.0`. The only current source/compile and real-Host release target is CPA
-v7.2.83 (`9f4f53ca5a4d1474e3f7eb61d6ffc984995f1f66`). Earlier
-v7.2.82/v7.2.81 profiles are historical non-gating engineering evidence.
+v7.2.85 (`baffbe2cc703fa694c0c72baad13715b9bd28e57`). Earlier
+v7.2.84/v7.2.83/v7.2.82/v7.2.81 profiles are historical non-gating engineering evidence.
 
 ```text
 status: BLOCKED / PENDING HOST AND INDEPENDENT AUDIT
@@ -23,7 +23,7 @@ post_merge_main_push_ci: NOT RUN / PENDING
 final_v0.15_commit_tree: PENDING EXACT POST-MERGE MAIN IDENTITY
 private_untagged_clean_candidate: NOT CREATED / PENDING
 candidate_manifest: NOT CREATED / PENDING
-cpa_v7.2.83_host_mock: NOT RUN / PENDING
+cpa_v7.2.85_host_mock: NOT RUN / PENDING
 four_layer_zero_call_evidence: NOT RUN / PENDING
 independent_source_artifact_host_audit: NOT RUN / PENDING
 candidate_bound_evaluation_v11_plus: NOT RUN / PENDING / requires CONSUMED PASS
@@ -43,7 +43,7 @@ That workflow
 must produce clean Linux amd64 bytes plus `candidate-manifest.json`; clean bytes
 remain unreleased.
 
-The CPA v7.2.83 Host + Mock record and the independent audit must bind the same
+The CPA v7.2.85 Host + Mock record and the independent audit must bind the same
 candidate workflow run, commit, tree, and SO SHA-256. Every local block must
 show zero Auth Selector, Provider, usage, and Mock-upstream deltas. The exact
 candidate must also receive an external `evaluation-v11` or later first-and-only
@@ -55,12 +55,13 @@ and verified draft consume that same candidate-level attestation. Protected
 promotion may publish only the unchanged draft.
 
 Current policy identity is `classifier-policy-v3` /
-`7471f3170ac832f8dc839a7da005c5d4d487c1c60f1a01eb7385e93fff49da5f`;
+`5d3456e8494c7da3e5209729a07c41fd8ee5a467613c0d5b02d08391e463092d`;
 scanner identity is `streaming-scanner-v1`; ruleset identity remains `1.0.7` /
 `7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134`.
 
-The local final-diff CodeRabbit review reported 0 issues. The remote Draft check
-was skipped. No remote CodeRabbit approval or independent audit PASS is claimed.
+The final PR head must have no unresolved, non-outdated actionable review
+threads before merge. No automated-review result is treated as an independent
+audit PASS.
 
 This reusable source report does not self-record future Host/audit PASS hashes,
 merge identity, tag state, or Release state. Those remain external attestation

@@ -925,7 +925,11 @@ func TestRound6MultipartLongPromptStreamsWhileFileStaysOpaque(t *testing.T) {
 		body,
 		http.Header{"Content-Type": []string{contentType}},
 		RequestProfile{Source: SourceProfileOpenAIImage},
-		Limits{MaxMultipartTextBytes: len(prompt)},
+		Limits{
+			MaxTextPartBytes:          len(prompt),
+			MaxMultipartTextBytes:     len(prompt),
+			MaxMultipartTextPartBytes: len(prompt),
+		},
 		sink,
 	)
 	if err != nil {
@@ -1051,7 +1055,11 @@ func TestRound6MultipartExactChunkMultiplesAlwaysEndField(t *testing.T) {
 				body,
 				http.Header{"Content-Type": []string{contentType}},
 				RequestProfile{Source: SourceProfileOpenAIImage},
-				Limits{},
+				Limits{
+					MaxTextWindowBytes:        DefaultMaxTextPartBytes,
+					MaxTextPartBytes:          len(prompt),
+					MaxMultipartTextPartBytes: len(prompt),
+				},
 				sink,
 			)
 			if err != nil {

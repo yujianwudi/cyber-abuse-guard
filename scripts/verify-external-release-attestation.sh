@@ -107,13 +107,13 @@ jq -e \
   (.artifacts.so_sha256 | sha256 and . == $so_sha256) and
   (.artifacts.store_zip_sha256 | sha256 and . == $store_zip_sha256) and
   (.evidence | exact_keys([
-    "cpa_v7_2_83_sha256",
+    "cpa_v7_2_85_sha256",
     "independent_audit_sha256",
     "independent_evaluation_id",
     "independent_evaluation_status",
     "independent_evaluation_sha256"
   ])) and
-  (.evidence.cpa_v7_2_83_sha256 | sha256) and
+  (.evidence.cpa_v7_2_85_sha256 | sha256) and
   (.evidence.independent_audit_sha256 | sha256) and
   (.evidence.independent_evaluation_id | independent_evaluation_v11_or_later) and
   .evidence.independent_evaluation_status == "CONSUMED / PASS" and

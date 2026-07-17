@@ -44,7 +44,7 @@ write_valid_attestation() {
         store_zip_sha256: $store_zip_sha256
       },
       evidence: {
-        cpa_v7_2_83_sha256: "8383838383838383838383838383838383838383838383838383838383838383",
+        cpa_v7_2_85_sha256: "8383838383838383838383838383838383838383838383838383838383838383",
         independent_audit_sha256: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
         independent_evaluation_id: "evaluation-v11",
         independent_evaluation_status: "CONSUMED / PASS",
@@ -172,13 +172,13 @@ run_must_fail malformed-evaluation-hash verify_case "$work/malformed-evaluation-
 mutate_case non-consumed-evaluation '.evidence.independent_evaluation_status = "PASS"'
 run_must_fail evaluation-must-be-consumed-pass verify_case "$work/non-consumed-evaluation"
 
-mutate_case missing-v7283 'del(.evidence.cpa_v7_2_83_sha256)'
-run_must_fail missing-cpa-v7283-host-evidence verify_case "$work/missing-v7283"
+mutate_case missing-v7285 'del(.evidence.cpa_v7_2_85_sha256)'
+run_must_fail missing-cpa-v7285-host-evidence verify_case "$work/missing-v7285"
 
-mutate_case unexpected-host-version '.evidence.cpa_v7_2_82_sha256 = (.evidence.cpa_v7_2_83_sha256)'
+mutate_case unexpected-host-version '.evidence.cpa_v7_2_82_sha256 = (.evidence.cpa_v7_2_85_sha256)'
 run_must_fail unexpected-host-version-cannot-replace-latest verify_case "$work/unexpected-host-version"
 
-mutate_case malformed-host-hash '.evidence.cpa_v7_2_83_sha256 = "8383"'
+mutate_case malformed-host-hash '.evidence.cpa_v7_2_85_sha256 = "8383"'
 run_must_fail malformed-host-evidence-hash verify_case "$work/malformed-host-hash"
 
 mutate_case missing-audit 'del(.evidence.independent_audit_sha256)'

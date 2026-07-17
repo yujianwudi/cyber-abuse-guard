@@ -46,7 +46,7 @@ CPA_ROUTER_FIXTURE_SCENARIOS := guard-priority-higher fixture-priority-higher \
 
 .PHONY: all format-check round6-format-check git-diff-check round6-git-diff-check module-verify round6-module-verify test unit-test vet round6-vet race \
 	fuzz-smoke script-test corpus-regression development-public-jailbreak-corpus consumed-boundary-test holdout-test benchmark round6-benchmark build-linux-amd64 \
-	integration-compile integration-test cpa-v7283-host-blackbox cpa-v7275-host-blackbox cpa-v7272-host-blackbox cpa-router-fixture-blackbox cpa-host-fixture-contract cpa-latest-compat round4-regression round5-regression round6-regression round6-development-artifacts round6-reproducibility-test round6-script-test round6-cpa-store-contract management-proxy-413-test ruleset-manifest sbom vulncheck round6-vulncheck release-preflight \
+	integration-compile integration-test cpa-v7285-host-blackbox cpa-v7284-host-blackbox cpa-v7283-host-blackbox cpa-v7275-host-blackbox cpa-v7272-host-blackbox cpa-router-fixture-blackbox cpa-host-fixture-contract cpa-latest-compat round4-regression round5-regression round6-regression round6-development-artifacts round6-reproducibility-test round6-script-test round6-cpa-store-contract management-proxy-413-test ruleset-manifest sbom vulncheck round6-vulncheck release-preflight \
 	package-release package-source-release release release-evidence formal-release external-release-attestation frozen-evaluation-v10-tree release-doc-consistency release-doc-consistency-test verify-release verification-fault-test cpa-store-contract artifact-hash \
 	reproducibility-test clean-tree-check tools clean
 
@@ -79,31 +79,31 @@ git-diff-check:
 
 round6-git-diff-check:
 	git diff --check -- . \
-		':(exclude,glob)cmd/**/*evaluation*' \
-		':(exclude,glob)cmd/**/*holdout*' \
-		':(exclude,glob)cmd/**/*consumed*' \
-		':(exclude,glob)cmd/**/*private*' \
-		':(exclude,glob)cmd/**/*blind*' \
-		':(exclude,glob)cmd/**/*retired*' \
-		':(exclude,glob)docs/**/*EVALUATION_*' \
-		':(exclude,glob)docs/**/*HOLDOUT_*' \
-		':(exclude,glob)docs/**/*HOLDOUT_REPORT.md' \
-		':(exclude,glob)docs/**/*consumed*' \
-		':(exclude,glob)docs/**/*private*' \
-		':(exclude,glob)docs/**/*blind*' \
-		':(exclude,glob)docs/**/*retired*' \
-		':(exclude,glob)internal/classifier/**/*evaluation*' \
-		':(exclude,glob)internal/classifier/**/*holdout*' \
-		':(exclude,glob)internal/classifier/**/*consumed*' \
-		':(exclude,glob)internal/classifier/**/*private*' \
-		':(exclude,glob)internal/classifier/**/*blind*' \
-		':(exclude,glob)internal/classifier/**/*retired*' \
-		':(exclude,glob)testdata/**/*evaluation*' \
-		':(exclude,glob)testdata/**/*holdout*' \
-		':(exclude,glob)testdata/**/*consumed*' \
-		':(exclude,glob)testdata/**/*private*' \
-		':(exclude,glob)testdata/**/*blind*' \
-		':(exclude,glob)testdata/**/*retired*'
+		':(exclude,glob,icase)cmd/**/*evaluation*' \
+		':(exclude,glob,icase)cmd/**/*holdout*' \
+		':(exclude,glob,icase)cmd/**/*consumed*' \
+		':(exclude,glob,icase)cmd/**/*private*' \
+		':(exclude,glob,icase)cmd/**/*blind*' \
+		':(exclude,glob,icase)cmd/**/*retired*' \
+		':(exclude,glob,icase)docs/**/*EVALUATION_*' \
+		':(exclude,glob,icase)docs/**/*HOLDOUT_*' \
+		':(exclude,glob,icase)docs/**/*HOLDOUT_REPORT.md' \
+		':(exclude,glob,icase)docs/**/*consumed*' \
+		':(exclude,glob,icase)docs/**/*private*' \
+		':(exclude,glob,icase)docs/**/*blind*' \
+		':(exclude,glob,icase)docs/**/*retired*' \
+		':(exclude,glob,icase)internal/classifier/**/*evaluation*' \
+		':(exclude,glob,icase)internal/classifier/**/*holdout*' \
+		':(exclude,glob,icase)internal/classifier/**/*consumed*' \
+		':(exclude,glob,icase)internal/classifier/**/*private*' \
+		':(exclude,glob,icase)internal/classifier/**/*blind*' \
+		':(exclude,glob,icase)internal/classifier/**/*retired*' \
+		':(exclude,glob,icase)testdata/**/*evaluation*' \
+		':(exclude,glob,icase)testdata/**/*holdout*' \
+		':(exclude,glob,icase)testdata/**/*consumed*' \
+		':(exclude,glob,icase)testdata/**/*private*' \
+		':(exclude,glob,icase)testdata/**/*blind*' \
+		':(exclude,glob,icase)testdata/**/*retired*'
 
 module-verify:
 	$(GO) mod verify
@@ -307,7 +307,7 @@ round5-regression:
 		TestRoleAwareTruncatedDefensiveReconstructionKeepsWrapperFinding; do \
 		printf '%s\n' "$$listed" | grep -Fxq "$$test_name" || { echo "required round-five classifier regression $$test_name is missing" >&2; exit 1; }; \
 	done
-	@listed="$$($(GO) test -tags=$(TEST_TAGS) ./internal/plugin -list='^(TestBalancedMultipartUnknownFileFieldAllowsAndAuditsWithoutClassification|TestStrictMultipartUnknownFileFieldBlocksEvenWhenOpaquePolicyAllows|TestMultipartUnknownFileFieldAuditIsFixedAndPrivate|TestControlPlaneMetaOverrideCounterIsFixedAndOrthogonal|TestIncompleteRequestDoesNotEmitControlPlaneCounter|TestWrapperOnlyControlPlaneDoesNotAccumulateSubjectRisk|TestPersistentControlPlaneBlockRemainsCategoryFreeAndDoesNotPersistSubjectRisk|TestOpaqueMediaBlockCannotBeDowngradedByWrapperAudit|TestCompleteClassifierBlockStillWinsOverOpaqueMediaBlock|TestToolSchemaMappedControlIsAuditedAndCounted|TestToolSchemaUnknownControlIsIncompleteWithoutClassification|TestStrictToolSchemaUnknownControlBlocksWithoutClassification|TestAdjacentNegationProofBudgetBlocksBalancedWithoutIncompleteDowngrade|TestLargeTopLevelToolDefinitionCannotBypassBalanced|TestRegistrationMatchesTargetCPAv7283Contract|TestRouterUsesRoleAwareConversationClassification)$$')" || exit $$?; \
+	@listed="$$($(GO) test -tags=$(TEST_TAGS) ./internal/plugin -list='^(TestBalancedMultipartUnknownFileFieldAllowsAndAuditsWithoutClassification|TestStrictMultipartUnknownFileFieldBlocksEvenWhenOpaquePolicyAllows|TestMultipartUnknownFileFieldAuditIsFixedAndPrivate|TestControlPlaneMetaOverrideCounterIsFixedAndOrthogonal|TestIncompleteRequestDoesNotEmitControlPlaneCounter|TestWrapperOnlyControlPlaneDoesNotAccumulateSubjectRisk|TestPersistentControlPlaneBlockRemainsCategoryFreeAndDoesNotPersistSubjectRisk|TestOpaqueMediaBlockCannotBeDowngradedByWrapperAudit|TestCompleteClassifierBlockStillWinsOverOpaqueMediaBlock|TestToolSchemaMappedControlIsAuditedAndCounted|TestToolSchemaUnknownControlIsIncompleteWithoutClassification|TestStrictToolSchemaUnknownControlBlocksWithoutClassification|TestAdjacentNegationProofBudgetBlocksBalancedWithoutIncompleteDowngrade|TestLargeTopLevelToolDefinitionCannotBypassBalanced|TestRegistrationMatchesTargetCPAv7285Contract|TestRouterUsesRoleAwareConversationClassification)$$')" || exit $$?; \
 	for test_name in \
 		TestBalancedMultipartUnknownFileFieldAllowsAndAuditsWithoutClassification \
 		TestStrictMultipartUnknownFileFieldBlocksEvenWhenOpaquePolicyAllows \
@@ -323,7 +323,7 @@ round5-regression:
 		TestStrictToolSchemaUnknownControlBlocksWithoutClassification \
 		TestAdjacentNegationProofBudgetBlocksBalancedWithoutIncompleteDowngrade \
 		TestLargeTopLevelToolDefinitionCannotBypassBalanced \
-		TestRegistrationMatchesTargetCPAv7283Contract \
+		TestRegistrationMatchesTargetCPAv7285Contract \
 		TestRouterUsesRoleAwareConversationClassification; do \
 		printf '%s\n' "$$listed" | grep -Fxq "$$test_name" || { echo "required round-five plugin regression $$test_name is missing" >&2; exit 1; }; \
 	done
@@ -332,7 +332,7 @@ round5-regression:
 	$(GO) test ./internal/classifier -count=1 -v \
 		-run='^(TestRound5MetaOverrideFamiliesProduceFixedEvidence|TestRound5MetaOverridePerformanceAcceptance|TestMetaOverrideClauseBudgetPerformance|TestMetaOverrideClauseBudgetRejectsDefensiveCredit|TestRound5PersistentInstructionInjectionBlocksOnlyActiveSafetyOverride|TestRound5PersistentInstructionInjectionAcrossLinkedUserSegments|TestRound5PersistentBlockSurvivesIncidentalLowScoreTaxonomyTerms|TestRound5WrapperAuditSurvivesIncidentalLowScoreTaxonomyTerms|TestRound5MetaOverrideBenignNearNeighborsAllow|TestRound5MetaOverrideDefensiveQuotedSamplesRemainInert|TestRound5MetaOverrideDefensiveTailCannotAuthorizeExecution|TestRound5MalformedUTF8DirectiveBoundariesConsumeDecodedWidth|TestRound5UnrelatedPassiveNegationCannotLaunderMetaTarget|TestRound5MetaOverrideBilingualFamilies|TestRound5RefusalScopeOutputAndCompoundIntentHardening|TestRound5AgenticEscalationAmplifiesButDoesNotReplaceBaseTaxonomy|TestRound5AdjacentCompactIntentNegationFailsClosed|TestRound5AdjacentPartsNegationReversalCannotHideAbuse|TestRound5AdjacentUserSegmentsNegationReversalCannotHideAbuse|TestRound5AdjacentNegationCandidateFloodFailsClosed|TestRound5AdjacentNegationCandidateFloodPerformanceAcceptance|TestRound5AdjacentOverflowPreservesAllMatchedCores|TestRound5AdjacentPartsNegationReversalSurvivesTrailingParts|TestRound5AdjacentReversalUsesConfiguredHardBlockThreshold|TestRound5NegationReversalKeepsTrueProhibitionsBenign|TestRound5NormalizedContractionsRemainNegationReversals|TestRound5CoordinatedCrossCategoryProhibitionsRemainBenign|TestRound5CrossCategoryNegationDoesNotCoverOperationalTail|TestRound5DirectiveBoundaryRunsPreserveSentenceBreaks|TestRound5EarlierLiteralNegationCannotHideLaterCompactClause|TestRound5LargeAdjacentNegationReconstructionFailsClosed|TestRound5LongNegationReversalBridgeFailsActive|TestRound5NegatedProhibitionModalBridgeFailsActive|TestRound5RepeatedIntentYInflectionsFailActive|TestRound5NegationCannotHideLaterActiveIntent|TestRound5UnrelatedSignalsDoNotPolluteMetaTail|TestRoleAwareTruncatedDefensiveReconstructionKeepsWrapperFinding)$$'
 	$(GO) test -tags=$(TEST_TAGS) ./internal/plugin -count=1 -v \
-		-run='^(TestBalancedMultipartUnknownFileFieldAllowsAndAuditsWithoutClassification|TestStrictMultipartUnknownFileFieldBlocksEvenWhenOpaquePolicyAllows|TestMultipartUnknownFileFieldAuditIsFixedAndPrivate|TestControlPlaneMetaOverrideCounterIsFixedAndOrthogonal|TestIncompleteRequestDoesNotEmitControlPlaneCounter|TestWrapperOnlyControlPlaneDoesNotAccumulateSubjectRisk|TestPersistentControlPlaneBlockRemainsCategoryFreeAndDoesNotPersistSubjectRisk|TestOpaqueMediaBlockCannotBeDowngradedByWrapperAudit|TestCompleteClassifierBlockStillWinsOverOpaqueMediaBlock|TestToolSchemaMappedControlIsAuditedAndCounted|TestToolSchemaUnknownControlIsIncompleteWithoutClassification|TestStrictToolSchemaUnknownControlBlocksWithoutClassification|TestAdjacentNegationProofBudgetBlocksBalancedWithoutIncompleteDowngrade|TestLargeTopLevelToolDefinitionCannotBypassBalanced|TestRegistrationMatchesTargetCPAv7283Contract|TestRouterUsesRoleAwareConversationClassification)$$'
+		-run='^(TestBalancedMultipartUnknownFileFieldAllowsAndAuditsWithoutClassification|TestStrictMultipartUnknownFileFieldBlocksEvenWhenOpaquePolicyAllows|TestMultipartUnknownFileFieldAuditIsFixedAndPrivate|TestControlPlaneMetaOverrideCounterIsFixedAndOrthogonal|TestIncompleteRequestDoesNotEmitControlPlaneCounter|TestWrapperOnlyControlPlaneDoesNotAccumulateSubjectRisk|TestPersistentControlPlaneBlockRemainsCategoryFreeAndDoesNotPersistSubjectRisk|TestOpaqueMediaBlockCannotBeDowngradedByWrapperAudit|TestCompleteClassifierBlockStillWinsOverOpaqueMediaBlock|TestToolSchemaMappedControlIsAuditedAndCounted|TestToolSchemaUnknownControlIsIncompleteWithoutClassification|TestStrictToolSchemaUnknownControlBlocksWithoutClassification|TestAdjacentNegationProofBudgetBlocksBalancedWithoutIncompleteDowngrade|TestLargeTopLevelToolDefinitionCannotBypassBalanced|TestRegistrationMatchesTargetCPAv7285Contract|TestRouterUsesRoleAwareConversationClassification)$$'
 
 round6-regression:
 	@required=( \
@@ -502,9 +502,9 @@ build-linux-amd64:
 integration-compile:
 	$(GO) test -tags=integration,$(TEST_TAGS) -run='^$$' ./integration
 
-integration-test: cpa-v7283-host-blackbox cpa-router-fixture-blackbox
+integration-test: cpa-v7285-host-blackbox cpa-router-fixture-blackbox
 
-cpa-v7283-host-blackbox: build-linux-amd64
+cpa-v7285-host-blackbox: build-linux-amd64
 	@listed="$$($(GO) test -tags=integration,$(TEST_TAGS) -list='^TestCPAPluginHostBlocksBeforeUpstream$$' ./integration)" || exit $$?; \
 	printf '%s\n' "$$listed" | grep -Fxq 'TestCPAPluginHostBlocksBeforeUpstream' || { \
 		echo 'required Host blackbox test TestCPAPluginHostBlocksBeforeUpstream is missing' >&2; exit 1; \
@@ -524,11 +524,17 @@ cpa-v7283-host-blackbox: build-linux-amd64
 	CGO_ENABLED=1 $(GO) test -tags=integration,$(TEST_TAGS) -v -count=1 \
 		-run='^TestCPAPluginHostBlocksBeforeUpstream$$' ./integration
 
-cpa-v7275-host-blackbox: cpa-v7283-host-blackbox
-	@echo 'cpa-v7275-host-blackbox is a historical compatibility alias; current Host pin is CPA v7.2.83'
+cpa-v7284-host-blackbox: cpa-v7285-host-blackbox
+	@echo 'cpa-v7284-host-blackbox is a historical compatibility alias; current Host pin is CPA v7.2.85'
 
-cpa-v7272-host-blackbox: cpa-v7283-host-blackbox
-	@echo 'cpa-v7272-host-blackbox is a historical compatibility alias; current Host pin is CPA v7.2.83'
+cpa-v7283-host-blackbox: cpa-v7285-host-blackbox
+	@echo 'cpa-v7283-host-blackbox is a historical compatibility alias; current Host pin is CPA v7.2.85'
+
+cpa-v7275-host-blackbox: cpa-v7285-host-blackbox
+	@echo 'cpa-v7275-host-blackbox is a historical compatibility alias; current Host pin is CPA v7.2.85'
+
+cpa-v7272-host-blackbox: cpa-v7285-host-blackbox
+	@echo 'cpa-v7272-host-blackbox is a historical compatibility alias; current Host pin is CPA v7.2.85'
 
 cpa-router-fixture-blackbox: build-linux-amd64
 	@listed="$$($(GO) test -tags=integration,$(TEST_TAGS) -list='^TestCPAPluginHostRouterFixtureMatrix$$' ./integration)" || exit $$?; \

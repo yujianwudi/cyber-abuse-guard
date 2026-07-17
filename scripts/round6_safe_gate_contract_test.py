@@ -354,7 +354,7 @@ jobs:
         patterns = tuple(
             pattern
             for pattern in ROUND6_SPARSE_PATTERNS
-            if pattern != "!/cmd/**/*private*"
+            if pattern != "!/cmd/**/*[Pp][Rr][Ii][Vv][Aa][Tt][Ee]*"
         )
         root, entrypoint = self.fixture(
             "safe:\n\t@true\n",
@@ -364,11 +364,11 @@ jobs:
             audit(root, [entrypoint])
 
     def test_sparse_checkout_missing_consumed_pattern_fails(self):
-        self.assertIn("!/internal/classifier/**/*consumed*", ROUND6_SPARSE_PATTERNS)
+        self.assertIn("!/internal/classifier/**/*[Cc][Oo][Nn][Ss][Uu][Mm][Ee][Dd]*", ROUND6_SPARSE_PATTERNS)
         patterns = tuple(
             pattern
             for pattern in ROUND6_SPARSE_PATTERNS
-            if pattern != "!/internal/classifier/**/*consumed*"
+            if pattern != "!/internal/classifier/**/*[Cc][Oo][Nn][Ss][Uu][Mm][Ee][Dd]*"
         )
         root, entrypoint = self.fixture(
             "safe:\n\t@true\n",
@@ -529,14 +529,14 @@ jobs:
 
     def test_reproducibility_sparse_contract_mismatch_fails(self):
         original, source = self.reproducibility_script()
-        text = original.replace(" '!/testdata/**/*retired*'", "", 1)
+        text = original.replace(" '!/testdata/**/*[Rr][Ee][Tt][Ii][Rr][Ee][Dd]*'", "", 1)
         self.assertNotEqual(text, original)
         with self.assertRaisesRegex(ContractError, "differs from the workflow contract"):
             validate_round6_reproducibility_script(text, source)
 
     def test_reproducibility_consumed_sparse_contract_mismatch_fails(self):
         original, source = self.reproducibility_script()
-        text = original.replace(" '!/internal/classifier/**/*consumed*'", "", 1)
+        text = original.replace(" '!/internal/classifier/**/*[Cc][Oo][Nn][Ss][Uu][Mm][Ee][Dd]*'", "", 1)
         self.assertNotEqual(text, original)
         with self.assertRaisesRegex(ContractError, "differs from the workflow contract"):
             validate_round6_reproducibility_script(text, source)
@@ -767,7 +767,7 @@ jobs:
     def test_candidate_workflow_sparse_boundary_and_gate_are_locked(self):
         original = self.candidate_workflow()
         mutations = (
-            original.replace("            !/testdata/**/*retired*\n", "", 1),
+            original.replace("            !/testdata/**/*[Rr][Ee][Tt][Ii][Rr][Ee][Dd]*\n", "", 1),
             original.replace(
                 "          python3 -B scripts/round6_safe_gate_contract.py --root .\n",
                 "          true\n",
@@ -782,7 +782,7 @@ jobs:
     def test_candidate_workflow_consumed_boundary_is_locked(self):
         original = self.candidate_workflow()
         workflow = original.replace(
-            "            !/internal/classifier/**/*consumed*\n", "", 1
+            "            !/internal/classifier/**/*[Cc][Oo][Nn][Ss][Uu][Mm][Ee][Dd]*\n", "", 1
         )
         self.assertNotEqual(workflow, original)
         with self.assertRaisesRegex(ContractError, "sparse"):
@@ -916,7 +916,7 @@ jobs:
                 "",
                 1,
             ),
-            original.replace("            !/testdata/**/*retired*\n", "", 1),
+            original.replace("            !/testdata/**/*[Rr][Ee][Tt][Ii][Rr][Ee][Dd]*\n", "", 1),
         )
         for workflow in mutations:
             self.assertNotEqual(workflow, original)
@@ -958,7 +958,7 @@ jobs:
     def test_formal_release_consumed_sparse_boundary_is_locked(self):
         original = self.formal_release_workflow()
         workflow = original.replace(
-            "            !/internal/classifier/**/*consumed*\n", "", 1
+            "            !/internal/classifier/**/*[Cc][Oo][Nn][Ss][Uu][Mm][Ee][Dd]*\n", "", 1
         )
         self.assertNotEqual(workflow, original)
         with self.assertRaisesRegex(ContractError, "sparse checkout"):
@@ -1108,7 +1108,7 @@ jobs:
     def test_blocked_prerelease_consumed_sparse_boundary_is_locked(self):
         original = self.blocked_workflow()
         workflow = original.replace(
-            "            !/internal/classifier/**/*consumed*\n", "", 1
+            "            !/internal/classifier/**/*[Cc][Oo][Nn][Ss][Uu][Mm][Ee][Dd]*\n", "", 1
         )
         self.assertNotEqual(workflow, original)
         with self.assertRaisesRegex(ContractError, "sparse"):
@@ -1227,11 +1227,11 @@ jobs:
                         workflow, Path("round6-prerelease.yml")
                     )
 
-    def test_blocked_prerelease_missing_v7283_host_inputs_fail(self):
+    def test_blocked_prerelease_missing_v7285_host_inputs_fail(self):
         original = self.blocked_workflow()
         for input_name in (
-            "host_v7283_validation",
-            "host_v7283_evidence_sha256",
+            "host_v7285_validation",
+            "host_v7285_evidence_sha256",
         ):
             with self.subTest(input_name=input_name):
                 workflow = original.replace(
@@ -1259,8 +1259,8 @@ jobs:
             1,
         )
         legacy_gate = original.replace(
-            "      inputs.host_v7283_validation == 'PASS' &&\n",
-            "      inputs.host_v7283_validation == 'PASS' &&\n"
+            "      inputs.host_v7285_validation == 'PASS' &&\n",
+            "      inputs.host_v7285_validation == 'PASS' &&\n"
             "      inputs.host_v7282_validation == 'PASS' &&\n",
             1,
         )
@@ -1293,8 +1293,8 @@ jobs:
 
     def test_blocked_prerelease_admission_comment_spoof_fails(self):
         workflow = self.blocked_workflow().replace(
-            '          [[ "$HOST_V7283" == PASS ]]\n',
-            '          # [[ "$HOST_V7283" == PASS ]]\n          true\n',
+            '          [[ "$HOST_V7285" == PASS ]]\n',
+            '          # [[ "$HOST_V7285" == PASS ]]\n          true\n',
         )
         with self.assertRaisesRegex(ContractError, "exact reviewed"):
             validate_blocked_prerelease_workflow(workflow, Path("round6-prerelease.yml"))
@@ -1343,9 +1343,9 @@ jobs:
 
     def test_blocked_prerelease_if_expression_spoof_fails(self):
         workflow = self.blocked_workflow().replace(
-            "    if: >-\n      inputs.host_v7283_validation == 'PASS' &&\n      inputs.independent_audit_validation == 'PASS' &&\n      inputs.independent_evaluation_validation == 'PASS' &&\n      inputs.authorize_blocked_prerelease == true\n",
+            "    if: >-\n      inputs.host_v7285_validation == 'PASS' &&\n      inputs.independent_audit_validation == 'PASS' &&\n      inputs.independent_evaluation_validation == 'PASS' &&\n      inputs.authorize_blocked_prerelease == true\n",
             "    if: ${{{{ true }}}}\n"
-            "    # inputs.host_v7283_validation == 'PASS' &&\n"
+            "    # inputs.host_v7285_validation == 'PASS' &&\n"
             "    # inputs.independent_audit_validation == 'PASS' && inputs.independent_evaluation_validation == 'PASS' &&\n"
             "    # inputs.authorize_blocked_prerelease == true\n",
         )
@@ -1354,7 +1354,7 @@ jobs:
 
     def test_blocked_prerelease_missing_host_gate_fails(self):
         original = self.blocked_workflow()
-        for version in ("7283",):
+        for version in ("7285",):
             with self.subTest(version=version):
                 workflow = original.replace(
                     f"      inputs.host_v{version}_validation == 'PASS' &&\n", "", 1
@@ -1463,22 +1463,25 @@ jobs:
             '                independent_evaluation_status: "CONSUMED / PASS",\n',
             "                independent_evaluation_sha256: $independent_evaluation_sha256\n",
             "                ref: $workflow_ref,\n",
-            "            dist/round6-prerelease-attestation.json \\\n",
-            "            dist/round6-prerelease-attestation.json.sha256 \\\n",
+            "            dist/round6-prerelease-attestation.json\n",
+            "            dist/round6-prerelease-attestation.json.sha256\n",
         )
         for protected_line in protected_lines:
             with self.subTest(protected_line=protected_line.strip()):
                 workflow = original.replace(protected_line, "", 1)
                 self.assertNotEqual(workflow, original)
-                with self.assertRaisesRegex(ContractError, "exact reviewed text"):
+                with self.assertRaisesRegex(
+                    ContractError,
+                    "exact reviewed text|attested artifact allowlist changed",
+                ):
                     validate_blocked_prerelease_workflow(
                         workflow, Path("round6-prerelease.yml")
                     )
 
-    def test_blocked_prerelease_missing_v7283_host_evidence_note_fails(self):
+    def test_blocked_prerelease_missing_v7285_host_evidence_note_fails(self):
         original = self.blocked_workflow()
         workflow = original.replace(
-            '            "CPA v7.2.83 Host evidence SHA-256: $HOST_V7283_SHA256" \\\n',
+            '            "CPA v7.2.85 Host evidence SHA-256: $HOST_V7285_SHA256" \\\n',
             "",
             1,
         )
@@ -1666,6 +1669,30 @@ command /usr/bin/git --no-pager tag v0.1.2-dev.round6
             with self.subTest(malformed=malformed):
                 with self.assertRaisesRegex(ContractError, "unterminated"):
                     mutation_shell_commands(malformed)
+
+    def test_mutation_parser_rejects_array_execution_substitutions(self):
+        commands = (
+            'values=("$(gh release create v0.15)")',
+            'values=(\n  "$(gh release create v0.15)"\n)',
+            'values=(`gh release create v0.15`)',
+            'values=( <(gh release create v0.15) )',
+        )
+        for command in commands:
+            with self.subTest(command=command):
+                with self.assertRaisesRegex(
+                    ContractError, "shell array contains executable substitution"
+                ):
+                    mutation_shell_commands(command)
+
+    def test_mutation_parser_even_trailing_backslashes_do_not_hide_command(self):
+        script = "printf '%s' safe " + "\\\\" + "\ngh release create v0.15"
+        reasons = [
+            mutating_command_reason(segment)
+            for command in mutation_shell_commands(script)
+            for segment in shell_command_segments(command)
+            if mutating_command_reason(segment)
+        ]
+        self.assertEqual(reasons, ["gh release"])
 
     def test_blocked_prerelease_github_env_bash_env_injection_fails(self):
         original = self.blocked_workflow()

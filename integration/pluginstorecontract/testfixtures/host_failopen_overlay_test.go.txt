@@ -2,11 +2,13 @@ package pluginhost
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/config"
 	coreauth "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/auth"
+	coreexecutor "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/executor"
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
 )
 
@@ -141,6 +143,37 @@ func TestCyberAbuseGuardHostFailOpenFixtureMatrix(t *testing.T) {
 		))
 		if response, handled := host.RouteModel(context.Background(), contractRouteRequest()); handled || response.Handled {
 			t.Fatalf("RouteModel() = %#v, %v; want native routing continuation", response, handled)
+		}
+	})
+
+	t.Run("model-route-metadata-sanitizer-drops-non-json-callback", func(t *testing.T) {
+		request := rpcModelRouteRequest{
+			ModelRouteRequest: pluginapi.ModelRouteRequest{Metadata: map[string]any{
+				"keep": "value",
+				coreexecutor.SelectedAuthIndexCallbackMetadataKey: func(string) {},
+			}},
+			HostCallbackID: "callback-1",
+		}
+		sanitized, ok := sanitizePluginRequest(request).(rpcModelRouteRequest)
+		if !ok {
+			t.Fatalf("sanitizePluginRequest() type = %T, want rpcModelRouteRequest", sanitizePluginRequest(request))
+		}
+		raw, errMarshal := json.Marshal(sanitized)
+		if errMarshal != nil {
+			t.Fatalf("marshal sanitized ModelRouter request: %v", errMarshal)
+		}
+		var decoded rpcModelRouteRequest
+		if errUnmarshal := json.Unmarshal(raw, &decoded); errUnmarshal != nil {
+			t.Fatalf("unmarshal sanitized ModelRouter request: %v", errUnmarshal)
+		}
+		if decoded.Metadata["keep"] != "value" {
+			t.Fatalf("sanitized metadata = %#v, want preserved keep value", decoded.Metadata)
+		}
+		if _, exists := decoded.Metadata[coreexecutor.SelectedAuthIndexCallbackMetadataKey]; exists {
+			t.Fatalf("selected-auth-index callback crossed the C-ABI JSON boundary: %#v", decoded.Metadata)
+		}
+		if decoded.HostCallbackID != "callback-1" {
+			t.Fatalf("host callback ID = %q, want callback-1", decoded.HostCallbackID)
 		}
 	})
 

@@ -547,6 +547,9 @@ func scanMultipartRequest(body []byte, boundary string, profile RequestProfile, 
 }
 
 func streamMultipartTextField(part *multipart.Part, fieldID uint64, limits Limits, sink ChunkSink, result *Result) (bool, error) {
+	// The legacy *PartBytes names are retained for API compatibility, but the
+	// streaming path uses them as bounded chunk sizes. Cumulative text coverage
+	// is enforced below by MaxTotalTextBytes and MaxMultipartTextBytes.
 	chunkSize := minInt(limits.MaxMultipartTextPartBytes, minInt(limits.MaxTextPartBytes, limits.MaxTextWindowBytes))
 	reader := bufio.NewReaderSize(part, chunkSize)
 	chunk := make([]byte, 0, chunkSize)

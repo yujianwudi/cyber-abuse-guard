@@ -47,12 +47,12 @@ round6_sparse_worktree() {
   git -C "$root" worktree add --quiet --detach --no-checkout "$destination" "$RELEASE_GIT_COMMIT"
   git -C "$destination" sparse-checkout set --no-cone \
     '/*' \
-    '!/cmd/**/*evaluation*' '!/cmd/**/*holdout*' '!/cmd/**/*consumed*' '!/cmd/**/*private*' '!/cmd/**/*blind*' '!/cmd/**/*retired*' \
-    '!/docs/**/*EVALUATION_*' '!/docs/**/*HOLDOUT_*' '!/docs/**/*HOLDOUT_REPORT.md' \
-    '!/docs/**/*consumed*' '!/docs/**/*private*' '!/docs/**/*blind*' '!/docs/**/*retired*' \
-    '!/internal/classifier/**/*evaluation*' '!/internal/classifier/**/*holdout*' \
-    '!/internal/classifier/**/*consumed*' '!/internal/classifier/**/*private*' '!/internal/classifier/**/*blind*' '!/internal/classifier/**/*retired*' \
-    '!/testdata/**/*evaluation*' '!/testdata/**/*holdout*' '!/testdata/**/*consumed*' '!/testdata/**/*private*' '!/testdata/**/*blind*' '!/testdata/**/*retired*'
+    '!/cmd/**/*[Ee][Vv][Aa][Ll][Uu][Aa][Tt][Ii][Oo][Nn]*' '!/cmd/**/*[Hh][Oo][Ll][Dd][Oo][Uu][Tt]*' '!/cmd/**/*[Cc][Oo][Nn][Ss][Uu][Mm][Ee][Dd]*' '!/cmd/**/*[Pp][Rr][Ii][Vv][Aa][Tt][Ee]*' '!/cmd/**/*[Bb][Ll][Ii][Nn][Dd]*' '!/cmd/**/*[Rr][Ee][Tt][Ii][Rr][Ee][Dd]*' \
+    '!/docs/**/*[Ee][Vv][Aa][Ll][Uu][Aa][Tt][Ii][Oo][Nn]*' '!/docs/**/*[Hh][Oo][Ll][Dd][Oo][Uu][Tt]*' '!/docs/**/*[Hh][Oo][Ll][Dd][Oo][Uu][Tt]_[Rr][Ee][Pp][Oo][Rr][Tt].[Mm][Dd]' \
+    '!/docs/**/*[Cc][Oo][Nn][Ss][Uu][Mm][Ee][Dd]*' '!/docs/**/*[Pp][Rr][Ii][Vv][Aa][Tt][Ee]*' '!/docs/**/*[Bb][Ll][Ii][Nn][Dd]*' '!/docs/**/*[Rr][Ee][Tt][Ii][Rr][Ee][Dd]*' \
+    '!/internal/classifier/**/*[Ee][Vv][Aa][Ll][Uu][Aa][Tt][Ii][Oo][Nn]*' '!/internal/classifier/**/*[Hh][Oo][Ll][Dd][Oo][Uu][Tt]*' \
+    '!/internal/classifier/**/*[Cc][Oo][Nn][Ss][Uu][Mm][Ee][Dd]*' '!/internal/classifier/**/*[Pp][Rr][Ii][Vv][Aa][Tt][Ee]*' '!/internal/classifier/**/*[Bb][Ll][Ii][Nn][Dd]*' '!/internal/classifier/**/*[Rr][Ee][Tt][Ii][Rr][Ee][Dd]*' \
+    '!/testdata/**/*[Ee][Vv][Aa][Ll][Uu][Aa][Tt][Ii][Oo][Nn]*' '!/testdata/**/*[Hh][Oo][Ll][Dd][Oo][Uu][Tt]*' '!/testdata/**/*[Cc][Oo][Nn][Ss][Uu][Mm][Ee][Dd]*' '!/testdata/**/*[Pp][Rr][Ii][Vv][Aa][Tt][Ee]*' '!/testdata/**/*[Bb][Ll][Ii][Nn][Dd]*' '!/testdata/**/*[Rr][Ee][Tt][Ii][Rr][Ee][Dd]*'
   git -C "$destination" checkout --quiet "$RELEASE_GIT_COMMIT"
 }
 

@@ -18,7 +18,7 @@ import (
 const (
 	cpaLatestModulePath        = "github.com/router-for-me/CLIProxyAPI/v7"
 	cpaLatestPluginHostPackage = cpaLatestModulePath + "/internal/pluginhost"
-	cpaLatestFixtureSHA256     = "9d8b420cac74ea54bb54753269bdebf5e9fbc0f8c0192034a8ea4dda83adbb80"
+	cpaLatestFixtureSHA256     = "113645c584a40ce6c8887d83ab9443e9c62f21201358bcb336c6e5eb1ebe6b1d"
 
 	cpaCompatibilityProfileEnv = "CPA_COMPAT_PROFILE"
 	cpaCompatibilityModfileEnv = "CPA_COMPAT_MODFILE"
@@ -38,9 +38,9 @@ type cpaCompatibilityProfile struct {
 var cpaCompatibilityProfiles = map[string]cpaCompatibilityProfile{
 	cpaPrimaryProfile: {
 		Name:       cpaPrimaryProfile,
-		Version:    "v7.2.83",
-		Commit:     "9f4f53ca5a4d1474e3f7eb61d6ffc984995f1f66",
-		ModuleSum:  "h1:fCGraERLPW08Kl8aP3F/A5XQC34ZPD0mEfxpTvevF7Y=",
+		Version:    "v7.2.85",
+		Commit:     "baffbe2cc703fa694c0c72baad13715b9bd28e57",
+		ModuleSum:  "h1:P2ScGZcDxKTii2ZMHEL3QuVw3WB1CYU0Ap9GHf6pUiM=",
 		GoModSum:   "h1:ytvZNWbCv7PrAyR80+RKsDJPODsdL6qxyFaXDBNZdqs=",
 		MustLatest: true,
 	},
@@ -48,6 +48,7 @@ var cpaCompatibilityProfiles = map[string]cpaCompatibilityProfile{
 
 var latestCriticalCPAHostTests = []string{
 	"TestDecodeEnvelopeResultPreservesPluginHTTPStatus",
+	"TestSanitizePluginRequestRemovesNonJSONMetadata",
 	"TestHostRouteModelAllowsExplicitExecutorPluginTarget",
 	"TestHostRouteModelClonesPluginMetadata",
 	"TestHostRouteModelContinuesAfterUnhandled",
@@ -76,7 +77,7 @@ type latestResolvedCPAModule struct {
 }
 
 // Compile-time binding proves that the latest public plugin API, including the
-// additive UsageRecord.Generate field required by the current v7.2.83 contract is available.
+// additive UsageRecord.Generate field required by the current v7.2.85 contract is available.
 // The Guard does not register UsagePlugin; this is an API compatibility probe.
 var _ = pluginapi.UsageRecord{Generate: true}
 

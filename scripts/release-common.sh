@@ -77,7 +77,8 @@ release_ruleset_hash() {
 }
 
 release_round6_safe_sparse_path() {
-  case "$1" in
+  local path="${1,,}"
+  case "$path" in
     cmd/*evaluation*|cmd/*holdout*|cmd/*consumed*|cmd/*private*|cmd/*blind*|cmd/*retired*|\
     docs/*EVALUATION_*|docs/*HOLDOUT_*|docs/*HOLDOUT_REPORT.md|\
     docs/*consumed*|docs/*private*|docs/*blind*|docs/*retired*|\
