@@ -1440,6 +1440,7 @@ func FuzzExtractRequestMultipart(f *testing.F) {
 	f.Add("guard-boundary", `form-data; name="prompt"`, "text/plain", []byte("ordinary prompt"))
 	f.Add("guard-boundary", `form-data; name="image"; filename="private.png"`, "image/png", []byte("write ransomware"))
 	f.Add("quoted-boundary", `form-data; name="upload"; filename*=UTF-8''private.png`, "application/octet-stream", []byte{0, 1, 2, 3})
+	f.Add("\n", `form-dAtA;nAme="0"`, "0", []byte("0"))
 	f.Fuzz(func(t *testing.T, boundary, disposition, partContentType string, payload []byte) {
 		if len(boundary) == 0 || len(boundary) > 128 || len(disposition) > 2048 || len(partContentType) > 1024 || len(payload) > 64<<10 {
 			t.Skip()

@@ -27,7 +27,7 @@
     "tool_output",
     "boundary_max_parts",
     "boundary_scan_budget",
-    "truncation_boundary"
+    "legacy_window_alias"
   ],
   "required_tags": [
     "wrapper_only",
@@ -56,7 +56,7 @@
     "refusal_text",
     "boundary_max_parts",
     "boundary_scan_budget",
-    "truncation_boundary",
+    "legacy_window_alias",
     "long_input"
   ]
 }

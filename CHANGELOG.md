@@ -55,7 +55,7 @@ release still requires a newly authored independent unseen set.
   `streaming-scanner-v1`, effective-limit status, and fixed low-cardinality
   counters.
 - Publish classifier identity `classifier-policy-v3` /
-  `e67ca47a8f9c03b9ba42a417503e7969ee29421471454aa26c4306c8e7d4a97c`.
+  `fa4089b7fd92320c809f8e904ac1e684527b1d68ae98abe64e1be752a729c7d9`.
 - Compact the transactional shadow plan by collapsing caller-controlled keys
   and semantic values to closed representatives, skipping metadata spans, and
   using short base-36 markers. Residual allocation remains bounded by structural

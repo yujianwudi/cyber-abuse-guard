@@ -1112,8 +1112,12 @@ func prepareStreamingRoleWindow(field *streamingField, text string, uniqueStart 
 	normalizedPrefix := strings.ToLower(roleSafetyPunctuation.Replace(text[:uniqueStart]))
 	normalizedUnique := strings.ToLower(roleSafetyPunctuation.Replace(text[uniqueStart:]))
 	normalized := normalizedPrefix + normalizedUnique
-	if !field.safetyActive && isClearNonUserSafetyContent(field.role, normalized) {
-		field.safetyActive = true
+	if !field.safetyActive {
+		quotedPrefix, explicitlyQuoted := streamingExplicitQuotedSafetyPrefix(field.role, normalized)
+		if isClearNonUserSafetyContent(field.role, normalized) ||
+			(explicitlyQuoted && isClearNonUserSafetyContent(field.role, quotedPrefix)) {
+			field.safetyActive = true
+		}
 	}
 	if !field.safetyActive {
 		return streamingRoleWindowDecision{text: text, classify: true, includeCompactCarry: true}
@@ -1210,6 +1214,33 @@ func streamingExplicitQuotedSafetyState(role extract.Role, text string) (quoted,
 		}
 	}
 	return "", "", 0, false, false
+}
+
+// streamingExplicitQuotedSafetyPrefix returns only the text preceding a
+// structurally recognized quoted-prompt clause. Validating that prefix
+// separately lets an open quote enter the provisional streaming transaction
+// without trusting any unquoted instruction that appears before the opener.
+func streamingExplicitQuotedSafetyPrefix(role extract.Role, text string) (string, bool) {
+	searchStart := 0
+	for _, clause := range splitStrongSafetyClauses(text) {
+		clause = strings.TrimSpace(clause)
+		clauseOffset := strings.Index(text[searchStart:], clause)
+		if clauseOffset < 0 {
+			continue
+		}
+		clauseOffset += searchStart
+		searchStart = clauseOffset + len(clause)
+		payload, ok := explicitQuotedSafetyPayload(role, clause)
+		if !ok {
+			continue
+		}
+		for _, delimiter := range []rune{'"', '`'} {
+			if strings.HasPrefix(payload, string(delimiter)) {
+				return strings.TrimSpace(text[:clauseOffset]), true
+			}
+		}
+	}
+	return "", false
 }
 
 func (s *ScanSession) advanceCompactCarry(field *streamingField, consumed []byte) bool {

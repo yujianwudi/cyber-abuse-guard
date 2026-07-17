@@ -396,7 +396,12 @@ func scanMultipartRequest(body []byte, boundary string, profile RequestProfile, 
 	for {
 		part, err := reader.NextPart()
 		if errors.Is(err, io.EOF) {
-			result.Envelope = EnvelopeComplete
+			if partCount == 0 {
+				result.Envelope = EnvelopeIncomplete
+				abort(TextCoverageUnavailable, IncompleteMultipartParseError)
+			} else {
+				result.Envelope = EnvelopeComplete
+			}
 			break
 		}
 		if err != nil {

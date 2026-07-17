@@ -358,8 +358,8 @@ func validateBoundaryFixture(record fixtureRecord) error {
 			return fmt.Errorf("development case %q is not within 64 bytes of the scan budget", record.ID)
 		}
 	}
-	if hasTag("truncation_boundary") && (record.Limits.MaxScanBytes == 0 || len(record.Input) <= record.Limits.MaxScanBytes || !*record.ExpectedTruncated) {
-		return fmt.Errorf("development case %q does not cross the scan truncation boundary", record.ID)
+	if hasTag("legacy_window_alias") && (record.Limits.MaxScanBytes == 0 || len(record.Input) <= record.Limits.MaxScanBytes || *record.ExpectedTruncated || !*record.ExpectedRoleAware) {
+		return fmt.Errorf("development case %q does not verify full coverage across the legacy window alias", record.ID)
 	}
 	return nil
 }

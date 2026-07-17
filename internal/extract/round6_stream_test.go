@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"mime"
 	"net/http"
 	"strings"
 	"testing"
@@ -922,6 +923,35 @@ func TestRound6MultipartLongPromptStreamsWhileFileStaysOpaque(t *testing.T) {
 	}
 	if sink.joined() != prompt || result.TextBytesScanned != len(prompt) || result.ClassificationChunks < 2 {
 		t.Fatalf("bytes=%d chunks=%d streamed=%d", result.TextBytesScanned, result.ClassificationChunks, len(sink.joined()))
+	}
+}
+
+func TestRound6MultipartZeroPartEOFFailsClosed(t *testing.T) {
+	boundary := "\n"
+	contentType := mime.FormatMediaType("multipart/form-data", map[string]string{"boundary": boundary})
+	if contentType == "" {
+		t.Fatal("fuzz regression boundary did not produce a media type")
+	}
+	body := []byte(fmt.Sprintf("--%s\r\nContent-Disposition: form-dAtA;nAme=\"0\"\r\nContent-Type: 0\r\n\r\n0\r\n--%s--\r\n", boundary, boundary))
+	sink := newRound6RecordingSink()
+	result, err := ScanProfiledRequest(
+		body,
+		http.Header{"Content-Type": []string{contentType}},
+		RequestProfile{Source: SourceProfileOpenAIImage},
+		Limits{},
+		sink,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !sink.aborted || result.IsComplete() || result.Envelope != EnvelopeIncomplete ||
+		result.TextCoverage != TextCoverageUnavailable || !result.HasIncompleteReason(IncompleteMultipartParseError) {
+		t.Fatalf("zero-part malformed multipart result=%#v aborted=%v", result, sink.aborted)
+	}
+	if len(result.Parts) != 0 || len(result.Segments) != 0 || len(sink.chunks) != 0 ||
+		result.TextBytesScanned != 0 || result.LogicalTextParts != 0 ||
+		result.ClassificationChunks != 0 || result.PeakTextBytesRetained != 0 {
+		t.Fatalf("zero-part malformed multipart retained provisional state: result=%#v chunks=%d", result, len(sink.chunks))
 	}
 }
 

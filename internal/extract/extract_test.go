@@ -575,6 +575,7 @@ func FuzzExtractText(f *testing.F) {
 	} {
 		f.Add(seed, uint16(4096), uint8(16), uint16(32))
 	}
+	f.Add([]byte(`{}x`), uint16(0), uint8(16), uint16(32))
 
 	f.Fuzz(func(t *testing.T, body []byte, scan uint16, depth uint8, parts uint16) {
 		limits := Limits{
@@ -582,17 +583,28 @@ func FuzzExtractText(f *testing.F) {
 			MaxJSONDepth: int(depth%64) + 1,
 			MaxTextParts: int(parts%256) + 1,
 		}
+		valid := json.Valid(body)
 		got, err := ExtractText(body, limits)
-		if len(body) > limits.MaxScanBytes {
-			if err != nil {
-				t.Fatalf("artificial scan boundary returned error: %v", err)
+		if err != nil {
+			if !errors.Is(err, ErrInvalidJSON) {
+				t.Fatalf("unexpected extraction error: %v", err)
 			}
-			if !got.Truncated {
-				t.Fatal("artificial scan boundary did not set Truncated")
+			if valid {
+				t.Fatalf("valid JSON was rejected: %v", err)
+			}
+			if got.ParseError == "" || !got.Truncated || !got.HasIncompleteReason(IncompleteParseError) || got.Envelope != EnvelopeIncomplete || got.TextCoverage != TextCoverageUnavailable {
+				t.Fatalf("invalid JSON result = %#v, want unavailable incomplete parse result", got)
+			}
+		} else {
+			if got.ParseError != "" {
+				t.Fatalf("successful extraction retained parse error %q", got.ParseError)
+			}
+			if !valid && got.IsComplete() {
+				t.Fatalf("invalid JSON was accepted as complete: %#v", got)
 			}
 		}
-		if got.BytesScanned < 0 || got.BytesScanned > limits.MaxScanBytes || got.BytesScanned > len(body) {
-			t.Fatalf("invalid BytesScanned %d for body=%d limit=%d", got.BytesScanned, len(body), limits.MaxScanBytes)
+		if got.BytesScanned != len(body) {
+			t.Fatalf("BytesScanned = %d, want full body %d (legacy window=%d)", got.BytesScanned, len(body), limits.MaxScanBytes)
 		}
 		if len(got.Parts) > limits.MaxTextParts {
 			t.Fatalf("parts count %d exceeds limit %d", len(got.Parts), limits.MaxTextParts)

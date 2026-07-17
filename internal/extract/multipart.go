@@ -29,6 +29,9 @@ func extractMultipart(body []byte, boundary string, profile RequestProfile, limi
 	for {
 		part, err := reader.NextPart()
 		if err == io.EOF {
+			if partCount == 0 {
+				result.addIncomplete(IncompleteMultipartParseError)
+			}
 			break
 		}
 		if err != nil {

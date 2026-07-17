@@ -39,7 +39,7 @@ classifier.
 | CPA Host matrix | v7.2.81, v7.2.80, and v7.2.79 real Host + Mock-upstream runs are **NOT RUN / PENDING** |
 | Production | Not accessed or modified; no production request, audit database, credential, HMAC key, account pool, or real Provider was used |
 | Scanner identity | `streaming-scanner-v1` |
-| Classifier policy | `classifier-policy-v3` / `e67ca47a8f9c03b9ba42a417503e7969ee29421471454aa26c4306c8e7d4a97c` |
+| Classifier policy | `classifier-policy-v3` / `fa4089b7fd92320c809f8e904ac1e684527b1d68ae98abe64e1be752a729c7d9` |
 | Embedded YAML ruleset | `1.0.7` / `7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134` |
 | Audit schema | v3 |
 
