@@ -84,12 +84,12 @@ BLOCKED_PRERELEASE_INPUT_ORDER = (
     "expected_tree",
     "ci_run_id",
     "expected_so_sha256",
+    "host_v7283_validation",
+    "host_v7283_evidence_sha256",
+    "host_v7282_validation",
+    "host_v7282_evidence_sha256",
     "host_v7281_validation",
     "host_v7281_evidence_sha256",
-    "host_v7280_validation",
-    "host_v7280_evidence_sha256",
-    "host_v7279_validation",
-    "host_v7279_evidence_sha256",
     "independent_audit_validation",
     "independent_audit_sha256",
     "authorize_blocked_prerelease",
@@ -97,9 +97,9 @@ BLOCKED_PRERELEASE_INPUT_ORDER = (
 BLOCKED_PRERELEASE_INPUTS = set(BLOCKED_PRERELEASE_INPUT_ORDER)
 BLOCKED_PRERELEASE_IF_LINES = (
     "if: >-",
+    "inputs.host_v7283_validation == 'PASS' &&",
+    "inputs.host_v7282_validation == 'PASS' &&",
     "inputs.host_v7281_validation == 'PASS' &&",
-    "inputs.host_v7280_validation == 'PASS' &&",
-    "inputs.host_v7279_validation == 'PASS' &&",
     "inputs.independent_audit_validation == 'PASS' &&",
     "inputs.authorize_blocked_prerelease == true",
 )
@@ -113,12 +113,12 @@ ADMISSION_INPUT_ENV = (
     "DISPATCH_SHA: ${{ github.sha }}",
     "WORKFLOW_REF: ${{ github.workflow_ref }}",
     "WORKFLOW_SHA: ${{ github.workflow_sha }}",
+    "HOST_V7283: ${{ inputs.host_v7283_validation }}",
+    "HOST_V7283_SHA256: ${{ inputs.host_v7283_evidence_sha256 }}",
+    "HOST_V7282: ${{ inputs.host_v7282_validation }}",
+    "HOST_V7282_SHA256: ${{ inputs.host_v7282_evidence_sha256 }}",
     "HOST_V7281: ${{ inputs.host_v7281_validation }}",
     "HOST_V7281_SHA256: ${{ inputs.host_v7281_evidence_sha256 }}",
-    "HOST_V7280: ${{ inputs.host_v7280_validation }}",
-    "HOST_V7280_SHA256: ${{ inputs.host_v7280_evidence_sha256 }}",
-    "HOST_V7279: ${{ inputs.host_v7279_validation }}",
-    "HOST_V7279_SHA256: ${{ inputs.host_v7279_evidence_sha256 }}",
     "INDEPENDENT_AUDIT: ${{ inputs.independent_audit_validation }}",
     "INDEPENDENT_AUDIT_SHA256: ${{ inputs.independent_audit_sha256 }}",
     "AUTHORIZED: ${{ inputs.authorize_blocked_prerelease }}",
@@ -133,14 +133,14 @@ ADMISSION_INPUT_COMMANDS = (
     '[[ "$DISPATCH_SHA" == "$EXPECTED_COMMIT" ]]',
     '[[ "$WORKFLOW_SHA" == "$EXPECTED_COMMIT" ]]',
     '[[ "$WORKFLOW_REF" == "${GITHUB_REPOSITORY}/.github/workflows/round6-blocked-prerelease.yml@refs/tags/$TAG" ]]',
+    '[[ "$HOST_V7283" == PASS ]]',
+    '[[ "$HOST_V7282" == PASS ]]',
     '[[ "$HOST_V7281" == PASS ]]',
-    '[[ "$HOST_V7280" == PASS ]]',
-    '[[ "$HOST_V7279" == PASS ]]',
     '[[ "$INDEPENDENT_AUDIT" == PASS ]]',
     '[[ "$AUTHORIZED" == true ]]',
+    '[[ "$HOST_V7283_SHA256" =~ ^[0-9a-f]{64}$ ]]',
+    '[[ "$HOST_V7282_SHA256" =~ ^[0-9a-f]{64}$ ]]',
     '[[ "$HOST_V7281_SHA256" =~ ^[0-9a-f]{64}$ ]]',
-    '[[ "$HOST_V7280_SHA256" =~ ^[0-9a-f]{64}$ ]]',
-    '[[ "$HOST_V7279_SHA256" =~ ^[0-9a-f]{64}$ ]]',
     '[[ "$INDEPENDENT_AUDIT_SHA256" =~ ^[0-9a-f]{64}$ ]]',
 )
 ADMISSION_CI_ENV = (
@@ -281,7 +281,7 @@ BLOCKED_STEP_CONTRACTS = {
         ("Install bounded build dependencies", ("name", "run"), None),
         ("Run source and Round6 regression gates", ("name", "run"), None),
         (
-            "Verify CPA v7.2.81 primary, v7.2.80 previous, and v7.2.79 backward source compatibility",
+            "Verify CPA v7.2.83 primary, v7.2.82 previous, and v7.2.81 backward source compatibility",
             ("name", "env", "run"),
             None,
         ),
@@ -357,7 +357,7 @@ ROUND6_SPARSE_PATTERNS = (
     "!/testdata/*retired*",
 )
 BLOCKED_STEP_RUN_SHA256 = {
-    ("admission", 0): "319061b2073101ae820f8543977b83b3fb3c722f38ffd30aafd430d757ae40b9",
+    ("admission", 0): "0f5d145f08d0da37a2e4a6a5b9d8326ba0480d810c7aa10f30973944803ddd6a",
     ("admission", 1): "7f1817ec7b567df4be63fafd9ee2b2347ac37e01982e41ee3338f64c79cae81a",
     ("verify", 1): "b38e1f3a74567d8390bde6390c75c7e96a3bd0d5bc13de0e6a7dbbcfeec0a2fe",
     ("verify", 2): "3427df1bdbbcd38976514b679706f45fe6331981e750168beffd9bfdd1efdea1",
@@ -368,7 +368,7 @@ BLOCKED_STEP_RUN_SHA256 = {
     ("verify", 8): "72ba08821693dcb100be3d4dcfaac32d485191186d46fa22119ae7a7b60990b9",
     ("verify", 9): "17e57156996beab078ddb62b4b9c0d5dd1fee6f247fc69e859725a21590bc389",
     ("publish", 1): "d67141ec5e029c4e2176853cb764778a5bfe8afd5ce15cee10417ddc89991182",
-    ("publish", 2): "5b86ceadb2c6b2a09cabb542e53aa5728a8d24f6a0aa07a5f3cd2a05e993a7db",
+    ("publish", 2): "d9a28c9084a735f88d87ecdc7c1dccf3bc9d8518370f6c6e9f3917e43bd769e9",
 }
 BLOCKED_STEP_RUN_STYLE = {
     ("admission", 0): "|",
@@ -395,12 +395,12 @@ BLOCKED_STEP_ENV = {
         ("DISPATCH_SHA", "${{ github.sha }}"),
         ("WORKFLOW_REF", "${{ github.workflow_ref }}"),
         ("WORKFLOW_SHA", "${{ github.workflow_sha }}"),
+        ("HOST_V7283", "${{ inputs.host_v7283_validation }}"),
+        ("HOST_V7283_SHA256", "${{ inputs.host_v7283_evidence_sha256 }}"),
+        ("HOST_V7282", "${{ inputs.host_v7282_validation }}"),
+        ("HOST_V7282_SHA256", "${{ inputs.host_v7282_evidence_sha256 }}"),
         ("HOST_V7281", "${{ inputs.host_v7281_validation }}"),
         ("HOST_V7281_SHA256", "${{ inputs.host_v7281_evidence_sha256 }}"),
-        ("HOST_V7280", "${{ inputs.host_v7280_validation }}"),
-        ("HOST_V7280_SHA256", "${{ inputs.host_v7280_evidence_sha256 }}"),
-        ("HOST_V7279", "${{ inputs.host_v7279_validation }}"),
-        ("HOST_V7279_SHA256", "${{ inputs.host_v7279_evidence_sha256 }}"),
         ("INDEPENDENT_AUDIT", "${{ inputs.independent_audit_validation }}"),
         ("INDEPENDENT_AUDIT_SHA256", "${{ inputs.independent_audit_sha256 }}"),
         ("AUTHORIZED", "${{ inputs.authorize_blocked_prerelease }}"),
@@ -440,9 +440,9 @@ BLOCKED_STEP_ENV = {
         ("EXPECTED_TREE", "${{ inputs.expected_tree }}"),
         ("EXPECTED_SO_SHA256", "${{ inputs.expected_so_sha256 }}"),
         ("CI_RUN_ID", "${{ inputs.ci_run_id }}"),
+        ("HOST_V7283_SHA256", "${{ inputs.host_v7283_evidence_sha256 }}"),
+        ("HOST_V7282_SHA256", "${{ inputs.host_v7282_evidence_sha256 }}"),
         ("HOST_V7281_SHA256", "${{ inputs.host_v7281_evidence_sha256 }}"),
-        ("HOST_V7280_SHA256", "${{ inputs.host_v7280_evidence_sha256 }}"),
-        ("HOST_V7279_SHA256", "${{ inputs.host_v7279_evidence_sha256 }}"),
         ("INDEPENDENT_AUDIT_SHA256", "${{ inputs.independent_audit_sha256 }}"),
     ),
 }
@@ -1296,9 +1296,9 @@ def validate_blocked_prerelease_structure(
         "on.workflow_dispatch.inputs",
     )
     choice_inputs = {
+        "host_v7283_validation",
+        "host_v7282_validation",
         "host_v7281_validation",
-        "host_v7280_validation",
-        "host_v7279_validation",
         "independent_audit_validation",
     }
     for input_name, input_node in inputs.items():
@@ -1420,9 +1420,9 @@ def validate_blocked_prerelease_structure(
                 f"{job_path}.environment",
             )
             expected_publish_if = (
+                "inputs.host_v7283_validation == 'PASS' && "
+                "inputs.host_v7282_validation == 'PASS' && "
                 "inputs.host_v7281_validation == 'PASS' && "
-                "inputs.host_v7280_validation == 'PASS' && "
-                "inputs.host_v7279_validation == 'PASS' && "
                 "inputs.independent_audit_validation == 'PASS' && "
                 "inputs.authorize_blocked_prerelease == true"
             )

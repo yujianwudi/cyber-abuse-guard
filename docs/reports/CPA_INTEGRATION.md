@@ -1,15 +1,15 @@
 # CPA Integration and Store-Contract Report — v0.1.2 candidate
 
-## 2026-07-17 v7.2.81 matrix status
+## 2026-07-17 v7.2.83 matrix status
 
-Round 6 now pins CPA v7.2.81 primary at commit
-`106270bea6f18ba2f2cc8b0b5887987f2874eed8`, with module sum
-`h1:TNhOAGi8zDfnUE8KKyhi6NEvCI/Lu2VBj953WT9GKCs=` and go.mod sum
+Round 6 now pins CPA v7.2.83 primary at commit
+`9f4f53ca5a4d1474e3f7eb61d6ffc984995f1f66`, with module sum
+`h1:fCGraERLPW08Kl8aP3F/A5XQC34ZPD0mEfxpTvevF7Y=` and go.mod sum
 `h1:ytvZNWbCv7PrAyR80+RKsDJPODsdL6qxyFaXDBNZdqs=`. The source/compile matrix
-retains v7.2.80 previous and v7.2.79 backward. Exact-source Linux CI and all
+retains v7.2.82 previous and v7.2.81 backward. Exact-source Linux CI and all
 three native Host + Mock matrices remain **PENDING / NOT RUN**. The v7.2.80
 results in the dated addendum below remain historical source/compile evidence;
-they are not v7.2.81 or native Host evidence.
+they are not current Round 6 matrix or native Host evidence.
 
 ## 2026-07-16 latest-compat addendum
 

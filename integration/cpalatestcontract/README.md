@@ -5,9 +5,9 @@ matrix. The fixed profiles are:
 
 | Profile | CPA | Commit | Module sum |
 |---|---|---|---|
-| `primary` | `v7.2.81` | `106270bea6f18ba2f2cc8b0b5887987f2874eed8` | `h1:TNhOAGi8zDfnUE8KKyhi6NEvCI/Lu2VBj953WT9GKCs=` |
-| `previous` | `v7.2.80` | `09da52ad509e2c18e7b9540db3b98c2214c280aa` | `h1:QIa5T/KYvJACHVPPRzXcRwq/HLpbwWYJYpZAC1eY2WA=` |
-| `backward` | `v7.2.79` | `b6ce0beecd31dff389d3190f7db6d7a1d4ce0e7e` | `h1:/2s9euOTOeKUCIPWjHdCsll9vUHkJ/H2bq25Da3DQrg=` |
+| `primary` | `v7.2.83` | `9f4f53ca5a4d1474e3f7eb61d6ffc984995f1f66` | `h1:fCGraERLPW08Kl8aP3F/A5XQC34ZPD0mEfxpTvevF7Y=` |
+| `previous` | `v7.2.82` | `f583414fd9914f9ccfd280fc3a23aebaea30e9eb` | `h1:5Yl3qmdDiQ4w8WEJ0N8i4YHNB0hF959lMpoOAb4ib8c=` |
+| `backward` | `v7.2.81` | `106270bea6f18ba2f2cc8b0b5887987f2874eed8` | `h1:TNhOAGi8zDfnUE8KKyhi6NEvCI/Lu2VBj953WT9GKCs=` |
 
 All three profiles pin go.mod sum
 `h1:ytvZNWbCv7PrAyR80+RKsDJPODsdL6qxyFaXDBNZdqs=`. Unknown profile names fail
@@ -22,7 +22,7 @@ checksum-pinned overlays only to ephemeral copies of the selected official CPA
 module. `scripts/cpa-latest-compat.sh` compiles the Guard and integration
 packages and runs the real Guard registration/route tests against all profiles
 through temporary modfiles. With `CPA_COMPAT_VERIFY_REMOTE=1`, the script
-requires `v7.2.81` to remain GitHub's current `releases/latest` and verifies all
+requires `v7.2.83` to remain GitHub's current `releases/latest` and verifies all
 three Tag-to-Commit identities. `CPA_LATEST_VERIFY_REMOTE=1` remains a compatibility
 alias for the same remote check.
 

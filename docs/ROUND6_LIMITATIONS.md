@@ -8,7 +8,7 @@ production approval. Windows and macOS validation is outside this round. See
 
 ## Release blockers
 
-- Official CPA v7.2.81, v7.2.80, and v7.2.79 source/compile compatibility is a CI gate, but real Host + Mock-upstream validation must be performed by the user in the authorized server sandbox.
+- Official CPA v7.2.83, v7.2.82, and v7.2.81 source/compile compatibility is a CI gate, but real Host + Mock-upstream validation must be performed by the user in the authorized server sandbox.
 - No Los Angeles production host may be accessed or modified by this task.
 - A new release must remain `BLOCKED / PENDING HOST AND INDEPENDENT AUDIT` and must not be marked latest.
 - Production `observe -> balanced` is outside this task and requires a later explicit approval.
@@ -67,5 +67,5 @@ The external auditor should independently verify:
 5. SQLite `quick_check`, schema migration backup, privacy canaries, race, fuzz, allocation, RSS, and reproducible artifact hashes;
 6. rollback to the prior candidate without touching production request or audit data.
 
-CPA v7.2.81, v7.2.80, and v7.2.79 real Host + Mock-upstream results are all
+CPA v7.2.83, v7.2.82, and v7.2.81 real Host + Mock-upstream results are all
 **NOT RUN / PENDING**. Source/compile checks cannot substitute for these gates.

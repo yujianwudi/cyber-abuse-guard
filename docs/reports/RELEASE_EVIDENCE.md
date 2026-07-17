@@ -4,11 +4,11 @@ Last updated: 2026-07-17 (Asia/Shanghai)
 
 ## Round 6 CPA compatibility status — not a PASS record
 
-The current matrix pins v7.2.81 primary
-(`106270bea6f18ba2f2cc8b0b5887987f2874eed8`), v7.2.80 previous, and v7.2.79
+The current matrix pins v7.2.83 primary
+(`9f4f53ca5a4d1474e3f7eb61d6ffc984995f1f66`), v7.2.82 previous, and v7.2.81
 backward. Exact-source Linux CI and all three Host + Mock matrices are pending.
 The Round5.2 v7.2.80 PASS record below remains historical and is not rewritten
-or reused as v7.2.81 evidence.
+or reused as current Round 6 matrix evidence.
 
 ## Round5.2 source-freeze / pre-merge record
 

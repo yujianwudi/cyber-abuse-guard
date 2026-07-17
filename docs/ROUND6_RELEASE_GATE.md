@@ -97,9 +97,9 @@ The `publish` job receives `contents: write` only when all five expressions are
 true:
 
 ```text
+CPA v7.2.83 isolated Host + Mock result == PASS
+CPA v7.2.82 isolated Host + Mock result == PASS
 CPA v7.2.81 isolated Host + Mock result == PASS
-CPA v7.2.80 isolated Host + Mock result == PASS
-CPA v7.2.79 isolated Host + Mock result == PASS
 independent audit result == PASS
 explicit blocked-prerelease authorization == true
 ```
@@ -184,6 +184,6 @@ make round6-reproducibility-test
 
 Do not run `make formal-release`, `make release`, `make holdout-test`, `make consumed-boundary-test`, the historical release workflow, or the historical release/reproducibility packaging scripts for this candidate.
 
-CPA v7.2.81, v7.2.80, and v7.2.79 source/compile compatibility belongs to Linux CI.
+CPA v7.2.83, v7.2.82, and v7.2.81 source/compile compatibility belongs to Linux CI.
 Their official real Host + Mock-upstream matrices remain **NOT RUN / PENDING**
 and are mandatory before any blocked prerelease step.

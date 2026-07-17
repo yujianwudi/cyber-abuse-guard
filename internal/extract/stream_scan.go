@@ -1642,8 +1642,13 @@ func decodeStreamingBoundedText(value string, failClosedBareEncoding bool) ([]st
 	if isData, textual := streamingDataURLKind(value); isData && !textual {
 		// A media-looking prefix in an ordinary, unproven text field remains
 		// classifier-visible. Only a structurally proven media transaction may
-		// remove the source span from the shadow plan.
-		return nil, false, false
+		// remove the source span from the shadow plan. Ambiguous scalar carriers
+		// still fail closed when an unknown or malformed data envelope also has a
+		// strong incomplete encoding signal; known media data URLs retain the
+		// established inspectable fallback.
+		if _, knownMedia := opaqueDataURLKind(value); knownMedia || !failClosedBareEncoding {
+			return nil, false, false
+		}
 	}
 	variants, encoded, incomplete := decodeBoundedText(value)
 	if encoded && incomplete && len(variants) == 0 && !failClosedBareEncoding && !hasExplicitTextEncodingEnvelope(value) {

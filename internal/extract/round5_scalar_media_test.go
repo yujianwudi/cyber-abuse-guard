@@ -543,6 +543,7 @@ func FuzzExtractRequestScalarMediaCarrierPermutation(f *testing.F) {
 	f.Add(uint8(3), uint8(5), "../relative/media")
 	f.Add(uint8(3), uint8(7), "data:image/png;base64,SU5TUEVDVEFCTEVfRlVaWg==")
 	f.Add(uint8(0), uint8(len(markers)), "0+00000000000000")
+	f.Add(uint8(0), uint8(len(markers)), "dAtA:0000000000,00000000000000000000000=")
 	f.Fuzz(func(t *testing.T, keyIndex, markerIndex uint8, value string) {
 		if len(value) > 4096 {
 			value = value[:4096]
@@ -632,6 +633,31 @@ func TestExtractRequestScalarMediaCarrierBareBinaryBase64FailsClosed(t *testing.
 	if !result.IsComplete() || result.OpaqueMedia || !reflect.DeepEqual(result.Parts, []string{value}) ||
 		len(result.Segments) != 1 || result.Segments[0].Text != value {
 		t.Fatalf("ordinary text identifier was affected: %#v", result)
+	}
+}
+
+func TestExtractRequestScalarMediaCarrierMalformedMixedCaseDataURLFailsClosed(t *testing.T) {
+	const value = "dAtA:0000000000,00000000000000000000000="
+	variants, encoded, incomplete := decodeBoundedText(value)
+	if len(variants) != 0 || !encoded || !incomplete {
+		t.Fatalf("fixture decode = variants:%q encoded:%v incomplete:%v", variants, encoded, incomplete)
+	}
+
+	for _, key := range []string{"source", "uri", "url", "image_url"} {
+		t.Run(key, func(t *testing.T) {
+			body := []byte(`{"messages":[{"role":"user","content":[{` + jsonQuote(key) + `:` + jsonQuote(value) + `}]}]}`)
+			result, err := ExtractRequest(body, round5JSONHeaders(), Limits{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result.IsComplete() || result.TextCoverage != TextCoverageUnavailable ||
+				!result.HasIncompleteReason(IncompleteTextPartByteLimit) || result.OpaqueMedia {
+				t.Fatalf("malformed mixed-case data scalar carrier silently completed: %#v", result)
+			}
+			if len(result.Parts) != 0 || len(result.Segments) != 0 {
+				t.Fatalf("aborted malformed scalar carrier leaked text: parts=%#v segments=%#v", result.Parts, result.Segments)
+			}
+		})
 	}
 }
 

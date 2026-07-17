@@ -36,10 +36,10 @@ classifier.
 | Merge and release | Not merged to `main`; no Round 6 tag or Release |
 | Validation platform | Linux amd64 only; glibc 2.34 or newer is the documented build target |
 | Out of scope | Windows, macOS, musl/Alpine, local deployment, production validation |
-| CPA Host matrix | v7.2.81, v7.2.80, and v7.2.79 real Host + Mock-upstream runs are **NOT RUN / PENDING** |
+| CPA Host matrix | v7.2.83, v7.2.82, and v7.2.81 real Host + Mock-upstream runs are **NOT RUN / PENDING** |
 | Production | Not accessed or modified; no production request, audit database, credential, HMAC key, account pool, or real Provider was used |
 | Scanner identity | `streaming-scanner-v1` |
-| Classifier policy | `classifier-policy-v3` / `fa4089b7fd92320c809f8e904ac1e684527b1d68ae98abe64e1be752a729c7d9` |
+| Classifier policy | `classifier-policy-v3` / `ae6fb2c0bccec618bf91b6274d1cd9b9a483499703f21d068e5590f5255fc4bd` |
 | Embedded YAML ruleset | `1.0.7` / `7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134` |
 | Audit schema | v3 |
 
@@ -179,9 +179,9 @@ for implementation or conclusions.
 | Linux amd64 format/module/vet/vulnerability/script gates | Pending final Linux CI |
 | Linux amd64 unit/race/fuzz/benchmark evidence | Pending final Linux CI |
 | Long-text tier matrix from 64 KiB through near the RPC limit | Test coverage is present; authoritative Linux result pending |
+| CPA v7.2.83 Host + Mock upstream | **NOT RUN / PENDING** |
+| CPA v7.2.82 Host + Mock upstream | **NOT RUN / PENDING** |
 | CPA v7.2.81 Host + Mock upstream | **NOT RUN / PENDING** |
-| CPA v7.2.80 Host + Mock upstream | **NOT RUN / PENDING** |
-| CPA v7.2.79 Host + Mock upstream | **NOT RUN / PENDING** |
 | Independent source/artifact/Host audit | **NOT RUN / PENDING** |
 | Merge to `main` | Blocked |
 | Round 6 Release | Blocked |

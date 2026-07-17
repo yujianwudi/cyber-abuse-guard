@@ -2,14 +2,14 @@
 
 ## 2026-07-17 Round 6 CPA latest-compatibility addendum
 
-The current Round 6 source/compile matrix is now pinned to CPA v7.2.81 primary
-(`106270bea6f18ba2f2cc8b0b5887987f2874eed8`), v7.2.80 previous
-(`09da52ad509e2c18e7b9540db3b98c2214c280aa`), and v7.2.79 backward
-(`b6ce0beecd31dff389d3190f7db6d7a1d4ce0e7e`). The checked-in isolated module
-uses v7.2.81. Exact-source Linux CI, all three real Host + Mock matrices, and
+The current Round 6 source/compile matrix is now pinned to CPA v7.2.83 primary
+(`9f4f53ca5a4d1474e3f7eb61d6ffc984995f1f66`), v7.2.82 previous
+(`f583414fd9914f9ccfd280fc3a23aebaea30e9eb`), and v7.2.81 backward
+(`106270bea6f18ba2f2cc8b0b5887987f2874eed8`). The checked-in isolated module
+uses v7.2.83. Exact-source Linux CI, all three real Host + Mock matrices, and
 independent review remain **PENDING / NOT RUN**. The v7.2.80 PASS records below
 are historical Round 5.2 source/compile evidence and are not relabeled as
-v7.2.81 or Host evidence.
+current Round 6 matrix or Host evidence.
 
 最后更新：2026-07-17（Asia/Shanghai）
 

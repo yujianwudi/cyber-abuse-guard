@@ -421,10 +421,10 @@
     restricted access; v10 remains `CONSUMED / FAIL`, and methodology handoff
     remains blocked.
 
-54. **CPA v7.2.81/v7.2.80/v7.2.79 compatibility is source/compile evidence
-    only.** The separate `integration/cpalatestcontract` module pins v7.2.81
-    primary at commit `106270bea6f18ba2f2cc8b0b5887987f2874eed8`, while the
-    compatibility script retains v7.2.80 previous and v7.2.79 backward with
+54. **CPA v7.2.83/v7.2.82/v7.2.81 compatibility is source/compile evidence
+    only.** The separate `integration/cpalatestcontract` module pins v7.2.83
+    primary at commit `9f4f53ca5a4d1474e3f7eb61d6ffc984995f1f66`, while the
+    compatibility script retains v7.2.82 previous and v7.2.81 backward with
     their exact commits and Go module checksums.
     The latest-compat lane compiles the Guard and integration packages, runs
     the real Guard registration/role-routing probes, 17 official Host
@@ -462,6 +462,6 @@
     v7.2.80, an `agent` request that the Guard self-routes is rejected by CPA's
     native-Interactions validator with HTTP 400 before the Guard executor runs;
     a uniform Guard 403 would require an upstream CPA change. The owner-operated
-    sandbox must recheck that behavior on v7.2.81 and separately verify
-    model/agent, stream/non-stream, exact status
+    sandbox must recheck that behavior on v7.2.83, v7.2.82, and v7.2.81 and
+    separately verify model/agent, stream/non-stream, exact status
     shapes, first-byte behavior, and zero Auth/Provider/Usage/upstream effects.

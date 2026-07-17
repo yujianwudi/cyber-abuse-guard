@@ -135,4 +135,4 @@ Counters are fixed and low-cardinality. `text_bytes_scanned_total` may exceed th
 
 ## Trust boundary
 
-This design does not fetch remote media, call a model, select a provider, inspect production observe data, or execute third-party adversarial repositories. Host validation must use official CPA v7.2.81, v7.2.80, and v7.2.79 binaries, the exact Linux amd64 candidate, a Mock upstream, no real auth pool, and no real provider. All three Host runs are currently **NOT RUN / PENDING**.
+This design does not fetch remote media, call a model, select a provider, inspect production observe data, or execute third-party adversarial repositories. Host validation must use official CPA v7.2.83, v7.2.82, and v7.2.81 binaries, the exact Linux amd64 candidate, a Mock upstream, no real auth pool, and no real provider. All three Host runs are currently **NOT RUN / PENDING**.

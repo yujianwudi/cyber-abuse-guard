@@ -23,6 +23,30 @@ on:
         description: Exact candidate SO SHA-256 cited by all three Host records and the independent audit
         required: true
         type: string
+      host_v7283_validation:
+        description: Authorized isolated CPA v7.2.83 Host + Mock matrix result
+        required: true
+        type: choice
+        default: BLOCKED
+        options:
+          - BLOCKED
+          - PASS
+      host_v7283_evidence_sha256:
+        description: SHA-256 of the low-sensitivity v7.2.83 Host evidence
+        required: true
+        type: string
+      host_v7282_validation:
+        description: Authorized isolated CPA v7.2.82 Host + Mock matrix result
+        required: true
+        type: choice
+        default: BLOCKED
+        options:
+          - BLOCKED
+          - PASS
+      host_v7282_evidence_sha256:
+        description: SHA-256 of the low-sensitivity v7.2.82 Host evidence
+        required: true
+        type: string
       host_v7281_validation:
         description: Authorized isolated CPA v7.2.81 Host + Mock matrix result
         required: true
@@ -33,30 +57,6 @@ on:
           - PASS
       host_v7281_evidence_sha256:
         description: SHA-256 of the low-sensitivity v7.2.81 Host evidence
-        required: true
-        type: string
-      host_v7280_validation:
-        description: Authorized isolated CPA v7.2.80 Host + Mock matrix result
-        required: true
-        type: choice
-        default: BLOCKED
-        options:
-          - BLOCKED
-          - PASS
-      host_v7280_evidence_sha256:
-        description: SHA-256 of the low-sensitivity v7.2.80 Host evidence
-        required: true
-        type: string
-      host_v7279_validation:
-        description: Authorized isolated CPA v7.2.79 Host + Mock matrix result
-        required: true
-        type: choice
-        default: BLOCKED
-        options:
-          - BLOCKED
-          - PASS
-      host_v7279_evidence_sha256:
-        description: SHA-256 of the low-sensitivity v7.2.79 Host evidence
         required: true
         type: string
       independent_audit_validation:
@@ -106,12 +106,12 @@ jobs:
           DISPATCH_SHA: ${{ github.sha }}
           WORKFLOW_REF: ${{ github.workflow_ref }}
           WORKFLOW_SHA: ${{ github.workflow_sha }}
+          HOST_V7283: ${{ inputs.host_v7283_validation }}
+          HOST_V7283_SHA256: ${{ inputs.host_v7283_evidence_sha256 }}
+          HOST_V7282: ${{ inputs.host_v7282_validation }}
+          HOST_V7282_SHA256: ${{ inputs.host_v7282_evidence_sha256 }}
           HOST_V7281: ${{ inputs.host_v7281_validation }}
           HOST_V7281_SHA256: ${{ inputs.host_v7281_evidence_sha256 }}
-          HOST_V7280: ${{ inputs.host_v7280_validation }}
-          HOST_V7280_SHA256: ${{ inputs.host_v7280_evidence_sha256 }}
-          HOST_V7279: ${{ inputs.host_v7279_validation }}
-          HOST_V7279_SHA256: ${{ inputs.host_v7279_evidence_sha256 }}
           INDEPENDENT_AUDIT: ${{ inputs.independent_audit_validation }}
           INDEPENDENT_AUDIT_SHA256: ${{ inputs.independent_audit_sha256 }}
           AUTHORIZED: ${{ inputs.authorize_blocked_prerelease }}
@@ -125,14 +125,14 @@ jobs:
           [[ "$DISPATCH_SHA" == "$EXPECTED_COMMIT" ]]
           [[ "$WORKFLOW_SHA" == "$EXPECTED_COMMIT" ]]
           [[ "$WORKFLOW_REF" == "${GITHUB_REPOSITORY}/.github/workflows/round6-blocked-prerelease.yml@refs/tags/$TAG" ]]
+          [[ "$HOST_V7283" == PASS ]]
+          [[ "$HOST_V7282" == PASS ]]
           [[ "$HOST_V7281" == PASS ]]
-          [[ "$HOST_V7280" == PASS ]]
-          [[ "$HOST_V7279" == PASS ]]
           [[ "$INDEPENDENT_AUDIT" == PASS ]]
           [[ "$AUTHORIZED" == true ]]
+          [[ "$HOST_V7283_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$HOST_V7282_SHA256" =~ ^[0-9a-f]{64}$ ]]
           [[ "$HOST_V7281_SHA256" =~ ^[0-9a-f]{64}$ ]]
-          [[ "$HOST_V7280_SHA256" =~ ^[0-9a-f]{64}$ ]]
-          [[ "$HOST_V7279_SHA256" =~ ^[0-9a-f]{64}$ ]]
           [[ "$INDEPENDENT_AUDIT_SHA256" =~ ^[0-9a-f]{64}$ ]]
       - name: Bind admission to a successful CI run for the exact commit
         env:
@@ -231,7 +231,7 @@ jobs:
         run: |
           make round6-format-check round6-git-diff-check round6-module-verify round6-regression round6-vet
           go test ./internal/classifier -run '^TestClassifierPolicyIdentity$' -count=1
-      - name: Verify CPA v7.2.81 primary, v7.2.80 previous, and v7.2.79 backward source compatibility
+      - name: Verify CPA v7.2.83 primary, v7.2.82 previous, and v7.2.81 backward source compatibility
         env:
           CPA_COMPAT_VERIFY_REMOTE: '1'
         run: make cpa-latest-compat
@@ -338,9 +338,9 @@ jobs:
     needs: verify
     environment: round6-independent-audit
     if: >-
+      inputs.host_v7283_validation == 'PASS' &&
+      inputs.host_v7282_validation == 'PASS' &&
       inputs.host_v7281_validation == 'PASS' &&
-      inputs.host_v7280_validation == 'PASS' &&
-      inputs.host_v7279_validation == 'PASS' &&
       inputs.independent_audit_validation == 'PASS' &&
       inputs.authorize_blocked_prerelease == true
     permissions:
@@ -420,9 +420,9 @@ jobs:
           EXPECTED_TREE: ${{ inputs.expected_tree }}
           EXPECTED_SO_SHA256: ${{ inputs.expected_so_sha256 }}
           CI_RUN_ID: ${{ inputs.ci_run_id }}
+          HOST_V7283_SHA256: ${{ inputs.host_v7283_evidence_sha256 }}
+          HOST_V7282_SHA256: ${{ inputs.host_v7282_evidence_sha256 }}
           HOST_V7281_SHA256: ${{ inputs.host_v7281_evidence_sha256 }}
-          HOST_V7280_SHA256: ${{ inputs.host_v7280_evidence_sha256 }}
-          HOST_V7279_SHA256: ${{ inputs.host_v7279_evidence_sha256 }}
           INDEPENDENT_AUDIT_SHA256: ${{ inputs.independent_audit_sha256 }}
         run: |
           tag_ref="$(/usr/bin/gh api --header 'Accept: application/vnd.github+json' --header 'X-GitHub-Api-Version: 2022-11-28' "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG")"
@@ -438,9 +438,9 @@ jobs:
             'BLOCKED / PENDING HOST AND INDEPENDENT AUDIT' \
             '' \
             'Development evidence only. This is not production admission or deployment authorization.' \
+            "CPA v7.2.83 Host evidence SHA-256: $HOST_V7283_SHA256" \
+            "CPA v7.2.82 Host evidence SHA-256: $HOST_V7282_SHA256" \
             "CPA v7.2.81 Host evidence SHA-256: $HOST_V7281_SHA256" \
-            "CPA v7.2.80 Host evidence SHA-256: $HOST_V7280_SHA256" \
-            "CPA v7.2.79 Host evidence SHA-256: $HOST_V7279_SHA256" \
             "Independent audit SHA-256: $INDEPENDENT_AUDIT_SHA256" \
             "Source commit: $EXPECTED_COMMIT" \
             "Source tree: $EXPECTED_TREE" \

@@ -4,9 +4,9 @@ Last updated: 2026-07-17 (Asia/Shanghai)
 
 ## Round 6 CPA compatibility status
 
-The checked-in latest-contract primary is now v7.2.81 at
-`106270bea6f18ba2f2cc8b0b5887987f2874eed8`; v7.2.80 remains the previous
-profile and v7.2.79 the backward profile. Exact-source Linux CI and all three
+The checked-in latest-contract primary is now v7.2.83 at
+`9f4f53ca5a4d1474e3f7eb61d6ffc984995f1f66`; v7.2.82 is the previous
+profile and v7.2.81 the backward profile. Exact-source Linux CI and all three
 native Host + Mock matrices remain **PENDING / NOT RUN**. The v7.2.80 PASS rows
 below are retained as historical Round5.2 source/compile evidence only.
 

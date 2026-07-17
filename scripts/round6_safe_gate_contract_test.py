@@ -594,11 +594,11 @@ git -C "$destination" checkout "$commit"
         with self.assertRaisesRegex(ContractError, "expected_so_sha256"):
             validate_blocked_prerelease_workflow(workflow, Path("round6-prerelease.yml"))
 
-    def test_blocked_prerelease_missing_v7281_host_inputs_fail(self):
+    def test_blocked_prerelease_missing_v7283_host_inputs_fail(self):
         original = self.blocked_workflow()
         for input_name in (
-            "host_v7281_validation",
-            "host_v7281_evidence_sha256",
+            "host_v7283_validation",
+            "host_v7283_evidence_sha256",
         ):
             with self.subTest(input_name=input_name):
                 workflow = original.replace(
@@ -632,8 +632,8 @@ git -C "$destination" checkout "$commit"
 
     def test_blocked_prerelease_admission_comment_spoof_fails(self):
         workflow = self.blocked_workflow().replace(
-            '          [[ "$HOST_V7281" == PASS ]]\n',
-            '          # [[ "$HOST_V7281" == PASS ]]\n          true\n',
+            '          [[ "$HOST_V7283" == PASS ]]\n',
+            '          # [[ "$HOST_V7283" == PASS ]]\n          true\n',
         )
         with self.assertRaisesRegex(ContractError, "exact reviewed"):
             validate_blocked_prerelease_workflow(workflow, Path("round6-prerelease.yml"))
@@ -682,10 +682,10 @@ git -C "$destination" checkout "$commit"
 
     def test_blocked_prerelease_if_expression_spoof_fails(self):
         workflow = self.blocked_workflow().replace(
-            "    if: >-\n      inputs.host_v7281_validation == 'PASS' &&\n      inputs.host_v7280_validation == 'PASS' &&\n      inputs.host_v7279_validation == 'PASS' &&\n      inputs.independent_audit_validation == 'PASS' &&\n      inputs.authorize_blocked_prerelease == true\n",
+            "    if: >-\n      inputs.host_v7283_validation == 'PASS' &&\n      inputs.host_v7282_validation == 'PASS' &&\n      inputs.host_v7281_validation == 'PASS' &&\n      inputs.independent_audit_validation == 'PASS' &&\n      inputs.authorize_blocked_prerelease == true\n",
             "    if: ${{{{ true }}}}\n"
-            "    # inputs.host_v7281_validation == 'PASS' && inputs.host_v7280_validation == 'PASS' &&\n"
-            "    # inputs.host_v7279_validation == 'PASS' &&\n"
+            "    # inputs.host_v7283_validation == 'PASS' && inputs.host_v7282_validation == 'PASS' &&\n"
+            "    # inputs.host_v7281_validation == 'PASS' &&\n"
             "    # inputs.independent_audit_validation == 'PASS' && inputs.authorize_blocked_prerelease == true\n",
         )
         with self.assertRaisesRegex(ContractError, "missing explicit gate"):
@@ -693,7 +693,7 @@ git -C "$destination" checkout "$commit"
 
     def test_blocked_prerelease_missing_host_gate_fails(self):
         original = self.blocked_workflow()
-        for version in ("7281", "7280", "7279"):
+        for version in ("7283", "7282", "7281"):
             with self.subTest(version=version):
                 workflow = original.replace(
                     f"      inputs.host_v{version}_validation == 'PASS' &&\n", "", 1
@@ -791,10 +791,10 @@ git -C "$destination" checkout "$commit"
         with self.assertRaisesRegex(ContractError, "exact reviewed text"):
             validate_blocked_prerelease_workflow(workflow, Path("round6-prerelease.yml"))
 
-    def test_blocked_prerelease_missing_v7281_host_evidence_note_fails(self):
+    def test_blocked_prerelease_missing_v7283_host_evidence_note_fails(self):
         original = self.blocked_workflow()
         workflow = original.replace(
-            '            "CPA v7.2.81 Host evidence SHA-256: $HOST_V7281_SHA256" \\\n',
+            '            "CPA v7.2.83 Host evidence SHA-256: $HOST_V7283_SHA256" \\\n',
             "",
             1,
         )

@@ -7,11 +7,11 @@
 
 ## Round 6 CPA latest-compatibility addendum
 
-The current source/compile matrix is v7.2.81 primary, v7.2.80 previous, and
-v7.2.79 backward. All three native Host + Mock matrices remain **NOT RUN /
+The current source/compile matrix is v7.2.83 primary, v7.2.82 previous, and
+v7.2.81 backward. All three native Host + Mock matrices remain **NOT RUN /
 PENDING**. Any v7.2.80 PASS wording later in this historical report applies
-only to its recorded source/compile run and must not be promoted to v7.2.81 or
-Host evidence.
+only to its recorded source/compile run and must not be promoted to the current
+matrix or Host evidence.
 
 ## Fifth-round defensive addendum
 

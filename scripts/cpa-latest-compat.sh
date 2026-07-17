@@ -33,23 +33,23 @@ esac
 select_profile() {
   case "$1" in
     primary)
-      cpa_version='v7.2.81'
-      cpa_commit='106270bea6f18ba2f2cc8b0b5887987f2874eed8'
-      cpa_module_sum='h1:TNhOAGi8zDfnUE8KKyhi6NEvCI/Lu2VBj953WT9GKCs='
+      cpa_version='v7.2.83'
+      cpa_commit='9f4f53ca5a4d1474e3f7eb61d6ffc984995f1f66'
+      cpa_module_sum='h1:fCGraERLPW08Kl8aP3F/A5XQC34ZPD0mEfxpTvevF7Y='
       cpa_go_mod_sum='h1:ytvZNWbCv7PrAyR80+RKsDJPODsdL6qxyFaXDBNZdqs='
       cpa_must_be_latest=1
       ;;
     previous)
-      cpa_version='v7.2.80'
-      cpa_commit='09da52ad509e2c18e7b9540db3b98c2214c280aa'
-      cpa_module_sum='h1:QIa5T/KYvJACHVPPRzXcRwq/HLpbwWYJYpZAC1eY2WA='
+      cpa_version='v7.2.82'
+      cpa_commit='f583414fd9914f9ccfd280fc3a23aebaea30e9eb'
+      cpa_module_sum='h1:5Yl3qmdDiQ4w8WEJ0N8i4YHNB0hF959lMpoOAb4ib8c='
       cpa_go_mod_sum='h1:ytvZNWbCv7PrAyR80+RKsDJPODsdL6qxyFaXDBNZdqs='
       cpa_must_be_latest=0
       ;;
     backward)
-      cpa_version='v7.2.79'
-      cpa_commit='b6ce0beecd31dff389d3190f7db6d7a1d4ce0e7e'
-      cpa_module_sum='h1:/2s9euOTOeKUCIPWjHdCsll9vUHkJ/H2bq25Da3DQrg='
+      cpa_version='v7.2.81'
+      cpa_commit='106270bea6f18ba2f2cc8b0b5887987f2874eed8'
+      cpa_module_sum='h1:TNhOAGi8zDfnUE8KKyhi6NEvCI/Lu2VBj953WT9GKCs='
       cpa_go_mod_sum='h1:ytvZNWbCv7PrAyR80+RKsDJPODsdL6qxyFaXDBNZdqs='
       cpa_must_be_latest=0
       ;;

@@ -14,16 +14,16 @@ The pinned module checksum is
 
 Pinned latest-compatibility evidence is a separate layer: the isolated
 `integration/cpalatestcontract` module and `make cpa-latest-compat` pin CPA
-v7.2.81 primary (`106270bea6f18ba2f2cc8b0b5887987f2874eed8`), v7.2.80
-previous (`09da52ad509e2c18e7b9540db3b98c2214c280aa`), and v7.2.79 backward
-(`b6ce0beecd31dff389d3190f7db6d7a1d4ce0e7e`). The matrix compiles the Guard
+v7.2.83 primary (`9f4f53ca5a4d1474e3f7eb61d6ffc984995f1f66`), v7.2.82
+previous (`f583414fd9914f9ccfd280fc3a23aebaea30e9eb`), and v7.2.81 backward
+(`106270bea6f18ba2f2cc8b0b5887987f2874eed8`). The matrix compiles the Guard
 and integration packages, runs the real Guard registration/role-routing probes,
 17 official Host routing/status tests and 11 official Interactions
 route/handler tests, and applies three checksum-pinned ephemeral overlays. With
 `CPA_LATEST_VERIFY_REMOTE=1`, the same gate
 additionally verifies GitHub's current `releases/latest` and Tag-to-Commit
 identity before those source/compile checks. This does not change the v7.2.75
-artifact baseline or constitute a v7.2.81, v7.2.80, or v7.2.79 native
+artifact baseline or constitute a v7.2.83, v7.2.82, or v7.2.81 native
 Host/Store load.
 
 The repository work began from actual baseline

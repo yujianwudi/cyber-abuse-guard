@@ -55,7 +55,7 @@ release still requires a newly authored independent unseen set.
   `streaming-scanner-v1`, effective-limit status, and fixed low-cardinality
   counters.
 - Publish classifier identity `classifier-policy-v3` /
-  `fa4089b7fd92320c809f8e904ac1e684527b1d68ae98abe64e1be752a729c7d9`.
+  `ae6fb2c0bccec618bf91b6274d1cd9b9a483499703f21d068e5590f5255fc4bd`.
 - Compact the transactional shadow plan by collapsing caller-controlled keys
   and semantic values to closed representatives, skipping metadata spans, and
   using short base-36 markers. Residual allocation remains bounded by structural
@@ -83,7 +83,7 @@ release still requires a newly authored independent unseen set.
   views beyond the 128 KiB source / 64 KiB retained decoded budget are
   incomplete, and legacy `ExtractText` keeps materialized `Parts` segmentation
   semantics while production routing uses streaming APIs.
-- Target CPA v7.2.81 primary, v7.2.80 previous, and v7.2.79 backward
+- Target CPA v7.2.83 primary, v7.2.82 previous, and v7.2.81 backward
   source/compile lanes, but leave all three real Linux Host + Mock-upstream
   matrices **NOT RUN / PENDING**. Do not merge to `main` or create a Release
   before those Host gates and independent audit pass.

@@ -15,9 +15,9 @@ selects a bounded classifier window rather than limiting inspection to the
 first 256 KiB of the JSON body.
 
 The candidate is still blocked because exact-source Linux amd64 evidence is not
-final, CPA v7.2.81, v7.2.80, and v7.2.79 have not been run as real Hosts with the official
-candidate .so and Mock upstream, and no independent source/artifact/Host audit
-has approved it.
+final, CPA v7.2.83, v7.2.82, and v7.2.81 have not been run as real Hosts with
+the official candidate .so and Mock upstream, and no independent
+source/artifact/Host audit has approved it.
 
 The candidate has not been merged to main and no Round 6 tag or Release has
 been created.
@@ -65,7 +65,7 @@ performance number from them is promoted by this handoff.
 | Candidate artifact hashes | **PENDING - Linux CI only** |
 | Scanner identity | streaming-scanner-v1 |
 | Classifier policy | classifier-policy-v3 |
-| Classifier policy SHA-256 | fa4089b7fd92320c809f8e904ac1e684527b1d68ae98abe64e1be752a729c7d9 |
+| Classifier policy SHA-256 | ae6fb2c0bccec618bf91b6274d1cd9b9a483499703f21d068e5590f5255fc4bd |
 | YAML ruleset | 1.0.7 |
 | YAML ruleset SHA-256 | 7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134 |
 | Audit schema | v3 |
@@ -275,9 +275,9 @@ isolated behind the consumed_evaluation build tag.
 
 | Target | Identity | Source/compile result | Real Host result |
 |---|---|---|---|
-| Primary | CPA v7.2.81 / 106270bea6f18ba2f2cc8b0b5887987f2874eed8 | Pending final Linux CI | **NOT RUN / PENDING** |
-| Previous compatibility | CPA v7.2.80 / 09da52ad509e2c18e7b9540db3b98c2214c280aa | Pending final Linux CI | **NOT RUN / PENDING** |
-| Backward compatibility | CPA v7.2.79 / b6ce0beecd31dff389d3190f7db6d7a1d4ce0e7e | Pending final Linux CI | **NOT RUN / PENDING** |
+| Primary | CPA v7.2.83 / 9f4f53ca5a4d1474e3f7eb61d6ffc984995f1f66 | Pending final Linux CI | **NOT RUN / PENDING** |
+| Previous compatibility | CPA v7.2.82 / f583414fd9914f9ccfd280fc3a23aebaea30e9eb | Pending final Linux CI | **NOT RUN / PENDING** |
+| Backward compatibility | CPA v7.2.81 / 106270bea6f18ba2f2cc8b0b5887987f2874eed8 | Pending final Linux CI | **NOT RUN / PENDING** |
 
 The required Host evidence must use the official candidate Linux amd64 .so, an
 isolated CPA Host, a Mock upstream, no real auth pool, and no real Provider.
@@ -365,7 +365,7 @@ were v2.
 
 ## 12. Known limitations and residual risk
 
-- CPA v7.2.81, v7.2.80, and v7.2.79 real Host behavior is unverified.
+- CPA v7.2.83, v7.2.82, and v7.2.81 real Host behavior is unverified.
 - Linux race, fuzz duration, benchmark, allocation, RSS, and reproducibility
   evidence is not yet attached to the final source identity.
 - The Linux build script now audits complete `readelf --version-info` tags,
@@ -470,9 +470,9 @@ independent PASS and a new explicit user decision.
 | Exact-source Linux format/module/vet/vulnerability/script gates | Pending |
 | Exact-source Linux unit/race/fuzz/benchmark gates | Pending |
 | Linux artifact build, SBOM, verification, and reproducibility | Pending |
+| CPA v7.2.83 official SO + Host + Mock matrix | **NOT RUN** |
+| CPA v7.2.82 official SO + Host + Mock matrix | **NOT RUN** |
 | CPA v7.2.81 official SO + Host + Mock matrix | **NOT RUN** |
-| CPA v7.2.80 official SO + Host + Mock matrix | **NOT RUN** |
-| CPA v7.2.79 official SO + Host + Mock matrix | **NOT RUN** |
 | Four-layer zero-call proof | **NOT RUN** |
 | SQLite v3 migration, privacy canary, quick-check, and rollback | **NOT RUN** |
 | Independent source/artifact/Host audit | **NOT RUN** |
@@ -492,7 +492,7 @@ admit it.
 
 ~~~text
 Status: BLOCKED
-Reason: CPA v7.2.81/v7.2.80/v7.2.79 Host, final Linux evidence, and independent audit are pending
+Reason: CPA v7.2.83/v7.2.82/v7.2.81 Host, final Linux evidence, and independent audit are pending
 Base commit: 7a416df66a79218d73214084d4bf8a733268d894
 Base tree: 63db7b7cb14a636f5ba9ff4453be4ebeef170b68
 Candidate commit: PENDING FINAL PR HEAD
@@ -500,10 +500,10 @@ Candidate tree: PENDING FINAL PR / LINUX BUILD METADATA
 Platform: Linux amd64 only
 Streaming scanner identity: streaming-scanner-v1
 Classifier policy: classifier-policy-v3
-Classifier policy SHA-256: fa4089b7fd92320c809f8e904ac1e684527b1d68ae98abe64e1be752a729c7d9
-CPA v7.2.81 Host result: NOT RUN / PENDING
-CPA v7.2.80 Host result: NOT RUN / PENDING
-CPA v7.2.79 compatibility Host result: NOT RUN / PENDING
+Classifier policy SHA-256: ae6fb2c0bccec618bf91b6274d1cd9b9a483499703f21d068e5590f5255fc4bd
+CPA v7.2.83 Host result: NOT RUN / PENDING
+CPA v7.2.82 Host result: NOT RUN / PENDING
+CPA v7.2.81 compatibility Host result: NOT RUN / PENDING
 Long-text Linux size ladder result: PENDING EXACT-SOURCE LINUX CI
 Cross-window result: PENDING EXACT-SOURCE LINUX CI
 Race/fuzz/benchmark/RSS result: PENDING EXACT-SOURCE LINUX CI

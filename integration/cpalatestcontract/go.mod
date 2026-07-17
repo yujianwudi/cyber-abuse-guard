@@ -2,4 +2,4 @@ module github.com/router-for-me/CLIProxyAPI/v7/cyber-abuse-guard-latest-contract
 
 go 1.26.0
 
-require github.com/router-for-me/CLIProxyAPI/v7 v7.2.81
+require github.com/router-for-me/CLIProxyAPI/v7 v7.2.83

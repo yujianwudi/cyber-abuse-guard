@@ -77,7 +77,7 @@ jobs:
         run: make round6-module-verify
       - name: CPA-v7.2.75-host-source-and-fail-open-contract
         run: make cpa-host-fixture-contract
-      - name: CPA-v7.2.81-primary-v7.2.80-previous-and-v7.2.79-backward-source-compile-compatibility
+      - name: CPA-v7.2.83-primary-v7.2.82-previous-and-v7.2.81-backward-source-compile-compatibility
         env:
           CPA_COMPAT_VERIFY_REMOTE: "1"
         run: bash ./scripts/cpa-latest-compat.sh
@@ -141,10 +141,10 @@ jobs:
             printf 'artifact_path=%s artifact_bytes=%s ' "$artifact" "$(stat -c %s "$artifact")"
             sha256sum "$artifact"
           done
-          echo 'integration_summary=CPA v7.2.81 primary, v7.2.80 previous, and v7.2.79 backward source/compile contracts completed; isolated Host matrices pending'
-          echo 'cpa_primary_identity=v7.2.81@106270bea6f18ba2f2cc8b0b5887987f2874eed8'
-          echo 'cpa_previous_identity=v7.2.80@09da52ad509e2c18e7b9540db3b98c2214c280aa'
-          echo 'cpa_backward_identity=v7.2.79@b6ce0beecd31dff389d3190f7db6d7a1d4ce0e7e'
+          echo 'integration_summary=CPA v7.2.83 primary, v7.2.82 previous, and v7.2.81 backward source/compile contracts completed; isolated Host matrices pending'
+          echo 'cpa_primary_identity=v7.2.83@9f4f53ca5a4d1474e3f7eb61d6ffc984995f1f66'
+          echo 'cpa_previous_identity=v7.2.82@f583414fd9914f9ccfd280fc3a23aebaea30e9eb'
+          echo 'cpa_backward_identity=v7.2.81@106270bea6f18ba2f2cc8b0b5887987f2874eed8'
       - name: clean-tree-check
         run: make clean-tree-check
       - name: Upload development verification artifacts
