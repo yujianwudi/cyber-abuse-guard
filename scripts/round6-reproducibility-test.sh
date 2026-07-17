@@ -1,0 +1,112 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+root="$(cd "${BASH_SOURCE[0]%/*}/.." && pwd -P)"
+# shellcheck source=release-common.sh
+source "$root/scripts/release-common.sh"
+go_bin="${GO:-go}"
+cyclonedx="${CYCLONEDX_GOMOD:-cyclonedx-gomod}"
+release_require_commands "$go_bin" "$cyclonedx" git mktemp rm cmp sha256sum awk mkdir zip unzip jq
+
+if [[ "${ALLOW_DIRTY_BUILD:-0}" != 0 ]]; then
+  release_die "round6-reproducibility-test requires a clean committed source tree"
+fi
+[[ -z "$(git -C "$root" status --porcelain --untracked-files=normal)" ]] || \
+  release_die "round6-reproducibility-test requires a clean committed source tree"
+# The root may be the CI partial/sparse checkout. release_init remains clean and
+# verifies that every skip-worktree path belongs to the explicit restricted-data
+# exclusion set; arbitrary sparse omissions still fail closed.
+ROUND6_SAFE_SPARSE_BUILD=1
+release_init
+
+work="$(mktemp -d)"
+clone_a="$work/source-a"
+clone_b="$work/source-b"
+cleanup() {
+  git -C "$root" worktree remove --force "$clone_a" >/dev/null 2>&1 || true
+  git -C "$root" worktree remove --force "$clone_b" >/dev/null 2>&1 || true
+  rm -rf -- "$work"
+}
+trap cleanup EXIT
+
+round6_sparse_worktree() {
+  local destination="$1"
+  git -C "$root" worktree add --quiet --detach --no-checkout "$destination" "$RELEASE_GIT_COMMIT"
+  git -C "$destination" sparse-checkout set --no-cone \
+    '/*' \
+    '!/cmd/evaluation-*' '!/cmd/holdout-*' '!/cmd/*private*' '!/cmd/*blind*' '!/cmd/*retired*' \
+    '!/docs/reports/EVALUATION_*' '!/docs/reports/HOLDOUT_*' '!/docs/reports/HOLDOUT_REPORT.md' \
+    '!/docs/**/*private*' '!/docs/**/*blind*' '!/docs/**/*retired*' \
+    '!/internal/classifier/evaluation_*' '!/internal/classifier/holdout_*' \
+    '!/internal/classifier/*private*' '!/internal/classifier/*blind*' '!/internal/classifier/*retired*' \
+    '!/testdata/evaluation-*' '!/testdata/holdout*' '!/testdata/*private*' '!/testdata/*blind*' '!/testdata/*retired*'
+  git -C "$destination" checkout --quiet "$RELEASE_GIT_COMMIT"
+}
+
+round6_sparse_worktree "$clone_a"
+round6_sparse_worktree "$clone_b"
+
+go_path="$(command -v "$go_bin")"
+cyclonedx_path="$(command -v "$cyclonedx")"
+artifact_version="${RELEASE_SOURCE_VERSION}-dirty"
+so="cyber-abuse-guard-v${artifact_version}.so"
+store_zip="cyber-abuse-guard_${artifact_version}_linux_amd64.zip"
+
+for name in a b; do
+  clone="$work/source-$name"
+  [[ "$(git -C "$clone" rev-parse HEAD)" == "$RELEASE_GIT_COMMIT" ]]
+  [[ "$(git -C "$clone" rev-parse 'HEAD^{tree}')" == "$RELEASE_GIT_TREE" ]]
+  [[ -z "$(git -C "$clone" status --porcelain)" ]]
+  common_env=(
+    GO="$go_path"
+    VERSION="$RELEASE_SOURCE_VERSION"
+    SOURCE_DATE_EPOCH="$RELEASE_SOURCE_DATE_EPOCH"
+    ALLOW_DIRTY_BUILD=1
+    CYCLONEDX_GOMOD="$cyclonedx_path"
+    CYCLONEDX_GOMOD_VERSION="${CYCLONEDX_GOMOD_VERSION:-v1.9.0}"
+  )
+  env "${common_env[@]}" GOCACHE="$work/go-build-cache-$name" \
+    "$clone/scripts/build-linux-amd64.sh"
+  env "${common_env[@]}" "$clone/scripts/release-sbom.sh"
+  PLUGIN_BINARY="$clone/dist/$so" \
+    STORE_ARCHIVE="$clone/dist/$store_zip" \
+    SOURCE_DATE_EPOCH="$RELEASE_SOURCE_DATE_EPOCH" \
+    "$clone/scripts/create-store-archive.sh"
+  [[ "$(git -C "$clone" rev-parse HEAD)" == "$RELEASE_GIT_COMMIT" ]] ||
+    release_die "Round6 reproducibility source $name changed HEAD during the build"
+  [[ "$(git -C "$clone" rev-parse 'HEAD^{tree}')" == "$RELEASE_GIT_TREE" ]] ||
+    release_die "Round6 reproducibility source $name changed its Git tree during the build"
+  [[ -z "$(git -C "$clone" status --porcelain)" ]] ||
+    release_die "Round6 reproducibility source $name became dirty during the build"
+  jq -e \
+    --arg commit "$RELEASE_GIT_COMMIT" \
+    --arg tree "$RELEASE_GIT_TREE" \
+    '.commit == $commit and .tree == $tree' \
+    "$clone/dist/build-metadata.json" >/dev/null ||
+    release_die "Round6 reproducibility source $name emitted mismatched build metadata"
+done
+
+compare_artifact() {
+  local description="$1"
+  local relative="$2"
+  local left="$clone_a/dist/$relative"
+  local right="$clone_b/dist/$relative"
+  if ! cmp -s "$left" "$right"; then
+    printf 'Round6 reproducibility failure: %s differ\n' "$description" >&2
+    sha256sum "$left" "$right" >&2
+    exit 1
+  fi
+  printf 'reproducible %s: ' "$description"
+  sha256sum "$left" | awk '{print $1}'
+}
+
+compare_artifact "shared object" "$so"
+compare_artifact "shared-object checksum" "$so.sha256"
+compare_artifact "CPA Store ZIP" "$store_zip"
+compare_artifact "build metadata" build-metadata.json
+compare_artifact "ruleset manifest" ruleset-manifest.json
+compare_artifact "ruleset checksum" ruleset.sha256
+compare_artifact "SBOM" sbom.cdx.json
+
+release_assert_source_unchanged
+echo "Round6 safe development reproducibility passed in two clean local clones"

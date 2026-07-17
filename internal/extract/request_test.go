@@ -161,18 +161,18 @@ func TestExtractRequestDeferredCandidateOverflowFinalMediaIsCompleteOpaque(t *te
 	}
 }
 
-func TestExtractRequestDeferredCandidateOverflowFinalNonMediaIsIncompleteWithoutPrefix(t *testing.T) {
+func TestExtractRequestLongFinalNonMediaCandidateIsFullyInspectable(t *testing.T) {
 	payload := strings.Repeat("Z", maxTextPartBytes+1)
 	body := []byte(`{"messages":[{"role":"user","content":{"data":"` + payload + `"}}]}`)
 	result, err := ExtractRequest(body, http.Header{"Content-Type": []string{"application/json"}}, Limits{MaxRawBytes: 1 << 20})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.IsComplete() || !result.HasIncompleteReason(IncompleteDeferredTextCandidateLimit) {
+	if !result.IsComplete() || result.HasIncompleteReason(IncompleteDeferredTextCandidateLimit) {
 		t.Fatalf("large final-nonmedia candidate result=%#v", result)
 	}
-	if strings.Contains(strings.Join(result.Parts, "\n"), payload[:64]) || result.TextBytesScanned != 0 {
-		t.Fatalf("large final-nonmedia candidate classified a prefix: %#v", result)
+	if !strings.Contains(strings.Join(result.Parts, "\n"), payload[:64]) || result.TextBytesScanned < len(payload) {
+		t.Fatalf("large final-nonmedia candidate was not fully inspectable: %#v", result)
 	}
 }
 
@@ -330,7 +330,7 @@ func TestExtractRequestJSONIncompleteReasons(t *testing.T) {
 		{name: "parse error", body: `{"messages":[`, reason: IncompleteParseError},
 		{name: "empty JSON", body: ``, reason: IncompleteParseError},
 		{name: "JSON scalar", body: `"unsupported request shape"`, reason: IncompleteParseError},
-		{name: "text budget", body: `{"input":"` + strings.Repeat("x", 128) + `"}`, limits: Limits{MaxScanBytes: 32}, reason: IncompleteScanByteLimit},
+		{name: "text budget", body: `{"input":"` + strings.Repeat("x", MinTextWindowBytes+1) + `"}`, limits: Limits{MaxTextWindowBytes: MinTextWindowBytes, MaxTotalTextBytes: MinTextWindowBytes}, reason: IncompleteTotalTextLimit},
 		{name: "depth", body: `{"a":{"b":{"c":"text"}}}`, limits: Limits{MaxJSONDepth: 2}, reason: IncompleteJSONDepthLimit},
 		{name: "parts", body: `{"input":["one","two","three"]}`, limits: Limits{MaxTextParts: 2}, reason: IncompleteTextPartLimit},
 	}
@@ -465,8 +465,8 @@ func TestExtractRequestMultipartUnknownFieldIsIncompleteAndPrivate(t *testing.T)
 	if len(result.IncompleteReasons) != 1 {
 		t.Fatalf("private-field reason count=%d, want one deduplicated schema reason", len(result.IncompleteReasons))
 	}
-	if !containsPart(result.Parts, prompt) {
-		t.Fatal("known prompt disappeared from schema-incomplete result")
+	if len(result.Parts) != 0 || len(result.Segments) != 0 || result.TextBytesScanned != 0 {
+		t.Fatal("schema-incomplete multipart retained provisional classifier input")
 	}
 	serialized := strings.Join(result.Parts, "\n") + "\n" + result.ParseError
 	for _, canary := range []string{telemetryCanary, apiKeyCanary, authCanary, tokenCanary} {
@@ -720,7 +720,7 @@ func TestExtractRequestCPATransformedJSONWithMultipartHeader(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if unknown.IsComplete() || !unknown.HasIncompleteReason(IncompleteMultipartUnknownField) || !containsPart(unknown.Parts, prompt) {
+	if unknown.IsComplete() || !unknown.HasIncompleteReason(IncompleteMultipartUnknownField) || len(unknown.Parts) != 0 {
 		t.Fatalf("CPA transformed unknown field result = %#v", unknown)
 	}
 	if strings.Contains(strings.Join(unknown.Parts, "\n")+unknown.ParseError, unknownCanary) {
@@ -896,7 +896,6 @@ func TestExtractRequestJSONResourceReasons(t *testing.T) {
 		{name: "raw body", body: `{"input":"ordinary"}`, limits: Limits{MaxRawBytes: 8}, reason: IncompleteRawBodyLimit},
 		{name: "tokens", body: `{"input":["one","two"]}`, limits: Limits{MaxJSONTokens: 3}, reason: IncompleteJSONTokenLimit},
 		{name: "nodes", body: `{"input":["one","two"]}`, limits: Limits{MaxJSONNodes: 2}, reason: IncompleteJSONNodeLimit},
-		{name: "single text", body: `{"input":"0123456789"}`, limits: Limits{MaxTextPartBytes: 5}, reason: IncompleteTextPartByteLimit},
 	}
 	for _, testCase := range tests {
 		t.Run(testCase.name, func(t *testing.T) {
@@ -908,6 +907,17 @@ func TestExtractRequestJSONResourceReasons(t *testing.T) {
 				t.Fatalf("result = %#v, want %q", result, testCase.reason)
 			}
 		})
+	}
+}
+
+func TestExtractRequestSingleTextPartByteLimitCreatesInternalChunks(t *testing.T) {
+	result, err := ExtractRequest(
+		[]byte(`{"input":"0123456789"}`),
+		http.Header{"Content-Type": []string{"application/json"}},
+		Limits{MaxTextPartBytes: 5},
+	)
+	if err != nil || !result.IsComplete() || result.TextBytesScanned != 10 || result.ClassificationChunks != 2 {
+		t.Fatalf("result=%#v err=%v", result, err)
 	}
 }
 
@@ -975,26 +985,23 @@ func TestExtractRequestMultipartResourceLimits(t *testing.T) {
 		}
 	})
 
-	t.Run("text field", func(t *testing.T) {
+	t.Run("text field uses internal chunks", func(t *testing.T) {
 		body, contentType := multipartBody(t, []multipartTestPart{{name: "prompt", value: []byte(strings.Repeat("p", 32))}})
 		result, err := extractOpenAIImageRequest(body, http.Header{"Content-Type": []string{contentType}}, Limits{MaxMultipartTextPartBytes: 8})
-		if err != nil || !result.HasIncompleteReason(IncompleteMultipartTextLimit) {
+		if err != nil || !result.IsComplete() || result.TextBytesScanned != 32 || result.ClassificationChunks != 4 {
 			t.Fatalf("result=%#v err=%v", result, err)
 		}
 	})
 }
 
-func TestMultipartTextOverflowTakesPrecedenceOverCutUTF8(t *testing.T) {
+func TestMultipartTextInternalChunksPreserveUTF8(t *testing.T) {
 	body, contentType := multipartBody(t, []multipartTestPart{{name: "prompt", value: []byte("你好")}})
 	result, err := extractOpenAIImageRequest(body, http.Header{"Content-Type": []string{contentType}}, Limits{MaxMultipartTextPartBytes: 4})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !result.HasIncompleteReason(IncompleteMultipartTextLimit) {
-		t.Fatalf("result=%#v, want multipart text limit", result)
-	}
-	if result.HasIncompleteReason(IncompleteMultipartParseError) {
-		t.Fatalf("cut UTF-8 was misclassified as a parse error: %#v", result)
+	if !result.IsComplete() || !containsPart(result.Parts, "你好") || result.ClassificationChunks < 2 {
+		t.Fatalf("UTF-8 multipart text was not reconstructed: %#v", result)
 	}
 }
 
@@ -1021,8 +1028,8 @@ func TestExtractRequestMultipartJSONLikeUnknownFieldsAreSchemaIncompleteAndPriva
 	if result.HasIncompleteReason(IncompleteMultipartParseError) || result.HasIncompleteReason(IncompleteJSONTokenLimit) {
 		t.Fatal("JSON-like unknown fields were parsed instead of discarded opaquely")
 	}
-	if !containsPart(result.Parts, prompt) {
-		t.Fatal("known prompt was not retained before unknown JSON-like fields")
+	if len(result.Parts) != 0 || len(result.Segments) != 0 || result.TextBytesScanned != 0 {
+		t.Fatal("schema-incomplete JSON-like multipart retained provisional classifier input")
 	}
 	serialized := strings.Join(result.Parts, "\n") + "\n" + result.ParseError
 	for _, canary := range []string{messagesCanary, inputCanary, malformedCanary} {

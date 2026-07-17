@@ -52,8 +52,9 @@ CREATE INDEX IF NOT EXISTS idx_audit_events_subject_timestamp ON audit_events(su
 const insertEventSQL = `INSERT INTO audit_events (
     id, timestamp_ns, action, mode, category, risk_score, rule_ids,
     request_hash, subject_hash, model, source_format, stream,
-    text_bytes_scanned, classifier, latency_us
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    text_bytes_scanned, classifier, decision, coverage, incomplete_reason,
+    scanner, latency_us
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 // Config controls SQLite durability and bounded background work.
 type Config struct {
@@ -363,7 +364,8 @@ func (s *Store) handle(item workItem) {
 			item.event.Mode, item.event.Category, item.event.RiskScore, string(rules),
 			item.event.RequestHash, item.event.SubjectHash, item.event.Model,
 			item.event.SourceFormat, stream, item.event.TextBytesScanned,
-			item.event.Classifier, item.event.LatencyUS,
+			item.event.Classifier, item.event.Decision, item.event.Coverage,
+			item.event.IncompleteReason, item.event.Scanner, item.event.LatencyUS,
 		)
 	}
 	if err != nil {

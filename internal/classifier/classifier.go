@@ -133,17 +133,32 @@ type Evidence struct {
 
 // Result intentionally has no field capable of carrying prompt fragments.
 type Result struct {
-	PolicyVersion  string         `json:"policy_version"`
-	PolicySHA256   string         `json:"policy_sha256"`
-	RuleSetVersion string         `json:"ruleset_version"`
-	Score          int            `json:"score"`
-	Category       rules.Category `json:"category,omitempty"`
-	Action         Action         `json:"action"`
-	RuleIDs        []string       `json:"rule_ids,omitempty"`
-	Context        ContextFlags   `json:"context"`
-	Evidence       []Evidence     `json:"evidence,omitempty"`
-	Behavior       *BehaviorGraph `json:"behavior,omitempty"`
-	Truncated      bool           `json:"truncated,omitempty"`
+	PolicyVersion     string            `json:"policy_version"`
+	PolicySHA256      string            `json:"policy_sha256"`
+	RuleSetVersion    string            `json:"ruleset_version"`
+	Score             int               `json:"score"`
+	Category          rules.Category    `json:"category,omitempty"`
+	Action            Action            `json:"action"`
+	RuleIDs           []string          `json:"rule_ids,omitempty"`
+	Context           ContextFlags      `json:"context"`
+	Evidence          []Evidence        `json:"evidence,omitempty"`
+	Behavior          *BehaviorGraph    `json:"behavior,omitempty"`
+	Coverage          Coverage          `json:"coverage,omitempty"`
+	FindingConfidence FindingConfidence `json:"finding_confidence,omitempty"`
+	Truncated         bool              `json:"truncated,omitempty"`
+}
+
+// classificationSignalFacts is the privacy-safe, bounded semantic summary
+// captured from one classifier part. It contains no prompt bytes and reuses the
+// exact signals and negation analysis already produced by classifyWithPolicy.
+// Streaming callers merge these facts only inside one logical field.
+type classificationSignalFacts struct {
+	signals                  []bool
+	unnegatedRuleIntents     []bool
+	matchedSemanticIntents   []bool
+	unnegatedSemanticIntents []bool
+	semanticAgencies         []bool
+	harmConflict             bool
 }
 
 type compiledRule struct {
@@ -388,6 +403,10 @@ func (c *Classifier) ClassifyWithPolicy(parts []string, mode Mode, thresholds Th
 // allowing a provider-native structured tool payload to retain one whole-part
 // semantic window. Ordinary user text never receives that exception.
 func (c *Classifier) classifyWithPolicy(parts []string, mode Mode, thresholds Thresholds, policy Policy, structuredToolPayload bool) Result {
+	return c.classifyWithPolicyCaptured(parts, mode, thresholds, policy, structuredToolPayload, nil)
+}
+
+func (c *Classifier) classifyWithPolicyCaptured(parts []string, mode Mode, thresholds Thresholds, policy Policy, structuredToolPayload bool, capture *classificationSignalFacts) Result {
 	if c == nil {
 		return Result{PolicyVersion: ClassifierPolicyVersion, PolicySHA256: ClassifierPolicySHA256, Action: ActionAllow}
 	}
@@ -642,6 +661,66 @@ func (c *Classifier) classifyWithPolicy(parts []string, mode Mode, thresholds Th
 		partCount++
 	}
 	finalizeMetaTail()
+	var currentDirectives analyzedDirectives
+	directivesReady := false
+	currentText := string(currentRunes)
+	if capture != nil {
+		capture.harmConflict = false
+		if cap(capture.signals) < c.signalCount {
+			capture.signals = make([]bool, c.signalCount)
+		} else {
+			capture.signals = capture.signals[:c.signalCount]
+			clear(capture.signals)
+		}
+		if cap(capture.unnegatedRuleIntents) < len(c.rules) {
+			capture.unnegatedRuleIntents = make([]bool, len(c.rules))
+		} else {
+			capture.unnegatedRuleIntents = capture.unnegatedRuleIntents[:len(c.rules)]
+			clear(capture.unnegatedRuleIntents)
+		}
+		for _, destination := range []*[]bool{
+			&capture.matchedSemanticIntents,
+			&capture.unnegatedSemanticIntents,
+			&capture.semanticAgencies,
+		} {
+			if cap(*destination) < len(c.semanticProfiles) {
+				*destination = make([]bool, len(c.semanticProfiles))
+			} else {
+				*destination = (*destination)[:len(c.semanticProfiles)]
+				clear(*destination)
+			}
+		}
+		if partCount > 0 {
+			copy(capture.signals, currentSignals)
+			capture.harmConflict = hasExplicitHarmConflict(currentText)
+			needsIntentAnalysis := false
+			for _, rule := range c.rules {
+				if currentSignals[rule.intent] {
+					needsIntentAnalysis = true
+					break
+				}
+			}
+			if needsIntentAnalysis {
+				currentDirectives = c.analyzeDirectives(currentRunes)
+				directivesReady = true
+			}
+			for ruleIndex, rule := range c.rules {
+				if currentSignals[rule.intent] && !currentDirectives.ruleIntentIsOnlyNegated(rule) {
+					capture.unnegatedRuleIntents[ruleIndex] = true
+				}
+			}
+			for profileIndex, profile := range c.semanticProfiles {
+				dimensions := c.semanticDimensions(profile, [][]bool{currentSignals})
+				capture.semanticAgencies[profileIndex] = dimensions.harm || dimensions.action || dimensions.outcome
+				if (dimensions.harm || dimensions.action) && containsRuleIntent(currentText, profile.intentStarts) {
+					capture.matchedSemanticIntents[profileIndex] = true
+					if len(currentText) > maxCompactIntentProofBytes || containsUnnegatedRuleIntent(currentText, profile.intentStarts) {
+						capture.unnegatedSemanticIntents[profileIndex] = true
+					}
+				}
+			}
+		}
+	}
 	currentContext := ContextFlags{}
 	if partCount > 0 {
 		currentContext = c.matchContextsWithPolicy(currentSignals, policy.Allow)
@@ -679,9 +758,6 @@ func (c *Classifier) classifyWithPolicy(parts []string, mode Mode, thresholds Th
 	candidates := make([]candidate, 0, 8)
 	var categoryHasCandidate [8]bool
 	previousFollowUpEligible := partCount > 1 && followUpEligible(previousRunes)
-	var currentDirectives analyzedDirectives
-	directivesReady := false
-	currentText := string(currentRunes)
 	previousHarmConflict := false
 	previousHarmConflictReady := false
 	for ruleIndex, rule := range c.rules {
@@ -1468,6 +1544,315 @@ func isCredentialObjectQualifiedFallback(rule compiledRule, signals []bool) bool
 		signalMatched(signals, rule.independentOperational) &&
 		signalMatched(signals, rule.independentTarget) &&
 		signalMatched(signals, rule.independentEvasion)
+}
+
+type streamingRiskAssessment struct {
+	ordinaryScore int
+	hasOrdinary   bool
+	meta          metaOverrideAssessment
+}
+
+func (assessment *streamingRiskAssessment) considerOrdinary(score int) {
+	if assessment == nil {
+		return
+	}
+	score = clampScore(score)
+	if !assessment.hasOrdinary || score > assessment.ordinaryScore {
+		assessment.ordinaryScore = score
+		assessment.hasOrdinary = true
+	}
+}
+
+// blocks mirrors the classifier's two different action paths. Wrapper-only
+// meta-control evidence remains audit-only even in strict mode; only an
+// independently established ordinary behavior may be amplified by that score.
+// A persistent control-plane finding retains its existing hard-block path.
+func (assessment streamingRiskAssessment) blocks(mode Mode, thresholds Thresholds) bool {
+	thresholds = validThresholdsOrDefault(thresholds)
+	if assessment.hasOrdinary {
+		score := assessment.ordinaryScore
+		if score >= AuditThreshold && assessment.meta.score > score {
+			score = assessment.meta.score
+		}
+		if actionFor(mode, clampScore(score), thresholds) == ActionBlock {
+			return true
+		}
+	}
+	if assessment.meta.score < AuditThreshold {
+		return false
+	}
+	if assessment.meta.controlPlaneBlock {
+		score := assessment.meta.score
+		if score < thresholds.HardBlock {
+			score = thresholds.HardBlock
+		}
+		return actionFor(mode, clampScore(score), thresholds) == ActionBlock
+	}
+	return actionForMetaControl(mode, metaControlAuditScore(assessment.meta.score, thresholds), thresholds) == ActionBlock
+}
+
+// streamingRiskPotential computes a positive-evidence upper bound using the
+// classifier's compiled signal IDs and existing composition helpers. It does
+// not manufacture a classification: streaming uses it only to notice when the
+// union of multiple windows can become actionable while no individual window
+// contained equivalent evidence. Context deductions and benign-workflow credit
+// are intentionally omitted, making uncertainty fail closed rather than
+// allowing a cross-window semantic composition to masquerade as complete.
+func (c *Classifier) streamingRiskPotential(facts classificationSignalFacts, policy Policy) streamingRiskAssessment {
+	assessment := streamingRiskAssessment{}
+	if c == nil || len(facts.signals) != c.signalCount {
+		return assessment
+	}
+	signals := facts.signals
+	for ruleIndex, rule := range c.rules {
+		core := signals[rule.intent] && signals[rule.object] &&
+			ruleIndex < len(facts.unnegatedRuleIntents) && facts.unnegatedRuleIntents[ruleIndex]
+		fallback := isCredentialObjectQualifiedFallback(rule, signals)
+		if !core && !fallback {
+			continue
+		}
+		score := rule.baseScore
+		if fallback {
+			score -= 25
+		}
+		qualifiers := 0
+		operational := signalMatched(signals, rule.independentOperational) || signalMatched(signals, c.implementationRequest)
+		if operational {
+			score += 20
+			qualifiers++
+		}
+		if signalMatched(signals, rule.independentTarget) {
+			score += 18
+			qualifiers++
+		}
+		if signalMatched(signals, rule.independentEvasion) {
+			score += 16
+			qualifiers++
+		}
+		if signalMatched(signals, rule.independentScale) {
+			score += 16
+			qualifiers++
+		}
+		if qualifiers >= 2 {
+			score += 5
+		}
+		if qualifiers > 0 && rule.hardFloor > score {
+			score = rule.hardFloor
+		}
+		assessment.considerOrdinary(score)
+	}
+
+	if signalMatched(signals, c.outcomeRequest) {
+		for _, category := range classifierCategoryOrder {
+			if c.streamingCategoryIntentsOnlyNegated(category, facts) {
+				continue
+			}
+			providers := c.categoryOutcomeProviders(category, signals)
+			if providers.object < 0 || providers.qualifierCount() < 2 {
+				continue
+			}
+			score := 45
+			if providers.hasOperational {
+				score += 20
+			}
+			if providers.target >= 0 {
+				score += 18
+			}
+			if providers.evasion >= 0 {
+				score += 16
+			}
+			if providers.scale >= 0 {
+				score += 16
+			}
+			if providers.qualifierCount() >= 2 {
+				score += 5
+			}
+			objectRule := c.rules[providers.object]
+			if objectRule.authorizationProtected && policy.HardBlockEvenIfAuthorized.protects(category) && score < HardThreshold {
+				score = HardThreshold
+			}
+			assessment.considerOrdinary(score)
+		}
+	}
+
+	semanticPolicy := policy
+	semanticPolicy.Allow = ContextPolicy{}
+	for profileIndex, profile := range c.semanticProfiles {
+		if profileIndex >= len(facts.semanticAgencies) || !facts.semanticAgencies[profileIndex] {
+			continue
+		}
+		if profileIndex < len(facts.matchedSemanticIntents) && facts.matchedSemanticIntents[profileIndex] &&
+			(profileIndex >= len(facts.unnegatedSemanticIntents) || !facts.unnegatedSemanticIntents[profileIndex]) {
+			continue
+		}
+		semanticAssessment := c.assessSemanticWindow(profile, semanticSignalWindow{
+			signals: [][]bool{signals},
+			text:    "\ue000",
+		}, semanticPolicy)
+		if semanticAssessment.score > 0 {
+			assessment.considerOrdinary(semanticAssessment.score)
+		}
+	}
+	assessment.meta = c.assessMetaOverride([][]bool{signals}, "\ue000", ContextFlags{}, false)
+
+	for _, category := range classifierCategoryOrder {
+		ruleIndexes := c.categoryRules[category]
+		for _, intentIndex := range ruleIndexes {
+			intentRule := c.rules[intentIndex]
+			if intentIndex >= len(facts.unnegatedRuleIntents) || !facts.unnegatedRuleIntents[intentIndex] ||
+				!signals[intentRule.intent] || !ruleHasMatchedQualifier(intentRule, signals) {
+				continue
+			}
+			for _, objectIndex := range ruleIndexes {
+				if objectIndex == intentIndex {
+					continue
+				}
+				objectRule := c.rules[objectIndex]
+				if !signals[objectRule.object] || !ruleHasMatchedQualifier(objectRule, signals) {
+					continue
+				}
+				operational := firstPairSignalProvider(signals, intentIndex, objectIndex, intentRule.independentOperational, objectRule.independentOperational)
+				target := firstPairSignalProvider(signals, intentIndex, objectIndex, intentRule.independentTarget, objectRule.independentTarget)
+				evasion := firstPairSignalProvider(signals, intentIndex, objectIndex, intentRule.independentEvasion, objectRule.independentEvasion)
+				scale := firstPairSignalProvider(signals, intentIndex, objectIndex, intentRule.independentScale, objectRule.independentScale)
+				riskQualifiers := 0
+				for _, provider := range []int{target, evasion, scale} {
+					if provider >= 0 {
+						riskQualifiers++
+					}
+				}
+				if operational < 0 || riskQualifiers < 2 {
+					continue
+				}
+				score := 45 + 20
+				qualifiers := 1
+				if target >= 0 {
+					score += 18
+					qualifiers++
+				}
+				if evasion >= 0 {
+					score += 16
+					qualifiers++
+				}
+				if scale >= 0 {
+					score += 16
+					qualifiers++
+				}
+				if qualifiers >= 2 {
+					score += 5
+				}
+				assessment.considerOrdinary(score)
+			}
+		}
+	}
+	return assessment
+}
+
+// streamingImplementationFollowUpPotential mirrors the established
+// previous-user-core plus current implementation-request path without retaining
+// either logical field. It is used only when at least one field is too long for
+// the exact bounded role summary; context deductions are omitted so unresolved
+// cross-field composition fails closed.
+func (c *Classifier) streamingImplementationFollowUpPotential(previous, current classificationSignalFacts) streamingRiskAssessment {
+	assessment := streamingRiskAssessment{}
+	if c == nil || len(previous.signals) != c.signalCount || len(current.signals) != c.signalCount ||
+		!signalMatched(current.signals, c.implementationRequest) {
+		return assessment
+	}
+	for _, rule := range c.rules {
+		priorStrongCore := previous.signals[rule.intent] && previous.signals[rule.object] &&
+			(rule.baseScore >= BalancedThreshold || signalMatched(previous.signals, rule.target) ||
+				signalMatched(previous.signals, rule.evasion) || signalMatched(previous.signals, rule.scale))
+		if !priorStrongCore {
+			continue
+		}
+		score := rule.baseScore + 20
+		qualifiers := 1
+		if signalMatched(current.signals, rule.independentTarget) || signalMatched(previous.signals, rule.independentTarget) {
+			score += 18
+			qualifiers++
+		}
+		if signalMatched(current.signals, rule.independentEvasion) || signalMatched(previous.signals, rule.independentEvasion) {
+			score += 16
+			qualifiers++
+		}
+		if signalMatched(current.signals, rule.independentScale) || signalMatched(previous.signals, rule.independentScale) {
+			score += 16
+			qualifiers++
+		}
+		if qualifiers >= 2 {
+			score += 5
+		}
+		if rule.hardFloor > score {
+			score = rule.hardFloor
+		}
+		assessment.considerOrdinary(score)
+	}
+	return assessment
+}
+
+func (c *Classifier) streamingCategoryIntentsOnlyNegated(category rules.Category, facts classificationSignalFacts) bool {
+	found := false
+	for _, ruleIndex := range c.categoryRules[category] {
+		rule := c.rules[ruleIndex]
+		if !signalMatched(facts.signals, rule.intent) {
+			continue
+		}
+		found = true
+		if ruleIndex < len(facts.unnegatedRuleIntents) && facts.unnegatedRuleIntents[ruleIndex] {
+			return false
+		}
+	}
+	return found
+}
+
+// mergeStreamingRiskIngredients records only positive classifier ingredients.
+// Context, safety, and meta-wrapper signals are intentionally excluded: they
+// cannot by themselves make a cyber-abuse candidate actionable.
+func (c *Classifier) mergeStreamingRiskIngredients(destination, source []bool) bool {
+	if c == nil || len(destination) != c.signalCount || len(source) != c.signalCount {
+		return false
+	}
+	added := false
+	mark := func(signalID int) {
+		if signalID < 0 || signalID >= len(source) || !source[signalID] || destination[signalID] {
+			return
+		}
+		destination[signalID] = true
+		added = true
+	}
+	for _, rule := range c.rules {
+		mark(rule.intent)
+		mark(rule.object)
+		mark(rule.independentOperational)
+		mark(rule.independentTarget)
+		mark(rule.independentEvasion)
+		mark(rule.independentScale)
+	}
+	mark(c.implementationRequest)
+	mark(c.outcomeRequest)
+	for _, signalID := range []int{
+		c.metaOverride.hierarchy,
+		c.metaOverride.refusalSuppression,
+		c.metaOverride.unrestrictedMode,
+		c.metaOverride.directCompletion,
+		c.metaOverride.scopeLaundering,
+		c.metaOverride.outputControl,
+		c.metaOverride.secretDisclosure,
+		c.metaOverride.negativeAuthorization,
+		c.metaOverride.benchmarkCoercion,
+		c.metaOverride.persistentInjection,
+		c.metaOverride.personaTakeover,
+		c.metaOverride.agenticEscalation,
+	} {
+		mark(signalID)
+	}
+	for _, profile := range c.semanticProfiles {
+		for _, evidence := range profile.evidence {
+			mark(evidence.signalID)
+		}
+	}
+	return added
 }
 
 type outcomeProviders struct {

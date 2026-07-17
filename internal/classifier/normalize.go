@@ -12,7 +12,7 @@ import (
 const (
 	// This mirrors extract.HardMaxScanBytes without importing the extractor.
 	maxClassifierInputBytes           = 4 << 20
-	maxClassifierNormalizedRunes      = 262144
+	maxClassifierNormalizedRunes      = 1 << 20
 	maxClassifierParts                = 4096
 	compactHardBoundary          rune = -1 // impossible in decoded UTF-8 input
 )
@@ -27,7 +27,7 @@ type normalizationScratch struct {
 	iterator norm.Iter
 }
 
-// normalizedRunePool amortizes the bounded 1 MiB rune backing array used by
+// normalizedRunePool amortizes the bounded 4 MiB rune backing array used by
 // extreme inputs. Buffers are scrubbed through storageUsed before reuse so no
 // prompt-derived runes survive a classification call.
 var normalizedRunePool sync.Pool
@@ -125,6 +125,60 @@ func normalizePartsInto(parts []string, destination []rune, scratch *normalizati
 		}
 	}
 
+	return finishNormalizedViews(runes, truncated)
+}
+
+// normalizeBytesInto is the single-part byte equivalent used by the streaming
+// overlap carry. It avoids copying every consumed window into a temporary
+// string before NFKC iteration. Streaming callers have already established a
+// valid UTF-8 and normalization boundary; an invalid byte slice is therefore
+// reported as truncated instead of being repaired silently.
+func normalizeBytesInto(value []byte, destination []rune, scratch *normalizationScratch) normalizedViews {
+	estimated := len(value)
+	if estimated > maxClassifierNormalizedRunes {
+		estimated = maxClassifierNormalizedRunes
+	}
+	var runes []rune
+	if cap(destination) >= estimated {
+		runes = destination[:0]
+	} else {
+		runes = make([]rune, 0, estimated)
+	}
+	truncated := false
+	if len(value) > maxClassifierInputBytes {
+		value = value[:maxClassifierInputBytes]
+		for attempts := 0; len(value) > 0 && attempts < utf8.UTFMax && !utf8.Valid(value); attempts++ {
+			value = value[:len(value)-1]
+		}
+		truncated = true
+	}
+	if !utf8.Valid(value) {
+		return normalizedViews{standardRunes: runes, truncated: true}
+	}
+
+	scratch.iterator.Init(norm.NFKC, value)
+	for !scratch.iterator.Done() && len(runes) < maxClassifierNormalizedRunes {
+		segment := scratch.iterator.Next()
+		for len(segment) > 0 && len(runes) < maxClassifierNormalizedRunes {
+			r, size := utf8.DecodeRune(segment)
+			segment = segment[size:]
+			if unicode.In(r, unicode.Cf) || isExplicitZeroWidth(r) {
+				continue
+			}
+			r = unicode.ToLower(r)
+			if replacement, ok := commonHomoglyphReplacement(r); ok {
+				r = replacement
+			}
+			runes = append(runes, r)
+		}
+	}
+	if !scratch.iterator.Done() {
+		truncated = true
+	}
+	return finishNormalizedViews(runes, truncated)
+}
+
+func finishNormalizedViews(runes []rune, truncated bool) normalizedViews {
 	for i, r := range runes {
 		if r == '!' && ((i > 0 && unicode.IsSpace(runes[i-1])) || (i+1 < len(runes) && unicode.IsSpace(runes[i+1]))) {
 			continue

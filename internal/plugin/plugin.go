@@ -45,7 +45,10 @@ var metadata = pluginapi.Metadata{
 		{Name: "enabled", Type: pluginapi.ConfigFieldTypeBoolean, Description: "Enable local cyber-abuse classification."},
 		{Name: "mode", Type: pluginapi.ConfigFieldTypeEnum, EnumValues: []string{"off", "observe", "audit", "balanced", "strict"}, Description: "Select observation, auditing, or enforcement behavior."},
 		{Name: "priority", Type: pluginapi.ConfigFieldTypeInteger, Description: "Run before provider and authentication selection."},
-		{Name: "max_scan_bytes", Type: pluginapi.ConfigFieldTypeInteger, Description: "Maximum text bytes inspected before the mode-specific incomplete-inspection policy applies."},
+		{Name: "max_scan_bytes", Type: pluginapi.ConfigFieldTypeInteger, Description: "Deprecated compatibility alias for max_text_window_bytes; it no longer truncates raw JSON or total text coverage."},
+		{Name: "max_text_window_bytes", Type: pluginapi.ConfigFieldTypeInteger, Description: "Maximum decoded text retained in one bounded streaming-classifier window."},
+		{Name: "max_total_text_bytes", Type: pluginapi.ConfigFieldTypeInteger, Description: "Maximum cumulative model-visible text fully inspected per request."},
+		{Name: "max_classification_chunks", Type: pluginapi.ConfigFieldTypeInteger, Description: "Maximum bounded classifier chunks per request; logical text units use max_text_parts separately."},
 		{Name: "max_json_depth", Type: pluginapi.ConfigFieldTypeInteger, Description: "Maximum JSON nesting depth inspected by the bounded extractor."},
 		{Name: "max_text_parts", Type: pluginapi.ConfigFieldTypeInteger, Description: "Maximum number of text parts inspected per request."},
 		{Name: "opaque_media_policy", Type: pluginapi.ConfigFieldTypeEnum, EnumValues: []string{"block", "audit", "allow"}, Description: "Explicit policy for opaque image/audio/video content; omitted uses mode-aware defaults and never fetches remote URLs."},
@@ -450,6 +453,7 @@ func (p *Plugin) routeOversized(state *runtimeState) []byte {
 	reasons := []extract.IncompleteReason{extract.IncompleteRPCBodyLimit}
 	decision := inspectionDisposition(state.config.Mode, inspectionOutcome{Incomplete: reasons}, state.config.EffectiveOpaqueMediaPolicy())
 	p.recordIncompleteCounters(reasons, decision)
+	p.counters.coverageIncomplete.Add(1)
 	switch {
 	case decision.Block:
 		p.counters.blocked.Add(1)
@@ -468,19 +472,25 @@ func (p *Plugin) routeOversized(state *runtimeState) []byte {
 }
 
 func (p *Plugin) recordOversizedRoute(state *runtimeState, decision inspectionDecision) {
-	if state == nil || state.audit == nil || !state.config.Audit.Enabled || state.config.Mode == config.ModeObserve || state.config.Mode == config.ModeOff {
+	if state == nil || state.audit == nil || !state.config.Audit.Enabled || state.config.Mode == config.ModeOff {
 		return
 	}
 	action := "audit"
-	if decision.Block {
+	if decision.Observe {
+		action = "observe"
+	} else if decision.Block {
 		action = "block"
 	}
 	event := audit.Event{
-		ID:         newEventID(),
-		Timestamp:  time.Now().UTC(),
-		Action:     action,
-		Mode:       string(state.config.Mode),
-		Classifier: state.rulesVersion,
+		ID:               newEventID(),
+		Timestamp:        time.Now().UTC(),
+		Action:           action,
+		Mode:             string(state.config.Mode),
+		Classifier:       state.rulesVersion,
+		Decision:         decision.Code,
+		Coverage:         "incomplete",
+		IncompleteReason: incompleteCategory([]extract.IncompleteReason{extract.IncompleteRPCBodyLimit}),
+		Scanner:          streamingScannerIdentity,
 	}
 	if state.config.Audit.LogCategory {
 		event.Category = decision.Category
@@ -843,6 +853,7 @@ type counters struct {
 	incompleteScanLimit              atomic.Uint64
 	incompleteJSONDepthLimit         atomic.Uint64
 	incompleteTextPartLimit          atomic.Uint64
+	incompleteRoleAttribution        atomic.Uint64
 	incompleteMultipartLimit         atomic.Uint64
 	incompleteMultipartSchema        atomic.Uint64
 	incompleteToolSchema             atomic.Uint64
@@ -867,48 +878,69 @@ type counters struct {
 	opaqueMediaOther                 atomic.Uint64
 	unknownSourceFormats             atomic.Uint64
 	controlPlaneMetaOverride         atomic.Uint64
+	longTextRequests                 atomic.Uint64
+	streamingScanRequests            atomic.Uint64
+	textBytesScannedTotal            atomic.Uint64
+	classificationWindowsTotal       atomic.Uint64
+	coverageComplete                 atomic.Uint64
+	coverageIncomplete               atomic.Uint64
+	maxWindowsExhausted              atomic.Uint64
+	totalTextLimitExhausted          atomic.Uint64
+	windowBoundaryReconstructions    atomic.Uint64
+	verifiedHardBlockUnderIncomplete atomic.Uint64
 }
 
 func (c *counters) snapshot() map[string]uint64 {
 	return map[string]uint64{
-		"total":                               c.total.Load(),
-		"allowed":                             c.allowed.Load(),
-		"observed":                            c.observed.Load(),
-		"audited":                             c.audited.Load(),
-		"blocked":                             c.blocked.Load(),
-		"parse_errors":                        c.parseErrors.Load(),
-		"truncated":                           c.truncated.Load(),
-		"incomplete_inspections":              c.incompleteInspections.Load(),
-		"incomplete_allowed":                  c.incompleteAllowed.Load(),
-		"incomplete_blocked":                  c.incompleteBlocked.Load(),
-		"incomplete_parse_error":              c.incompleteParseError.Load(),
-		"incomplete_scan_limit":               c.incompleteScanLimit.Load(),
-		"incomplete_json_depth_limit":         c.incompleteJSONDepthLimit.Load(),
-		"incomplete_text_part_limit":          c.incompleteTextPartLimit.Load(),
-		"incomplete_multipart_limit":          c.incompleteMultipartLimit.Load(),
-		"incomplete_multipart_schema":         c.incompleteMultipartSchema.Load(),
-		"incomplete_tool_schema":              c.incompleteToolSchema.Load(),
-		"incomplete_deferred_text_limit":      c.incompleteDeferredTextLimit.Load(),
-		"incomplete_unsupported_content_type": c.incompleteUnsupportedContentType.Load(),
-		"incomplete_rpc_body_limit":           c.incompleteRPCBodyLimit.Load(),
-		"rpc_body_limit":                      c.incompleteRPCBodyLimit.Load(),
-		"executor_blocks":                     c.executorBlocks.Load(),
-		"management_tests":                    c.managementTests.Load(),
-		"router_errors":                       c.routerErrors.Load(),
-		"panics_recovered":                    c.panicsRecovered.Load(),
-		"opaque_media":                        c.opaqueMedia.Load(),
-		"opaque_media_allowed":                c.opaqueMediaAllowed.Load(),
-		"opaque_media_audited":                c.opaqueMediaAudited.Load(),
-		"opaque_media_blocked":                c.opaqueMediaBlocked.Load(),
-		"opaque_media_https_image_url":        c.opaqueMediaHTTPSImageURL.Load(),
-		"opaque_media_data_url":               c.opaqueMediaDataURL.Load(),
-		"opaque_media_base64_image":           c.opaqueMediaBase64Image.Load(),
-		"opaque_media_audio":                  c.opaqueMediaAudio.Load(),
-		"opaque_media_video":                  c.opaqueMediaVideo.Load(),
-		"opaque_media_document":               c.opaqueMediaDocument.Load(),
-		"opaque_media_remote_url":             c.opaqueMediaRemoteURL.Load(),
-		"opaque_media_other":                  c.opaqueMediaOther.Load(),
-		"unknown_source_formats":              c.unknownSourceFormats.Load(),
-		"control_plane_meta_override":         c.controlPlaneMetaOverride.Load(),
+		"total":                                c.total.Load(),
+		"allowed":                              c.allowed.Load(),
+		"observed":                             c.observed.Load(),
+		"audited":                              c.audited.Load(),
+		"blocked":                              c.blocked.Load(),
+		"parse_errors":                         c.parseErrors.Load(),
+		"truncated":                            c.truncated.Load(),
+		"incomplete_inspections":               c.incompleteInspections.Load(),
+		"incomplete_allowed":                   c.incompleteAllowed.Load(),
+		"incomplete_blocked":                   c.incompleteBlocked.Load(),
+		"incomplete_parse_error":               c.incompleteParseError.Load(),
+		"incomplete_scan_limit":                c.incompleteScanLimit.Load(),
+		"incomplete_json_depth_limit":          c.incompleteJSONDepthLimit.Load(),
+		"incomplete_text_part_limit":           c.incompleteTextPartLimit.Load(),
+		"incomplete_role_attribution":          c.incompleteRoleAttribution.Load(),
+		"incomplete_multipart_limit":           c.incompleteMultipartLimit.Load(),
+		"incomplete_multipart_schema":          c.incompleteMultipartSchema.Load(),
+		"incomplete_tool_schema":               c.incompleteToolSchema.Load(),
+		"incomplete_deferred_text_limit":       c.incompleteDeferredTextLimit.Load(),
+		"incomplete_unsupported_content_type":  c.incompleteUnsupportedContentType.Load(),
+		"incomplete_rpc_body_limit":            c.incompleteRPCBodyLimit.Load(),
+		"rpc_body_limit":                       c.incompleteRPCBodyLimit.Load(),
+		"executor_blocks":                      c.executorBlocks.Load(),
+		"management_tests":                     c.managementTests.Load(),
+		"router_errors":                        c.routerErrors.Load(),
+		"panics_recovered":                     c.panicsRecovered.Load(),
+		"opaque_media":                         c.opaqueMedia.Load(),
+		"opaque_media_allowed":                 c.opaqueMediaAllowed.Load(),
+		"opaque_media_audited":                 c.opaqueMediaAudited.Load(),
+		"opaque_media_blocked":                 c.opaqueMediaBlocked.Load(),
+		"opaque_media_https_image_url":         c.opaqueMediaHTTPSImageURL.Load(),
+		"opaque_media_data_url":                c.opaqueMediaDataURL.Load(),
+		"opaque_media_base64_image":            c.opaqueMediaBase64Image.Load(),
+		"opaque_media_audio":                   c.opaqueMediaAudio.Load(),
+		"opaque_media_video":                   c.opaqueMediaVideo.Load(),
+		"opaque_media_document":                c.opaqueMediaDocument.Load(),
+		"opaque_media_remote_url":              c.opaqueMediaRemoteURL.Load(),
+		"opaque_media_other":                   c.opaqueMediaOther.Load(),
+		"unknown_source_formats":               c.unknownSourceFormats.Load(),
+		"control_plane_meta_override":          c.controlPlaneMetaOverride.Load(),
+		"long_text_requests":                   c.longTextRequests.Load(),
+		"streaming_scan_requests":              c.streamingScanRequests.Load(),
+		"text_bytes_scanned_total":             c.textBytesScannedTotal.Load(),
+		"classification_windows_total":         c.classificationWindowsTotal.Load(),
+		"coverage_complete":                    c.coverageComplete.Load(),
+		"coverage_incomplete":                  c.coverageIncomplete.Load(),
+		"max_windows_exhausted":                c.maxWindowsExhausted.Load(),
+		"total_text_limit_exhausted":           c.totalTextLimitExhausted.Load(),
+		"window_boundary_reconstructions":      c.windowBoundaryReconstructions.Load(),
+		"verified_hard_block_under_incomplete": c.verifiedHardBlockUnderIncomplete.Load(),
 	}
 }

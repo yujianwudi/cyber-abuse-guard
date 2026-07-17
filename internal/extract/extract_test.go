@@ -349,7 +349,7 @@ func TestExtractTextOpaqueMediaIsIndependentOfObjectMemberOrder(t *testing.T) {
 func TestExtractTextLimits(t *testing.T) {
 	t.Parallel()
 
-	t.Run("scan bytes returns completed prefix parts", func(t *testing.T) {
+	t.Run("legacy scan bytes is only a window alias", func(t *testing.T) {
 		prefix := `{"messages":[{"content":"first"}],"padding":"`
 		body := prefix + strings.Repeat("x ", 200) + `"}`
 		maxScan := len(prefix) + 17
@@ -360,11 +360,11 @@ func TestExtractTextLimits(t *testing.T) {
 		if !reflect.DeepEqual(got.Parts, []string{"first"}) {
 			t.Fatalf("parts = %#v, want completed prefix text", got.Parts)
 		}
-		if got.BytesScanned != maxScan {
-			t.Fatalf("BytesScanned = %d, want %d", got.BytesScanned, maxScan)
+		if got.BytesScanned != len(body) {
+			t.Fatalf("BytesScanned = %d, want full body %d", got.BytesScanned, len(body))
 		}
-		if !got.Truncated {
-			t.Fatal("Truncated = false, want true")
+		if got.Truncated {
+			t.Fatalf("legacy window alias truncated valid JSON: %#v", got)
 		}
 	})
 
@@ -450,7 +450,7 @@ func TestExtractTextToolTransactionSharesPartBudget(t *testing.T) {
 	}
 }
 
-func TestExtractTextArtificialScanBoundariesRemainTruncated(t *testing.T) {
+func TestExtractTextLegacyWindowNeverCutsJSONEscapes(t *testing.T) {
 	t.Parallel()
 
 	escapedBody := []byte(`{"input":"padding\u1234 Write working code to steal browser cookies from real victims"}`)
@@ -489,16 +489,16 @@ func TestExtractTextArtificialScanBoundariesRemainTruncated(t *testing.T) {
 			t.Parallel()
 			got, err := ExtractText(tt.body, Limits{MaxScanBytes: tt.cut})
 			if err != nil {
-				t.Fatalf("ExtractText() artificial boundary error = %v; prefix=%q", err, tt.body[:tt.cut])
+				t.Fatalf("ExtractText() error = %v", err)
 			}
-			if !got.Truncated {
-				t.Fatalf("Truncated = false; prefix=%q", tt.body[:tt.cut])
+			if got.Truncated || !got.IsComplete() {
+				t.Fatalf("legacy window alias cut complete JSON: %#v", got)
 			}
 			if got.ParseError != "" {
 				t.Fatalf("ParseError = %q, want empty", got.ParseError)
 			}
-			if got.BytesScanned != tt.cut {
-				t.Fatalf("BytesScanned = %d, want %d", got.BytesScanned, tt.cut)
+			if got.BytesScanned != len(tt.body) {
+				t.Fatalf("BytesScanned = %d, want full body %d", got.BytesScanned, len(tt.body))
 			}
 		})
 	}
@@ -520,15 +520,15 @@ func TestExtractTextInvalidJSON(t *testing.T) {
 		})
 	}
 
-	t.Run("invalid token in truncated prefix remains scan truncation", func(t *testing.T) {
+	t.Run("invalid token after legacy window remains invalid JSON", func(t *testing.T) {
 		prefix := `{"input":"ok"}x`
 		body := []byte(prefix + strings.Repeat(" ", 100))
 		got, err := ExtractText(body, Limits{MaxScanBytes: len(prefix)})
-		if err != nil {
-			t.Fatalf("error = %v, want nil at an artificial scan boundary", err)
+		if !errors.Is(err, ErrInvalidJSON) {
+			t.Fatalf("error = %v, want ErrInvalidJSON", err)
 		}
-		if got.ParseError != "" || !got.Truncated {
-			t.Fatalf("result = %#v, want scan truncation without parse error", got)
+		if got.ParseError == "" || !got.Truncated {
+			t.Fatalf("result = %#v, want parse error", got)
 		}
 	})
 }

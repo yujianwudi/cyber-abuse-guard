@@ -16,6 +16,20 @@ SO := $(DIST_DIR)/$(PLUGIN_ID)-v$(ARTIFACT_VERSION).so
 STORE_ZIP := $(DIST_DIR)/$(PLUGIN_ID)_$(ARTIFACT_VERSION)_linux_amd64.zip
 AUDIT_BUNDLE := $(DIST_DIR)/$(PLUGIN_ID)-v$(ARTIFACT_VERSION)-audit-bundle.zip
 TEST_TAGS := sqlite_omit_load_extension
+ROUND6_SAFE_PACKAGES := \
+	./cmd/cyber-abuse-guard \
+	./cmd/development-adversarial-v11-prep-validator \
+	./cmd/development-public-jailbreak-patterns-v1-validator \
+	./internal/audit \
+	./internal/buildinfo \
+	./internal/classifier \
+	./internal/config \
+	./internal/extract \
+	./internal/fixturepublish \
+	./internal/plugin \
+	./internal/rules \
+	./internal/subject \
+	./rules
 CPA_ROUTER_FIXTURE_SCENARIOS := guard-priority-higher fixture-priority-higher \
 	equal-priority-aaa-router-before-guard equal-priority-zzz-router-after-guard \
 	higher-priority-route-error-falls-through-to-guard \
@@ -28,11 +42,11 @@ CPA_ROUTER_FIXTURE_SCENARIOS := guard-priority-higher fixture-priority-higher \
 	guard-not-loaded-fixture-handles guard-registration-failure-fixture-handles \
 	guard-disabled-fixture-handles guard-not-loaded-unhandled-fixture-reaches-native-provider
 
-.NOTPARALLEL: release
+.NOTPARALLEL: release round6-development-artifacts
 
-.PHONY: all format-check git-diff-check module-verify test unit-test vet race \
-	fuzz-smoke script-test corpus-regression development-public-jailbreak-corpus consumed-boundary-test holdout-test benchmark build-linux-amd64 \
-	integration-compile integration-test cpa-v7275-host-blackbox cpa-v7272-host-blackbox cpa-router-fixture-blackbox cpa-host-fixture-contract cpa-latest-compat round4-regression round5-regression management-proxy-413-test ruleset-manifest sbom vulncheck release-preflight \
+.PHONY: all format-check round6-format-check git-diff-check round6-git-diff-check module-verify round6-module-verify test unit-test vet round6-vet race \
+	fuzz-smoke script-test corpus-regression development-public-jailbreak-corpus consumed-boundary-test holdout-test benchmark round6-benchmark build-linux-amd64 \
+	integration-compile integration-test cpa-v7275-host-blackbox cpa-v7272-host-blackbox cpa-router-fixture-blackbox cpa-host-fixture-contract cpa-latest-compat round4-regression round5-regression round6-regression round6-development-artifacts round6-reproducibility-test round6-script-test round6-cpa-store-contract management-proxy-413-test ruleset-manifest sbom vulncheck round6-vulncheck release-preflight \
 	package-release package-source-release release release-evidence formal-release release-doc-consistency release-doc-consistency-test verify-release verification-fault-test cpa-store-contract artifact-hash \
 	reproducibility-test clean-tree-check tools clean
 
@@ -50,8 +64,42 @@ format-check:
 	bad="$$($(GOFMT) -l "$${files[@]}")" || exit $$?; \
 	if [[ -n "$$bad" ]]; then printf 'gofmt required:\n%s\n' "$$bad" >&2; exit 1; fi
 
+round6-format-check:
+	@command -v "$(GOFMT)" >/dev/null 2>&1 || { \
+		echo 'required formatter not found: $(GOFMT)' >&2; exit 1; \
+	}; \
+	files=(); \
+	while IFS= read -r -d '' file; do files+=("$$file"); done < <(./scripts/round6-safe-go-files.sh); \
+	if [[ $${#files[@]} -eq 0 ]]; then echo 'Round6 safe Go file set is empty' >&2; exit 1; fi; \
+	bad="$$($(GOFMT) -l "$${files[@]}")" || exit $$?; \
+	if [[ -n "$$bad" ]]; then printf 'gofmt required:\n%s\n' "$$bad" >&2; exit 1; fi
+
 git-diff-check:
 	git diff --check
+
+round6-git-diff-check:
+	git diff --check -- . \
+		':(exclude)cmd/evaluation-*' \
+		':(exclude)cmd/holdout-*' \
+		':(exclude)cmd/*private*' \
+		':(exclude)cmd/*blind*' \
+		':(exclude)cmd/*retired*' \
+		':(exclude)docs/reports/EVALUATION_*' \
+		':(exclude)docs/reports/HOLDOUT_*' \
+		':(exclude)docs/reports/HOLDOUT_REPORT.md' \
+		':(exclude)docs/**/*private*' \
+		':(exclude)docs/**/*blind*' \
+		':(exclude)docs/**/*retired*' \
+		':(exclude)internal/classifier/evaluation_*' \
+		':(exclude)internal/classifier/holdout_*' \
+		':(exclude)internal/classifier/*private*' \
+		':(exclude)internal/classifier/*blind*' \
+		':(exclude)internal/classifier/*retired*' \
+		':(exclude)testdata/evaluation-*' \
+		':(exclude)testdata/holdout*' \
+		':(exclude)testdata/*private*' \
+		':(exclude)testdata/*blind*' \
+		':(exclude)testdata/*retired*'
 
 module-verify:
 	$(GO) mod verify
@@ -61,6 +109,12 @@ module-verify:
 	$(GO) -C integration/cpalatestcontract mod verify
 	$(GO) -C integration/cpalatestcontract mod tidy -diff
 
+round6-module-verify:
+	$(GO) mod verify
+	$(GO) list -tags=$(TEST_TAGS) -deps $(ROUND6_SAFE_PACKAGES) >/dev/null
+	$(GO) -C integration/pluginstorecontract mod verify
+	$(GO) -C integration/cpalatestcontract mod verify
+
 test:
 	GO=$(GO) TEST_TAGS=$(TEST_TAGS) bash ./scripts/go-safe-development-test.sh test
 
@@ -68,6 +122,9 @@ unit-test: test
 
 vet:
 	$(GO) vet -tags=$(TEST_TAGS) ./...
+
+round6-vet:
+	$(GO) vet -tags=$(TEST_TAGS) $(ROUND6_SAFE_PACKAGES)
 
 race:
 	GO=$(GO) TEST_TAGS=$(TEST_TAGS) bash ./scripts/go-safe-development-test.sh race
@@ -79,6 +136,7 @@ fuzz-smoke:
 	$(GO) test ./internal/extract -run='^$$' -fuzz='^FuzzExtractRequestContentType$$' -fuzztime=5s
 	$(GO) test ./internal/extract -run='^$$' -fuzz='^FuzzExtractRequestMultipart$$' -fuzztime=5s
 	$(GO) test ./internal/extract -run='^$$' -fuzz='^FuzzExtractRequestMultipartUnknownFieldEvidenceOrder$$' -fuzztime=5s
+	$(GO) test ./internal/extract -run='^$$' -fuzz='^FuzzRound6JSONStringChunkDecoderMatchesStdlib$$' -fuzztime=5s
 	$(GO) test ./internal/classifier -run='^$$' -fuzz='^FuzzClassifier$$' -fuzztime=5s
 	$(GO) test ./internal/classifier -run='^$$' -fuzz='^FuzzMetaOverrideClausePermutation$$' -fuzztime=5s
 	$(GO) test ./internal/classifier -run='^$$' -fuzz='^FuzzMetaOverrideEncodingAndPartSplit$$' -fuzztime=5s
@@ -93,6 +151,17 @@ script-test:
 	./scripts/generate-hmac-key-test.sh
 	bash ./scripts/release-evidence-privacy-test.sh
 	./scripts/release-doc-consistency-test.sh
+
+round6-script-test:
+	bash -n ./scripts/go-safe-development-test.sh
+	bash -n ./scripts/cpa-latest-compat.sh
+	bash -n ./scripts/round6-reproducibility-test.sh
+	bash -n ./scripts/round6-safe-go-files.sh
+	python3 -B ./scripts/round6_safe_gate_contract_test.py
+	python3 -B ./scripts/round6_safe_gate_contract.py --root .
+	./scripts/check-production-health-test.sh
+	GO=$(GO) ./scripts/create-store-archive-test.sh
+	./scripts/generate-hmac-key-test.sh
 
 corpus-regression:
 	$(GO) test -tags=$(TEST_TAGS) ./internal/classifier \
@@ -117,12 +186,12 @@ consumed-boundary-test:
 	GO=$(GO) TEST_TAGS=$(TEST_TAGS) bash ./scripts/go-safe-development-test.sh boundary
 
 holdout-test:
-	@$(GO) test -tags=$(TEST_TAGS) ./internal/classifier \
+	@$(GO) test -tags=$(TEST_TAGS),consumed_evaluation ./internal/classifier \
 		-list='^TestIndependentHoldoutV10$$' | \
 		grep -Fxq 'TestIndependentHoldoutV10' || { \
 			echo 'required independent evaluation v10 gate is missing' >&2; exit 1; \
 		}
-	INDEPENDENT_HOLDOUT_V10=1 $(GO) test -tags=$(TEST_TAGS) ./internal/classifier \
+	INDEPENDENT_HOLDOUT_V10=1 $(GO) test -tags=$(TEST_TAGS),consumed_evaluation ./internal/classifier \
 		-run='^TestIndependentHoldoutV10$$' -count=1 -v
 
 benchmark:
@@ -132,6 +201,14 @@ benchmark:
 	$(GO) test ./internal/extract -run='^$$' \
 		-bench='^(BenchmarkExtractRequest(ReverseOrderedMedia|Multipart|ScalarCarrierPermutation).*|BenchmarkMultipartUnknownFileField(1MiB|8MiB))$$' \
 		-benchmem -benchtime=3x
+
+round6-benchmark: benchmark
+	@$(GO) test ./internal/extract -list='^BenchmarkRound6ScanLongJSON$$' | \
+		grep -Fxq 'BenchmarkRound6ScanLongJSON' || { \
+			echo 'required Round6 long-JSON benchmark is missing' >&2; exit 1; \
+		}
+	$(GO) test ./internal/extract -run='^$$' \
+		-bench='^BenchmarkRound6ScanLongJSON$$' -benchmem -benchtime=1x -count=1
 
 round4-regression:
 	@listed="$$($(GO) test ./internal/extract ./internal/plugin -list='^(TestExtractRequestMediaObjectMemberOrderInvariant|TestExtractRequestMultipartUnknownFieldIsIncompleteAndPrivate|TestBalancedMultipartUnknownFieldAllowsWithoutClassification|TestStrictMultipartUnknownFieldBlocksWithoutClassification)$$')" || exit $$?; \
@@ -240,6 +317,164 @@ round5-regression:
 	$(GO) test -tags=$(TEST_TAGS) ./internal/plugin -count=1 -v \
 		-run='^(TestBalancedMultipartUnknownFileFieldAllowsAndAuditsWithoutClassification|TestStrictMultipartUnknownFileFieldBlocksEvenWhenOpaquePolicyAllows|TestMultipartUnknownFileFieldAuditIsFixedAndPrivate|TestControlPlaneMetaOverrideCounterIsFixedAndOrthogonal|TestIncompleteRequestDoesNotEmitControlPlaneCounter|TestWrapperOnlyControlPlaneDoesNotAccumulateSubjectRisk|TestPersistentControlPlaneBlockRemainsCategoryFreeAndDoesNotPersistSubjectRisk|TestOpaqueMediaBlockCannotBeDowngradedByWrapperAudit|TestCompleteClassifierBlockStillWinsOverOpaqueMediaBlock|TestToolSchemaMappedControlIsAuditedAndCounted|TestToolSchemaUnknownControlIsIncompleteWithoutClassification|TestStrictToolSchemaUnknownControlBlocksWithoutClassification|TestAdjacentNegationProofBudgetBlocksBalancedWithoutIncompleteDowngrade|TestLargeTopLevelToolDefinitionCannotBypassBalanced|TestRegistrationMatchesTargetCPAv7275Contract|TestRouterUsesRoleAwareConversationClassification)$$'
 
+round6-regression:
+	@required=( \
+		TestRound6ScanLongJSONFieldComplete \
+		TestRound6ScanSixtyFiveRoleMessagesRemainComplete \
+		TestRound6OneLogicalFieldMayUseFiveHundredThirteenChunks \
+		TestRound6ExactChunkBoundariesRemainComplete \
+		TestRound6FiveHundredThirteenLogicalFieldsAreIncomplete \
+		TestRound6ClassificationChunkLimitIsCoverageIncomplete \
+		TestRound6ClassificationChunkLimitUsesActualUTF8Chunks \
+		TestRound6UnicodeEscapesAndSurrogatesReplayExactly \
+		TestRound6MetadataPaddingDoesNotConsumeTextCoverage \
+		TestRound6FutureNonMetadataEnvelopeRemainsInspectable \
+		TestRound6LongOrdinaryPercentAndAmpersandRemainComplete \
+		TestRound6MarkerLastMediaRemainsTransactional \
+		TestRound6MediaLookingPrefixInOrdinaryTextRemainsInspectable \
+		TestRound6AmbiguousRoleAbortsBeforeSinkConsumption \
+		TestRound6StreamingRestoresBoundedEncodedTextViews \
+		TestRound6OversizedPrintableBase64IsIncomplete \
+		TestRound6OversizedBase64BinaryPrefixWithLatePrintableCanaryIsIncomplete \
+		TestRound6OversizedBase64HighTextDensityWithControlSeparatorsIsIncomplete \
+		TestRound6OversizedLowDiversityRawBase64TextIsIncomplete \
+		TestRound6OversizedLowDiversityRawBase64ExtraAlphabetQuantumIsIncomplete \
+		TestRound6OversizedLowDiversityBase64TrailingJunkIsIncomplete \
+		TestRound6OversizedPrintableBase64WithTrailingJunkIsIncomplete \
+		TestRound6OversizedBase64CharactersAfterPaddingAreIncomplete \
+		TestRound6OversizedBase64ThirdPaddingIsIncomplete \
+		TestRound6OversizedBase64BinaryPrefixLateTextAndTrailingJunkIsIncomplete \
+		TestRound6OversizedBase64SecondPaddingWithInvalidQuantumIsIncomplete \
+		TestRound6OversizedRawBase64ExtraAlphabetQuantumIsIncomplete \
+		TestRound6OversizedRawBase64InvalidFirstPaddingIsIncomplete \
+		TestRound6OversizedBase64BinaryPrefixLateTextAndEOFPaddingIsIncomplete \
+		TestRound6OversizedBase64AlphabetProseRemainsComplete \
+		TestRound6OversizedValidPercentEnvelopeIsIncomplete \
+		TestRound6MultipartLongPromptStreamsWhileFileStaysOpaque \
+		TestRound6MultipartPromptEmitsBoundedDecodedView \
+		TestRound6MultipartExactChunkMultiplesAlwaysEndField \
+		TestRound6TransformedMultipartJSONLongPromptStreamsCompletely \
+		TestRound6TrueIncompleteAbortsSink \
+		TestRound6TotalTextBudgetIsCoverageNotEnvelope \
+		TestRound6TransactionalSelectionPreservesSourceFieldOrder \
+		TestRound6UnknownAndProvenUserRolesRemainDistinct \
+		TestRound6StreamingAllocationCountDoesNotScaleWithLongField \
+	); \
+	pattern="$$(IFS='|'; echo "$${required[*]}")"; \
+	listed="$$($(GO) test ./internal/extract -list="^($$pattern)$$")" || exit $$?; \
+	for test_name in "$${required[@]}"; do \
+		printf '%s\n' "$$listed" | grep -Fxq "$$test_name" || { \
+			echo "required round-six extract regression $$test_name is missing" >&2; exit 1; \
+		}; \
+	done; \
+	$(GO) test ./internal/extract -count=1 -v -run="^($$pattern)$$"
+	@required=( \
+		TestRound6StreamingCrossWindowLiteralAndNFKC \
+		TestRound6SingleWindowHasNoBoundaryReconstruction \
+		TestRound6StreamingPreservesShortRoleAwareDecisions \
+		TestRound6RequiredChunkOverlapFitsConfigurationBudget \
+		TestRound6StreamingNegationAcrossWindowRemainsInert \
+		TestRound6StreamingLongAssistantQuotedRefusalRemainsInert \
+		TestRound6StreamingUnclosedSafetyQuoteCommitsProvisionalFinding \
+		TestRound6StreamingClosedSafetyQuoteDiscardsProvisionalFinding \
+		TestRound6StreamingMappedToolControlRemainsAuditOnly \
+		TestRound6StreamingControlPairDoesNotCarryBaseBehaviorAcrossRoles \
+		TestRound6StreamingCompactMatcherSurvivesMoreThanOverlapSeparators \
+		TestRound6StreamingDoesNotJoinDifferentRoleFields \
+		TestRound6StreamingProcessesAllSixtyFiveFields \
+		TestRound6DefaultBudgetCoversMaximumLogicalFieldFragmentation \
+		TestRound6HardLogicalFieldBoundHasCompleteBudget \
+		TestRound6StreamingInternalChunksDoNotConsumeLogicalPartBudget \
+		TestRound6StreamingCoverageReasonsAreSeparateFromProofBudgets \
+		TestRound6IncompleteClearsUnverifiedFinding \
+		TestRound6StreamingPreservesThreeTurnRoleSemanticsAfterSixtyFourFields \
+		TestRound6StreamingPreservesBoundedRoleCompositionsAfterSixtyFourFields \
+		TestRound6StreamingSplitSyntheticCoreBecomesIncomplete \
+		TestRound6StreamingSplitSyntheticQualifiersBecomeIncomplete \
+		TestRound6StreamingStrictSplitSyntheticCoreBecomesIncomplete \
+		TestRound6StreamingStrictSplitWrapperOnlyMetaRemainsComplete \
+		TestRound6StreamingNegatedSyntheticIntentRemainsComplete \
+		TestRound6StreamingSyntheticFactsStayInsideLogicalField \
+		TestRound6StreamingSyntheticSafetyQuoteTransactions \
+		TestRound6StreamingLateHarmConflictBecomesIncomplete \
+		TestRound6StreamingLateMetaAmplifierBecomesIncomplete \
+		TestRound6StreamingLateUnnegatedSyntheticIntentBecomesIncomplete \
+		TestRound6StreamingUnclosedSafetyQuoteHarmConflictBecomesIncomplete \
+		TestRound6StreamingLongPriorUserCoreAndFollowUpBecomesIncomplete \
+		TestRound6StreamingLongAssistantTailDoesNotComposeBaseBehaviorWithUser \
+		TestRound6StreamingClosedSafetyQuoteTailStaysInertAcrossNextUserField \
+		TestRound6StreamingInvalidOrderIsOperationalError \
+		TestRound6StreamingUntrustedFallbackPreservesAdjacentProofBudget \
+		TestRound6StreamingUntrustedOverSixtyFourRetainsEarlyAndLateProofs \
+	); \
+	pattern="$$(IFS='|'; echo "$${required[*]}")"; \
+	listed="$$($(GO) test ./internal/classifier -list="^($$pattern)$$")" || exit $$?; \
+	for test_name in "$${required[@]}"; do \
+		printf '%s\n' "$$listed" | grep -Fxq "$$test_name" || { \
+			echo "required round-six classifier regression $$test_name is missing" >&2; exit 1; \
+		}; \
+	done; \
+	$(GO) test ./internal/classifier -count=1 -v -run="^($$pattern)$$"
+	@required=( \
+		TestInspectionDispositionIncompleteOverridesMaliciousPrefix \
+		TestInspectionDispositionCompleteMaliciousTextStillBlocksBalanced \
+		TestInspectionDispositionCompleteOpaqueMediaAuditDoesNotHideTextBlock \
+		TestRound6LongText270KiBRolePositionMatrixBlocks \
+		TestRound6LongTextOneMiBPositionMatrixBlocks \
+		TestRound6CrossWindowCredentialCanaryBlocks \
+		TestRound6CrossWindowNegationAndBenignRemainAllowed \
+		TestRound6MetadataPaddingBeforeAndAfterDoesNotCreateScanLimit \
+		TestRound6LongStreamingRequestBlocksDuringPreRoute \
+		TestRound6LongProviderProfilesBlock \
+		TestRound6LongMultipartPromptSafeAndMalicious \
+		TestRound6TransformedMultipartJSONLongPromptMatrix \
+	); \
+	pattern="$$(IFS='|'; echo "$${required[*]}")"; \
+	listed="$$($(GO) test -tags=$(TEST_TAGS) ./internal/plugin -list="^($$pattern)$$")" || exit $$?; \
+	for test_name in "$${required[@]}"; do \
+		printf '%s\n' "$$listed" | grep -Fxq "$$test_name" || { \
+			echo "required round-six plugin regression $$test_name is missing" >&2; exit 1; \
+		}; \
+	done; \
+	$(GO) test -tags=$(TEST_TAGS) ./internal/plugin -count=1 -v -run="^($$pattern)$$"
+	@required=( \
+		TestRound6ManagementTestUsesStreamingCoverageBeyondLegacyMaxScan \
+		TestRound6ManagementTestReportsTrueIncompleteByMode \
+		TestRound6StatusExposesEffectiveLimitsAndDisabledVerifiedFinding \
+	); \
+	pattern="$$(IFS='|'; echo "$${required[*]}")"; \
+	listed="$$($(GO) test -tags=$(TEST_TAGS) ./internal/plugin -list="^($$pattern)$$")" || exit $$?; \
+	for test_name in "$${required[@]}"; do \
+		printf '%s\n' "$$listed" | grep -Fxq "$$test_name" || { \
+			echo "required round-six management regression $$test_name is missing" >&2; exit 1; \
+		}; \
+	done; \
+	$(GO) test -tags=$(TEST_TAGS) ./internal/plugin -count=1 -v -run="^($$pattern)$$"
+	@listed="$$($(GO) test ./internal/config -list='^TestRound6StreamingLimitMigration$$')" || exit $$?; \
+	printf '%s\n' "$$listed" | grep -Fxq 'TestRound6StreamingLimitMigration' || { \
+		echo 'required round-six configuration migration regression is missing' >&2; exit 1; \
+	}; \
+	$(GO) test ./internal/config -count=1 -v -run='^TestRound6StreamingLimitMigration$$'
+
+round6-development-artifacts: build-linux-amd64 sbom
+	@epoch="$$(git log -1 --format=%ct)"; \
+	PLUGIN_BINARY="$(SO)" STORE_ARCHIVE="$(STORE_ZIP)" SOURCE_DATE_EPOCH="$$epoch" \
+		./scripts/create-store-archive.sh
+	@cd "$(DIST_DIR)" && sha256sum \
+		"$(notdir $(SO))" \
+		"$(notdir $(SO)).sha256" \
+		"$(notdir $(STORE_ZIP))" \
+		build-metadata.json \
+		ruleset-manifest.json \
+		ruleset.sha256 \
+		sbom.cdx.json > checksums.txt
+	@cd "$(DIST_DIR)" && sha256sum -c checksums.txt && sha256sum -c ruleset.sha256
+
+round6-reproducibility-test:
+	GO=$(GO) VERSION=$(VERSION) CYCLONEDX_GOMOD=$(CYCLONEDX_GOMOD) \
+		CYCLONEDX_GOMOD_VERSION=$(CYCLONEDX_GOMOD_VERSION) \
+		./scripts/round6-reproducibility-test.sh
+
 build-linux-amd64:
 	GO=$(GO) VERSION=$(VERSION) ./scripts/build-linux-amd64.sh
 
@@ -316,6 +551,24 @@ sbom:
 
 vulncheck:
 	$(GOVULNCHECK) ./...
+
+round6-vulncheck:
+	$(GOVULNCHECK) $(ROUND6_SAFE_PACKAGES)
+
+round6-cpa-store-contract:
+	@artifacts=("$(SO)" "$(STORE_ZIP)" "$(DIST_DIR)/build-metadata.json" "$(DIST_DIR)/checksums.txt"); \
+	missing=(); \
+	for artifact in "$${artifacts[@]}"; do [[ -f "$$artifact" ]] || missing+=("$$artifact"); done; \
+	if [[ $${#missing[@]} -eq 0 ]]; then \
+		echo 'CPA store contract: validating published dist identity plus repeat-skip and tamper-repair lifecycle'; \
+		DIST_DIR="$(DIST_DIR)" $(GO) -C integration/pluginstorecontract test -count=1 .; \
+	elif [[ "$(REQUIRE_DIST_ARTIFACTS)" == "1" ]]; then \
+		printf 'required published dist artifact is missing: %s\n' "$${missing[@]}" >&2; \
+		exit 1; \
+	else \
+		echo 'CPA store contract: dist artifacts absent; running synthetic source contract only'; \
+		env -u DIST_DIR $(GO) -C integration/pluginstorecontract test -count=1 .; \
+	fi
 
 release-preflight:
 	GO=$(GO) VERSION=$(VERSION) ./scripts/release-preflight.sh

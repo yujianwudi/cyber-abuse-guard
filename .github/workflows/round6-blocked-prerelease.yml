@@ -1,0 +1,439 @@
+name: Round6 prerelease - BLOCKED / PENDING HOST AND INDEPENDENT AUDIT
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing annotated development tag (v0.1.2-dev.round6 or numbered suffix)
+        required: true
+        type: string
+      expected_commit:
+        description: Exact 40-character commit expected at the existing tag
+        required: true
+        type: string
+      expected_tree:
+        description: Exact 40-character source tree expected at the existing tag
+        required: true
+        type: string
+      ci_run_id:
+        description: Successful CI workflow run ID for the exact expected commit
+        required: true
+        type: string
+      expected_so_sha256:
+        description: Exact candidate SO SHA-256 cited by both Host records and the independent audit
+        required: true
+        type: string
+      host_v7280_validation:
+        description: Authorized isolated CPA v7.2.80 Host + Mock matrix result
+        required: true
+        type: choice
+        default: BLOCKED
+        options:
+          - BLOCKED
+          - PASS
+      host_v7280_evidence_sha256:
+        description: SHA-256 of the low-sensitivity v7.2.80 Host evidence
+        required: true
+        type: string
+      host_v7279_validation:
+        description: Authorized isolated CPA v7.2.79 Host + Mock matrix result
+        required: true
+        type: choice
+        default: BLOCKED
+        options:
+          - BLOCKED
+          - PASS
+      host_v7279_evidence_sha256:
+        description: SHA-256 of the low-sensitivity v7.2.79 Host evidence
+        required: true
+        type: string
+      independent_audit_validation:
+        description: Independent source, artifact, and Host audit result
+        required: true
+        type: choice
+        default: BLOCKED
+        options:
+          - BLOCKED
+          - PASS
+      independent_audit_sha256:
+        description: SHA-256 of the independent audit report
+        required: true
+        type: string
+      authorize_blocked_prerelease:
+        description: Explicitly authorize creation of a blocked, draft, non-latest prerelease
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: round6-blocked-prerelease-${{ inputs.tag }}
+  cancel-in-progress: false
+
+env:
+  GO_VERSION: '1.26.4'
+  VERSION: '0.1.2'
+  CYCLONEDX_GOMOD_VERSION: 'v1.9.0'
+
+jobs:
+  admission:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Fail closed unless every external gate and authorization is explicit
+        env:
+          TAG: ${{ inputs.tag }}
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+          EXPECTED_TREE: ${{ inputs.expected_tree }}
+          CI_RUN_ID: ${{ inputs.ci_run_id }}
+          EXPECTED_SO_SHA256: ${{ inputs.expected_so_sha256 }}
+          HOST_V7280: ${{ inputs.host_v7280_validation }}
+          HOST_V7280_SHA256: ${{ inputs.host_v7280_evidence_sha256 }}
+          HOST_V7279: ${{ inputs.host_v7279_validation }}
+          HOST_V7279_SHA256: ${{ inputs.host_v7279_evidence_sha256 }}
+          INDEPENDENT_AUDIT: ${{ inputs.independent_audit_validation }}
+          INDEPENDENT_AUDIT_SHA256: ${{ inputs.independent_audit_sha256 }}
+          AUTHORIZED: ${{ inputs.authorize_blocked_prerelease }}
+        run: |
+          [[ "$TAG" =~ ^v0\.1\.2-dev\.round6([.][0-9]+)?$ ]]
+          [[ "$EXPECTED_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$EXPECTED_TREE" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$CI_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          [[ "$EXPECTED_SO_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$HOST_V7280" == PASS ]]
+          [[ "$HOST_V7279" == PASS ]]
+          [[ "$INDEPENDENT_AUDIT" == PASS ]]
+          [[ "$AUTHORIZED" == true ]]
+          [[ "$HOST_V7280_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$HOST_V7279_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$INDEPENDENT_AUDIT_SHA256" =~ ^[0-9a-f]{64}$ ]]
+      - name: Bind admission to a successful CI run for the exact commit
+        env:
+          CI_RUN_ID: ${{ inputs.ci_run_id }}
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          response="$(mktemp)"
+          trap 'rm -f -- "$response"' EXIT
+          curl --fail-with-body --silent --show-error --location \
+            --header 'Accept: application/vnd.github+json' \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/actions/runs/${CI_RUN_ID}" \
+            --output "$response"
+          jq -e \
+            --arg run_id "$CI_RUN_ID" \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg expected_commit "$EXPECTED_COMMIT" \
+            '(.id | tostring) == $run_id and
+             .name == "CI" and
+             .path == ".github/workflows/ci.yml" and
+             .event == "push" and
+             .head_sha == $expected_commit and
+             .status == "completed" and
+             .conclusion == "success" and
+             .repository.full_name == $repository' \
+            "$response" >/dev/null
+
+  verify:
+    needs: admission
+    permissions:
+      contents: read
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout the explicitly supplied existing tag
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ inputs.tag }}
+          fetch-depth: 0
+          persist-credentials: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /*
+            !/cmd/evaluation-*
+            !/cmd/holdout-*
+            !/cmd/*private*
+            !/cmd/*blind*
+            !/cmd/*retired*
+            !/docs/reports/EVALUATION_*
+            !/docs/reports/HOLDOUT_*
+            !/docs/reports/HOLDOUT_REPORT.md
+            !/docs/**/*private*
+            !/docs/**/*blind*
+            !/docs/**/*retired*
+            !/internal/classifier/evaluation_*
+            !/internal/classifier/holdout_*
+            !/internal/classifier/*private*
+            !/internal/classifier/*blind*
+            !/internal/classifier/*retired*
+            !/testdata/evaluation-*
+            !/testdata/holdout*
+            !/testdata/*private*
+            !/testdata/*blind*
+            !/testdata/*retired*
+      - name: Recheck the Round6 restricted-data boundary
+        run: |
+          python3 -B scripts/round6_safe_gate_contract_test.py
+          python3 -B scripts/round6_safe_gate_contract.py --root .
+      - name: Verify immutable source identity and annotated tag
+        env:
+          TAG: ${{ inputs.tag }}
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+          EXPECTED_TREE: ${{ inputs.expected_tree }}
+        run: |
+          [[ "$(git rev-parse HEAD)" == "$EXPECTED_COMMIT" ]]
+          [[ "$(git rev-parse 'HEAD^{tree}')" == "$EXPECTED_TREE" ]]
+          [[ "$(git cat-file -t "refs/tags/$TAG")" == tag ]]
+          [[ "$(git rev-list -n 1 "refs/tags/$TAG")" == "$EXPECTED_COMMIT" ]]
+          [[ -z "$(git status --porcelain)" ]]
+      - name: Set up pinned Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - name: Install bounded build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential file zip unzip
+          mkdir -p "$RUNNER_TEMP/bin"
+          GOBIN="$RUNNER_TEMP/bin" go install github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@${CYCLONEDX_GOMOD_VERSION}
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - name: Run source and Round6 regression gates
+        run: |
+          make round6-format-check round6-git-diff-check round6-module-verify round6-regression round6-vet
+          go test ./internal/classifier -run '^TestClassifierPolicyIdentity$' -count=1
+      - name: Verify CPA v7.2.80 primary and v7.2.79 backward source compatibility
+        env:
+          CPA_COMPAT_VERIFY_REMOTE: '1'
+        run: make cpa-latest-compat
+      - name: Build only privacy-safe blocked-development artifacts
+        env:
+          ALLOW_DIRTY_BUILD: '1'
+          REQUIRE_DIST_ARTIFACTS: '1'
+        run: make round6-development-artifacts round6-cpa-store-contract artifact-hash
+      - name: Recheck source cleanliness
+        run: make clean-tree-check
+      - name: Reverify source and artifact identity before transfer
+        env:
+          TAG: ${{ inputs.tag }}
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+          EXPECTED_TREE: ${{ inputs.expected_tree }}
+          EXPECTED_SO_SHA256: ${{ inputs.expected_so_sha256 }}
+          BASH_ENV: ''
+          ENV: ''
+          PATH: /usr/bin:/bin
+          CDPATH: ''
+          GLOBIGNORE: ''
+          PROMPT_COMMAND: ''
+          LD_PRELOAD: ''
+          LD_LIBRARY_PATH: ''
+          LD_AUDIT: ''
+          PYTHONPATH: ''
+          PYTHONHOME: ''
+          PERL5OPT: ''
+          RUBYOPT: ''
+          NODE_OPTIONS: ''
+          NODE_PATH: ''
+          GIT_CONFIG_COUNT: '0'
+          GIT_CONFIG_GLOBAL: /dev/null
+          GIT_CONFIG_SYSTEM: /dev/null
+          GIT_CONFIG_NOSYSTEM: '1'
+          GIT_TERMINAL_PROMPT: '0'
+          GIT_ASKPASS: /bin/false
+          SSH_ASKPASS: /bin/false
+          GIT_SSH_COMMAND: /bin/false
+          CURL_HOME: /nonexistent
+          GH_CONFIG_DIR: /nonexistent
+          HTTP_PROXY: ''
+          HTTPS_PROXY: ''
+          ALL_PROXY: ''
+        run: |
+          [[ "$(/usr/bin/git rev-parse HEAD)" == "$EXPECTED_COMMIT" ]]
+          [[ "$(/usr/bin/git rev-parse 'HEAD^{tree}')" == "$EXPECTED_TREE" ]]
+          [[ -z "$(/usr/bin/git status --porcelain)" ]]
+          remote_tag_commit="$(/usr/bin/git ls-remote --tags origin "refs/tags/$TAG^{}" | /usr/bin/awk '{print $1}')"
+          [[ "$remote_tag_commit" == "$EXPECTED_COMMIT" ]]
+          /usr/bin/jq -e \
+            --arg commit "$EXPECTED_COMMIT" \
+            --arg tree "$EXPECTED_TREE" \
+            '.commit == $commit and .tree == $tree' \
+            dist/build-metadata.json >/dev/null
+          actual_so_sha256="$(/usr/bin/sha256sum dist/cyber-abuse-guard-v0.1.2-dirty.so | /usr/bin/awk '{print $1}')"
+          [[ "$actual_so_sha256" == "$EXPECTED_SO_SHA256" ]]
+      - name: Upload exact verified blocked-development artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        env:
+          BASH_ENV: ''
+          ENV: ''
+          PATH: /usr/bin:/bin
+          CDPATH: ''
+          GLOBIGNORE: ''
+          PROMPT_COMMAND: ''
+          LD_PRELOAD: ''
+          LD_LIBRARY_PATH: ''
+          LD_AUDIT: ''
+          PYTHONPATH: ''
+          PYTHONHOME: ''
+          PERL5OPT: ''
+          RUBYOPT: ''
+          NODE_OPTIONS: ''
+          NODE_PATH: ''
+          GIT_CONFIG_COUNT: '0'
+          GIT_CONFIG_GLOBAL: /dev/null
+          GIT_CONFIG_SYSTEM: /dev/null
+          GIT_CONFIG_NOSYSTEM: '1'
+          GIT_TERMINAL_PROMPT: '0'
+          GIT_ASKPASS: /bin/false
+          SSH_ASKPASS: /bin/false
+          GIT_SSH_COMMAND: /bin/false
+          CURL_HOME: /nonexistent
+          GH_CONFIG_DIR: /nonexistent
+          HTTP_PROXY: ''
+          HTTPS_PROXY: ''
+          ALL_PROXY: ''
+        with:
+          name: round6-blocked-${{ inputs.expected_commit }}
+          path: |
+            dist/cyber-abuse-guard-v0.1.2-dirty.so
+            dist/cyber-abuse-guard-v0.1.2-dirty.so.sha256
+            dist/cyber-abuse-guard_0.1.2-dirty_linux_amd64.zip
+            dist/build-metadata.json
+            dist/checksums.txt
+            dist/ruleset-manifest.json
+            dist/ruleset.sha256
+            dist/sbom.cdx.json
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    needs: verify
+    environment: round6-independent-audit
+    if: >-
+      inputs.host_v7280_validation == 'PASS' &&
+      inputs.host_v7279_validation == 'PASS' &&
+      inputs.independent_audit_validation == 'PASS' &&
+      inputs.authorize_blocked_prerelease == true
+    permissions:
+      actions: read
+      contents: write
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Download exact verified blocked-development artifacts
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: round6-blocked-${{ inputs.expected_commit }}
+          path: dist
+      - name: Reverify transferred artifact identity without a repository token
+        env:
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+          EXPECTED_TREE: ${{ inputs.expected_tree }}
+          EXPECTED_SO_SHA256: ${{ inputs.expected_so_sha256 }}
+        run: |
+          required_artifacts=(
+            cyber-abuse-guard-v0.1.2-dirty.so
+            cyber-abuse-guard-v0.1.2-dirty.so.sha256
+            cyber-abuse-guard_0.1.2-dirty_linux_amd64.zip
+            build-metadata.json
+            checksums.txt
+            ruleset-manifest.json
+            ruleset.sha256
+            sbom.cdx.json
+          )
+          for artifact in "${required_artifacts[@]}"; do
+            [[ -f "dist/$artifact" ]]
+          done
+          expected_checksum_files="$(printf '%s\n' \
+            cyber-abuse-guard-v0.1.2-dirty.so \
+            cyber-abuse-guard-v0.1.2-dirty.so.sha256 \
+            cyber-abuse-guard_0.1.2-dirty_linux_amd64.zip \
+            build-metadata.json \
+            ruleset-manifest.json \
+            ruleset.sha256 \
+            sbom.cdx.json)"
+          actual_checksum_files="$(/usr/bin/awk '{print $2}' dist/checksums.txt)"
+          [[ "$actual_checksum_files" == "$expected_checksum_files" ]]
+          (cd dist && /usr/bin/sha256sum -c checksums.txt)
+          [[ "$(/usr/bin/awk 'END { print NR }' dist/cyber-abuse-guard-v0.1.2-dirty.so.sha256)" == 1 ]]
+          [[ "$(/usr/bin/awk '{print $2}' dist/cyber-abuse-guard-v0.1.2-dirty.so.sha256)" == cyber-abuse-guard-v0.1.2-dirty.so ]]
+          (cd dist && /usr/bin/sha256sum -c cyber-abuse-guard-v0.1.2-dirty.so.sha256)
+          [[ "$(/usr/bin/awk 'END { print NR }' dist/ruleset.sha256)" == 1 ]]
+          [[ "$(/usr/bin/awk '{print $2}' dist/ruleset.sha256)" == ruleset-manifest.json ]]
+          (cd dist && /usr/bin/sha256sum -c ruleset.sha256)
+          /usr/bin/jq -e --arg commit "$EXPECTED_COMMIT" --arg tree "$EXPECTED_TREE" '.commit == $commit and .tree == $tree' dist/build-metadata.json >/dev/null
+          /usr/bin/jq -e 'type == "object"' dist/ruleset-manifest.json >/dev/null
+          /usr/bin/jq -e '.bomFormat == "CycloneDX"' dist/sbom.cdx.json >/dev/null
+          actual_so_sha256="$(/usr/bin/sha256sum dist/cyber-abuse-guard-v0.1.2-dirty.so | /usr/bin/awk '{print $1}')"
+          [[ "$actual_so_sha256" == "$EXPECTED_SO_SHA256" ]]
+          zip_path=dist/cyber-abuse-guard_0.1.2-dirty_linux_amd64.zip
+          zip_listing="$(/usr/bin/unzip -Z1 "$zip_path")"
+          ! printf '%s\n' "$zip_listing" | /usr/bin/grep -Eq '(^/|(^|/)\.\.(/|$)|\\)'
+          [[ "$(printf '%s\n' "$zip_listing" | /usr/bin/grep -Ec '\.so$')" == 1 ]]
+          zip_so=plugins/linux/amd64/cyber-abuse-guard-v0.1.2-dirty.so
+          zip_so_checksum=plugins/linux/amd64/cyber-abuse-guard-v0.1.2-dirty.so.sha256
+          for entry in "$zip_so" "$zip_so_checksum" build-metadata.json ruleset-manifest.json ruleset.sha256 sbom.cdx.json; do
+            [[ "$(printf '%s\n' "$zip_listing" | /usr/bin/grep -Fxc "$entry")" == 1 ]]
+          done
+          zip_so_file="$(/usr/bin/mktemp)"
+          trap '/usr/bin/rm -f -- "$zip_so_file"' EXIT
+          /usr/bin/unzip -p "$zip_path" "$zip_so" > "$zip_so_file"
+          [[ "$(/usr/bin/sha256sum "$zip_so_file" | /usr/bin/awk '{print $1}')" == "$EXPECTED_SO_SHA256" ]]
+          /usr/bin/cmp -s <(/usr/bin/unzip -p "$zip_path" "$zip_so_checksum") dist/cyber-abuse-guard-v0.1.2-dirty.so.sha256
+          for entry in build-metadata.json ruleset-manifest.json ruleset.sha256 sbom.cdx.json; do
+            /usr/bin/cmp -s <(/usr/bin/unzip -p "$zip_path" "$entry") "dist/$entry"
+          done
+      - name: Recheck immutable tag and create draft blocked prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+          EXPECTED_TREE: ${{ inputs.expected_tree }}
+          EXPECTED_SO_SHA256: ${{ inputs.expected_so_sha256 }}
+          CI_RUN_ID: ${{ inputs.ci_run_id }}
+          HOST_V7280_SHA256: ${{ inputs.host_v7280_evidence_sha256 }}
+          HOST_V7279_SHA256: ${{ inputs.host_v7279_evidence_sha256 }}
+          INDEPENDENT_AUDIT_SHA256: ${{ inputs.independent_audit_sha256 }}
+        run: |
+          tag_ref="$(/usr/bin/gh api --header 'Accept: application/vnd.github+json' --header 'X-GitHub-Api-Version: 2022-11-28' "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG")"
+          [[ "$(/usr/bin/jq -r '.ref' <<<"$tag_ref")" == "refs/tags/$TAG" ]]
+          [[ "$(/usr/bin/jq -r '.object.type' <<<"$tag_ref")" == tag ]]
+          tag_object_sha="$(/usr/bin/jq -er '.object.sha | select(test("^[0-9a-f]{40}$"))' <<<"$tag_ref")"
+          tag_object="$(/usr/bin/gh api --header 'Accept: application/vnd.github+json' --header 'X-GitHub-Api-Version: 2022-11-28' "repos/$GITHUB_REPOSITORY/git/tags/$tag_object_sha")"
+          [[ "$(/usr/bin/jq -r '.object.type' <<<"$tag_object")" == commit ]]
+          [[ "$(/usr/bin/jq -r '.object.sha' <<<"$tag_object")" == "$EXPECTED_COMMIT" ]]
+          notes="$(/usr/bin/mktemp)"
+          trap '/usr/bin/rm -f -- "$notes"' EXIT
+          printf '%s\n' \
+            'BLOCKED / PENDING HOST AND INDEPENDENT AUDIT' \
+            '' \
+            'Development evidence only. This is not production admission or deployment authorization.' \
+            "CPA v7.2.80 Host evidence SHA-256: $HOST_V7280_SHA256" \
+            "CPA v7.2.79 Host evidence SHA-256: $HOST_V7279_SHA256" \
+            "Independent audit SHA-256: $INDEPENDENT_AUDIT_SHA256" \
+            "Source commit: $EXPECTED_COMMIT" \
+            "Source tree: $EXPECTED_TREE" \
+            "Successful exact-source push CI run: $CI_RUN_ID" \
+            "Candidate Linux amd64 SO SHA-256: $EXPECTED_SO_SHA256" \
+            'GitHub environment: round6-independent-audit (independent reviewers required in repository settings).' \
+            'Artifacts are dirty/development-only and exclude holdout, evaluation, private payload, production request, and audit data.' \
+            > "$notes"
+          /usr/bin/gh release create "$TAG" \
+            dist/cyber-abuse-guard-v0.1.2-dirty.so \
+            dist/cyber-abuse-guard-v0.1.2-dirty.so.sha256 \
+            dist/cyber-abuse-guard_0.1.2-dirty_linux_amd64.zip \
+            dist/build-metadata.json \
+            dist/checksums.txt \
+            dist/ruleset-manifest.json \
+            dist/ruleset.sha256 \
+            dist/sbom.cdx.json \
+            --draft \
+            --prerelease \
+            --latest=false \
+            --title "$TAG - BLOCKED / PENDING HOST AND INDEPENDENT AUDIT" \
+            --notes-file "$notes" \
+            --verify-tag

@@ -4,17 +4,59 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 go_bin="${GO:-go}"
 cpa_module='github.com/router-for-me/CLIProxyAPI/v7'
-cpa_version='v7.2.80'
 cpa_latest_release_api='https://api.github.com/repos/router-for-me/CLIProxyAPI/releases/latest'
 cpa_tag_ref_api='https://api.github.com/repos/router-for-me/CLIProxyAPI/git/ref/tags'
-cpa_commit='09da52ad509e2c18e7b9540db3b98c2214c280aa'
-cpa_module_sum='h1:QIa5T/KYvJACHVPPRzXcRwq/HLpbwWYJYpZAC1eY2WA='
-cpa_go_mod_sum='h1:ytvZNWbCv7PrAyR80+RKsDJPODsdL6qxyFaXDBNZdqs='
 
-if [[ "${CPA_LATEST_VERIFY_REMOTE:-0}" == "1" ]]; then
+requested_profile="${CPA_COMPAT_PROFILE:-all}"
+case "$requested_profile" in
+  all)
+    profiles=(primary backward)
+    ;;
+  primary|backward)
+    profiles=("$requested_profile")
+    ;;
+  *)
+    printf 'unsupported CPA_COMPAT_PROFILE=%s; use all, primary, or backward\n' "$requested_profile" >&2
+    exit 2
+    ;;
+esac
+
+verify_remote="${CPA_COMPAT_VERIFY_REMOTE:-${CPA_LATEST_VERIFY_REMOTE:-0}}"
+case "$verify_remote" in
+  0|1) ;;
+  *)
+    printf 'CPA_COMPAT_VERIFY_REMOTE must be 0 or 1\n' >&2
+    exit 2
+    ;;
+esac
+
+select_profile() {
+  case "$1" in
+    primary)
+      cpa_version='v7.2.80'
+      cpa_commit='09da52ad509e2c18e7b9540db3b98c2214c280aa'
+      cpa_module_sum='h1:QIa5T/KYvJACHVPPRzXcRwq/HLpbwWYJYpZAC1eY2WA='
+      cpa_go_mod_sum='h1:ytvZNWbCv7PrAyR80+RKsDJPODsdL6qxyFaXDBNZdqs='
+      cpa_must_be_latest=1
+      ;;
+    backward)
+      cpa_version='v7.2.79'
+      cpa_commit='b6ce0beecd31dff389d3190f7db6d7a1d4ce0e7e'
+      cpa_module_sum='h1:/2s9euOTOeKUCIPWjHdCsll9vUHkJ/H2bq25Da3DQrg='
+      cpa_go_mod_sum='h1:ytvZNWbCv7PrAyR80+RKsDJPODsdL6qxyFaXDBNZdqs='
+      cpa_must_be_latest=0
+      ;;
+    *)
+      printf 'internal error: unknown CPA compatibility profile %s\n' "$1" >&2
+      exit 2
+      ;;
+  esac
+}
+
+if [[ "$verify_remote" == 1 ]]; then
   for required_command in curl jq; do
     command -v "$required_command" >/dev/null 2>&1 || {
-      printf '%s is required for latest CPA release identity verification\n' "$required_command" >&2
+      printf '%s is required for CPA release identity verification\n' "$required_command" >&2
       exit 1
     }
   done
@@ -30,68 +72,96 @@ if [[ "${CPA_LATEST_VERIFY_REMOTE:-0}" == "1" ]]; then
   if [[ -n "${GITHUB_TOKEN:-}" ]]; then
     release_curl_args+=(--header "Authorization: Bearer ${GITHUB_TOKEN}")
   fi
-  latest_release_json="$(curl "${release_curl_args[@]}" "$cpa_latest_release_api")"
-  latest_release_tag="$(printf '%s\n' "$latest_release_json" | jq -er '.tag_name | select(type == "string" and length > 0)')"
-  [[ -n "$latest_release_tag" ]] || {
-    printf 'latest CPA release response did not contain tag_name\n' >&2
-    exit 1
-  }
-  [[ "$latest_release_tag" == "$cpa_version" ]] || {
-    printf 'latest CPA release mismatch: got %s want pinned %s\n' "$latest_release_tag" "$cpa_version" >&2
-    exit 1
-  }
-
-  tag_ref_json="$(curl "${release_curl_args[@]}" "$cpa_tag_ref_api/$cpa_version")"
-  resolved_tag_type="$(printf '%s\n' "$tag_ref_json" | jq -er '.object.type | select(type == "string" and length > 0)')"
-  resolved_tag_commit="$(printf '%s\n' "$tag_ref_json" | jq -er '.object.sha | select(type == "string" and length > 0)')"
-  [[ "$resolved_tag_type" == "commit" && "$resolved_tag_commit" == "$cpa_commit" ]] || {
-    printf 'latest CPA tag identity mismatch: got type=%s commit=%s want type=commit commit=%s\n' \
-      "$resolved_tag_type" "$resolved_tag_commit" "$cpa_commit" >&2
-    exit 1
-  }
 else
-  printf 'CPA latest release and remote tag checks skipped; set CPA_LATEST_VERIFY_REMOTE=1 to require them\n' >&2
+  printf 'CPA remote release and tag checks skipped; set CPA_COMPAT_VERIFY_REMOTE=1 to require them\n' >&2
 fi
 
 work="$(mktemp -d)"
 trap 'rm -rf -- "$work"' EXIT
-cp "$root/go.mod" "$work/latest-compat.mod"
-cp "$root/go.sum" "$work/latest-compat.sum"
 
-"$go_bin" -C "$root" mod edit -modfile="$work/latest-compat.mod" -require="$cpa_module@$cpa_version"
-# The latest CPA module may raise indirect dependency floors. Resolve those
-# changes only in the temporary modfile, then make the actual probes readonly.
-GOWORK=off "$go_bin" -C "$root" mod tidy -modfile="$work/latest-compat.mod"
+for profile in "${profiles[@]}"; do
+  select_profile "$profile"
 
-resolved="$({
-  GOWORK=off "$go_bin" -C "$root" list -mod=readonly -modfile="$work/latest-compat.mod" \
-    -m -f '{{.Version}} {{.Sum}} {{.GoModSum}}' "$cpa_module"
-})"
-expected="$cpa_version $cpa_module_sum $cpa_go_mod_sum"
-[[ "$resolved" == "$expected" ]] || {
-  printf 'latest CPA module identity mismatch: got %s want %s\n' "$resolved" "$expected" >&2
-  exit 1
-}
+  if [[ "$verify_remote" == 1 ]]; then
+    if [[ "$cpa_must_be_latest" == 1 ]]; then
+      latest_release_json="$(curl "${release_curl_args[@]}" "$cpa_latest_release_api")"
+      latest_release_tag="$(printf '%s\n' "$latest_release_json" | jq -er '.tag_name | select(type == "string" and length > 0)')"
+      [[ "$latest_release_tag" == "$cpa_version" ]] || {
+        printf 'primary CPA release mismatch: got latest %s want pinned %s\n' "$latest_release_tag" "$cpa_version" >&2
+        exit 1
+      }
+    fi
 
-(
-  cd "$root"
-  GOWORK=off CGO_ENABLED=1 "$go_bin" test \
-    -mod=readonly -modfile="$work/latest-compat.mod" \
-    -tags=sqlite_omit_load_extension -run='^$' -count=1 \
-    ./cmd/cyber-abuse-guard
-  GOWORK=off CGO_ENABLED=1 "$go_bin" test \
-    -mod=readonly -modfile="$work/latest-compat.mod" \
-    -tags=sqlite_omit_load_extension -count=1 \
-    -run='^(TestRegistrationMatchesTargetCPAv7275Contract|TestRouterUsesRoleAwareConversationClassification)$' \
-    ./internal/plugin
-  GOWORK=off CGO_ENABLED=1 "$go_bin" test \
-    -mod=readonly -modfile="$work/latest-compat.mod" \
-    -tags=integration,sqlite_omit_load_extension -run='^$' -count=1 \
-    ./integration
-  # The isolated package contains only bounded source/compile contracts. Run
-  # the whole package so newly added CPA compatibility contracts cannot be
-  # silently omitted by a stale -run allowlist.
-  GOWORK=off "$go_bin" -C integration/cpalatestcontract test -count=1 -v .
-)
+    tag_ref_json="$(curl "${release_curl_args[@]}" "$cpa_tag_ref_api/$cpa_version")"
+    resolved_tag_type="$(printf '%s\n' "$tag_ref_json" | jq -er '.object.type | select(type == "string" and length > 0)')"
+    resolved_tag_commit="$(printf '%s\n' "$tag_ref_json" | jq -er '.object.sha | select(type == "string" and length > 0)')"
+    [[ "$resolved_tag_type" == commit && "$resolved_tag_commit" == "$cpa_commit" ]] || {
+      printf 'CPA tag identity mismatch for %s: got type=%s commit=%s want type=commit commit=%s\n' \
+        "$cpa_version" "$resolved_tag_type" "$resolved_tag_commit" "$cpa_commit" >&2
+      exit 1
+    }
+  fi
 
-printf 'CPA latest source/compile compatibility PASS: %s@%s\n' "$cpa_version" "$cpa_commit"
+  root_modfile="$work/root-$profile.mod"
+  root_sumfile="${root_modfile%.mod}.sum"
+  cp "$root/go.mod" "$root_modfile"
+  cp "$root/go.sum" "$root_sumfile"
+  "$go_bin" -C "$root" mod edit -modfile="$root_modfile" -require="$cpa_module@$cpa_version"
+  GOWORK=off "$go_bin" -C "$root" mod tidy -modfile="$root_modfile"
+
+  resolved="$({
+    GOWORK=off "$go_bin" -C "$root" list -mod=readonly -modfile="$root_modfile" \
+      -m -f '{{.Version}} {{.Sum}} {{.GoModSum}}' "$cpa_module"
+  })"
+  expected="$cpa_version $cpa_module_sum $cpa_go_mod_sum"
+  [[ "$resolved" == "$expected" ]] || {
+    printf 'root CPA module identity mismatch for %s: got %s want %s\n' "$profile" "$resolved" "$expected" >&2
+    exit 1
+  }
+
+  contract_modfile="$work/contract-$profile.mod"
+  contract_sumfile="${contract_modfile%.mod}.sum"
+  cp "$root/integration/cpalatestcontract/go.mod" "$contract_modfile"
+  cp "$root/integration/cpalatestcontract/go.sum" "$contract_sumfile"
+  "$go_bin" -C "$root/integration/cpalatestcontract" mod edit \
+    -modfile="$contract_modfile" -require="$cpa_module@$cpa_version"
+  GOWORK=off "$go_bin" -C "$root/integration/cpalatestcontract" mod tidy -modfile="$contract_modfile"
+
+  contract_resolved="$({
+    GOWORK=off "$go_bin" -C "$root/integration/cpalatestcontract" list \
+      -mod=readonly -modfile="$contract_modfile" -m \
+      -f '{{.Version}} {{.Sum}} {{.GoModSum}}' "$cpa_module"
+  })"
+  [[ "$contract_resolved" == "$expected" ]] || {
+    printf 'contract CPA module identity mismatch for %s: got %s want %s\n' \
+      "$profile" "$contract_resolved" "$expected" >&2
+    exit 1
+  }
+
+  (
+    cd "$root"
+    GOWORK=off CGO_ENABLED=1 "$go_bin" test \
+      -mod=readonly -modfile="$root_modfile" \
+      -tags=sqlite_omit_load_extension -run='^$' -count=1 \
+      ./cmd/cyber-abuse-guard
+    GOWORK=off CGO_ENABLED=1 "$go_bin" test \
+      -mod=readonly -modfile="$root_modfile" \
+      -tags=sqlite_omit_load_extension -count=1 \
+      -run='^(TestRegistrationMatchesTargetCPAv7275Contract|TestRouterUsesRoleAwareConversationClassification)$' \
+      ./internal/plugin
+    GOWORK=off CGO_ENABLED=1 "$go_bin" test \
+      -mod=readonly -modfile="$root_modfile" \
+      -tags=integration,sqlite_omit_load_extension -run='^$' -count=1 \
+      ./integration
+    CPA_COMPAT_PROFILE="$profile" \
+      CPA_COMPAT_MODFILE="$contract_modfile" \
+      CPA_COMPAT_EXPECTED_COMMIT="$cpa_commit" \
+      GOWORK=off "$go_bin" -C integration/cpalatestcontract test \
+      -mod=readonly -modfile="$contract_modfile" -count=1 -v .
+  )
+
+  printf 'CPA source/compile compatibility PASS: profile=%s %s@%s latest_required=%s\n' \
+    "$profile" "$cpa_version" "$cpa_commit" "$cpa_must_be_latest"
+done
+
+printf 'CPA source/compile compatibility matrix PASS: profiles=%s\n' "${profiles[*]}"

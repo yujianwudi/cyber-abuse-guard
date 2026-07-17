@@ -108,7 +108,9 @@ done
 # management/integration tests validate that the runtime exposes the same data.
 binary_strings="$(strings "$so")"
 for identity in "$RELEASE_ARTIFACT_VERSION" "$RELEASE_GIT_COMMIT" \
-  "$RELEASE_RULESET_VERSION" "$RELEASE_RULESET_SHA256"; do
+  "$RELEASE_RULESET_VERSION" "$RELEASE_RULESET_SHA256" \
+  "$RELEASE_CLASSIFIER_POLICY_VERSION" "$RELEASE_CLASSIFIER_POLICY_SHA256" \
+  "$RELEASE_STREAMING_SCANNER"; do
   if ! grep -Fq -- "$identity" <<<"$binary_strings"; then
     printf 'compiled release identity is missing: %s\n' "$identity" >&2
     exit 1

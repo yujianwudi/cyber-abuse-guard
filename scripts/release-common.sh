@@ -76,6 +76,22 @@ release_ruleset_hash() {
   done < <(release_ruleset_files) | sha256sum | awk '{print $1}'
 }
 
+release_round6_safe_sparse_path() {
+  case "$1" in
+    cmd/evaluation-*|cmd/holdout-*|cmd/*private*|cmd/*blind*|cmd/*retired*|\
+    docs/reports/EVALUATION_*|docs/reports/HOLDOUT_*|docs/reports/HOLDOUT_REPORT.md|\
+    docs/*private*|docs/*blind*|docs/*retired*|\
+    internal/classifier/evaluation_*|internal/classifier/holdout_*|\
+    internal/classifier/*private*|internal/classifier/*blind*|internal/classifier/*retired*|\
+    testdata/evaluation-*|testdata/holdout*|testdata/*private*|testdata/*blind*|testdata/*retired*)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 release_init() {
 	release_require_commands git sed awk sha256sum sort head
 	local buildinfo_ruleset_version unsafe_index_entries
@@ -94,6 +110,19 @@ release_init() {
 	[[ "$buildinfo_ruleset_version" == "$RELEASE_RULESET_VERSION" ]] || \
 		release_die "buildinfo ruleset version $buildinfo_ruleset_version does not match manifest $RELEASE_RULESET_VERSION"
 
+  RELEASE_CLASSIFIER_POLICY_VERSION="$(sed -nE 's/^[[:space:]]*const[[:space:]]+ClassifierPolicyVersion[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' \
+    "$RELEASE_ROOT/internal/classifier/policy_identity.go" | head -n 1)"
+  [[ "$RELEASE_CLASSIFIER_POLICY_VERSION" =~ ^classifier-policy-v[0-9]+$ ]] || \
+    release_die "cannot read classifier policy version from internal/classifier/policy_identity.go"
+  RELEASE_CLASSIFIER_POLICY_SHA256="$(sed -nE 's/^[[:space:]]*const[[:space:]]+ClassifierPolicySHA256[[:space:]]*=[[:space:]]*"([0-9a-f]+)".*/\1/p' \
+    "$RELEASE_ROOT/internal/classifier/policy_identity.go" | head -n 1)"
+  [[ "$RELEASE_CLASSIFIER_POLICY_SHA256" =~ ^[0-9a-f]{64}$ ]] || \
+    release_die "cannot read classifier policy SHA-256 from internal/classifier/policy_identity.go"
+  RELEASE_STREAMING_SCANNER="$(sed -nE 's/^[[:space:]]*const[[:space:]]+StreamingScannerIdentity[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' \
+    "$RELEASE_ROOT/internal/buildinfo/buildinfo.go" | head -n 1)"
+  [[ "$RELEASE_STREAMING_SCANNER" =~ ^streaming-scanner-v[0-9]+$ ]] || \
+    release_die "cannot read streaming scanner identity from internal/buildinfo/buildinfo.go"
+
   RELEASE_VERSION="${VERSION:-$RELEASE_SOURCE_VERSION}"
   [[ "$RELEASE_VERSION" == "$RELEASE_SOURCE_VERSION" ]] || \
     release_die "VERSION=$RELEASE_VERSION does not match source version $RELEASE_SOURCE_VERSION"
@@ -101,6 +130,9 @@ release_init() {
   RELEASE_GIT_COMMIT="$(git -C "$RELEASE_ROOT" rev-parse --verify HEAD)"
   [[ "$RELEASE_GIT_COMMIT" =~ ^[0-9a-f]{40}$ ]] || \
     release_die "Git HEAD is not a full commit SHA"
+  RELEASE_GIT_TREE="$(git -C "$RELEASE_ROOT" rev-parse --verify 'HEAD^{tree}')"
+  [[ "$RELEASE_GIT_TREE" =~ ^[0-9a-f]{40}$ ]] || \
+    release_die "Git HEAD tree is not a full tree SHA"
 
   RELEASE_DIRTY_STATUS="$(git -C "$RELEASE_ROOT" status --porcelain --untracked-files=normal)"
   case "${ALLOW_DIRTY_BUILD:-0}" in
@@ -114,10 +146,22 @@ release_init() {
       unsafe_index_entries="$(git -C "$RELEASE_ROOT" ls-files -v | \
         awk 'substr($0, 1, 1) == "S" || substr($0, 1, 1) ~ /[a-z]/')"
       if [[ -n "$unsafe_index_entries" ]]; then
-        release_error "formal builds reject skip-worktree and assume-unchanged index flags"
-        printf '%s\n' "$unsafe_index_entries" >&2
-        release_error "clear the flags and verify the tracked worktree before releasing"
-        exit 1
+        if [[ "${ROUND6_SAFE_SPARSE_BUILD:-0}" == 1 ]]; then
+          git -C "$RELEASE_ROOT" sparse-checkout list >/dev/null 2>&1 || \
+            release_die "ROUND6_SAFE_SPARSE_BUILD requires an active sparse checkout"
+          while IFS= read -r entry; do
+            status="${entry:0:1}"
+            path="${entry:2}"
+            if [[ "$status" != S ]] || ! release_round6_safe_sparse_path "$path"; then
+              release_die "Round6 sparse checkout contains an unapproved index flag or excluded path: $path"
+            fi
+          done <<<"$unsafe_index_entries"
+        else
+          release_error "formal builds reject skip-worktree and assume-unchanged index flags"
+          printf '%s\n' "$unsafe_index_entries" >&2
+          release_error "clear the flags and verify the tracked worktree before releasing"
+          exit 1
+        fi
       fi
       RELEASE_DIRTY=false
       RELEASE_ARTIFACT_VERSION="$RELEASE_VERSION"
@@ -144,8 +188,9 @@ release_init() {
     release_die "SOURCE_DATE_EPOCH must be at or after 1980-01-01"
 
   export RELEASE_ROOT RELEASE_SOURCE_VERSION RELEASE_RULESET_VERSION
-  export RELEASE_VERSION RELEASE_GIT_COMMIT RELEASE_DIRTY RELEASE_ARTIFACT_VERSION
-  export RELEASE_RULESET_SHA256 RELEASE_SOURCE_DATE_EPOCH
+  export RELEASE_VERSION RELEASE_GIT_COMMIT RELEASE_GIT_TREE RELEASE_DIRTY RELEASE_ARTIFACT_VERSION
+  export RELEASE_RULESET_SHA256 RELEASE_CLASSIFIER_POLICY_VERSION RELEASE_CLASSIFIER_POLICY_SHA256
+  export RELEASE_STREAMING_SCANNER RELEASE_SOURCE_DATE_EPOCH
 }
 
 release_assert_tag() {

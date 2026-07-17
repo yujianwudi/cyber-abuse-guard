@@ -15,6 +15,26 @@ const (
 	IncompleteInspection = CompletenessIncomplete
 )
 
+// EnvelopeCompleteness reports whether the complete CPA-visible request
+// envelope was syntactically validated. It is deliberately independent from
+// model-visible text coverage.
+type EnvelopeCompleteness string
+
+const (
+	EnvelopeComplete   EnvelopeCompleteness = "complete"
+	EnvelopeIncomplete EnvelopeCompleteness = "incomplete"
+)
+
+// TextCoverage reports whether every model-visible logical text unit was
+// delivered through the streaming sink.
+type TextCoverage string
+
+const (
+	TextCoverageComplete    TextCoverage = "complete"
+	TextCoverageExhausted   TextCoverage = "budget_exhausted"
+	TextCoverageUnavailable TextCoverage = "unavailable"
+)
+
 // IncompleteReason is a content-free enum suitable for counters and audit
 // metadata. Values must never contain parser errors or request-derived data.
 type IncompleteReason string
@@ -35,11 +55,14 @@ const (
 	IncompleteMultipartUnknownField          IncompleteReason = "multipart_unknown_field"
 	IncompleteMultipartTextFieldTypeMismatch IncompleteReason = "multipart_text_field_type_mismatch"
 	IncompleteToolSchema                     IncompleteReason = "tool_schema"
+	IncompleteRoleAttribution                IncompleteReason = "role_attribution"
 	IncompleteDeferredTextCandidateLimit     IncompleteReason = "deferred_text_candidate_limit"
 	IncompleteUnsupportedMediaType           IncompleteReason = "unsupported_media_type"
 	IncompleteUnsupportedContentEncoding     IncompleteReason = "unsupported_content_encoding"
 	IncompleteRawBodyLimit                   IncompleteReason = "raw_body_limit"
 	IncompleteRPCBodyLimit                   IncompleteReason = "rpc_body_limit"
+	IncompleteTotalTextLimit                 IncompleteReason = "total_text_limit"
+	IncompleteClassificationChunkLimit       IncompleteReason = "classification_chunk_limit"
 )
 
 var incompleteReasonOrder = [...]IncompleteReason{
@@ -58,11 +81,14 @@ var incompleteReasonOrder = [...]IncompleteReason{
 	IncompleteMultipartUnknownField,
 	IncompleteMultipartTextFieldTypeMismatch,
 	IncompleteToolSchema,
+	IncompleteRoleAttribution,
 	IncompleteDeferredTextCandidateLimit,
 	IncompleteUnsupportedMediaType,
 	IncompleteUnsupportedContentEncoding,
 	IncompleteRawBodyLimit,
 	IncompleteRPCBodyLimit,
+	IncompleteTotalTextLimit,
+	IncompleteClassificationChunkLimit,
 }
 
 func (r *Result) IsComplete() bool {

@@ -15,13 +15,17 @@ import (
 )
 
 const (
-	DefaultMaxScanBytes     = 262144
-	DefaultMaxRawBytes      = 16 << 20
-	DefaultMaxJSONDepth     = 32
-	DefaultMaxJSONTokens    = 65536
-	DefaultMaxJSONNodes     = 32768
-	DefaultMaxTextParts     = 512
-	DefaultMaxTextPartBytes = 16 << 10
+	DefaultMaxScanBytes               = 262144
+	DefaultMaxRawBytes                = 16 << 20
+	DefaultMaxTextWindowBytes         = DefaultMaxScanBytes
+	DefaultMaxTotalTextBytes          = 8 << 20
+	DefaultMaxJSONDepth               = 32
+	DefaultMaxJSONTokens              = 65536
+	DefaultMaxJSONNodes               = 32768
+	DefaultMaxTextParts               = 512
+	DefaultMaxTextPartBytes           = 16 << 10
+	DefaultMaxClassificationChunks    = 2048
+	ClassificationOverlapReserveBytes = 4 << 10
 
 	DefaultMaxMultipartBoundaryBytes = 70
 	DefaultMaxMultipartParts         = 1024
@@ -31,13 +35,17 @@ const (
 	DefaultMaxMultipartTextBytes     = DefaultMaxScanBytes
 	DefaultMaxMultipartTextPartBytes = 16 << 10
 
-	HardMaxScanBytes     = 4 << 20
-	HardMaxRawBytes      = 64 << 20
-	HardMaxJSONDepth     = 128
-	HardMaxJSONTokens    = 1 << 20
-	HardMaxJSONNodes     = 1 << 20
-	HardMaxTextParts     = 4096
-	HardMaxTextPartBytes = 1 << 20
+	HardMaxScanBytes            = 4 << 20
+	HardMaxRawBytes             = 64 << 20
+	MinTextWindowBytes          = 16 << 10
+	HardMaxTextWindowBytes      = 1 << 20
+	HardMaxTotalTextBytes       = 8 << 20
+	HardMaxClassificationChunks = 16384
+	HardMaxJSONDepth            = 128
+	HardMaxJSONTokens           = 1 << 20
+	HardMaxJSONNodes            = 1 << 20
+	HardMaxTextParts            = 4096
+	HardMaxTextPartBytes        = 1 << 20
 
 	HardMaxMultipartBoundaryBytes = 256
 	HardMaxMultipartParts         = 4096
@@ -72,13 +80,16 @@ var (
 // uses its secure task-book default; negative or excessively large values are
 // rejected.
 type Limits struct {
-	MaxScanBytes     int
-	MaxRawBytes      int
-	MaxJSONDepth     int
-	MaxJSONTokens    int
-	MaxJSONNodes     int
-	MaxTextParts     int
-	MaxTextPartBytes int
+	MaxScanBytes            int
+	MaxRawBytes             int
+	MaxTextWindowBytes      int
+	MaxTotalTextBytes       int
+	MaxClassificationChunks int
+	MaxJSONDepth            int
+	MaxJSONTokens           int
+	MaxJSONNodes            int
+	MaxTextParts            int
+	MaxTextPartBytes        int
 
 	MaxMultipartBoundaryBytes int
 	MaxMultipartParts         int
@@ -93,13 +104,18 @@ type Limits struct {
 // ParseError is intentionally a message rather than the source body so callers
 // can audit failures without retaining prompts.
 type Result struct {
-	Parts             []string
-	Segments          []Segment
-	RoleAware         bool
-	Completeness      Completeness
-	IncompleteReasons []IncompleteReason
-	TextBytesScanned  int
-	RawBytesObserved  int64
+	Parts                 []string
+	Segments              []Segment
+	RoleAware             bool
+	Completeness          Completeness
+	Envelope              EnvelopeCompleteness
+	TextCoverage          TextCoverage
+	IncompleteReasons     []IncompleteReason
+	TextBytesScanned      int
+	RawBytesObserved      int64
+	LogicalTextParts      int
+	ClassificationChunks  int
+	PeakTextBytesRetained int
 
 	// BytesScanned and Truncated are retained for source compatibility. New
 	// request-level callers must use TextBytesScanned, RawBytesObserved, and
@@ -134,9 +150,9 @@ const (
 
 // ExtractText extracts text from OpenAI Chat/Responses, Anthropic Messages,
 // Gemini, and common nested tool-call shapes. Invalid JSON returns
-// ErrInvalidJSON and also populates Result.ParseError. A request cut by
-// MaxScanBytes returns all complete text tokens before the boundary and sets
-// Truncated instead of mislabelling the valid original request as malformed.
+// ErrInvalidJSON and also populates Result.ParseError. MaxScanBytes is retained
+// only as the compatibility alias for the streaming text window; it never cuts
+// the raw JSON body.
 func ExtractText(body []byte, limits Limits) (Result, error) {
 	return extractText(body, limits, contextNone, true)
 }
@@ -156,36 +172,24 @@ func extractText(body []byte, limits Limits, initial contextKind, roleIndex bool
 	if err != nil {
 		return Result{}, err
 	}
-
-	scanBytes := len(body)
-	if scanBytes > limits.MaxScanBytes {
-		scanBytes = limits.MaxScanBytes
-	}
 	result := Result{
 		Parts:            make([]string, 0, minInt(8, limits.MaxTextParts)),
 		Completeness:     CompletenessComplete,
+		Envelope:         EnvelopeComplete,
+		TextCoverage:     TextCoverageComplete,
 		RawBytesObserved: int64(minInt(len(body), limits.MaxRawBytes)),
-		BytesScanned:     scanBytes,
-	}
-	if len(body) > scanBytes {
-		result.addIncomplete(IncompleteScanByteLimit)
+		BytesScanned:     len(body),
 	}
 	x := extractor{limits: limits, result: &result}
-	if err := x.walkJSON(body[:scanBytes], initial, 0, len(body) > scanBytes); err != nil {
+	if err := x.walkJSON(body, initial, 0, false); err != nil {
+		result.Envelope = EnvelopeIncomplete
+		result.TextCoverage = TextCoverageUnavailable
 		result.addIncomplete(IncompleteParseError)
 		result.ParseError = ErrInvalidJSON.Error()
 		result.finish()
 		return result, ErrInvalidJSON
 	}
-	// Role indexing is attempted only for a complete JSON body. When the scan
-	// boundary cuts the request, enforcing modes already fail closed on the
-	// legacy truncation marker and partial role attribution would be misleading.
-	// A bounded first pass that already found an incomplete decode or exceeded
-	// semantic depth has established a fail-closed result. Do not feed the same
-	// attacker-controlled body into the RawMessage role indexer afterward: that
-	// would defeat the O(MaxJSONDepth) traversal guarantee with a second deep
-	// parse and cannot make the incomplete request safe.
-	if roleIndex && scanBytes == len(body) && !result.Truncated {
+	if roleIndex && result.IsComplete() {
 		segments, roleAware, roleTruncated := extractRoleSegments(body, limits)
 		if roleTruncated {
 			result.addIncomplete(IncompleteTextPartLimit)
@@ -196,6 +200,9 @@ func extractText(body []byte, limits Limits, initial contextKind, roleIndex bool
 		}
 	}
 	result.TextBytesScanned = totalPartBytesUnbounded(result.Parts)
+	if !result.IsComplete() {
+		result.TextCoverage = coverageForReasons(result.IncompleteReasons)
+	}
 	result.finish()
 	return result, nil
 }
@@ -206,6 +213,18 @@ func (l Limits) normalized() (Limits, error) {
 	}
 	if l.MaxRawBytes == 0 {
 		l.MaxRawBytes = DefaultMaxRawBytes
+	}
+	if l.MaxTextWindowBytes == 0 {
+		l.MaxTextWindowBytes = l.MaxScanBytes
+		if l.MaxTextWindowBytes < MinTextWindowBytes {
+			l.MaxTextWindowBytes = MinTextWindowBytes
+		}
+		if l.MaxTextWindowBytes > HardMaxTextWindowBytes {
+			l.MaxTextWindowBytes = HardMaxTextWindowBytes
+		}
+	}
+	if l.MaxTotalTextBytes == 0 {
+		l.MaxTotalTextBytes = DefaultMaxTotalTextBytes
 	}
 	if l.MaxJSONDepth == 0 {
 		l.MaxJSONDepth = DefaultMaxJSONDepth
@@ -218,6 +237,11 @@ func (l Limits) normalized() (Limits, error) {
 	}
 	if l.MaxTextParts == 0 {
 		l.MaxTextParts = DefaultMaxTextParts
+	}
+	if l.MaxClassificationChunks == 0 {
+		stride := l.MaxTextWindowBytes - ClassificationOverlapReserveBytes
+		minimum := 2*l.MaxTextParts + (l.MaxTotalTextBytes+stride-1)/stride + 1
+		l.MaxClassificationChunks = maxInt(DefaultMaxClassificationChunks, minimum)
 	}
 	if l.MaxTextPartBytes == 0 {
 		l.MaxTextPartBytes = DefaultMaxTextPartBytes
@@ -248,6 +272,18 @@ func (l Limits) normalized() (Limits, error) {
 	}
 	if l.MaxRawBytes < 1 || l.MaxRawBytes > HardMaxRawBytes {
 		return Limits{}, fmt.Errorf("%w: MaxRawBytes must be between 1 and %d", ErrInvalidLimits, HardMaxRawBytes)
+	}
+	if l.MaxTextWindowBytes < MinTextWindowBytes || l.MaxTextWindowBytes > HardMaxTextWindowBytes {
+		return Limits{}, fmt.Errorf("%w: MaxTextWindowBytes must be between %d and %d", ErrInvalidLimits, MinTextWindowBytes, HardMaxTextWindowBytes)
+	}
+	if l.MaxTotalTextBytes < 1 || l.MaxTotalTextBytes > HardMaxTotalTextBytes {
+		return Limits{}, fmt.Errorf("%w: MaxTotalTextBytes must be between 1 and %d", ErrInvalidLimits, HardMaxTotalTextBytes)
+	}
+	if l.MaxTotalTextBytes < l.MaxTextWindowBytes {
+		return Limits{}, fmt.Errorf("%w: MaxTotalTextBytes must be at least MaxTextWindowBytes", ErrInvalidLimits)
+	}
+	if l.MaxClassificationChunks < 1 || l.MaxClassificationChunks > HardMaxClassificationChunks {
+		return Limits{}, fmt.Errorf("%w: MaxClassificationChunks must be between 1 and %d", ErrInvalidLimits, HardMaxClassificationChunks)
 	}
 	if l.MaxJSONDepth < 1 || l.MaxJSONDepth > HardMaxJSONDepth {
 		return Limits{}, fmt.Errorf("%w: MaxJSONDepth must be between 1 and %d", ErrInvalidLimits, HardMaxJSONDepth)
@@ -2128,6 +2164,13 @@ func containsBinaryControl(value string) bool {
 
 func minInt(a, b int) int {
 	if a < b {
+		return a
+	}
+	return b
+}
+
+func maxInt(a, b int) int {
+	if a > b {
 		return a
 	}
 	return b

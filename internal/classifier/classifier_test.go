@@ -827,7 +827,9 @@ func TestValidUTF8PrefixHandlesInteriorInvalidByte(t *testing.T) {
 
 func TestNormalizationAndPartBudgetsAreBounded(t *testing.T) {
 	t.Parallel()
-	expanding := strings.Repeat("\ufdfa", 15000)
+	// U+FDFA expands to 18 compatibility-normalized runes. Size the fixture
+	// from the active bound so a larger streaming window remains covered.
+	expanding := strings.Repeat("\ufdfa", maxClassifierNormalizedRunes/18+1024)
 	views := normalizeParts([]string{expanding})
 	if len(views.standardRunes) > maxClassifierNormalizedRunes || !views.truncated {
 		t.Fatalf("normalization expansion was not capped: runes=%d truncated=%v", len(views.standardRunes), views.truncated)

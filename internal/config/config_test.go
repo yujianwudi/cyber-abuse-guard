@@ -18,6 +18,13 @@ func TestDefaultMatchesTaskBook(t *testing.T) {
 	if got.MaxScanBytes != 262144 || got.MaxJSONDepth != 32 || got.MaxTextParts != 512 {
 		t.Fatalf("extraction defaults = %d/%d/%d", got.MaxScanBytes, got.MaxJSONDepth, got.MaxTextParts)
 	}
+	if got.MaxTextWindowBytes != 0 || got.EffectiveTextWindowBytes() != 262144 ||
+		got.MaxTotalTextBytes != 8<<20 || got.EffectiveMaxClassificationChunks() != DefaultMaxClassificationChunks ||
+		got.TextWindowMigrationMode() != "legacy_max_scan_bytes_alias" {
+		t.Fatalf("streaming defaults = window:%d effective:%d total:%d chunks:%d migration:%q",
+			got.MaxTextWindowBytes, got.EffectiveTextWindowBytes(), got.MaxTotalTextBytes,
+			got.EffectiveMaxClassificationChunks(), got.TextWindowMigrationMode())
+	}
 	if got.OpaqueMediaPolicy != OpaqueMediaPolicyAuto || got.EffectiveOpaqueMediaPolicy() != OpaqueMediaPolicyAudit {
 		t.Fatalf("balanced opaque-media default = explicit:%q effective:%q", got.OpaqueMediaPolicy, got.EffectiveOpaqueMediaPolicy())
 	}
@@ -91,6 +98,9 @@ classifier:
 	if got.Mode != ModeStrict || got.MaxScanBytes != 131072 {
 		t.Fatalf("overrides not applied: %#v", got)
 	}
+	if got.EffectiveTextWindowBytes() != 131072 || got.TextWindowMigrationMode() != "legacy_max_scan_bytes_alias" {
+		t.Fatalf("legacy max_scan migration = window:%d mode:%q", got.EffectiveTextWindowBytes(), got.TextWindowMigrationMode())
+	}
 	if got.OpaqueMediaPolicy != OpaqueMediaPolicyAllow || got.EffectiveOpaqueMediaPolicy() != OpaqueMediaPolicyAllow {
 		t.Fatalf("opaque media override not applied: %#v", got)
 	}
@@ -105,6 +115,84 @@ classifier:
 	}
 	if !reflect.DeepEqual(got.TrustedProxy.CIDRs, []string{"10.0.0.0/8"}) {
 		t.Fatalf("CIDRs = %#v", got.TrustedProxy.CIDRs)
+	}
+}
+
+func TestRound6StreamingLimitMigration(t *testing.T) {
+	t.Parallel()
+
+	t.Run("legacy small value is clamped without rejecting old config", func(t *testing.T) {
+		cfg, err := Parse([]byte("max_scan_bytes: 64\n"))
+		if err != nil {
+			t.Fatalf("Parse() error = %v", err)
+		}
+		if got := cfg.EffectiveTextWindowBytes(); got != MinAllowedTextWindowBytes {
+			t.Fatalf("effective window=%d want %d", got, MinAllowedTextWindowBytes)
+		}
+		if cfg.TextWindowMigrationMode() != "legacy_max_scan_bytes_clamped" {
+			t.Fatalf("migration mode=%q", cfg.TextWindowMigrationMode())
+		}
+	})
+
+	t.Run("new field overrides omitted legacy default", func(t *testing.T) {
+		cfg, err := Parse([]byte("max_text_window_bytes: 65536\nmax_total_text_bytes: 1048576\nmax_classification_chunks: 2048\n"))
+		if err != nil {
+			t.Fatalf("Parse() error = %v", err)
+		}
+		if cfg.EffectiveTextWindowBytes() != 65536 || cfg.EffectiveMaxClassificationChunks() != 2048 ||
+			cfg.TextWindowMigrationMode() != "explicit_max_text_window_bytes" {
+			t.Fatalf("explicit streaming limits = %#v", cfg)
+		}
+	})
+
+	t.Run("matching old and new aliases are accepted", func(t *testing.T) {
+		cfg, err := Parse([]byte("max_scan_bytes: 65536\nmax_text_window_bytes: 65536\n"))
+		if err != nil {
+			t.Fatalf("Parse() error = %v", err)
+		}
+		if cfg.EffectiveTextWindowBytes() != 65536 {
+			t.Fatalf("effective window=%d", cfg.EffectiveTextWindowBytes())
+		}
+	})
+
+	t.Run("hard part bound has a complete classification budget", func(t *testing.T) {
+		cfg := Default()
+		cfg.MaxTextWindowBytes = MinAllowedTextWindowBytes
+		cfg.MaxTotalTextBytes = MaxAllowedTotalTextBytes
+		cfg.MaxTextParts = MaxAllowedTextParts
+		want := 2*MaxAllowedTextParts +
+			(MaxAllowedTotalTextBytes+(MinAllowedTextWindowBytes-StreamingOverlapBudgetBytes)-1)/
+				(MinAllowedTextWindowBytes-StreamingOverlapBudgetBytes) + 1
+		if got := cfg.MinimumClassificationChunks(); got != want {
+			t.Fatalf("minimum chunks=%d want %d", got, want)
+		}
+		if want > MaxAllowedClassificationChunks {
+			t.Fatalf("hard-limit minimum chunks=%d exceeds hard cap=%d", want, MaxAllowedClassificationChunks)
+		}
+		cfg.MaxClassificationChunks = want
+		if err := Validate(cfg); err != nil {
+			t.Fatalf("Validate(hard complete budget) = %v", err)
+		}
+		cfg.MaxClassificationChunks--
+		if err := Validate(cfg); err == nil {
+			t.Fatal("Validate(one chunk below hard complete budget) = nil")
+		}
+	})
+
+	for name, data := range map[string]string{
+		"conflicting aliases":  "max_scan_bytes: 65536\nmax_text_window_bytes: 131072\n",
+		"explicit zero window": "max_text_window_bytes: 0\n",
+		"window too small":     "max_text_window_bytes: 1024\n",
+		"total below window":   "max_text_window_bytes: 65536\nmax_total_text_bytes: 32768\n",
+		"chunks below formula": "max_text_window_bytes: 65536\nmax_total_text_bytes: 1048576\nmax_classification_chunks: 529\n",
+	} {
+		name, data := name, data
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			if _, err := Parse([]byte(data)); err == nil {
+				t.Fatal("Parse() error = nil")
+			}
+		})
 	}
 }
 
@@ -158,6 +246,9 @@ func TestValidateThresholdsAndRanges(t *testing.T) {
 		"opaque media policy":         func(c *Config) { c.OpaqueMediaPolicy = "download" },
 		"scan too small":              func(c *Config) { c.MaxScanBytes = 0 },
 		"scan too large":              func(c *Config) { c.MaxScanBytes = MaxAllowedScanBytes + 1 },
+		"window too large":            func(c *Config) { c.MaxTextWindowBytes = MaxAllowedTextWindowBytes + 1 },
+		"total text too large":        func(c *Config) { c.MaxTotalTextBytes = MaxAllowedTotalTextBytes + 1 },
+		"classification chunks large": func(c *Config) { c.MaxClassificationChunks = MaxAllowedClassificationChunks + 1 },
 		"depth too large":             func(c *Config) { c.MaxJSONDepth = MaxAllowedJSONDepth + 1 },
 		"parts too large":             func(c *Config) { c.MaxTextParts = MaxAllowedTextParts + 1 },
 		"threshold range":             func(c *Config) { c.Thresholds.HardBlock = 101 },

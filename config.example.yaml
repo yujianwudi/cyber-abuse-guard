@@ -12,7 +12,16 @@ plugins:
       # 24-48h, then balanced after review. Do not start directly in strict.
       mode: observe
 
+      # Legacy compatibility alias. It now selects the bounded text window;
+      # it no longer truncates raw JSON or caps cumulative inspected text.
       max_scan_bytes: 262144
+      # Prefer this explicit key for new configurations. If both keys are
+      # present they must match.
+      # max_text_window_bytes: 262144
+      max_total_text_bytes: 8388608
+      # Omit to derive a safe value from total text, window size, and logical
+      # text-part capacity.
+      # max_classification_chunks: 2048
       max_json_depth: 32
       max_text_parts: 512
 

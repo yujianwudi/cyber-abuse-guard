@@ -2,18 +2,93 @@
 
 ## 0.1.2 — Unreleased candidate
 
-Release status: **blocked candidate; not production-ready**. Blind generations
-v1-v8 are retired or consumed failures. v9 is frozen as
-`CONSUMED / METHODOLOGY INVALID / FAIL` because the exact taxonomy-enum
-validator was missing. The first and only methodologically valid v10 run failed
-with 28/320 benign false positives, 49/320 policy blocks, and 33/320 exact
-  classifications. v10 is consumed and cannot be rerun. No stable `v0.1.2` tag,
-  production release, or production deployment may be created from this
-  candidate. The repository owner may publish an explicitly marked development
-  prerelease snapshot such as `v0.1.2-dev.round5.1`; it is not release admission,
-  must not be marked latest, and may contain only dirty development artifacts.
-  A future stable release attempt requires a new implementation and a newly
-  authored independent unseen set.
+Release status: **BLOCKED / PENDING HOST AND INDEPENDENT AUDIT**. Round 6 is an
+unmerged development candidate based on
+`main@7a416df66a79218d73214084d4bf8a733268d894`. No Round 6 tag or Release has
+been created, and production deployment or an `observe -> balanced` change is
+not authorized. The only validation platform in this round is Linux amd64;
+Windows and macOS are outside scope. The historical v10 result remains
+`CONSUMED / FAIL` and cannot be rerun or used for tuning. A future stable
+release still requires a newly authored independent unseen set.
+
+### Round 6 long-text streaming candidate
+
+- Remove production parsing of `body[:max_scan_bytes]`. Supported JSON requests
+  now traverse the complete CPA-visible envelope and replay proven
+  model-visible string spans incrementally.
+- Migrate legacy `max_scan_bytes` into a compatibility alias for the retained
+  classifier window. Add bounded `max_total_text_bytes` and
+  `max_classification_chunks` controls so cumulative coverage and retained
+  memory are independent.
+- Add a streaming classifier session with derived overlap/carry, logical field
+  boundaries, role/provenance isolation, bounded cross-window reconstruction,
+  and fixed coverage states.
+- Retain only bounded classifier signal facts inside each logical field. If
+  independently safe-looking windows contribute different risk ingredients
+  whose aggregate reaches the balanced threshold, report classifier-window
+  coverage as unavailable instead of incorrectly returning complete allow.
+- Treat assistant/system safety quotes as provisional until a real closing
+  delimiter is observed. Closed quotations discard their bounded provisional
+  result; an unclosed logical field commits it as ordinary content, including
+  later-window and cross-window malicious text.
+- Inspect oversized Base64 candidates with a constant-memory full-stream syntax
+  and decoded-text signal so a binary first sample cannot hide printable text
+  near the end, malformed trailing bytes cannot erase an already proven strong
+  printable Base64 prefix, and high-density text cannot evade detection by
+  inserting a control byte before every 32-byte run. Enforce `max_classification_chunks`
+  before every actual emitted UTF-8-safe chunk rather than relying only on a
+  byte-length estimate.
+- Keep media, metadata, tool-schema, multipart, and role decisions
+  transactional. Add `RoleUnknown` so unknown schema cannot impersonate proven
+  user text.
+- Replace the CPA-transformed OpenAI image multipart JSON legacy collector with
+  a schema-bound raw-span streaming planner. Approved 270 KiB and 1 MiB prompts
+  now receive complete classification in balanced/strict mode, while unknown
+  fields, non-string prompts, opaque files, binary controls, and oversized
+  encoded views retain their fixed multipart contracts.
+- Neutralize every partial finding when envelope or text coverage is
+  incomplete. The optional verified-local-hard exception remains disabled:
+  `balanced` allows plus audits, `strict` blocks plus audits, and incomplete
+  input never updates subject risk.
+- Add audit schema v3 fields `decision`, `coverage`,
+  `incomplete_reason`, and `scanner`, scanner identity
+  `streaming-scanner-v1`, effective-limit status, and fixed low-cardinality
+  counters.
+- Publish classifier identity `classifier-policy-v3` /
+  `2c8c85a913c7ee68db4ec1d63502cbe81d0162e9314c7a36df54a27c93ad7645`.
+- Compact the transactional shadow plan by collapsing caller-controlled keys
+  and semantic values to closed representatives, skipping metadata spans, and
+  using short base-36 markers. Residual allocation remains bounded by structural
+  token/node/field limits and awaits authoritative Linux memory evidence.
+- Add Linux long-text coverage tiers at 64 KiB, 255 KiB, 256 KiB,
+  256 KiB + 1, 270 KiB, 512 KiB, 1 MiB, 4 MiB, and near the effective RPC
+  boundary, plus classifier/extractor fuzz and scaling benchmarks. Final
+  results remain pending exact-source Linux CI.
+- Isolate consumed evaluation/Holdout gate tests behind the
+  `consumed_evaluation` build tag and restrict ordinary Round 6 CI to explicit
+  safe targets and sparse source checkout.
+- Make the Linux build itself audit the complete `readelf --version-info` set,
+  reject non-numeric GLIBC ABI tags and numeric versions above 2.34, and make
+  the long-JSON benchmark fail if its exact extract-package benchmark name is
+  absent instead of accepting a zero-match run.
+- Bind the manual blocked prerelease to an exact candidate SO SHA-256 cited by
+  both CPA Host records and the independent audit. Split the gate into exact
+  `admission -> verify -> publish` jobs: verify rebuilds and uploads one
+  commit-named artifact with read-only non-persisted checkout credentials,
+  publish downloads and reverifies it without a checkout, and the final
+  GH-token-bearing step peels the annotated tag through the GitHub API before
+  running the locked draft/prerelease/not-latest GH CLI command.
+- Preserve two deliberate compatibility boundaries: dense encoded derived
+  views beyond the 128 KiB source / 64 KiB retained decoded budget are
+  incomplete, and legacy `ExtractText` keeps materialized `Parts` segmentation
+  semantics while production routing uses streaming APIs.
+- Target CPA v7.2.80 and v7.2.79 source/compile lanes, but leave both real
+  Linux Host + Mock-upstream matrices **NOT RUN / PENDING**. Do not merge to
+  `main` or create a Release before those Host gates and independent audit pass.
+- Add the Round 6 design, configuration migration, limitations, release-gate,
+  and development-handoff documents.
+
+### Earlier 0.1.2 development history
 
 - Complete the Phase 0 CPA contract alignment without changing the root runtime
   baseline from CPA v7.2.67. Local `execute`, `execute_stream`, and

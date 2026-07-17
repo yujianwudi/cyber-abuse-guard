@@ -451,18 +451,18 @@ func TestExtractRequestScalarCarrierOverflowDisposition(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if nonMediaResult.IsComplete() || !nonMediaResult.HasIncompleteReason(IncompleteDeferredTextCandidateLimit) {
-					t.Fatalf("final-nonmedia overflow did not fail closed: %#v", nonMediaResult)
+				if !nonMediaResult.IsComplete() || nonMediaResult.HasIncompleteReason(IncompleteDeferredTextCandidateLimit) {
+					t.Fatalf("final-nonmedia long carrier was not fully streamed: %#v", nonMediaResult)
 				}
-				if nonMediaResult.OpaqueMedia || nonMediaResult.TextBytesScanned != 0 || strings.Contains(strings.Join(nonMediaResult.Parts, "\n"), payload.value[:64]) {
-					t.Fatalf("final-nonmedia overflow classified a prefix or became opaque: %#v", nonMediaResult)
+				if nonMediaResult.OpaqueMedia || nonMediaResult.TextBytesScanned < len(payload.value) || !strings.Contains(strings.Join(nonMediaResult.Parts, "\n"), payload.value[:64]) {
+					t.Fatalf("final-nonmedia long carrier was not inspectable: %#v", nonMediaResult)
 				}
 			})
 		}
 	}
 }
 
-func TestExtractRequestToolScalarCarrierOverflowIsIncomplete(t *testing.T) {
+func TestExtractRequestToolScalarCarrierLongTextIsInspectable(t *testing.T) {
 	payload := "data:image/png;base64," + strings.Repeat("V", maxDeferredCandidateBytes+1)
 	body := []byte(`{"messages":[{"role":"assistant","tool_calls":[{"function":{"name":"inspect","arguments":{"image_url":` + strconv.Quote(payload) + `}}}]}]}`)
 	result, err := ExtractRequest(body, round5JSONHeaders(), Limits{
@@ -473,11 +473,11 @@ func TestExtractRequestToolScalarCarrierOverflowIsIncomplete(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.IsComplete() || !result.HasIncompleteReason(IncompleteDeferredTextCandidateLimit) {
-		t.Fatalf("tool scalar overflow did not fail closed: %#v", result)
+	if !result.IsComplete() || result.HasIncompleteReason(IncompleteDeferredTextCandidateLimit) {
+		t.Fatalf("tool scalar long text was not fully streamed: %#v", result)
 	}
-	if result.OpaqueMedia || result.TextBytesScanned != 0 || strings.Contains(strings.Join(result.Parts, "\n"), payload[:64]) {
-		t.Fatalf("tool scalar overflow leaked or became opaque: %#v", result)
+	if result.OpaqueMedia || result.TextBytesScanned < len(payload) || !strings.Contains(strings.Join(result.Parts, "\n"), payload[:64]) {
+		t.Fatalf("tool scalar long text was not inspectable: %#v", result)
 	}
 }
 

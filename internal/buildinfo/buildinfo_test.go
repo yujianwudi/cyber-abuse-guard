@@ -19,7 +19,8 @@ func TestCurrentReturnsNormalizedCopy(t *testing.T) {
 	Dirty = " FALSE "
 
 	got := Current()
-	if got.Version != "0.1.2" || got.Commit != "abc123" || got.RulesetVersion != "1.0.7" || got.RulesetSHA256 != "aabbcc" || got.Dirty {
+	if got.Version != "0.1.2" || got.Commit != "abc123" || got.RulesetVersion != "1.0.7" || got.RulesetSHA256 != "aabbcc" ||
+		got.StreamingScanner != StreamingScannerIdentity || got.Dirty {
 		t.Fatalf("Current() = %#v", got)
 	}
 }

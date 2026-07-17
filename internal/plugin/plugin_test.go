@@ -358,7 +358,7 @@ func TestSubjectRiskIsAppliedOnceInRouterAndNeverInExecutor(t *testing.T) {
 	}
 }
 
-func TestObserveDoesNotPersistAuditAndManagementTestNeverPersists(t *testing.T) {
+func TestObservePersistsOneEventAndManagementTestNeverPersists(t *testing.T) {
 	p := New()
 	t.Cleanup(func() { p.Shutdown() })
 	dataDir := filepath.ToSlash(t.TempDir())
@@ -374,8 +374,13 @@ func TestObserveDoesNotPersistAuditAndManagementTestNeverPersists(t *testing.T) 
 	}
 	events := managementJSON(t, p, http.MethodGet, managementBasePath+"/events", nil)
 	items, ok := events["events"].([]any)
-	if !ok || len(items) != 0 {
-		t.Fatalf("observe/test persisted audit events: %#v", events)
+	if !ok || len(items) != 1 {
+		t.Fatalf("observe route plus management test events: %#v, want exactly one", events)
+	}
+	event, ok := items[0].(map[string]any)
+	if !ok || event["action"] != "observe" || event["decision"] != "observe_malicious_text" ||
+		event["coverage"] != "complete" || event["scanner"] != streamingScannerIdentity {
+		t.Fatalf("observe event=%#v", items[0])
 	}
 }
 
@@ -393,16 +398,22 @@ func TestAuditPersistsOnceAndDoesNotBlock(t *testing.T) {
 	if !ok || len(items) != 1 {
 		t.Fatalf("audit events = %#v, want exactly one", events)
 	}
+	event, ok := items[0].(map[string]any)
+	if !ok || event["action"] != "audit" || event["decision"] != "audit_malicious_text" ||
+		event["coverage"] != "complete" || event["scanner"] != streamingScannerIdentity ||
+		event["category"] != "credential_theft" {
+		t.Fatalf("audit event=%#v", items[0])
+	}
 }
 
-func TestScanTruncationUsesIncompleteInspectionModeContract(t *testing.T) {
-	body := `{"messages":[{"role":"user","content":"` + strings.Repeat("A", 256) + `"}]}`
+func TestTotalTextLimitUsesIncompleteInspectionModeContract(t *testing.T) {
+	body := `{"messages":[{"role":"user","content":"` + strings.Repeat("A", (16<<10)+1) + `"}]}`
 	for _, tt := range []struct {
 		mode        string
 		wantHandled bool
 		wantEvent   bool
 	}{
-		{mode: "observe", wantHandled: false, wantEvent: false},
+		{mode: "observe", wantHandled: false, wantEvent: true},
 		{mode: "audit", wantHandled: false, wantEvent: true},
 		{mode: "balanced", wantHandled: false, wantEvent: true},
 		{mode: "strict", wantHandled: true, wantEvent: true},
@@ -411,26 +422,31 @@ func TestScanTruncationUsesIncompleteInspectionModeContract(t *testing.T) {
 			p := New()
 			t.Cleanup(func() { p.Shutdown() })
 			dataDir := filepath.ToSlash(t.TempDir())
-			register(t, p, "mode: "+tt.mode+"\nmax_scan_bytes: 64\naudit:\n  enabled: true\n  data_dir: \""+dataDir+"\"\nsubject_control:\n  enabled: false\n")
+			register(t, p, "mode: "+tt.mode+"\nmax_scan_bytes: 16384\nmax_total_text_bytes: 16384\naudit:\n  enabled: true\n  data_dir: \""+dataDir+"\"\nsubject_control:\n  enabled: false\n")
 			route := callRoute(t, p, body)
 			if route.Handled != tt.wantHandled {
-				t.Fatalf("truncated %s route handled=%v, want %v; route=%+v", tt.mode, route.Handled, tt.wantHandled, route)
+				t.Fatalf("total-limit %s route handled=%v, want %v; route=%+v", tt.mode, route.Handled, tt.wantHandled, route)
 			}
 			events := managementJSON(t, p, http.MethodGet, managementBasePath+"/events", nil)
 			items, ok := events["events"].([]any)
 			if !ok || (len(items) == 1) != tt.wantEvent {
-				t.Fatalf("truncated %s events=%#v, wantEvent=%v", tt.mode, events, tt.wantEvent)
+				t.Fatalf("total-limit %s events=%#v, wantEvent=%v", tt.mode, events, tt.wantEvent)
 			}
-			if tt.wantEvent && items[0].(map[string]any)["category"] != "scan_limit" {
-				t.Fatalf("truncated event category=%#v, want scan_limit", items[0])
+			if tt.wantEvent && items[0].(map[string]any)["category"] != "total_text_limit" {
+				t.Fatalf("total-limit event category=%#v, want total_text_limit", items[0])
 			}
 			if tt.wantEvent {
 				wantAction := "audit"
-				if tt.mode == "strict" {
+				if tt.mode == "observe" {
+					wantAction = "observe"
+				} else if tt.mode == "strict" {
 					wantAction = "block"
 				}
 				if got := items[0].(map[string]any)["action"]; got != wantAction {
-					t.Fatalf("truncated %s event action=%#v, want %q", tt.mode, got, wantAction)
+					t.Fatalf("total-limit %s event action=%#v, want %q", tt.mode, got, wantAction)
+				}
+				if got := items[0].(map[string]any)["coverage"]; got != "incomplete" {
+					t.Fatalf("total-limit %s event coverage=%#v", tt.mode, got)
 				}
 			}
 		})

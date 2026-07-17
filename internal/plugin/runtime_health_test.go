@@ -244,8 +244,14 @@ func TestStrictUnknownSourceFormatPersistsPrivacyMinimalAudit(t *testing.T) {
 	if !ok {
 		t.Fatalf("strict unknown source event=%#v, want object", items[0])
 	}
-	if event["action"] != "block" || event["mode"] != "strict" || event["category"] != "unknown_source_format" {
+	if event["action"] != "block" || event["mode"] != "strict" || event["category"] != "unknown_source_format" ||
+		event["decision"] != "block_unknown_source_format" || event["coverage"] != "incomplete" ||
+		event["incomplete_reason"] != "incomplete_inspection" || event["scanner"] != streamingScannerIdentity {
 		t.Fatalf("strict unknown source event=%#v", event)
+	}
+	counters := p.counters.snapshot()
+	if counters["coverage_incomplete"] != 1 || counters["incomplete_inspections"] != 1 || counters["incomplete_blocked"] != 1 {
+		t.Fatalf("strict unknown source coverage counters=%v", counters)
 	}
 	if requestHash, _ := event["request_hash"].(string); !strings.HasPrefix(requestHash, "sha256:") {
 		t.Fatalf("strict unknown source request hash=%#v", event["request_hash"])
@@ -447,9 +453,9 @@ func TestOpaqueMediaPolicyIsModeAwareAndNeverFetchesURLs(t *testing.T) {
 func TestIncompleteDispositionDoesNotCountOpaquePolicyBlock(t *testing.T) {
 	p := New()
 	t.Cleanup(p.Shutdown)
-	register(t, p, "mode: balanced\nmax_scan_bytes: 64\nopaque_media_policy: block\naudit:\n  enabled: false\nsubject_control:\n  enabled: false\n")
+	register(t, p, "mode: balanced\nmax_scan_bytes: 16384\nmax_total_text_bytes: 16384\nopaque_media_policy: block\naudit:\n  enabled: false\nsubject_control:\n  enabled: false\n")
 
-	body := `{"input":[{"type":"input_image","image_url":"data:image/png;base64,AAAA"},{"type":"input_text","text":"` + strings.Repeat("x", 256) + `"}]}`
+	body := `{"input":[{"type":"input_image","image_url":"data:image/png;base64,AAAA"},{"type":"input_text","text":"` + strings.Repeat("x", (16<<10)+1) + `"}]}`
 	if route := callRoute(t, p, body); route.Handled {
 		t.Fatalf("balanced incomplete+opaque request was blocked: %+v", route)
 	}
