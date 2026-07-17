@@ -10,13 +10,13 @@ cpa_tag_ref_api='https://api.github.com/repos/router-for-me/CLIProxyAPI/git/ref/
 requested_profile="${CPA_COMPAT_PROFILE:-all}"
 case "$requested_profile" in
   all)
-    profiles=(primary backward)
+    profiles=(primary previous backward)
     ;;
-  primary|backward)
+  primary|previous|backward)
     profiles=("$requested_profile")
     ;;
   *)
-    printf 'unsupported CPA_COMPAT_PROFILE=%s; use all, primary, or backward\n' "$requested_profile" >&2
+    printf 'unsupported CPA_COMPAT_PROFILE=%s; use all, primary, previous, or backward\n' "$requested_profile" >&2
     exit 2
     ;;
 esac
@@ -33,11 +33,18 @@ esac
 select_profile() {
   case "$1" in
     primary)
+      cpa_version='v7.2.81'
+      cpa_commit='106270bea6f18ba2f2cc8b0b5887987f2874eed8'
+      cpa_module_sum='h1:TNhOAGi8zDfnUE8KKyhi6NEvCI/Lu2VBj953WT9GKCs='
+      cpa_go_mod_sum='h1:ytvZNWbCv7PrAyR80+RKsDJPODsdL6qxyFaXDBNZdqs='
+      cpa_must_be_latest=1
+      ;;
+    previous)
       cpa_version='v7.2.80'
       cpa_commit='09da52ad509e2c18e7b9540db3b98c2214c280aa'
       cpa_module_sum='h1:QIa5T/KYvJACHVPPRzXcRwq/HLpbwWYJYpZAC1eY2WA='
       cpa_go_mod_sum='h1:ytvZNWbCv7PrAyR80+RKsDJPODsdL6qxyFaXDBNZdqs='
-      cpa_must_be_latest=1
+      cpa_must_be_latest=0
       ;;
     backward)
       cpa_version='v7.2.79'

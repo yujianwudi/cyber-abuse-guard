@@ -55,7 +55,7 @@ release still requires a newly authored independent unseen set.
   `streaming-scanner-v1`, effective-limit status, and fixed low-cardinality
   counters.
 - Publish classifier identity `classifier-policy-v3` /
-  `2c8c85a913c7ee68db4ec1d63502cbe81d0162e9314c7a36df54a27c93ad7645`.
+  `e67ca47a8f9c03b9ba42a417503e7969ee29421471454aa26c4306c8e7d4a97c`.
 - Compact the transactional shadow plan by collapsing caller-controlled keys
   and semantic values to closed representatives, skipping metadata spans, and
   using short base-36 markers. Residual allocation remains bounded by structural
@@ -71,8 +71,9 @@ release still requires a newly authored independent unseen set.
   reject non-numeric GLIBC ABI tags and numeric versions above 2.34, and make
   the long-JSON benchmark fail if its exact extract-package benchmark name is
   absent instead of accepting a zero-match run.
-- Bind the manual blocked prerelease to an exact candidate SO SHA-256 cited by
-  both CPA Host records and the independent audit. Split the gate into exact
+- Bind the manual blocked prerelease dispatch and workflow definitions to the
+  exact candidate tag/commit, and bind the candidate SO SHA-256 to all three CPA
+  Host records and the independent audit. Split the gate into exact
   `admission -> verify -> publish` jobs: verify rebuilds and uploads one
   commit-named artifact with read-only non-persisted checkout credentials,
   publish downloads and reverifies it without a checkout, and the final
@@ -82,9 +83,10 @@ release still requires a newly authored independent unseen set.
   views beyond the 128 KiB source / 64 KiB retained decoded budget are
   incomplete, and legacy `ExtractText` keeps materialized `Parts` segmentation
   semantics while production routing uses streaming APIs.
-- Target CPA v7.2.80 and v7.2.79 source/compile lanes, but leave both real
-  Linux Host + Mock-upstream matrices **NOT RUN / PENDING**. Do not merge to
-  `main` or create a Release before those Host gates and independent audit pass.
+- Target CPA v7.2.81 primary, v7.2.80 previous, and v7.2.79 backward
+  source/compile lanes, but leave all three real Linux Host + Mock-upstream
+  matrices **NOT RUN / PENDING**. Do not merge to `main` or create a Release
+  before those Host gates and independent audit pass.
 - Add the Round 6 design, configuration migration, limitations, release-gate,
   and development-handoff documents.
 

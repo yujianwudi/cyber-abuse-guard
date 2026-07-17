@@ -24,6 +24,7 @@ const (
 	cpaCompatibilityModfileEnv = "CPA_COMPAT_MODFILE"
 	cpaCompatibilityCommitEnv  = "CPA_COMPAT_EXPECTED_COMMIT"
 	cpaPrimaryProfile          = "primary"
+	cpaPreviousProfile         = "previous"
 	cpaBackwardProfile         = "backward"
 )
 
@@ -39,11 +40,19 @@ type cpaCompatibilityProfile struct {
 var cpaCompatibilityProfiles = map[string]cpaCompatibilityProfile{
 	cpaPrimaryProfile: {
 		Name:       cpaPrimaryProfile,
+		Version:    "v7.2.81",
+		Commit:     "106270bea6f18ba2f2cc8b0b5887987f2874eed8",
+		ModuleSum:  "h1:TNhOAGi8zDfnUE8KKyhi6NEvCI/Lu2VBj953WT9GKCs=",
+		GoModSum:   "h1:ytvZNWbCv7PrAyR80+RKsDJPODsdL6qxyFaXDBNZdqs=",
+		MustLatest: true,
+	},
+	cpaPreviousProfile: {
+		Name:       cpaPreviousProfile,
 		Version:    "v7.2.80",
 		Commit:     "09da52ad509e2c18e7b9540db3b98c2214c280aa",
 		ModuleSum:  "h1:QIa5T/KYvJACHVPPRzXcRwq/HLpbwWYJYpZAC1eY2WA=",
 		GoModSum:   "h1:ytvZNWbCv7PrAyR80+RKsDJPODsdL6qxyFaXDBNZdqs=",
-		MustLatest: true,
+		MustLatest: false,
 	},
 	cpaBackwardProfile: {
 		Name:       cpaBackwardProfile,
@@ -250,8 +259,8 @@ func selectedCPACompatibilityProfile(t *testing.T) cpaCompatibilityProfile {
 	}
 	profile, ok := cpaCompatibilityProfiles[name]
 	if !ok {
-		t.Fatalf("unsupported %s=%q; allowed values are %q and %q",
-			cpaCompatibilityProfileEnv, name, cpaPrimaryProfile, cpaBackwardProfile)
+		t.Fatalf("unsupported %s=%q; allowed values are %q, %q, and %q",
+			cpaCompatibilityProfileEnv, name, cpaPrimaryProfile, cpaPreviousProfile, cpaBackwardProfile)
 	}
 	if expectedCommit := strings.TrimSpace(os.Getenv(cpaCompatibilityCommitEnv)); expectedCommit != "" && expectedCommit != profile.Commit {
 		t.Fatalf("%s=%q does not match pinned %s commit %s",

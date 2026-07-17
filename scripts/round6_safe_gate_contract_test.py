@@ -594,6 +594,22 @@ git -C "$destination" checkout "$commit"
         with self.assertRaisesRegex(ContractError, "expected_so_sha256"):
             validate_blocked_prerelease_workflow(workflow, Path("round6-prerelease.yml"))
 
+    def test_blocked_prerelease_missing_v7281_host_inputs_fail(self):
+        original = self.blocked_workflow()
+        for input_name in (
+            "host_v7281_validation",
+            "host_v7281_evidence_sha256",
+        ):
+            with self.subTest(input_name=input_name):
+                workflow = original.replace(
+                    f"      {input_name}:\n", f"      removed_{input_name}:\n", 1
+                )
+                self.assertNotEqual(workflow, original)
+                with self.assertRaisesRegex(ContractError, input_name):
+                    validate_blocked_prerelease_workflow(
+                        workflow, Path("round6-prerelease.yml")
+                    )
+
     def test_blocked_prerelease_missing_actions_read_fails(self):
         workflow = self.blocked_workflow().replace("  actions: read\n", "")
         with self.assertRaisesRegex(ContractError, "actions: read"):
@@ -616,28 +632,77 @@ git -C "$destination" checkout "$commit"
 
     def test_blocked_prerelease_admission_comment_spoof_fails(self):
         workflow = self.blocked_workflow().replace(
-            '          [[ "$HOST_V7280" == PASS ]]\n',
-            '          # [[ "$HOST_V7280" == PASS ]]\n          true\n',
+            '          [[ "$HOST_V7281" == PASS ]]\n',
+            '          # [[ "$HOST_V7281" == PASS ]]\n          true\n',
         )
         with self.assertRaisesRegex(ContractError, "exact reviewed"):
             validate_blocked_prerelease_workflow(workflow, Path("round6-prerelease.yml"))
 
+    def test_blocked_prerelease_identity_env_spoof_fails(self):
+        original = self.blocked_workflow()
+        cases = (
+            ("DISPATCH_REF", "${{ github.ref }}", "refs/heads/main"),
+            ("DISPATCH_SHA", "${{ github.sha }}", "0000000000000000000000000000000000000000"),
+            ("WORKFLOW_REF", "${{ github.workflow_ref }}", "owner/repo/.github/workflows/round6-blocked-prerelease.yml@refs/heads/main"),
+            ("WORKFLOW_SHA", "${{ github.workflow_sha }}", "0000000000000000000000000000000000000000"),
+        )
+        for name, expected, spoofed in cases:
+            with self.subTest(name=name):
+                workflow = original.replace(
+                    f"          {name}: {expected}\n",
+                    f"          {name}: {spoofed}\n",
+                    1,
+                )
+                self.assertNotEqual(workflow, original)
+                with self.assertRaisesRegex(ContractError, "exact reviewed"):
+                    validate_blocked_prerelease_workflow(
+                        workflow, Path("round6-prerelease.yml")
+                    )
+
+    def test_blocked_prerelease_identity_command_spoof_fails(self):
+        original = self.blocked_workflow()
+        commands = (
+            '[[ "$DISPATCH_REF" == "refs/tags/$TAG" ]]',
+            '[[ "$DISPATCH_SHA" == "$EXPECTED_COMMIT" ]]',
+            '[[ "$WORKFLOW_SHA" == "$EXPECTED_COMMIT" ]]',
+            '[[ "$WORKFLOW_REF" == "${GITHUB_REPOSITORY}/.github/workflows/round6-blocked-prerelease.yml@refs/tags/$TAG" ]]',
+        )
+        for command in commands:
+            with self.subTest(command=command):
+                workflow = original.replace(
+                    f"          {command}\n",
+                    "          true\n",
+                    1,
+                )
+                self.assertNotEqual(workflow, original)
+                with self.assertRaisesRegex(ContractError, "exact reviewed"):
+                    validate_blocked_prerelease_workflow(
+                        workflow, Path("round6-prerelease.yml")
+                    )
+
     def test_blocked_prerelease_if_expression_spoof_fails(self):
         workflow = self.blocked_workflow().replace(
-            "    if: >-\n      inputs.host_v7280_validation == 'PASS' &&\n      inputs.host_v7279_validation == 'PASS' &&\n      inputs.independent_audit_validation == 'PASS' &&\n      inputs.authorize_blocked_prerelease == true\n",
+            "    if: >-\n      inputs.host_v7281_validation == 'PASS' &&\n      inputs.host_v7280_validation == 'PASS' &&\n      inputs.host_v7279_validation == 'PASS' &&\n      inputs.independent_audit_validation == 'PASS' &&\n      inputs.authorize_blocked_prerelease == true\n",
             "    if: ${{{{ true }}}}\n"
-            "    # inputs.host_v7280_validation == 'PASS' && inputs.host_v7279_validation == 'PASS' &&\n"
+            "    # inputs.host_v7281_validation == 'PASS' && inputs.host_v7280_validation == 'PASS' &&\n"
+            "    # inputs.host_v7279_validation == 'PASS' &&\n"
             "    # inputs.independent_audit_validation == 'PASS' && inputs.authorize_blocked_prerelease == true\n",
         )
         with self.assertRaisesRegex(ContractError, "missing explicit gate"):
             validate_blocked_prerelease_workflow(workflow, Path("round6-prerelease.yml"))
 
     def test_blocked_prerelease_missing_host_gate_fails(self):
-        workflow = self.blocked_workflow().replace(
-            "      inputs.host_v7279_validation == 'PASS' &&\n", ""
-        )
-        with self.assertRaisesRegex(ContractError, "missing explicit gate"):
-            validate_blocked_prerelease_workflow(workflow, Path("round6-prerelease.yml"))
+        original = self.blocked_workflow()
+        for version in ("7281", "7280", "7279"):
+            with self.subTest(version=version):
+                workflow = original.replace(
+                    f"      inputs.host_v{version}_validation == 'PASS' &&\n", "", 1
+                )
+                self.assertNotEqual(workflow, original)
+                with self.assertRaisesRegex(ContractError, "missing explicit gate"):
+                    validate_blocked_prerelease_workflow(
+                        workflow, Path("round6-prerelease.yml")
+                    )
 
     def test_blocked_prerelease_missing_remote_tag_recheck_fails(self):
         workflow = self.blocked_workflow().replace(
@@ -723,6 +788,17 @@ git -C "$destination" checkout "$commit"
             "            'Candidate Linux amd64 SO SHA-256: unavailable' \\\n",
             1,
         )
+        with self.assertRaisesRegex(ContractError, "exact reviewed text"):
+            validate_blocked_prerelease_workflow(workflow, Path("round6-prerelease.yml"))
+
+    def test_blocked_prerelease_missing_v7281_host_evidence_note_fails(self):
+        original = self.blocked_workflow()
+        workflow = original.replace(
+            '            "CPA v7.2.81 Host evidence SHA-256: $HOST_V7281_SHA256" \\\n',
+            "",
+            1,
+        )
+        self.assertNotEqual(workflow, original)
         with self.assertRaisesRegex(ContractError, "exact reviewed text"):
             validate_blocked_prerelease_workflow(workflow, Path("round6-prerelease.yml"))
 

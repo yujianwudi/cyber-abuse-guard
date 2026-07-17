@@ -579,7 +579,7 @@ func streamMultipartTextField(part *multipart.Part, fieldID uint64, limits Limit
 	for {
 		r, size, err := reader.ReadRune()
 		if errors.Is(err, io.EOF) {
-			variants, decodeIncomplete := decoder.finish()
+			variants, decodeIncomplete := decoder.finish(false)
 			if decodeIncomplete {
 				result.TextCoverage = TextCoverageUnavailable
 				result.addIncomplete(IncompleteTextPartByteLimit)

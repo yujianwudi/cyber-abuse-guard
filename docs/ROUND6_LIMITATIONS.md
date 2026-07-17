@@ -8,11 +8,12 @@ production approval. Windows and macOS validation is outside this round. See
 
 ## Release blockers
 
-- Official CPA v7.2.80 and v7.2.79 source/compile compatibility is a CI gate, but real Host + Mock-upstream validation must be performed by the user in the authorized server sandbox.
+- Official CPA v7.2.81, v7.2.80, and v7.2.79 source/compile compatibility is a CI gate, but real Host + Mock-upstream validation must be performed by the user in the authorized server sandbox.
 - No Los Angeles production host may be accessed or modified by this task.
 - A new release must remain `BLOCKED / PENDING HOST AND INDEPENDENT AUDIT` and must not be marked latest.
 - Production `observe -> balanced` is outside this task and requires a later explicit approval.
-- The ordinary CI and manual release boundary is documented in [ROUND6_RELEASE_GATE.md](ROUND6_RELEASE_GATE.md). The manual workflow defaults to blocked and cannot create a draft prerelease without explicit PASS inputs for both CPA Host versions, an independent audit PASS, and a separate authorization boolean.
+- The ordinary CI and manual release boundary is documented in [ROUND6_RELEASE_GATE.md](ROUND6_RELEASE_GATE.md). The manual workflow defaults to blocked and cannot create a draft prerelease without explicit PASS inputs for all three CPA Host versions, an independent audit PASS, and a separate authorization boolean.
+- Host evidence PASS values and SHA-256 inputs are externally reviewed declarations. The workflow validates their format and candidate binding but does not download the underlying evidence files or recompute those evidence hashes; protected Environment reviewers must independently obtain and verify the files, with self-review disabled.
 - The workflow's exact run/environment hashes, clean execution environment,
   canonical checksums, and ZIP-contained identity checks reduce runner and
   transfer ambiguity but do not replace GitHub Environment reviewers,
@@ -66,5 +67,5 @@ The external auditor should independently verify:
 5. SQLite `quick_check`, schema migration backup, privacy canaries, race, fuzz, allocation, RSS, and reproducible artifact hashes;
 6. rollback to the prior candidate without touching production request or audit data.
 
-CPA v7.2.80 and v7.2.79 real Host + Mock-upstream results are both
+CPA v7.2.81, v7.2.80, and v7.2.79 real Host + Mock-upstream results are all
 **NOT RUN / PENDING**. Source/compile checks cannot substitute for these gates.

@@ -36,10 +36,10 @@ classifier.
 | Merge and release | Not merged to `main`; no Round 6 tag or Release |
 | Validation platform | Linux amd64 only; glibc 2.34 or newer is the documented build target |
 | Out of scope | Windows, macOS, musl/Alpine, local deployment, production validation |
-| CPA Host matrix | v7.2.80 and v7.2.79 real Host + Mock-upstream runs are **NOT RUN / PENDING** |
+| CPA Host matrix | v7.2.81, v7.2.80, and v7.2.79 real Host + Mock-upstream runs are **NOT RUN / PENDING** |
 | Production | Not accessed or modified; no production request, audit database, credential, HMAC key, account pool, or real Provider was used |
 | Scanner identity | `streaming-scanner-v1` |
-| Classifier policy | `classifier-policy-v3` / `2c8c85a913c7ee68db4ec1d63502cbe81d0162e9314c7a36df54a27c93ad7645` |
+| Classifier policy | `classifier-policy-v3` / `e67ca47a8f9c03b9ba42a417503e7969ee29421471454aa26c4306c8e7d4a97c` |
 | Embedded YAML ruleset | `1.0.7` / `7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134` |
 | Audit schema | v3 |
 
@@ -179,6 +179,7 @@ for implementation or conclusions.
 | Linux amd64 format/module/vet/vulnerability/script gates | Pending final Linux CI |
 | Linux amd64 unit/race/fuzz/benchmark evidence | Pending final Linux CI |
 | Long-text tier matrix from 64 KiB through near the RPC limit | Test coverage is present; authoritative Linux result pending |
+| CPA v7.2.81 Host + Mock upstream | **NOT RUN / PENDING** |
 | CPA v7.2.80 Host + Mock upstream | **NOT RUN / PENDING** |
 | CPA v7.2.79 Host + Mock upstream | **NOT RUN / PENDING** |
 | Independent source/artifact/Host audit | **NOT RUN / PENDING** |
@@ -209,9 +210,9 @@ Any future admitted development artifact remains Linux amd64 and blocked:
 | `cyber-abuse-guard-v<version>-source.tar.gz` | Source review bundle; does not by itself prove Git provenance |
 
 The manual Round 6 workflow must stay draft, prerelease, not latest, and named
-`BLOCKED / PENDING HOST AND INDEPENDENT AUDIT`. It cannot be admitted until both CPA
-Host versions and the independent audit provide explicit PASS evidence and the
-owner separately authorizes the blocked prerelease. Both Host records and the
+`BLOCKED / PENDING HOST AND INDEPENDENT AUDIT`. It cannot be admitted until all
+three CPA Host versions and the independent audit provide explicit PASS evidence
+and the owner separately authorizes the blocked prerelease. All three Host records and the
 independent audit must cite one exact candidate Linux SO SHA-256; the workflow
 recomputes that hash immediately before attaching the rebuilt artifact.
 

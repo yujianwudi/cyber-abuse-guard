@@ -84,6 +84,8 @@ BLOCKED_PRERELEASE_INPUT_ORDER = (
     "expected_tree",
     "ci_run_id",
     "expected_so_sha256",
+    "host_v7281_validation",
+    "host_v7281_evidence_sha256",
     "host_v7280_validation",
     "host_v7280_evidence_sha256",
     "host_v7279_validation",
@@ -93,14 +95,9 @@ BLOCKED_PRERELEASE_INPUT_ORDER = (
     "authorize_blocked_prerelease",
 )
 BLOCKED_PRERELEASE_INPUTS = set(BLOCKED_PRERELEASE_INPUT_ORDER)
-BLOCKED_PRERELEASE_GATES = {
-    "inputs.host_v7280_validation == 'PASS'",
-    "inputs.host_v7279_validation == 'PASS'",
-    "inputs.independent_audit_validation == 'PASS'",
-    "inputs.authorize_blocked_prerelease == true",
-}
 BLOCKED_PRERELEASE_IF_LINES = (
     "if: >-",
+    "inputs.host_v7281_validation == 'PASS' &&",
     "inputs.host_v7280_validation == 'PASS' &&",
     "inputs.host_v7279_validation == 'PASS' &&",
     "inputs.independent_audit_validation == 'PASS' &&",
@@ -112,6 +109,12 @@ ADMISSION_INPUT_ENV = (
     "EXPECTED_TREE: ${{ inputs.expected_tree }}",
     "CI_RUN_ID: ${{ inputs.ci_run_id }}",
     "EXPECTED_SO_SHA256: ${{ inputs.expected_so_sha256 }}",
+    "DISPATCH_REF: ${{ github.ref }}",
+    "DISPATCH_SHA: ${{ github.sha }}",
+    "WORKFLOW_REF: ${{ github.workflow_ref }}",
+    "WORKFLOW_SHA: ${{ github.workflow_sha }}",
+    "HOST_V7281: ${{ inputs.host_v7281_validation }}",
+    "HOST_V7281_SHA256: ${{ inputs.host_v7281_evidence_sha256 }}",
     "HOST_V7280: ${{ inputs.host_v7280_validation }}",
     "HOST_V7280_SHA256: ${{ inputs.host_v7280_evidence_sha256 }}",
     "HOST_V7279: ${{ inputs.host_v7279_validation }}",
@@ -126,10 +129,16 @@ ADMISSION_INPUT_COMMANDS = (
     '[[ "$EXPECTED_TREE" =~ ^[0-9a-f]{40}$ ]]',
     '[[ "$CI_RUN_ID" =~ ^[1-9][0-9]*$ ]]',
     '[[ "$EXPECTED_SO_SHA256" =~ ^[0-9a-f]{64}$ ]]',
+    '[[ "$DISPATCH_REF" == "refs/tags/$TAG" ]]',
+    '[[ "$DISPATCH_SHA" == "$EXPECTED_COMMIT" ]]',
+    '[[ "$WORKFLOW_SHA" == "$EXPECTED_COMMIT" ]]',
+    '[[ "$WORKFLOW_REF" == "${GITHUB_REPOSITORY}/.github/workflows/round6-blocked-prerelease.yml@refs/tags/$TAG" ]]',
+    '[[ "$HOST_V7281" == PASS ]]',
     '[[ "$HOST_V7280" == PASS ]]',
     '[[ "$HOST_V7279" == PASS ]]',
     '[[ "$INDEPENDENT_AUDIT" == PASS ]]',
     '[[ "$AUTHORIZED" == true ]]',
+    '[[ "$HOST_V7281_SHA256" =~ ^[0-9a-f]{64}$ ]]',
     '[[ "$HOST_V7280_SHA256" =~ ^[0-9a-f]{64}$ ]]',
     '[[ "$HOST_V7279_SHA256" =~ ^[0-9a-f]{64}$ ]]',
     '[[ "$INDEPENDENT_AUDIT_SHA256" =~ ^[0-9a-f]{64}$ ]]',
@@ -272,7 +281,7 @@ BLOCKED_STEP_CONTRACTS = {
         ("Install bounded build dependencies", ("name", "run"), None),
         ("Run source and Round6 regression gates", ("name", "run"), None),
         (
-            "Verify CPA v7.2.80 primary and v7.2.79 backward source compatibility",
+            "Verify CPA v7.2.81 primary, v7.2.80 previous, and v7.2.79 backward source compatibility",
             ("name", "env", "run"),
             None,
         ),
@@ -315,6 +324,12 @@ ALLOWED_GITHUB_TOKEN_PATHS = {
     "jobs.admission.steps[1].env.GH_TOKEN",
     "jobs.publish.steps[2].env.GH_TOKEN",
 }
+ALLOWED_GITHUB_IDENTITY_EXPRESSIONS = {
+    "jobs.admission.steps[0].env.DISPATCH_REF": "${{ github.ref }}",
+    "jobs.admission.steps[0].env.DISPATCH_SHA": "${{ github.sha }}",
+    "jobs.admission.steps[0].env.WORKFLOW_REF": "${{ github.workflow_ref }}",
+    "jobs.admission.steps[0].env.WORKFLOW_SHA": "${{ github.workflow_sha }}",
+}
 GITHUB_EXPRESSION = re.compile(r"\$\{\{(.*?)\}\}", re.DOTALL)
 SENSITIVE_EXPRESSION_CONTEXT = re.compile(r"(?i)(?<![A-Za-z0-9_])(?:github|secrets)(?![A-Za-z0-9_])")
 ROUND6_SPARSE_PATTERNS = (
@@ -342,7 +357,7 @@ ROUND6_SPARSE_PATTERNS = (
     "!/testdata/*retired*",
 )
 BLOCKED_STEP_RUN_SHA256 = {
-    ("admission", 0): "ab04be64877193bb22a97dbc97b9eff4b4a4ca0355ca376dd6fb945955085929",
+    ("admission", 0): "319061b2073101ae820f8543977b83b3fb3c722f38ffd30aafd430d757ae40b9",
     ("admission", 1): "7f1817ec7b567df4be63fafd9ee2b2347ac37e01982e41ee3338f64c79cae81a",
     ("verify", 1): "b38e1f3a74567d8390bde6390c75c7e96a3bd0d5bc13de0e6a7dbbcfeec0a2fe",
     ("verify", 2): "3427df1bdbbcd38976514b679706f45fe6331981e750168beffd9bfdd1efdea1",
@@ -353,7 +368,7 @@ BLOCKED_STEP_RUN_SHA256 = {
     ("verify", 8): "72ba08821693dcb100be3d4dcfaac32d485191186d46fa22119ae7a7b60990b9",
     ("verify", 9): "17e57156996beab078ddb62b4b9c0d5dd1fee6f247fc69e859725a21590bc389",
     ("publish", 1): "d67141ec5e029c4e2176853cb764778a5bfe8afd5ce15cee10417ddc89991182",
-    ("publish", 2): "07fc8302e6aae89ce5f3c0b3cc2af503eb23f55e391c0ea112e55e05bf4f7762",
+    ("publish", 2): "5b86ceadb2c6b2a09cabb542e53aa5728a8d24f6a0aa07a5f3cd2a05e993a7db",
 }
 BLOCKED_STEP_RUN_STYLE = {
     ("admission", 0): "|",
@@ -376,6 +391,12 @@ BLOCKED_STEP_ENV = {
         ("EXPECTED_TREE", "${{ inputs.expected_tree }}"),
         ("CI_RUN_ID", "${{ inputs.ci_run_id }}"),
         ("EXPECTED_SO_SHA256", "${{ inputs.expected_so_sha256 }}"),
+        ("DISPATCH_REF", "${{ github.ref }}"),
+        ("DISPATCH_SHA", "${{ github.sha }}"),
+        ("WORKFLOW_REF", "${{ github.workflow_ref }}"),
+        ("WORKFLOW_SHA", "${{ github.workflow_sha }}"),
+        ("HOST_V7281", "${{ inputs.host_v7281_validation }}"),
+        ("HOST_V7281_SHA256", "${{ inputs.host_v7281_evidence_sha256 }}"),
         ("HOST_V7280", "${{ inputs.host_v7280_validation }}"),
         ("HOST_V7280_SHA256", "${{ inputs.host_v7280_evidence_sha256 }}"),
         ("HOST_V7279", "${{ inputs.host_v7279_validation }}"),
@@ -419,6 +440,7 @@ BLOCKED_STEP_ENV = {
         ("EXPECTED_TREE", "${{ inputs.expected_tree }}"),
         ("EXPECTED_SO_SHA256", "${{ inputs.expected_so_sha256 }}"),
         ("CI_RUN_ID", "${{ inputs.ci_run_id }}"),
+        ("HOST_V7281_SHA256", "${{ inputs.host_v7281_evidence_sha256 }}"),
         ("HOST_V7280_SHA256", "${{ inputs.host_v7280_evidence_sha256 }}"),
         ("HOST_V7279_SHA256", "${{ inputs.host_v7279_evidence_sha256 }}"),
         ("INDEPENDENT_AUDIT_SHA256", "${{ inputs.independent_audit_sha256 }}"),
@@ -560,13 +582,20 @@ def validate_sensitive_workflow_expressions(document: MappingNode, source: Path)
             if path in ALLOWED_GITHUB_TOKEN_PATHS and node.value == "${{ github.token }}":
                 allowed_seen.add(path)
                 continue
+            expected_identity = ALLOWED_GITHUB_IDENTITY_EXPRESSIONS.get(path)
+            if expected_identity is not None and node.value == expected_identity:
+                allowed_seen.add(path)
+                continue
             raise ContractError(
                 "workflow may not expose a repository token, github.token, or secrets context "
                 f"outside the exact reviewed GH_TOKEN env nodes, got {path} in {source}"
             )
-    if allowed_seen != ALLOWED_GITHUB_TOKEN_PATHS:
+    expected_allowed = ALLOWED_GITHUB_TOKEN_PATHS | set(
+        ALLOWED_GITHUB_IDENTITY_EXPRESSIONS
+    )
+    if allowed_seen != expected_allowed:
         raise ContractError(
-            "workflow must expose github.token exactly to admission CI lookup and final publish"
+            "workflow must expose only the exact reviewed github token and identity expressions"
         )
 
 
@@ -1267,6 +1296,7 @@ def validate_blocked_prerelease_structure(
         "on.workflow_dispatch.inputs",
     )
     choice_inputs = {
+        "host_v7281_validation",
         "host_v7280_validation",
         "host_v7279_validation",
         "independent_audit_validation",
@@ -1390,6 +1420,7 @@ def validate_blocked_prerelease_structure(
                 f"{job_path}.environment",
             )
             expected_publish_if = (
+                "inputs.host_v7281_validation == 'PASS' && "
                 "inputs.host_v7280_validation == 'PASS' && "
                 "inputs.host_v7279_validation == 'PASS' && "
                 "inputs.independent_audit_validation == 'PASS' && "

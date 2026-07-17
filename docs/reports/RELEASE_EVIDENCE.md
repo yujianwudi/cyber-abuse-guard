@@ -1,6 +1,14 @@
 # v0.1.2 Fifth-Round Development Evidence — Round5.2 Source-Freeze Record / Round5.1 Historical
 
-Last updated: 2026-07-16 (Asia/Shanghai)
+Last updated: 2026-07-17 (Asia/Shanghai)
+
+## Round 6 CPA compatibility status — not a PASS record
+
+The current matrix pins v7.2.81 primary
+(`106270bea6f18ba2f2cc8b0b5887987f2874eed8`), v7.2.80 previous, and v7.2.79
+backward. Exact-source Linux CI and all three Host + Mock matrices are pending.
+The Round5.2 v7.2.80 PASS record below remains historical and is not rewritten
+or reused as v7.2.81 evidence.
 
 ## Round5.2 source-freeze / pre-merge record
 

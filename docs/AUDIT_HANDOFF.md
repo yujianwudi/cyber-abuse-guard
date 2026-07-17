@@ -1,6 +1,17 @@
 # 独立审计交接说明 — CPA Cyber Abuse Guard v0.1.2 第五轮开发树
 
-最后更新：2026-07-16（Asia/Shanghai）
+## 2026-07-17 Round 6 CPA latest-compatibility addendum
+
+The current Round 6 source/compile matrix is now pinned to CPA v7.2.81 primary
+(`106270bea6f18ba2f2cc8b0b5887987f2874eed8`), v7.2.80 previous
+(`09da52ad509e2c18e7b9540db3b98c2214c280aa`), and v7.2.79 backward
+(`b6ce0beecd31dff389d3190f7db6d7a1d4ce0e7e`). The checked-in isolated module
+uses v7.2.81. Exact-source Linux CI, all three real Host + Mock matrices, and
+independent review remain **PENDING / NOT RUN**. The v7.2.80 PASS records below
+are historical Round 5.2 source/compile evidence and are not relabeled as
+v7.2.81 or Host evidence.
+
+最后更新：2026-07-17（Asia/Shanghai）
 
 ## 0. Round5.2 当前交接门禁
 

@@ -46,6 +46,7 @@ type plannedText struct {
 	owned           string
 	role            Role
 	provenance      SegmentProvenance
+	scalarCarrier   bool
 	messageOwner    uint64
 	roleEligible    bool
 	semanticOrdinal int
@@ -612,6 +613,7 @@ func (p *shadowPlanner) appendStringValue(ctx planContext, key string, start, en
 	}
 	id := uint64(len(p.spans) + 1)
 	fallbackText := ctx.fallbackText && fallbackPlanTextKey(key)
+	scalarCarrier := isScalarMediaCarrierKeyCanonical(key)
 	if representative, ok := opaqueScalarCarrierRepresentative(key, value, bounded, raw, id); ok {
 		p.shadow = strconv.AppendQuote(p.shadow, representative)
 		p.spans = append(p.spans, plannedText{
@@ -620,6 +622,7 @@ func (p *shadowPlanner) appendStringValue(ctx planContext, key string, start, en
 			rawEnd:          end,
 			role:            defaultRole(ctx.role),
 			provenance:      ctx.provenance,
+			scalarCarrier:   scalarCarrier,
 			messageOwner:    ctx.messageOwner,
 			roleEligible:    ctx.roleEligible,
 			semanticOrdinal: len(p.spans),
@@ -635,6 +638,7 @@ func (p *shadowPlanner) appendStringValue(ctx planContext, key string, start, en
 		rawEnd:          end,
 		role:            defaultRole(ctx.role),
 		provenance:      ctx.provenance,
+		scalarCarrier:   scalarCarrier,
 		messageOwner:    ctx.messageOwner,
 		roleEligible:    ctx.roleEligible,
 		semanticOrdinal: len(p.spans),
@@ -994,7 +998,7 @@ func (s *streamEmitter) emitSpan(raw []byte, span plannedText) error {
 	if !measurement.nonSpace {
 		return nil
 	}
-	variants, decodeIncomplete := measurement.decoder.finish()
+	variants, decodeIncomplete := measurement.decoder.finish(span.scalarCarrier)
 	if decodeIncomplete {
 		reason := s.decodeFailureReason
 		if reason == "" {
@@ -1202,14 +1206,17 @@ func (d *boundedStreamingDecoder) add(value []byte) {
 	d.value = append(d.value, value...)
 }
 
-func (d *boundedStreamingDecoder) finish() (variants []string, incomplete bool) {
+func (d *boundedStreamingDecoder) finish(failClosedBareEncoding bool) (variants []string, incomplete bool) {
 	if d == nil {
 		return nil, false
 	}
 	if d.tooLong {
+		if failClosedBareEncoding && d.probe.strongBareEncodingCandidate() {
+			return nil, true
+		}
 		return nil, d.probe.potentiallyEncoded()
 	}
-	variants, encoded, decodeIncomplete := decodeStreamingBoundedText(string(d.value))
+	variants, encoded, decodeIncomplete := decodeStreamingBoundedText(string(d.value), failClosedBareEncoding)
 	return variants, encoded && decodeIncomplete
 }
 
@@ -1490,6 +1497,23 @@ func (p *streamingEncodingProbe) potentiallyEncoded() bool {
 	return complete && printableBase64Sample(sample)
 }
 
+func (p *streamingEncodingProbe) strongBareEncodingCandidate() bool {
+	if p == nil || p.base64CompactBytes < minBase64SourceBytes ||
+		p.base64Horizontal && !p.base64Padding && p.base64HorizontalInvalid {
+		return false
+	}
+	if p.base64MalformedStrong {
+		return true
+	}
+	if p.base64DecodeFailed {
+		return p.base64Horizontal || p.base64StrongSig || p.base64Distinct >= 16
+	}
+	if !p.base64Possible {
+		return false
+	}
+	return p.base64Horizontal || p.base64StrongSig || p.base64Distinct >= 16
+}
+
 func (p *streamingEncodingProbe) completeBase64Candidate() (bool, bool) {
 	if p.base64DecodeFailed || p.base64CompactBytes < minBase64SourceBytes ||
 		p.base64Horizontal && !p.base64Padding && p.base64HorizontalInvalid {
@@ -1614,7 +1638,7 @@ func printableBase64Sample(value string) bool {
 	return found && isInspectableText(decoded)
 }
 
-func decodeStreamingBoundedText(value string) ([]string, bool, bool) {
+func decodeStreamingBoundedText(value string, failClosedBareEncoding bool) ([]string, bool, bool) {
 	if isData, textual := streamingDataURLKind(value); isData && !textual {
 		// A media-looking prefix in an ordinary, unproven text field remains
 		// classifier-visible. Only a structurally proven media transaction may
@@ -1622,10 +1646,12 @@ func decodeStreamingBoundedText(value string) ([]string, bool, bool) {
 		return nil, false, false
 	}
 	variants, encoded, incomplete := decodeBoundedText(value)
-	if encoded && incomplete && len(variants) == 0 && !hasExplicitTextEncodingEnvelope(value) {
+	if encoded && incomplete && len(variants) == 0 && !failClosedBareEncoding && !hasExplicitTextEncodingEnvelope(value) {
 		// Bare identifiers may be syntactically compatible with Base64 while
-		// decoding only to binary. The streaming path scans the original bytes and
-		// does not turn such identifiers into request incompleteness.
+		// decoding only to binary. Ordinary text fields scan the original bytes and
+		// do not turn such identifiers into request incompleteness. Ambiguous scalar
+		// media carriers retain the legacy fail-closed contract because their value
+		// may otherwise cross a provider media boundary without inspection.
 		return nil, false, false
 	}
 	return variants, encoded, incomplete

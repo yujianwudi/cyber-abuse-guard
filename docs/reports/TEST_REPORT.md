@@ -1,6 +1,14 @@
 # Test Report — round5.2 post-release re-audit candidate
 
-Last updated: 2026-07-16 (Asia/Shanghai)
+Last updated: 2026-07-17 (Asia/Shanghai)
+
+## Round 6 CPA compatibility status
+
+The checked-in latest-contract primary is now v7.2.81 at
+`106270bea6f18ba2f2cc8b0b5887987f2874eed8`; v7.2.80 remains the previous
+profile and v7.2.79 the backward profile. Exact-source Linux CI and all three
+native Host + Mock matrices remain **PENDING / NOT RUN**. The v7.2.80 PASS rows
+below are retained as historical Round5.2 source/compile evidence only.
 
 ## Round5.2 source-freeze / pre-merge evidence status
 

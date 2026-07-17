@@ -5,6 +5,14 @@
 > branch, commit, classifier identity, validation, and taxonomy statements must
 > not be inherited as fifth-round PASS evidence.
 
+## Round 6 CPA latest-compatibility addendum
+
+The current source/compile matrix is v7.2.81 primary, v7.2.80 previous, and
+v7.2.79 backward. All three native Host + Mock matrices remain **NOT RUN /
+PENDING**. Any v7.2.80 PASS wording later in this historical report applies
+only to its recorded source/compile run and must not be promoted to v7.2.81 or
+Host evidence.
+
 ## Fifth-round defensive addendum
 
 The fifth round treats the pinned snapshots of `MDX-Tom/gpt-5.6-instruct`,

@@ -93,10 +93,11 @@ false. It has exactly three ordered jobs:
    ZIP-contained SO checksum, build metadata, ruleset files, and SBOM with the
    separately transferred files.
 
-The `publish` job receives `contents: write` only when all four expressions are
+The `publish` job receives `contents: write` only when all five expressions are
 true:
 
 ```text
+CPA v7.2.81 isolated Host + Mock result == PASS
 CPA v7.2.80 isolated Host + Mock result == PASS
 CPA v7.2.79 isolated Host + Mock result == PASS
 independent audit result == PASS
@@ -113,8 +114,8 @@ gate.
 
 The dispatcher must also provide the exact existing annotated development tag,
 its 40-character commit and tree, the exact successful push-CI run ID, the exact
-candidate Linux amd64 SO SHA-256, and SHA-256 identities for both Host evidence
-records and the independent audit report. Both Host records and the independent
+candidate Linux amd64 SO SHA-256, and SHA-256 identities for all three Host
+evidence records and the independent audit report. All three Host records and the independent
 audit must cite that same candidate SO SHA-256. The `verify` job recomputes the
 rebuilt SO hash before transfer, and the `publish` job recomputes it again after
 download. The publish-side canonical checksum and ZIP-contained identity checks
@@ -122,6 +123,14 @@ also bind every released metadata/ruleset/SBOM file to the verified transfer;
 runner, build, archive, or artifact-transfer drift therefore fails closed. The
 workflow verifies the local and remote tag-to-commit binding before upload. It
 does not create or move a tag.
+
+The Host PASS values and evidence SHA-256 inputs are externally reviewed
+declarations, not evidence files verified by this workflow. The protected
+`round6-independent-audit` Environment reviewer must obtain each underlying
+Host record independently, recompute its SHA-256, confirm that all three records
+cite the same candidate SO, and have self-review disabled. The workflow checks
+the declaration format and binds the citations into the draft prerelease; a
+dispatcher-supplied `PASS` or 64-character string is not proof by itself.
 
 Repository settings must also enforce a release-tag ruleset for the Round 6
 development tag pattern. That ruleset must prohibit both tag modification and
@@ -175,6 +184,6 @@ make round6-reproducibility-test
 
 Do not run `make formal-release`, `make release`, `make holdout-test`, `make consumed-boundary-test`, the historical release workflow, or the historical release/reproducibility packaging scripts for this candidate.
 
-CPA v7.2.80 and v7.2.79 source/compile compatibility belongs to Linux CI.
+CPA v7.2.81, v7.2.80, and v7.2.79 source/compile compatibility belongs to Linux CI.
 Their official real Host + Mock-upstream matrices remain **NOT RUN / PENDING**
 and are mandatory before any blocked prerelease step.

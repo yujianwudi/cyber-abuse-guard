@@ -421,15 +421,18 @@
     restricted access; v10 remains `CONSUMED / FAIL`, and methodology handoff
     remains blocked.
 
-54. **CPA v7.2.80 compatibility is source/compile evidence only.** The separate
-    `integration/cpalatestcontract` module pins `v7.2.80` at commit
-    `09da52ad509e2c18e7b9540db3b98c2214c280aa` and exact Go module checksums.
+54. **CPA v7.2.81/v7.2.80/v7.2.79 compatibility is source/compile evidence
+    only.** The separate `integration/cpalatestcontract` module pins v7.2.81
+    primary at commit `106270bea6f18ba2f2cc8b0b5887987f2874eed8`, while the
+    compatibility script retains v7.2.80 previous and v7.2.79 backward with
+    their exact commits and Go module checksums.
     The latest-compat lane compiles the Guard and integration packages, runs
     the real Guard registration/role-routing probes, 17 official Host
     routing/status tests, 11 official Interactions route/handler tests, and
     three checksum-pinned overlays in ephemeral official-source copies. It does not start CPA, load a
     Guard `.so`, install through Store, or prove request reconstruction,
-    logging, Auth/Provider/Usage isolation, and upstream behavior on v7.2.80.
+    logging, Auth/Provider/Usage isolation, and upstream behavior on any of the
+    three versions.
     The artifact/runtime baseline remains v7.2.75 until the owner runs the
     authorized server sandbox matrix.
 
@@ -459,5 +462,6 @@
     v7.2.80, an `agent` request that the Guard self-routes is rejected by CPA's
     native-Interactions validator with HTTP 400 before the Guard executor runs;
     a uniform Guard 403 would require an upstream CPA change. The owner-operated
-    sandbox must separately verify model/agent, stream/non-stream, exact status
+    sandbox must recheck that behavior on v7.2.81 and separately verify
+    model/agent, stream/non-stream, exact status
     shapes, first-byte behavior, and zero Auth/Provider/Usage/upstream effects.
