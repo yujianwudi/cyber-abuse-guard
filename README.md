@@ -12,9 +12,10 @@
 English | [简体中文](README_CN.md)
 
 > [!WARNING]
-> Round 6 is a development candidate only. Its status is
+> Version `0.15` (formal tag `v0.15`) is a Round 6 development candidate only.
+> Its status is
 > **BLOCKED / PENDING HOST AND INDEPENDENT AUDIT**. It has not been merged into
-> `main`, no Round 6 release has been created, and it must not be deployed to
+> `main`, no `v0.15` tag or GitHub Release has been created, and it must not be deployed to
 > production. This round accepts evidence only from Linux amd64 CI and the
 > authorized Linux sandbox. Windows and macOS build or test evidence is outside
 > scope.
@@ -29,19 +30,23 @@ classifier.
 
 | Item | State |
 |---|---|
+| Project version / intended formal tag | `0.15` / exact tag `v0.15` (never `v0.15.0`) |
 | Development branch | `agent/round6-long-text-streaming` |
 | Round 5.2 base | `main@7a416df66a79218d73214084d4bf8a733268d894`, tree `63db7b7cb14a636f5ba9ff4453be4ebeef170b68` |
-| Candidate commit and tree | Must be taken from the final PR head and Linux CI `build-metadata.json`; this README does not self-claim a future identity |
+| Passed pre-version-migration checkpoint | `21ceb57e6b6030e56d7820c9a67a8eecd068c669`, tree `e55437442f30bdb1b6b748b9611c6760172784cd`; push CI [29578024185](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29578024185) and PR CI [29578025961](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29578025961) passed |
+| Final v0.15 candidate commit and tree | **PENDING**; must be the exact post-merge `main` commit/tree and match main push CI, `build-metadata.json`, and `candidate-manifest.json` |
 | Release decision | **BLOCKED / PENDING HOST AND INDEPENDENT AUDIT** |
-| Merge and release | Not merged to `main`; no Round 6 tag or Release |
+| Candidate bytes | Must be clean exact-source Linux amd64 bytes from the private untagged Actions candidate workflow; clean does not mean released |
+| Merge and release | `main` merge is pending and is required before candidate dispatch; no `v0.15` tag or Release |
 | Validation platform | Linux amd64 only; glibc 2.34 or newer is the documented build target |
 | Out of scope | Windows, macOS, musl/Alpine, local deployment, production validation |
-| CPA Host matrix | v7.2.83, v7.2.82, and v7.2.81 real Host + Mock-upstream runs are **NOT RUN / PENDING** |
+| CPA Host matrix | Current release target is CPA v7.2.83 only; its real Host + Mock-upstream run is **NOT RUN / PENDING** |
 | Production | Not accessed or modified; no production request, audit database, credential, HMAC key, account pool, or real Provider was used |
 | Scanner identity | `streaming-scanner-v1` |
-| Classifier policy | `classifier-policy-v3` / `ae6fb2c0bccec618bf91b6274d1cd9b9a483499703f21d068e5590f5255fc4bd` |
+| Classifier policy | `classifier-policy-v3` / `577dd913862f2d457eb292bfd02c571e0ea7ff47bc5427bc6be389851ddeb388` |
 | Embedded YAML ruleset | `1.0.7` / `7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134` |
 | Audit schema | v3 |
+| Code review | Local final-diff CodeRabbit review reported 0 issues; the remote Draft check was skipped, so no remote or independent approval is claimed |
 
 The historical v10 evaluation remains `CONSUMED / FAIL` and cannot be rerun or
 used for tuning. Engineering checks do not override that methodology result or
@@ -175,16 +180,17 @@ for implementation or conclusions.
 
 | Gate | Current state |
 |---|---|
-| Round 6 source and regression implementation | Present in the development worktree; final result depends on exact-source Linux CI |
-| Linux amd64 format/module/vet/vulnerability/script gates | Pending final Linux CI |
-| Linux amd64 unit/race/fuzz/benchmark evidence | Pending final Linux CI |
-| Long-text tier matrix from 64 KiB through near the RPC limit | Test coverage is present; authoritative Linux result pending |
+| Pre-version-migration source checkpoint `21ceb57` | Push and PR CI passed; useful engineering evidence only, not final v0.15 candidate evidence |
+| Final PR head and PR CI | **PENDING** after all version/release-chain changes |
+| Merge final PR to `main` | **PENDING**; prerequisite for candidate dispatch, not release approval |
+| Exact post-merge `main` push CI | **PENDING**; must bind the candidate commit/tree |
+| Private untagged clean candidate Actions artifact | **NOT CREATED / PENDING**; must bind one final commit/tree and emit `candidate-manifest.json` |
 | CPA v7.2.83 Host + Mock upstream | **NOT RUN / PENDING** |
-| CPA v7.2.82 Host + Mock upstream | **NOT RUN / PENDING** |
-| CPA v7.2.81 Host + Mock upstream | **NOT RUN / PENDING** |
 | Independent source/artifact/Host audit | **NOT RUN / PENDING** |
-| Merge to `main` | Blocked |
-| Round 6 Release | Blocked |
+| Candidate-bound external evaluation-v11 or later | **NOT RUN / PENDING**; must be first-and-only `CONSUMED / PASS` for the exact candidate |
+| Annotated `v0.15-dev.round6[.N]` prerelease | Optional and blocked until Host, independent audit, and candidate-level evaluation pass; never a formal release |
+| Annotated `v0.15` formal tag and verified draft | Blocked |
+| Protected promotion of the unchanged draft | Blocked |
 
 Windows and macOS are intentionally absent from this matrix. Their absence is
 not a failed gate for this Linux-only round and must not be represented as test
@@ -195,26 +201,58 @@ Safe Round 6 entry points are documented in
 allowlisted gates with broad `go test ./...` or `go vet ./...` commands that
 could compile or open consumed evaluation packages.
 
-Do not run `make formal-release`, `make release`, `make holdout-test`,
-`make consumed-boundary-test`, or historical release/reproducibility packaging
-for this candidate.
+Do not create `v0.15`, run the formal release path, rerun consumed v10, or use
+historical release assets as current evidence. The candidate workflow must first
+exist on the default branch, so candidate creation is restricted to a dispatch
+from `main` after the final PR is merged and the exact main push CI succeeds.
 
 ## Artifact contract
 
-Any future admitted development artifact remains Linux amd64 and blocked:
+The v0.15 evidence chain is intentionally split:
 
-| Artifact | Contract |
-|---|---|
-| `cyber-abuse-guard_<version>_linux_amd64.zip` | CPA Store ZIP with exactly one executable `.so` at the root |
-| `cyber-abuse-guard-v<version>-audit-bundle.zip` | Documentation, metadata, SBOM, verification, and operator evidence; not Store-installable |
-| `cyber-abuse-guard-v<version>-source.tar.gz` | Source review bundle; does not by itself prove Git provenance |
+1. Freeze the final PR head, pass PR CI, merge it to `main`, and pass push CI on
+   the exact resulting main commit/tree. Merge is a candidate prerequisite, not
+   deployment or release approval.
+2. A manual, private, **untagged** GitHub Actions dispatch from `main` builds clean exact-source
+   Linux amd64 candidate bytes. Its artifact is not a GitHub Release and expires.
+3. The CPA v7.2.83 Host + Mock record, the independent
+   audit, and a candidate-bound external `evaluation-v11` or later
+   `CONSUMED / PASS` report must all bind the same candidate identity.
+4. If a durable development handoff is needed after those gates, an existing
+   annotated `v0.15-dev.round6` (or numbered suffix) may produce a draft prerelease only
+   after those external gates pass. It remains `BLOCKED / NOT A FORMAL RELEASE`.
+5. Only that candidate-level external evaluation attestation may admit the
+   annotated formal tag `v0.15`. Its workflow
+   rebuilds and byte-compares the Host-tested candidate, emits
+   `formal-release-attestation.json`, and creates a draft formal Release; a
+   separate protected promotion publishes that unchanged draft.
 
-The manual Round 6 workflow must stay draft, prerelease, not latest, and named
-`BLOCKED / PENDING HOST AND INDEPENDENT AUDIT`. It cannot be admitted until all
-three CPA Host versions and the independent audit provide explicit PASS evidence
-and the owner separately authorizes the blocked prerelease. All three Host records and the
-independent audit must cite one exact candidate Linux SO SHA-256; the workflow
-recomputes that hash immediately before attaching the rebuilt artifact.
+The private candidate contains `cyber-abuse-guard-v0.15.so`, its sidecar,
+`cyber-abuse-guard_0.15_linux_amd64.zip`, metadata, checksums, ruleset identity,
+SBOM, and `candidate-manifest.json`. The Store ZIP contains exactly one root
+`.so`. Audit bundles and source archives belong only to the later formal release
+path and must exclude evaluation, Holdout, private, blind, and retired material.
+They carry only the approved low-sensitivity attestation identities/hashes.
+Clean candidate bytes are still unreleased and provide no deployment
+authorization.
+
+This source tree intentionally does not self-record future Host/audit PASS
+hashes, merge identity, or Release state. Stable v0.15 eligibility is determined
+only by external Round 6/formal attestation assets that bind the final source,
+candidate workflow run, candidate bytes, Host records, independent audit, and
+release evaluation.
+
+Earlier v7.2.82/v7.2.81 source/compile compatibility results are retained only
+as historical engineering context. They are not current v0.15 release or Host
+requirements.
+
+Historical evaluation-v10 remains `CONSUMED / FAIL`, cannot be rerun, and is
+not accepted as a formal-build input.
+
+The neutral source policy is [RELEASE_POLICY.md](docs/RELEASE_POLICY.md). The
+external decision records are `round6-prerelease-attestation.json` and
+`formal-release-attestation.json`; neither is self-authored as a future PASS by
+this source tree.
 
 ## Repository map
 

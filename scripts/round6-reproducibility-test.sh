@@ -48,9 +48,28 @@ round6_sparse_worktree "$clone_b"
 
 go_path="$(command -v "$go_bin")"
 cyclonedx_path="$(command -v "$cyclonedx")"
+clone_dirty_build=1
+clone_candidate_build=0
 artifact_version="${RELEASE_SOURCE_VERSION}-dirty"
+case "$RELEASE_BUILD_KIND" in
+  candidate)
+    release_assert_candidate_build
+    clone_dirty_build=0
+    clone_candidate_build=1
+    artifact_version="$RELEASE_SOURCE_VERSION"
+    ;;
+  formal)
+    release_assert_tag
+    release_assert_formal_build
+    clone_dirty_build=0
+    artifact_version="$RELEASE_SOURCE_VERSION"
+    ;;
+  development) ;;
+  *) release_die "unsupported Round6 reproducibility build kind: $RELEASE_BUILD_KIND" ;;
+esac
 so="cyber-abuse-guard-v${artifact_version}.so"
 store_zip="cyber-abuse-guard_${artifact_version}_linux_amd64.zip"
+bundle_zip="cyber-abuse-guard-v${artifact_version}-audit-bundle.zip"
 
 for name in a b; do
   clone="$work/source-$name"
@@ -61,17 +80,25 @@ for name in a b; do
     GO="$go_path"
     VERSION="$RELEASE_SOURCE_VERSION"
     SOURCE_DATE_EPOCH="$RELEASE_SOURCE_DATE_EPOCH"
-    ALLOW_DIRTY_BUILD=1
+    ALLOW_DIRTY_BUILD="$clone_dirty_build"
+    RELEASE_CANDIDATE_BUILD="$clone_candidate_build"
+    RELEASE_CANDIDATE_EXPECTED_COMMIT="$RELEASE_GIT_COMMIT"
+    RELEASE_CANDIDATE_EXPECTED_TREE="$RELEASE_GIT_TREE"
+    ROUND6_SAFE_SPARSE_BUILD=1
     CYCLONEDX_GOMOD="$cyclonedx_path"
     CYCLONEDX_GOMOD_VERSION="${CYCLONEDX_GOMOD_VERSION:-v1.9.0}"
   )
   env "${common_env[@]}" GOCACHE="$work/go-build-cache-$name" \
     "$clone/scripts/build-linux-amd64.sh"
   env "${common_env[@]}" "$clone/scripts/release-sbom.sh"
-  PLUGIN_BINARY="$clone/dist/$so" \
-    STORE_ARCHIVE="$clone/dist/$store_zip" \
-    SOURCE_DATE_EPOCH="$RELEASE_SOURCE_DATE_EPOCH" \
-    "$clone/scripts/create-store-archive.sh"
+  if [[ "$RELEASE_BUILD_KIND" == formal ]]; then
+    env "${common_env[@]}" "$clone/scripts/package-release.sh"
+  else
+    PLUGIN_BINARY="$clone/dist/$so" \
+      STORE_ARCHIVE="$clone/dist/$store_zip" \
+      SOURCE_DATE_EPOCH="$RELEASE_SOURCE_DATE_EPOCH" \
+      "$clone/scripts/create-store-archive.sh"
+  fi
   [[ "$(git -C "$clone" rev-parse HEAD)" == "$RELEASE_GIT_COMMIT" ]] ||
     release_die "Round6 reproducibility source $name changed HEAD during the build"
   [[ "$(git -C "$clone" rev-parse 'HEAD^{tree}')" == "$RELEASE_GIT_TREE" ]] ||
@@ -86,11 +113,10 @@ for name in a b; do
     release_die "Round6 reproducibility source $name emitted mismatched build metadata"
 done
 
-compare_artifact() {
+compare_paths() {
   local description="$1"
-  local relative="$2"
-  local left="$clone_a/dist/$relative"
-  local right="$clone_b/dist/$relative"
+  local left="$2"
+  local right="$3"
   if ! cmp -s "$left" "$right"; then
     printf 'Round6 reproducibility failure: %s differ\n' "$description" >&2
     sha256sum "$left" "$right" >&2
@@ -100,6 +126,12 @@ compare_artifact() {
   sha256sum "$left" | awk '{print $1}'
 }
 
+compare_artifact() {
+  local description="$1"
+  local relative="$2"
+  compare_paths "$description" "$clone_a/dist/$relative" "$clone_b/dist/$relative"
+}
+
 compare_artifact "shared object" "$so"
 compare_artifact "shared-object checksum" "$so.sha256"
 compare_artifact "CPA Store ZIP" "$store_zip"
@@ -107,6 +139,30 @@ compare_artifact "build metadata" build-metadata.json
 compare_artifact "ruleset manifest" ruleset-manifest.json
 compare_artifact "ruleset checksum" ruleset.sha256
 compare_artifact "SBOM" sbom.cdx.json
+if [[ "$RELEASE_BUILD_KIND" == formal ]]; then
+  compare_artifact "audit bundle" "$bundle_zip"
+fi
+
+if [[ "$RELEASE_BUILD_KIND" == candidate || "$RELEASE_BUILD_KIND" == formal ]]; then
+  root_dist="${DIST_DIR:-$root/dist}"
+  for relative in "$so" "$so.sha256" "$store_zip" build-metadata.json \
+    ruleset-manifest.json ruleset.sha256 sbom.cdx.json; do
+    [[ -f "$root_dist/$relative" && ! -L "$root_dist/$relative" ]] || \
+      release_die "$RELEASE_BUILD_KIND reproducibility requires the root artifact: $root_dist/$relative"
+    compare_paths "root $RELEASE_BUILD_KIND $relative" "$root_dist/$relative" "$clone_a/dist/$relative"
+  done
+  if [[ "$RELEASE_BUILD_KIND" == formal ]]; then
+    [[ -f "$root_dist/$bundle_zip" && ! -L "$root_dist/$bundle_zip" ]] || \
+      release_die "formal reproducibility requires the root artifact: $root_dist/$bundle_zip"
+    compare_paths "root formal $bundle_zip" "$root_dist/$bundle_zip" "$clone_a/dist/$bundle_zip"
+  fi
+fi
 
 release_assert_source_unchanged
-echo "Round6 safe development reproducibility passed in two clean local clones"
+if [[ "$RELEASE_BUILD_KIND" == candidate ]]; then
+  echo "Round6 clean candidate reproducibility passed and matches root/dist"
+elif [[ "$RELEASE_BUILD_KIND" == formal ]]; then
+  echo "Round6 safe formal reproducibility passed and matches root/dist"
+else
+  echo "Round6 safe development reproducibility passed in two clean local clones"
+fi

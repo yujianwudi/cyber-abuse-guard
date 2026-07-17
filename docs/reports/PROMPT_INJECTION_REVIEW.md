@@ -1,21 +1,25 @@
-# Defensive Review: public prompt-injection references and fifth-round controls
+# Defensive Review: public prompt-injection references and v0.15 Round 6 controls
 
-> The fifth-round addendum below is current design/handoff context. The older
+> The Round 6 addendum below is current design/handoff context. The older
 > single-repository review is retained afterward as historical evidence; its
 > branch, commit, classifier identity, validation, and taxonomy statements must
-> not be inherited as fifth-round PASS evidence.
+> not be inherited as v0.15 PASS evidence.
 
 ## Round 6 CPA latest-compatibility addendum
 
-The current source/compile matrix is v7.2.83 primary, v7.2.82 previous, and
-v7.2.81 backward. All three native Host + Mock matrices remain **NOT RUN /
-PENDING**. Any v7.2.80 PASS wording later in this historical report applies
+Exact project version is `0.15`; the only formal tag is `v0.15`, never
+`v0.15.0`. The current source/compile and real-Host release target is v7.2.83
+only. Its native Host + Mock matrix remains **NOT RUN / PENDING**. Earlier
+v7.2.82/v7.2.81 profiles are historical and non-gating. Commit
+`21ceb57e6b6030e56d7820c9a67a8eecd068c669` passed push
+and PR CI as a pre-version-migration checkpoint, not final v0.15 evidence. Any
+v7.2.80 PASS wording later in this historical report applies
 only to its recorded source/compile run and must not be promoted to the current
 matrix or Host evidence.
 
-## Fifth-round defensive addendum
+## Round 6 defensive addendum
 
-The fifth round treats the pinned snapshots of `MDX-Tom/gpt-5.6-instruct`,
+Round 6 treats the pinned snapshots of `MDX-Tom/gpt-5.6-instruct`,
 `yynxxxxx/Codex-X`, and `yynxxxxx/Codex-5.5-codex-instruct-5.5` only as
 untrusted public adversarial references. No prompt installer, injection script,
 configuration mutator, or third-party test runner is installed or executed.
@@ -109,10 +113,10 @@ Provider schema allowlist with rejection or forced-safe-value overrides.
 
 Ruleset `1.0.7` identifies only embedded YAML Cyber Abuse assets. It does not
 include the Go-level `META-OVERRIDE-001` overlay, extraction semantics,
-tool-schema mappings, or control-plane telemetry. Fifth-round provenance must
-also bind `classifier-policy-v2` /
-`e9b87f7e2635495bdbceae469ef89e696b419f0a9a6fd129558a20bc4be947ec`
-and the exact Git commit.
+tool-schema mappings, or control-plane telemetry. Current v0.15 provenance must
+also bind `classifier-policy-v3` /
+`577dd913862f2d457eb292bfd02c571e0ea7ff47bc5427bc6be389851ddeb388`,
+the exact Git commit/tree, and the candidate workflow run.
 
 The final reverse audit also closed a large-request extraction gap relevant to
 Codex/MCP tool inventories. When a raw request exceeds the 256 KiB semantic
@@ -123,20 +127,33 @@ Nested business lookalikes and scalar fields remain inert. Native CPA
 `interactions` is now a fixed supported format and uses conservative no-role
 inspection; this is source-level compatibility, not native Host evidence.
 
-Ordinary CI no longer invokes the consumed evaluation-v10 boundary target and
-uses `make integration-compile` without starting CPA. The pinned CPA v7.2.80
-lane is source/compile compatibility evidence only; Tencent Cloud CPA v7.2.75
-remains the server Host baseline. The fifth-round unit/CI/artifact gates, that
-owner-operated Host validation, and independent source/artifact review are
-separate and are not production authorization. Until exact evidence is
-recorded, status is:
+Ordinary CI does not invoke the consumed evaluation-v10 boundary target or
+start CPA. The current v7.2.83 lane is source/compile compatibility evidence
+only. The final PR head must first pass PR CI, merge to `main`, and the exact
+resulting main commit/tree must pass push CI. The private untagged clean
+candidate is then dispatched from `refs/heads/main`; the owner-operated
+v7.2.83 Host validation and
+independent source/artifact/Host review plus a candidate-bound external
+`evaluation-v11` or later first-and-only `CONSUMED / PASS` attestation are
+separate and are not production authorization. Until exact evidence is recorded, status is:
 
 ```text
-NOT YET READY FOR INDEPENDENT SOURCE/ARTIFACT REVIEW
+BLOCKED / PENDING HOST AND INDEPENDENT AUDIT
 ```
 
-After all engineering gates, the maximum permitted status is
-`READY FOR INDEPENDENT SOURCE/ARTIFACT REVIEW`, never `PRODUCTION APPROVED`.
+After the Host/audit and candidate-level evaluation gates, an optional annotated
+`v0.15-dev.round6[.N]` draft prerelease remains
+`BLOCKED / NOT A FORMAL RELEASE`. The annotated formal `v0.15` tag and verified
+draft consume that same attestation; protected promotion may publish only the
+unchanged draft. Historical v10 remains immutable `CONSUMED / FAIL`, cannot be
+rerun, and is not a formal-build input. Formal source/audit bundles exclude
+evaluation, Holdout, private, blind, and retired material.
+
+The local final-diff CodeRabbit review reported 0 issues. The remote Draft check
+was skipped; this is not remote or independent approval.
+
+Release admission follows [RELEASE_POLICY.md](../RELEASE_POLICY.md) and external
+`round6-prerelease-attestation.json` / `formal-release-attestation.json` assets.
 
 ---
 

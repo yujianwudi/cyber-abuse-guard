@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - 'v0.1.2'
+      - 'v0.15'
 
 permissions:
   contents: read
@@ -14,14 +14,17 @@ concurrency:
 
 env:
   GO_VERSION: '1.26.4'
-  VERSION: '0.1.2'
+  VERSION: '0.15'
   CYCLONEDX_GOMOD_VERSION: 'v1.9.0'
   GOVULNCHECK_VERSION: 'v1.6.0'
 
 jobs:
-  release:
+  build-and-verify:
     permissions:
-      contents: write
+      actions: read
+      contents: read
+    env:
+      ROUND6_SAFE_SPARSE_BUILD: '1'
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
@@ -29,6 +32,32 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
+          persist-credentials: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /*
+            !/cmd/evaluation-*
+            !/cmd/holdout-*
+            !/cmd/*private*
+            !/cmd/*blind*
+            !/cmd/*retired*
+            !/docs/reports/EVALUATION_*
+            !/docs/reports/HOLDOUT_*
+            !/docs/reports/HOLDOUT_REPORT.md
+            !/docs/**/*private*
+            !/docs/**/*blind*
+            !/docs/**/*retired*
+            !/internal/classifier/evaluation_*
+            !/internal/classifier/holdout_*
+            !/internal/classifier/*private*
+            !/internal/classifier/*blind*
+            !/internal/classifier/*retired*
+            !/testdata/evaluation-*
+            !/testdata/holdout*
+            !/testdata/*private*
+            !/testdata/*blind*
+            !/testdata/*retired*
       - name: Set up pinned Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
@@ -44,23 +73,231 @@ jobs:
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
       - name: Tag, source version, and clean-tree preflight
         run: make release-preflight clean-tree-check
+      - name: Verify Host, audit, and independent evaluation attestation before formal gates
+        id: candidate_gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          expected_commit="$(git rev-parse HEAD)"
+          expected_tree="$(git rev-parse 'HEAD^{tree}')"
+          main_ref="$(gh api \
+            --header 'Accept: application/vnd.github+json' \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            "repos/${GITHUB_REPOSITORY}/git/ref/heads/main")"
+          [[ "$(jq -r '.object.type' <<<"$main_ref")" == commit ]]
+          [[ "$(jq -r '.object.sha' <<<"$main_ref")" == "$expected_commit" ]]
+          releases="$RUNNER_TEMP/round6-releases.json"
+          gh api --paginate --slurp \
+            --header 'Accept: application/vnd.github+json' \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            "repos/${GITHUB_REPOSITORY}/releases?per_page=100" >"$releases"
+          release="$(jq -ce '
+            [ .[][] |
+              select(.draft == true and .prerelease == true) |
+              select(.tag_name | test("^v0\\.15-dev\\.round6([.][0-9]+)?$"))
+            ] |
+            if length == 1 then .[0] else error("expected exactly one Round6 v0.15 draft prerelease") end
+          ' "$releases")"
+          candidate_tag="$(jq -r '.tag_name' <<<"$release")"
+
+          tag_ref="$(gh api \
+            --header 'Accept: application/vnd.github+json' \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            "repos/${GITHUB_REPOSITORY}/git/ref/tags/${candidate_tag}")"
+          [[ "$(jq -r '.object.type' <<<"$tag_ref")" == tag ]]
+          tag_object_sha="$(jq -er '.object.sha | select(test("^[0-9a-f]{40}$"))' <<<"$tag_ref")"
+          tag_object="$(gh api \
+            --header 'Accept: application/vnd.github+json' \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            "repos/${GITHUB_REPOSITORY}/git/tags/${tag_object_sha}")"
+          [[ "$(jq -r '.object.type' <<<"$tag_object")" == commit ]]
+          [[ "$(jq -r '.object.sha' <<<"$tag_object")" == "$expected_commit" ]]
+
+          download_asset() {
+            local name="$1"
+            local destination="$2"
+            local asset_id
+            asset_id="$(jq -er --arg name "$name" '
+              [ .assets[] | select(.name == $name) ] |
+              if length == 1 then .[0].id else error("missing or duplicate release asset: " + $name) end
+            ' <<<"$release")"
+            gh api \
+              --header 'Accept: application/octet-stream' \
+              --header 'X-GitHub-Api-Version: 2022-11-28' \
+              "repos/${GITHUB_REPOSITORY}/releases/assets/${asset_id}" >"$destination"
+          }
+
+          candidate_dir="$RUNNER_TEMP/round6-candidate"
+          mkdir -p "$candidate_dir"
+          blocked_assets=(
+            cyber-abuse-guard-v0.15.so
+            cyber-abuse-guard-v0.15.so.sha256
+            cyber-abuse-guard_0.15_linux_amd64.zip
+            build-metadata.json
+            checksums.txt
+            ruleset-manifest.json
+            ruleset.sha256
+            sbom.cdx.json
+            round6-prerelease-attestation.json
+            round6-prerelease-attestation.json.sha256
+          )
+          expected_blocked_assets="$(printf '%s\n' "${blocked_assets[@]}" | LC_ALL=C sort)"
+          actual_blocked_assets="$(jq -r '.assets[].name' <<<"$release" | LC_ALL=C sort)"
+          [[ "$actual_blocked_assets" == "$expected_blocked_assets" ]]
+          for name in "${blocked_assets[@]}"; do
+            download_asset "$name" "$candidate_dir/$name"
+          done
+          (cd "$candidate_dir" && sha256sum --check --strict round6-prerelease-attestation.json.sha256)
+
+          attestation="$candidate_dir/round6-prerelease-attestation.json"
+          candidate_run_id="$(jq -er '.candidate_run_id | select(type == "number")' "$attestation")"
+          candidate_so_sha="$(sha256sum "$candidate_dir/cyber-abuse-guard-v0.15.so" | awk '{print $1}')"
+          candidate_store_sha="$(sha256sum "$candidate_dir/cyber-abuse-guard_0.15_linux_amd64.zip" | awk '{print $1}')"
+          EXPECTED_TAG="$candidate_tag" \
+          EXPECTED_COMMIT="$expected_commit" \
+          EXPECTED_TREE="$expected_tree" \
+          CANDIDATE_RUN_ID="$candidate_run_id" \
+          EXPECTED_SO_SHA256="$candidate_so_sha" \
+          EXPECTED_STORE_ZIP_SHA256="$candidate_store_sha" \
+            ./scripts/verify-external-release-attestation.sh "$attestation"
+
+          verify_run() {
+            local run_id="$1"
+            local expected_name="$2"
+            local expected_path="$3"
+            local expected_event="$4"
+            local run
+            run="$(gh api \
+              --header 'Accept: application/vnd.github+json' \
+              --header 'X-GitHub-Api-Version: 2022-11-28' \
+              "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}")"
+            jq -e \
+              --arg commit "$expected_commit" \
+              --arg repository "$GITHUB_REPOSITORY" \
+              --arg name "$expected_name" \
+              --arg path "$expected_path" \
+              --arg event "$expected_event" '
+                .name == $name and .path == $path and .event == $event and
+                .head_sha == $commit and .status == "completed" and
+                .conclusion == "success" and .repository.full_name == $repository
+              ' <<<"$run" >/dev/null
+          }
+
+          verify_run "$(jq -r '.ci_run_id' "$attestation")" \
+            'CI' '.github/workflows/ci.yml' 'push'
+          verify_run "$candidate_run_id" \
+            'Round6 clean candidate - NOT A RELEASE' \
+            '.github/workflows/round6-candidate.yml' 'workflow_dispatch'
+          verify_run "$(jq -r '.workflow.run_id' "$attestation")" \
+            'Round6 prerelease - BLOCKED / PENDING HOST AND INDEPENDENT AUDIT' \
+            '.github/workflows/round6-blocked-prerelease.yml' 'workflow_dispatch'
+          blocked_run_id="$(jq -r '.workflow.run_id' "$attestation")"
+
+          {
+            printf 'RELEASE_EXTERNAL_ATTESTATION=%s\n' "$attestation"
+            printf 'ROUND6_ATTESTATION_SHA256=%s\n' "$(sha256sum "$attestation" | awk '{print $1}')"
+            printf 'ROUND6_ATTESTED_COMMIT=%s\n' "$expected_commit"
+            printf 'ROUND6_ATTESTED_TREE=%s\n' "$expected_tree"
+            printf 'ROUND6_CANDIDATE_TAG=%s\n' "$candidate_tag"
+            printf 'ROUND6_CANDIDATE_RUN_ID=%s\n' "$candidate_run_id"
+            printf 'ROUND6_CANDIDATE_SO=%s\n' "$candidate_dir/cyber-abuse-guard-v0.15.so"
+            printf 'ROUND6_CANDIDATE_STORE_ZIP=%s\n' "$candidate_dir/cyber-abuse-guard_0.15_linux_amd64.zip"
+            printf 'ROUND6_CANDIDATE_SO_SHA256=%s\n' "$candidate_so_sha"
+            printf 'ROUND6_CANDIDATE_STORE_ZIP_SHA256=%s\n' "$candidate_store_sha"
+          } >>"$GITHUB_ENV"
+          printf 'blocked_run_id=%s\n' "$blocked_run_id" >>"$GITHUB_OUTPUT"
+          printf 'expected_commit=%s\n' "$expected_commit" >>"$GITHUB_OUTPUT"
+      - name: Download the immutable blocked workflow artifact
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: round6-blocked-attested-${{ steps.candidate_gate.outputs.expected_commit }}
+          path: ${{ runner.temp }}/blocked-run-assets
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ steps.candidate_gate.outputs.blocked_run_id }}
+      - name: Prove the blocked draft matches its immutable workflow artifact
+        run: |
+          set -euo pipefail
+          draft_dir="$RUNNER_TEMP/round6-candidate"
+          run_dir="$RUNNER_TEMP/blocked-run-assets"
+          draft_files="$RUNNER_TEMP/blocked-draft-files.txt"
+          run_files="$RUNNER_TEMP/blocked-run-files.txt"
+          find "$draft_dir" -mindepth 1 -maxdepth 1 -printf '%f\n' | LC_ALL=C sort >"$draft_files"
+          find "$run_dir" -mindepth 1 -maxdepth 1 -printf '%f\n' | LC_ALL=C sort >"$run_files"
+          diff -u "$draft_files" "$run_files"
+          while IFS= read -r name; do
+            [[ -f "$draft_dir/$name" && ! -L "$draft_dir/$name" ]]
+            [[ -f "$run_dir/$name" && ! -L "$run_dir/$name" ]]
+            cmp -s "$draft_dir/$name" "$run_dir/$name"
+          done <"$draft_files"
       - name: Run all release gates and build artifacts
         env:
-          CPA_LATEST_VERIFY_REMOTE: "1"
-          GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          make formal-release
+          CPA_LATEST_VERIFY_REMOTE: '1'
+        run: make formal-release
       - name: Recheck hashes and source cleanliness
         run: make artifact-hash clean-tree-check
-      - name: Upload audited release artifacts
+      - name: Byte-compare formal assets and bind the verified prerelease attestation
+        env:
+          FORMAL_WORKFLOW_SHA: ${{ github.workflow_sha }}
+        run: |
+          set -euo pipefail
+          expected_commit="$(git rev-parse HEAD)"
+          expected_tree="$(git rev-parse 'HEAD^{tree}')"
+          [[ "$expected_commit" == "$ROUND6_ATTESTED_COMMIT" ]]
+          [[ "$expected_tree" == "$ROUND6_ATTESTED_TREE" ]]
+          [[ "$(sha256sum "$RELEASE_EXTERNAL_ATTESTATION" | awk '{print $1}')" == "$ROUND6_ATTESTATION_SHA256" ]]
+          [[ "$(sha256sum "$ROUND6_CANDIDATE_SO" | awk '{print $1}')" == "$ROUND6_CANDIDATE_SO_SHA256" ]]
+          [[ "$(sha256sum "$ROUND6_CANDIDATE_STORE_ZIP" | awk '{print $1}')" == "$ROUND6_CANDIDATE_STORE_ZIP_SHA256" ]]
+          cmp -s "$ROUND6_CANDIDATE_SO" dist/cyber-abuse-guard-v0.15.so
+          cmp -s "$ROUND6_CANDIDATE_STORE_ZIP" dist/cyber-abuse-guard_0.15_linux_amd64.zip
+          install -m 0644 "$RELEASE_EXTERNAL_ATTESTATION" dist/round6-prerelease-attestation.json
+          (cd dist && sha256sum round6-prerelease-attestation.json >round6-prerelease-attestation.json.sha256)
+          jq -n \
+            --arg commit "$expected_commit" \
+            --arg tree "$expected_tree" \
+            --arg candidate_tag "$ROUND6_CANDIDATE_TAG" \
+            --arg candidate_attestation_sha256 "$(sha256sum dist/round6-prerelease-attestation.json | awk '{print $1}')" \
+            --arg so_sha256 "$(sha256sum dist/cyber-abuse-guard-v0.15.so | awk '{print $1}')" \
+            --arg store_zip_sha256 "$(sha256sum dist/cyber-abuse-guard_0.15_linux_amd64.zip | awk '{print $1}')" \
+            --arg release_evidence_sha256 "$(sha256sum dist/release-evidence-final.md | awk '{print $1}')" \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg workflow_ref "$GITHUB_WORKFLOW_REF" \
+            --arg workflow_sha "$FORMAL_WORKFLOW_SHA" \
+            --arg run_id "$GITHUB_RUN_ID" \
+            --arg run_attempt "$GITHUB_RUN_ATTEMPT" \
+            '{
+              schema_version: 1,
+              status: "FORMAL_GATES_PASS / DRAFT_RELEASE_ONLY",
+              version: "0.15",
+              tag: "v0.15",
+              commit: $commit,
+              tree: $tree,
+              candidate_tag: $candidate_tag,
+              candidate_attestation_sha256: $candidate_attestation_sha256,
+              artifacts: {
+                so_sha256: $so_sha256,
+                store_zip_sha256: $store_zip_sha256,
+                release_evidence_sha256: $release_evidence_sha256
+              },
+              workflow: {
+                repository: $repository,
+                ref: $workflow_ref,
+                sha: $workflow_sha,
+                run_id: ($run_id | tonumber),
+                run_attempt: ($run_attempt | tonumber)
+              }
+            }' >dist/formal-release-attestation.json
+          (cd dist && sha256sum formal-release-attestation.json >formal-release-attestation.json.sha256)
+      - name: Upload exact verified release artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: cyber-abuse-guard-v0.1.2-release
+          name: cyber-abuse-guard-v0.15-release
           path: |
-            dist/cyber-abuse-guard-v0.1.2.so
-            dist/cyber-abuse-guard-v0.1.2.so.sha256
-            dist/cyber-abuse-guard_0.1.2_linux_amd64.zip
-            dist/cyber-abuse-guard-v0.1.2-audit-bundle.zip
+            dist/cyber-abuse-guard-v0.15.so
+            dist/cyber-abuse-guard-v0.15.so.sha256
+            dist/cyber-abuse-guard_0.15_linux_amd64.zip
+            dist/cyber-abuse-guard-v0.15-audit-bundle.zip
             dist/build-metadata.json
             dist/checksums.txt
             dist/ruleset-manifest.json
@@ -70,18 +307,155 @@ jobs:
             dist/release-test-summary.txt.sha256
             dist/release-evidence-final.md
             dist/release-evidence-final.md.sha256
-            dist/cyber-abuse-guard-v0.1.2-source.tar.gz
-            dist/cyber-abuse-guard-v0.1.2-source.tar.gz.sha256
+            dist/cyber-abuse-guard-v0.15-source.tar.gz
+            dist/cyber-abuse-guard-v0.15-source.tar.gz.sha256
+            dist/round6-prerelease-attestation.json
+            dist/round6-prerelease-attestation.json.sha256
+            dist/formal-release-attestation.json
+            dist/formal-release-attestation.json.sha256
           if-no-files-found: error
-      - name: Create draft GitHub release
+
+  publish:
+    needs: build-and-verify
+    environment: formal-release
+    permissions:
+      actions: read
+      contents: write
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Download exact verified release artifact
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: cyber-abuse-guard-v0.15-release
+          path: dist
+      - name: Reverify transferred filenames and checksums
+        env:
+          BASH_ENV: ''
+          ENV: ''
+          PATH: /usr/bin:/bin
+          LC_ALL: C
+          LANG: C
+          CDPATH: ''
+          GLOBIGNORE: ''
+          PROMPT_COMMAND: ''
+          LD_PRELOAD: ''
+          LD_LIBRARY_PATH: ''
+          LD_AUDIT: ''
+          PYTHONPATH: ''
+          PYTHONHOME: ''
+          PERL5OPT: ''
+          RUBYOPT: ''
+          NODE_OPTIONS: ''
+          NODE_PATH: ''
+        run: |
+          set -euo pipefail
+
+          expected_artifacts=(
+            cyber-abuse-guard-v0.15.so
+            cyber-abuse-guard-v0.15.so.sha256
+            cyber-abuse-guard_0.15_linux_amd64.zip
+            cyber-abuse-guard-v0.15-audit-bundle.zip
+            build-metadata.json
+            checksums.txt
+            ruleset-manifest.json
+            ruleset.sha256
+            sbom.cdx.json
+            release-test-summary.txt
+            release-test-summary.txt.sha256
+            release-evidence-final.md
+            release-evidence-final.md.sha256
+            cyber-abuse-guard-v0.15-source.tar.gz
+            cyber-abuse-guard-v0.15-source.tar.gz.sha256
+            round6-prerelease-attestation.json
+            round6-prerelease-attestation.json.sha256
+            formal-release-attestation.json
+            formal-release-attestation.json.sha256
+          )
+          expected_files="$RUNNER_TEMP/release-expected-files.txt"
+          actual_files="$RUNNER_TEMP/release-actual-files.txt"
+          [[ -d dist && ! -L dist ]]
+          printf '%s\n' "${expected_artifacts[@]}" | /usr/bin/sort >"$expected_files"
+          /usr/bin/find dist -mindepth 1 -maxdepth 1 -printf '%f\n' | /usr/bin/sort >"$actual_files"
+          /usr/bin/diff -u "$expected_files" "$actual_files"
+          for artifact in "${expected_artifacts[@]}"; do
+            [[ -f "dist/$artifact" && ! -L "dist/$artifact" ]]
+          done
+
+          expected_checksum_artifacts=(
+            cyber-abuse-guard-v0.15.so
+            cyber-abuse-guard-v0.15.so.sha256
+            cyber-abuse-guard_0.15_linux_amd64.zip
+            cyber-abuse-guard-v0.15-audit-bundle.zip
+            build-metadata.json
+            ruleset-manifest.json
+            ruleset.sha256
+            sbom.cdx.json
+          )
+          expected_checksums="$RUNNER_TEMP/release-expected-checksums.txt"
+          actual_checksums="$RUNNER_TEMP/release-actual-checksums.txt"
+          printf '%s\n' "${expected_checksum_artifacts[@]}" | /usr/bin/sort >"$expected_checksums"
+          /usr/bin/awk '
+            NF != 2 || length($1) != 64 || $1 !~ /^[0-9a-f]+$/ { invalid = 1 }
+            { print $2 }
+            END { if (invalid || NR != 8) exit 1 }
+          ' dist/checksums.txt | /usr/bin/sort >"$actual_checksums"
+          /usr/bin/diff -u "$expected_checksums" "$actual_checksums"
+          (cd dist && /usr/bin/sha256sum --check --strict checksums.txt)
+
+          verify_single_checksum() {
+            local checksum_file="$1"
+            local expected_target="$2"
+            /usr/bin/awk -v expected="$expected_target" '
+              NF != 2 || length($1) != 64 || $1 !~ /^[0-9a-f]+$/ || $2 != expected { invalid = 1 }
+              END { if (invalid || NR != 1) exit 1 }
+            ' "dist/$checksum_file"
+            (cd dist && /usr/bin/sha256sum --check --strict "$checksum_file")
+          }
+
+          verify_single_checksum cyber-abuse-guard-v0.15.so.sha256 cyber-abuse-guard-v0.15.so
+          verify_single_checksum ruleset.sha256 ruleset-manifest.json
+          verify_single_checksum release-test-summary.txt.sha256 release-test-summary.txt
+          verify_single_checksum release-evidence-final.md.sha256 release-evidence-final.md
+          verify_single_checksum cyber-abuse-guard-v0.15-source.tar.gz.sha256 cyber-abuse-guard-v0.15-source.tar.gz
+          verify_single_checksum round6-prerelease-attestation.json.sha256 round6-prerelease-attestation.json
+          verify_single_checksum formal-release-attestation.json.sha256 formal-release-attestation.json
+
+          /usr/bin/jq -e '
+            .version == "0.15" and
+            .source_version == "0.15" and
+            .dirty == false
+          ' dist/build-metadata.json >/dev/null
+          /usr/bin/jq -e 'type == "object"' dist/ruleset-manifest.json >/dev/null
+          /usr/bin/jq -e '.bomFormat == "CycloneDX"' dist/sbom.cdx.json >/dev/null
+      - name: Recheck the release commit is still the exact main tip
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          expected_commit="$(jq -r '.commit' dist/formal-release-attestation.json)"
+          [[ "$expected_commit" =~ ^[0-9a-f]{40}$ ]]
+          main_ref="$(gh api \
+            --header 'Accept: application/vnd.github+json' \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            "repos/${GITHUB_REPOSITORY}/git/ref/heads/main")"
+          [[ "$(jq -r '.object.type' <<<"$main_ref")" == commit ]]
+          [[ "$(jq -r '.object.sha' <<<"$main_ref")" == "$expected_commit" ]]
+      - name: Create draft v0.15 GitHub release
         uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3.0.1
         with:
+          tag_name: v0.15
+          name: v0.15
           draft: true
+          prerelease: false
+          make_latest: false
+          fail_on_unmatched_files: true
+          body_path: dist/release-evidence-final.md
           files: |
-            dist/cyber-abuse-guard-v0.1.2.so
-            dist/cyber-abuse-guard-v0.1.2.so.sha256
-            dist/cyber-abuse-guard_0.1.2_linux_amd64.zip
-            dist/cyber-abuse-guard-v0.1.2-audit-bundle.zip
+            dist/cyber-abuse-guard-v0.15.so
+            dist/cyber-abuse-guard-v0.15.so.sha256
+            dist/cyber-abuse-guard_0.15_linux_amd64.zip
+            dist/cyber-abuse-guard-v0.15-audit-bundle.zip
             dist/build-metadata.json
             dist/checksums.txt
             dist/ruleset-manifest.json
@@ -91,5 +465,9 @@ jobs:
             dist/release-test-summary.txt.sha256
             dist/release-evidence-final.md
             dist/release-evidence-final.md.sha256
-            dist/cyber-abuse-guard-v0.1.2-source.tar.gz
-            dist/cyber-abuse-guard-v0.1.2-source.tar.gz.sha256
+            dist/cyber-abuse-guard-v0.15-source.tar.gz
+            dist/cyber-abuse-guard-v0.15-source.tar.gz.sha256
+            dist/round6-prerelease-attestation.json
+            dist/round6-prerelease-attestation.json.sha256
+            dist/formal-release-attestation.json
+            dist/formal-release-attestation.json.sha256

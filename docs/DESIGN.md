@@ -1,52 +1,66 @@
-# CPA Cyber Abuse Guard v0.1.2 Design
+# CPA Cyber Abuse Guard v0.15 Design
 
 ## Scope and invariants
 
-Cyber Abuse Guard is an in-process CPA C-ABI v1 plugin for CLIProxyAPI v7.2.75
-(`e57416731aec87051ac00d0812df6aebd0e9d57a`). It reduces the chance that a
+Cyber Abuse Guard is an in-process CPA C-ABI v1 plugin for CLIProxyAPI. Exact
+project version is `0.15`; the only formal tag name is `v0.15` (never
+`v0.15.0`). It reduces the chance that a
 downstream caller sends clearly malicious, operational cyber-abuse requests to
 an upstream account. It cannot guarantee that an account will not receive a
 warning or be deactivated.
 
-The pinned module checksum is
-`h1:WcCCeENtQ5F2bT86FVIOZJJbWCkPqrp3idl8kyZqARM=` and its `go.mod` checksum is
-`h1:f4pcyAej8RoeRhIxJfm+OUMkCKaApiA8WzxR2XVlBh8=`.
+The root ABI build dependency is CPA v7.2.83 at
+`9f4f53ca5a4d1474e3f7eb61d6ffc984995f1f66`. Its pinned module checksum is
+`h1:fCGraERLPW08Kl8aP3F/A5XQC34ZPD0mEfxpTvevF7Y=` and its `go.mod` checksum is
+`h1:ytvZNWbCv7PrAyR80+RKsDJPODsdL6qxyFaXDBNZdqs=`.
 
-Pinned latest-compatibility evidence is a separate layer: the isolated
-`integration/cpalatestcontract` module and `make cpa-latest-compat` pin CPA
-v7.2.83 primary (`9f4f53ca5a4d1474e3f7eb61d6ffc984995f1f66`), v7.2.82
-previous (`f583414fd9914f9ccfd280fc3a23aebaea30e9eb`), and v7.2.81 backward
-(`106270bea6f18ba2f2cc8b0b5887987f2874eed8`). The matrix compiles the Guard
+The current Round 6 compatibility and required Host gate is a separate layer:
+the isolated `integration/cpalatestcontract` module and
+`make cpa-latest-compat` pin CPA v7.2.83
+(`9f4f53ca5a4d1474e3f7eb61d6ffc984995f1f66`). The gate compiles the Guard
 and integration packages, runs the real Guard registration/role-routing probes,
 17 official Host routing/status tests and 11 official Interactions
 route/handler tests, and applies three checksum-pinned ephemeral overlays. With
 `CPA_LATEST_VERIFY_REMOTE=1`, the same gate
 additionally verifies GitHub's current `releases/latest` and Tag-to-Commit
-identity before those source/compile checks. This does not change the v7.2.75
-artifact baseline or constitute a v7.2.83, v7.2.82, or v7.2.81 native
-Host/Store load.
+identity before those source/compile checks. Commit
+`21ceb57e6b6030e56d7820c9a67a8eecd068c669` passed push and PR CI with
+this gate as a **pre-version-migration checkpoint**. It does not constitute a
+v7.2.83 native Host/Store load and is not the final v0.15
+candidate identity.
 
-The repository work began from actual baseline
-`a121a444cb0d82cba4e27754914a1f88258e1d7b`. The root module and the isolated
-`integration/pluginstorecontract` module now both pin CPA v7.2.75. Source
+Earlier v7.2.82/v7.2.81 source/compile profiles remain historical non-gating
+engineering evidence and are not current release targets.
+
+The repository work began from historical baseline
+`a121a444cb0d82cba4e27754914a1f88258e1d7b`. The root module,
+`integration/cpalatestcontract`, and `integration/pluginstorecontract` now pin
+CPA v7.2.83. The plugin-store module covers Store/source behavior while the
+latest-compat module covers the broader current source/compile contract. Source
 contracts, a real shared-object Host harness, and a second Router/executor
 fixture are distinct evidence layers; implementing a harness is not the same as
-executing it. Authoritative native evidence is restricted to the authorized
-GitHub CI Linux job and Leo's independent isolated environment. Historical
-evidence remains in `reports/TEST_REPORT.md` and `LEO_VERIFICATION_HANDOFF.md`;
-the current candidate is tracked in `AUDIT_HANDOFF.md`,
-`reports/TEST_REPORT.md`, and `reports/RELEASE_EVIDENCE.md`. Its exact-source
-CI artifact was produced and verified for freeze `170de7f324c2bdf9a473b1866bdfc1e097182301`;
-native compatibility remains pending until the CPA v7.2.75 Host matrix and
-independent source/artifact review exist.
+executing it. The current v0.15 candidate must be produced as a private,
+untagged, clean exact-source Linux amd64 Actions artifact and then tested against
+CPA v7.2.83 with Mock upstream. Historical Round 5
+evidence remains in `reports/TEST_REPORT.md` and
+`LEO_VERIFICATION_HANDOFF.md`; it is not relabeled as current Round 6 evidence.
 
-This document describes a post-v10 development handoff, not an approved
+This document describes a post-v10 v0.15 development handoff, not an approved
 release. The methodologically valid v10 evaluation failed its first and only
 formal run (28/320 benign false positives, 49/320 policy blocks, 33/320 exact),
-so the release is blocked. No v0.1.2 tag, GitHub Release, or production
-deployment may be created. A future attempt requires implementation changes
-followed by a newly and independently authored unseen evaluation; v10 cannot be
-rerun.
+so the formal release is blocked. No `v0.15` tag, GitHub Release, or production
+deployment may be created. The evidence order is: final PR head and PR CI,
+merge to `main`, exact post-merge main push CI, private untagged clean candidate
+dispatched from `refs/heads/main`, v7.2.83 Host evidence, independent
+audit, a candidate-bound external `evaluation-v11` or later first-and-only
+`CONSUMED / PASS` attestation, optional annotated development prerelease, then
+the annotated formal `v0.15` tag and verified draft, followed by protected
+promotion of that unchanged draft. v10 cannot be rerun and is not a formal
+input.
+
+The neutral source admission policy is [RELEASE_POLICY.md](RELEASE_POLICY.md).
+Future Host/audit and formal decisions are externalized in
+`round6-prerelease-attestation.json` and `formal-release-attestation.json`.
 
 The implementation has three non-negotiable invariants:
 
@@ -92,26 +106,28 @@ a new CPA/provider shape requires review and an explicit canonical mapping.
 For an allowed request, `model.route` returns `Handled: false`. For a blocked
 request, it returns `Handled: true`, `TargetKind: self`. The executor returns an
 RPC error envelope with HTTP status 403 and the stable marker
-`cyber_abuse_guard_blocked`. CPA v7.2.75 turns that error into the native error
-shape for the entry protocol.
+`cyber_abuse_guard_blocked`. The root CPA v7.2.83 ABI contract turns that error
+into the native error shape for the entry protocol; the current v7.2.83
+Host matrix must reverify the exact client shapes.
 
 `executor.execute`, `executor.execute_stream`, and `executor.count_tokens` use
 this same policy-403 path. `executor.http_request` produces an unsupported-method
 RPC error whose `StatusCode()` is 405; the official adapter returns `(nil,
-error)`. This is a SOURCE/ADAPTER check, not a final client HTTP result. CPA
-v7.2.75 does expose the provider-specific public consumer
+error)`. This is a SOURCE/ADAPTER check, not a final client HTTP result. The
+audited root CPA contract exposes the provider-specific public consumer
 `POST /v1/alpha/search`, but ordinary selection is fixed to `codex` and the
 handler maps every `HttpRequest` error to HTTP 502. The project's
 `httptest.Server` manually maps the status error and cannot establish official
 Host HTTP 405. No current official public route maps Guard's error to final
 client 405, so the result is `NOT AVAILABLE / NOT RUN` and remains a handoff
 blocker that current CI cannot solve. The real four-protocol HTTP/SSE and zero
-Auth/Usage/Provider/Upstream matrix must be executed against the exact frozen
-handoff commit before it becomes Host evidence.
+Auth/Usage/Provider/Upstream matrix must be executed against the exact private
+v0.15 candidate on CPA v7.2.83 before it becomes Host
+evidence.
 
-CPA v7.2.75's `ExecutorResponse` has payload and headers but no HTTP status.
+CPA ABI v1 `ExecutorResponse` has payload and headers but no HTTP status.
 Consequently, ABI v1 cannot simultaneously return an arbitrary plugin-owned
-JSON body and a non-200 status from `executor.execute`. v0.1.2 favors the
+JSON body and a non-200 status from `executor.execute`. v0.15 favors the
 security property and correct 403 status, using CPA's protocol error wrapper.
 The stable marker and coarse category remain in the message; rule IDs and
 bypass details do not.
@@ -182,7 +198,7 @@ boundary cuts inherited media meaning. Consequently, tool argument/output
 member permutations have identical telemetry.
 
 Multipart extraction is selected by a fixed `RequestProfile` derived from the
-canonical `SourceFormat`. CPA v7.2.75's `ModelRouteRequest` has no general HTTP
+canonical `SourceFormat`. CPA ABI v1 `ModelRouteRequest` has no general HTTP
 path, and the official image handler may parse and rebuild multipart before the
 Router receives it, so endpoint-path inference is neither available nor valid.
 For `openai-image`, inspectable text is limited to `prompt` and
@@ -197,11 +213,11 @@ Both schema reasons are incomplete inspection. No partial classification or
 subject-risk update is used: Balanced allows+audits as `multipart_schema`,
 Strict self-routes with `cyber_abuse_guard_multipart_schema`, and a complete
 malicious prompt still follows ordinary policy. Parser unit tests prove the
-payload delivered to the plugin; only the CPA v7.2.75 Host matrix can prove
+payload delivered to the plugin; only the CPA v7.2.83 exact-candidate Host matrix can prove
 pre-Router reconstruction and Auth/Provider/Usage/upstream side effects.
 
 The original-body statement above is a Guard boundary, not an end-to-end Host
-logging guarantee. CPA v7.2.75 request logging may temporarily spool a
+logging guarantee. CPA request logging may temporarily spool a
 non-multipart body and persist a raw body in an HTTP error log. Host validation
 must isolate and inspect that log path, commercial-mode behavior, retention,
 permissions, and cleanup.
@@ -304,9 +320,9 @@ These mechanisms remain stateless across independent API calls and do not
 attest to local instruction-file integrity.
 
 Ruleset `1.0.7` identifies the embedded YAML assets only. The complete
-code-level behavior is separately identified as `classifier-policy-v2`,
+code-level behavior is separately identified as `classifier-policy-v3`,
 SHA-256
-`f4a944ade27c850eecd7bb6f4ead3cc45a406e02797bbc2db33df50bc6ddab82`.
+`577dd913862f2d457eb292bfd02c571e0ea7ff47bc5427bc6be389851ddeb388`.
 Its tested source list binds the classifier, matcher, normalizer, role logic,
 wrapper assessment, behavior graph, semantic composition, bounded extractor,
 rule loader/schema, embedded YAML assets, and module dependency locks. The
@@ -336,8 +352,8 @@ Subject selection is ordered:
    HMACed in memory;
 2. an anonymous bucket.
 
-CPA v7.2.75 does not supply a distinct authenticated principal/key-policy ID or
-a trustworthy direct-peer address to ModelRouter. v0.1.2 therefore rejects
+CPA ABI v1 does not supply a distinct authenticated principal/key-policy ID or
+a trustworthy direct-peer address to ModelRouter. v0.15 therefore rejects
 `trusted_proxy.enabled: true`; forwarded headers alone are spoofable and are
 never accepted as identity.
 
@@ -401,7 +417,7 @@ instead of silently replacing uncorrelatable identities.
 
 ### Dual-key rotation design (not implemented)
 
-v0.1.2 supports one active HMAC key only. A future safe rotation mechanism must
+v0.15 supports one active HMAC key only. A future safe rotation mechanism must
 be an explicit state machine:
 
 1. configure one active key and at most one previous read-only key;
@@ -490,7 +506,7 @@ recent successful configuration.
 ## Management routes
 
 Only CPA management routes are registered; no unauthenticated resource page is
-exposed in v0.1.2.
+exposed in v0.15.
 
 - `GET /plugins/cyber-abuse-guard/status`
 - `GET /plugins/cyber-abuse-guard/events`
@@ -504,7 +520,7 @@ exposed in v0.1.2.
 CPA mounts these below `/v0/management` and enforces its Management Key before
 the plugin handler runs. The test route does not persist its input.
 
-CPA v7.2.75 management routes are exact matches and reject `:` or `*`, so the
+The audited CPA ABI management routes are exact matches and reject `:` or `*`, so the
 task book's suggested `{hash}` path parameter cannot be registered safely.
 
 CPA's Management Key middleware is the authentication authority. The plugin
@@ -536,7 +552,7 @@ prove that an oversized request receives 413 before CPA reads it.
   cases still expose the error because they deliberately do not enforce;
 - panic in another ABI method: recover, return a parseable internal error, and
   retain the non-zero ABI failure signal;
-- optional classifier: interface reserved but not implemented in v0.1.2.
+- optional classifier: interface reserved but not implemented in v0.15.
 
 CPA owns the host fail-open policy. A plugin that is absent, fails registration,
 is fused, returns a Router error, panics before an accepted handled result,
@@ -577,14 +593,16 @@ The safe broad Go gate uses `scripts/go-safe-development-test.sh` in `test`,
 `race`, and `boundary` modes so routine development verification does not open
 consumed v4-v9 fixtures. Broad `go test ./...` is not an acceptable substitute.
 
-The CPA v7.2.75 source-contract module first proves that 16 exact upstream Host
-tests still exist, then runs those names precisely instead of relying on a broad
+The current CPA v7.2.83 plugin-store/source-contract module first proves that
+16 exact upstream Host tests still exist, then runs those names precisely
+instead of relying on a broad
 wildcard. It also calls the official `pluginstore.InstallArchive` for both
 synthetic bytes and, when supplied, the real build artifact. These checks cover
 store naming, root-only library layout, checksum, installed path/bytes, repeat
 installation, tamper repair, priority ordering, and documented Host fallback.
-They remain source/installer evidence until paired with the authorized GitHub CI
-real-Host run and Leo verification.
+They remain historical source/installer evidence. Current admission requires
+the v7.2.83 compatibility lane and exact-candidate real-Host run plus independent
+verification.
 
 The integration harness builds the `.so`, builds CPA at the pinned commit,
 starts a local mock OpenAI-compatible upstream, and starts CPA with the plugin.
@@ -604,24 +622,31 @@ identifier/format/scope readiness. Host fuse and pre-result panic remain pinned
 to official source-overlay tests; the fixture does not use a process crash as a
 false substitute for a recoverable plugin panic.
 
-The Host/Router targets and management-proxy fixture were mistakenly executed
+Historically, the Host/Router targets and management-proxy fixture were mistakenly executed
 once in WSL outside the authorized evidence path. They used loopback/Mock
 components only and cleanup left no fixture process, but the results are
 excluded: `LOCAL MIS-EXECUTION RECORDED / EXCLUDED; CI REQUIRED / NOT YET
 AUTHORITATIVE`. Separately, an earlier CPA v7.2.72 exact-freeze GitHub CI passed
-the historical Host/Router/proxy matrix. The current CPA v7.2.75 artifact and
-Host matrix remain pending, and Leo independent verification remains not run.
+the historical Host/Router/proxy matrix. Neither result validates v0.15. The
+current CPA v7.2.83 exact-candidate Host matrix and independent
+verification remain not run.
 
-The authorized artifact lifecycle is one chain over the same Dist identity:
-Host Blackbox uses `InstallManifest` for first install and real Host load, then
-`TestPublishedStoreArchive` verifies repeat-skip and tamper-repair.
-`REQUIRE_DIST_ARTIFACTS=1` must reject missing `.so`, Store ZIP, metadata, or
-checksums; synthetic fallback cannot satisfy CI evidence.
+The authorized v0.15 artifact lifecycle is one chain over the same identity:
+the final PR head passes PR CI, merges to `main`, and the exact resulting main
+commit/tree passes push CI without producing a release; the private untagged
+candidate workflow is then dispatched from `refs/heads/main` and produces clean
+SO/Store ZIP bytes plus `candidate-manifest.json`; the CPA v7.2.83 Host record
+and the independent audit bind that SO SHA-256; an
+annotated development prerelease is optional; the annotated formal `v0.15` tag
+and verified draft remain separate; and protected promotion may publish only
+that unchanged draft. `InstallManifest` must prove first install and real Host
+load, while `TestPublishedStoreArchive` verifies repeat-skip and tamper-repair.
+Missing `.so`, Store ZIP, metadata, checksums, or candidate manifest must fail;
+synthetic fallback cannot satisfy Host evidence.
 
-`make release` depends on this real-CPA integration suite before packaging.
-Whether authorized CI and Leo ran the suite against the implementation freeze is
-an evidence field, not an architectural property; consult the test and Leo
-handoff reports.
+Whether the authorized sandbox and independent auditor ran the suite against the
+exact private candidate is an evidence field, not an architectural property;
+consult the current Round 6 handoff and reports.
 Release verification inspects the ELF and rejects a binary whose imported glibc
 symbol version exceeds `GLIBC_2.34`. The published artifact therefore requires
 glibc 2.34 or newer, is compatible with the official Debian Bookworm CPA image,
@@ -631,29 +656,40 @@ For streaming blocks, the executor returns the 403 error before a stream is
 established. CPA closes the request promptly with a protocol-compatible regular
 error response. ABI v1 cannot simultaneously send HTTP 403 and establish an
 SSE stream with terminal frames; returning successful chunks would force HTTP
-200, so v0.1.2 chooses the genuine pre-stream 403.
+200, so v0.15 chooses the genuine pre-stream 403.
 
 ## Build identity and release reproducibility
 
-Release builds link immutable version, full commit SHA, ruleset version,
-canonical ruleset SHA-256, and dirty state. The classifier source separately
-exposes `classifier-policy-v2` and its SHA-256 through classifier results and
-authenticated status. Binding that policy identity into build metadata and the
-artifact verifier is still required before a formal release can rely on it.
-Formal release scripts require a clean worktree and annotated `v0.1.2` tag at `HEAD`;
-`ALLOW_DIRTY_BUILD=1` produces clearly marked development artifacts only.
+Builds link immutable version, full commit SHA, ruleset version/hash,
+`classifier-policy-v3` /
+`577dd913862f2d457eb292bfd02c571e0ea7ff47bc5427bc6be389851ddeb388`,
+streaming-scanner identity, and dirty state. Build metadata and the verifier bind
+these identities. Candidate mode requires a clean worktree, exact expected
+commit/tree, the commit timestamp, an absent formal `v0.15` tag, and forbids
+formal operations. Formal release scripts require a clean worktree and annotated
+`v0.15` tag at `HEAD`. `ALLOW_DIRTY_BUILD=1` remains development-only and cannot
+produce the Host-test candidate.
 
-`SOURCE_DATE_EPOCH` derives from the commit timestamp unless explicitly fixed.
+`SOURCE_DATE_EPOCH` derives from the commit timestamp; clean candidate and formal
+builds reject a different override.
 Builds use `-trimpath`, a pinned Go toolchain, deterministic ZIP ordering and
 timestamps, strict file allowlists, and a canonical ruleset manifest. The CPA
 store ZIP contains exactly one root mode-0755 `.so`; documentation, metadata,
 SBOM, and operational material live in a separately named audit bundle.
 CycloneDX SBOM and checksums are verified against source and cover both ZIPs.
-The reproducibility gate builds in two clean clones and byte-compares the `.so`,
-store ZIP, audit bundle, and SBOM.
+The candidate reproducibility gate builds in two clean clones and byte-compares
+the `.so`, Store ZIP, metadata, ruleset identity, and SBOM without packaging an
+audit bundle. The formal gate separately covers the audit bundle and source
+archive.
+
+Formal source and audit bundles exclude evaluation, Holdout, private, blind,
+and retired material. Only low-sensitivity external evaluation identity/hash and
+release-attestation files cross that packaging boundary.
 
 These mechanisms make evidence reproducible; they do not turn a failed safety
 gate into a release. v1-v8 are retired or consumed failures, v9 is a consumed
 methodology-invalid failure, and methodologically valid v10 is a consumed
-formal failure. The v0.1.2 release is therefore blocked permanently on this
-implementation/evaluation pairing.
+formal failure. Historical 0.1.2 evidence remains frozen. The formal v0.15
+release is blocked until the exact candidate has an external `evaluation-v11`
+or later first-and-only `CONSUMED / PASS` attestation; v10 cannot be rerun,
+renamed, or supplied to the formal build.

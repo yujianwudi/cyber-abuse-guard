@@ -169,7 +169,7 @@ matched prompt fragment. Audit configuration cannot enable original-text
 logging.
 
 This privacy statement covers classifier output and Guard/plugin audit. It does
-not override CPA v7.2.75 Host behavior: request logging may temporarily spool a
+not override CPA Host behavior: request logging may temporarily spool a
 non-multipart body and persist a raw body in an HTTP error log. Host log mode,
 directory, retention, permissions, and cleanup require separate review.
 
@@ -200,16 +200,26 @@ This identity covers the embedded YAML rule assets. The complete code-level
 policy is separately identified as:
 
 ```text
-classifier_policy_version: classifier-policy-v2
-classifier_policy_sha256: c2092d0949fcaa1d0f085dfe31a668d45cc4d14efc10427d0f3ebcf3e821a112
+classifier_policy_version: classifier-policy-v3
+classifier_policy_sha256: 577dd913862f2d457eb292bfd02c571e0ea7ff47bc5427bc6be389851ddeb388
 ```
 
 The policy digest test binds the deterministic classifier, matcher,
 normalizer, role logic, wrapper assessment, behavior graph, semantic
 composition, bounded extractor, rule loader/schema, embedded YAML files, and
 module dependency locks. Classifier results and authenticated status expose the
-identity. Build metadata and the artifact verifier do not yet bind it, so a
-handoff must also record the exact full Git commit.
+identity. Build metadata and the artifact verifier bind it, but a handoff must
+still record the exact full Git commit/tree and candidate workflow run.
+
+Commit `21ceb57e6b6030e56d7820c9a67a8eecd068c669` passed push and PR CI
+with this policy identity as a pre-version-migration checkpoint. It is not the
+final v0.15 candidate identity. The local final-diff CodeRabbit review reported
+0 issues; the remote Draft check was skipped, so no independent approval is
+claimed.
+
+Release eligibility is governed by [RELEASE_POLICY.md](RELEASE_POLICY.md) and
+the external `round6-prerelease-attestation.json` and
+`formal-release-attestation.json` assets, not by rule-document self-claims.
 
 Any rule change requires a new ruleset version, regression review, manifest
 regeneration, changelog entry, and independent blind evaluation. Default rules
@@ -277,8 +287,9 @@ Blind generations v1-v8 are retired or consumed failures. v9 is frozen as
 validator was missing. Methodologically valid v10 was then executed exactly
 once and failed with benign FP 28/320, policy blocked 49/320, and exact 33/320.
 No set may be relabelled as unseen, rerun, or used for row-specific tuning. The
-v0.1.2 release is blocked; a future attempt requires a new implementation and a
-new independently authored unseen set.
+v0.15 release is blocked; a future attempt requires a new implementation and a
+candidate-bound external `evaluation-v11` or later first-and-only
+`CONSUMED / PASS` report.
 
 Run the visible development validator with:
 
@@ -300,12 +311,23 @@ The ordinary Makefile aliases are `unit-test` and `race`. The explicit
 work and is excluded from ordinary CI. The wrapper must not open v4-v10
 consumed or retired fixtures during normal development.
 
-Passing unit or CI gates does not authorize deployment. Tencent Cloud isolated
-CPA v7.2.75 + Mock-upstream Host validation and independent source/artifact
-review remain separate gates. The strongest permitted post-gate status is
-`READY FOR INDEPENDENT SOURCE/ARTIFACT REVIEW`, never `PRODUCTION APPROVED`.
+Passing unit or CI gates does not authorize deployment. The exact v0.15 chain
+requires final PR CI, merge to `main`, exact post-merge main push CI, and a
+private untagged clean candidate dispatched from `refs/heads/main`, followed by
+CPA v7.2.83 + Mock-upstream Host validation against one SO SHA-256 and independent
+source/artifact/Host review. An optional annotated development prerelease is
+allowed only after a candidate-bound external `evaluation-v11` or later
+first-and-only `CONSUMED / PASS` attestation and is not a formal release. The
+annotated `v0.15` tag and verified draft consume that same attestation; a
+protected promotion may publish only the unchanged draft.
+
+Earlier v7.2.82/v7.2.81 source/compile profiles are historical non-gating
+engineering evidence, not current release requirements.
 
 Do not run, inspect, print, or obtain through Git history any consumed blind
 sample. Evaluation v10 remains `CONSUMED / FAIL`; only its frozen aggregate
 report may be used. Frozen hashes, aggregate metrics, and exit codes are kept in
 the generation-specific reports and `docs/reports/RELEASE_EVIDENCE.md`.
+Evaluation v10 cannot be rerun and is not a formal-build or formal-bundle input.
+Formal source/audit bundles exclude evaluation, Holdout, private, blind, and
+retired material.

@@ -1,8 +1,21 @@
 # Round 6 long-text streaming scanner design
 
-Status: **BLOCKED / PENDING HOST AND INDEPENDENT AUDIT**. This is a Linux
+Status: **BLOCKED / PENDING HOST AND INDEPENDENT AUDIT**. This is exact project
+version `0.15`, intended formal tag `v0.15` (never `v0.15.0`), and a Linux
 amd64-only development candidate. Windows and macOS validation is outside this
-round. See [ROUND6_DEVELOPMENT_HANDOFF.md](ROUND6_DEVELOPMENT_HANDOFF.md).
+round. Clean candidate bytes must come from the private untagged Actions
+workflow and remain unreleased. See
+[ROUND6_DEVELOPMENT_HANDOFF.md](ROUND6_DEVELOPMENT_HANDOFF.md) and the neutral
+[RELEASE_POLICY.md](RELEASE_POLICY.md). Future eligibility is externalized in
+`round6-prerelease-attestation.json` and `formal-release-attestation.json`.
+
+Current classifier identity is `classifier-policy-v3` /
+`577dd913862f2d457eb292bfd02c571e0ea7ff47bc5427bc6be389851ddeb388`;
+scanner identity is `streaming-scanner-v1`.
+
+Commit `21ceb57e6b6030e56d7820c9a67a8eecd068c669` passed push and PR CI
+as a pre-version-migration checkpoint. It is not the final v0.15 source,
+candidate artifact, Host, audit, tag, or Release identity.
 
 ## Security objective
 
@@ -135,4 +148,23 @@ Counters are fixed and low-cardinality. `text_bytes_scanned_total` may exceed th
 
 ## Trust boundary
 
-This design does not fetch remote media, call a model, select a provider, inspect production observe data, or execute third-party adversarial repositories. Host validation must use official CPA v7.2.83, v7.2.82, and v7.2.81 binaries, the exact Linux amd64 candidate, a Mock upstream, no real auth pool, and no real provider. All three Host runs are currently **NOT RUN / PENDING**.
+This design does not fetch remote media, call a model, select a provider,
+inspect production observe data, or execute third-party adversarial
+repositories. Host validation must use the official CPA v7.2.83 binary and the
+exact clean Linux amd64 candidate from the private
+untagged Actions artifact, a Mock upstream, no real auth pool, and no real
+provider. The final PR must pass PR CI, merge to `main`, and pass exact
+post-merge main push CI before that candidate is dispatched from
+`refs/heads/main`. The CPA v7.2.83 Host run and the independent
+source/artifact/Host audit are currently **NOT RUN / PENDING**. An optional
+annotated development prerelease
+may follow only after those gates and a candidate-bound external
+`evaluation-v11` or later first-and-only `CONSUMED / PASS` attestation. The
+annotated formal `v0.15` tag and verified draft consume that attestation; a
+protected promotion may publish only that unchanged draft. Historical v10 remains
+`CONSUMED / FAIL`, is never rerun, and is not a formal-build input. Formal
+source/audit bundles exclude evaluation, Holdout, private, blind, and retired
+material.
+
+Earlier v7.2.82/v7.2.81 source/compile profiles are retained only as historical
+engineering context and are not current v0.15 Host or release gates.

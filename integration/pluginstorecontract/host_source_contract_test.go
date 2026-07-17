@@ -13,9 +13,10 @@ import (
 
 const (
 	cpaModulePath        = "github.com/router-for-me/CLIProxyAPI/v7"
-	cpaPinnedVersion     = "v7.2.75"
-	cpaPinnedModuleSum   = "h1:WcCCeENtQ5F2bT86FVIOZJJbWCkPqrp3idl8kyZqARM="
-	cpaPinnedGoModSum    = "h1:f4pcyAej8RoeRhIxJfm+OUMkCKaApiA8WzxR2XVlBh8="
+	cpaPinnedVersion     = "v7.2.83"
+	cpaPinnedCommit      = "9f4f53ca5a4d1474e3f7eb61d6ffc984995f1f66"
+	cpaPinnedModuleSum   = "h1:fCGraERLPW08Kl8aP3F/A5XQC34ZPD0mEfxpTvevF7Y="
+	cpaPinnedGoModSum    = "h1:ytvZNWbCv7PrAyR80+RKsDJPODsdL6qxyFaXDBNZdqs="
 	cpaPluginHostPackage = cpaModulePath + "/internal/pluginhost"
 )
 
@@ -45,6 +46,14 @@ type resolvedCPAModule struct {
 	Sum      string
 	GoModSum string
 	Replace  *resolvedCPAModule
+	Origin   *resolvedCPAOrigin
+}
+
+type resolvedCPAOrigin struct {
+	VCS  string
+	URL  string
+	Hash string
+	Ref  string
 }
 
 // TestOfficialCPAHostRoutingSourceContract runs the routing contract tests
@@ -95,7 +104,7 @@ func TestCPAHostFailOpenFixtureContract(t *testing.T) {
 	if _, errFixtureStat := os.Stat(fixturePath); errFixtureStat != nil {
 		t.Fatalf("stat Host fixture: %v", errFixtureStat)
 	}
-	moduleCopy := filepath.Join(t.TempDir(), "cpa-v7.2.75")
+	moduleCopy := filepath.Join(t.TempDir(), "cpa-v7.2.83")
 	if errCopyModule := os.CopyFS(moduleCopy, os.DirFS(module.Dir)); errCopyModule != nil {
 		t.Fatalf("copy pinned CPA module for Host fixture: %v", errCopyModule)
 	}
@@ -170,7 +179,26 @@ func preparePinnedCPAModule(t *testing.T) (string, []string, resolvedCPAModule) 
 		t.Fatalf("resolved CPA checksums = module %q go.mod %q, want module %q go.mod %q",
 			module.Sum, module.GoModSum, cpaPinnedModuleSum, cpaPinnedGoModSum)
 	}
-	t.Logf("pinned CPA module: %s@%s sum=%s go_mod_sum=%s", module.Path, module.Version, module.Sum, module.GoModSum)
+	downloadJSON := runGoJSONCommand(t, goBinary,
+		"mod", "download", "-json", cpaModulePath+"@"+cpaPinnedVersion,
+	)
+	var downloaded resolvedCPAModule
+	if errUnmarshalDownload := json.Unmarshal([]byte(downloadJSON), &downloaded); errUnmarshalDownload != nil {
+		t.Fatalf("decode downloaded CPA module metadata: %v", errUnmarshalDownload)
+	}
+	if downloaded.Path != cpaModulePath || downloaded.Version != cpaPinnedVersion ||
+		downloaded.Sum != cpaPinnedModuleSum || downloaded.GoModSum != cpaPinnedGoModSum {
+		t.Fatalf("downloaded CPA module = %s@%s sums=(%q, %q), want %s@%s sums=(%q, %q)",
+			downloaded.Path, downloaded.Version, downloaded.Sum, downloaded.GoModSum,
+			cpaModulePath, cpaPinnedVersion, cpaPinnedModuleSum, cpaPinnedGoModSum)
+	}
+	if downloaded.Origin == nil || downloaded.Origin.VCS != "git" || downloaded.Origin.Hash != cpaPinnedCommit ||
+		downloaded.Origin.Ref != "refs/tags/"+cpaPinnedVersion {
+		t.Fatalf("resolved CPA origin = %#v, want git commit %s at refs/tags/%s",
+			downloaded.Origin, cpaPinnedCommit, cpaPinnedVersion)
+	}
+	t.Logf("pinned CPA module: %s@%s commit=%s sum=%s go_mod_sum=%s",
+		module.Path, module.Version, downloaded.Origin.Hash, module.Sum, module.GoModSum)
 	return goBinary, moduleArguments, module
 }
 

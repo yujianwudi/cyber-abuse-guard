@@ -83,24 +83,24 @@ BLOCKED_PRERELEASE_INPUT_ORDER = (
     "expected_commit",
     "expected_tree",
     "ci_run_id",
+    "candidate_run_id",
     "expected_so_sha256",
+    "expected_store_zip_sha256",
     "host_v7283_validation",
     "host_v7283_evidence_sha256",
-    "host_v7282_validation",
-    "host_v7282_evidence_sha256",
-    "host_v7281_validation",
-    "host_v7281_evidence_sha256",
     "independent_audit_validation",
     "independent_audit_sha256",
+    "independent_evaluation_validation",
+    "independent_evaluation_id",
+    "independent_evaluation_sha256",
     "authorize_blocked_prerelease",
 )
 BLOCKED_PRERELEASE_INPUTS = set(BLOCKED_PRERELEASE_INPUT_ORDER)
 BLOCKED_PRERELEASE_IF_LINES = (
     "if: >-",
     "inputs.host_v7283_validation == 'PASS' &&",
-    "inputs.host_v7282_validation == 'PASS' &&",
-    "inputs.host_v7281_validation == 'PASS' &&",
     "inputs.independent_audit_validation == 'PASS' &&",
+    "inputs.independent_evaluation_validation == 'PASS' &&",
     "inputs.authorize_blocked_prerelease == true",
 )
 ADMISSION_INPUT_ENV = (
@@ -108,40 +108,42 @@ ADMISSION_INPUT_ENV = (
     "EXPECTED_COMMIT: ${{ inputs.expected_commit }}",
     "EXPECTED_TREE: ${{ inputs.expected_tree }}",
     "CI_RUN_ID: ${{ inputs.ci_run_id }}",
+    "CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}",
     "EXPECTED_SO_SHA256: ${{ inputs.expected_so_sha256 }}",
+    "EXPECTED_STORE_ZIP_SHA256: ${{ inputs.expected_store_zip_sha256 }}",
     "DISPATCH_REF: ${{ github.ref }}",
     "DISPATCH_SHA: ${{ github.sha }}",
     "WORKFLOW_REF: ${{ github.workflow_ref }}",
     "WORKFLOW_SHA: ${{ github.workflow_sha }}",
     "HOST_V7283: ${{ inputs.host_v7283_validation }}",
     "HOST_V7283_SHA256: ${{ inputs.host_v7283_evidence_sha256 }}",
-    "HOST_V7282: ${{ inputs.host_v7282_validation }}",
-    "HOST_V7282_SHA256: ${{ inputs.host_v7282_evidence_sha256 }}",
-    "HOST_V7281: ${{ inputs.host_v7281_validation }}",
-    "HOST_V7281_SHA256: ${{ inputs.host_v7281_evidence_sha256 }}",
     "INDEPENDENT_AUDIT: ${{ inputs.independent_audit_validation }}",
     "INDEPENDENT_AUDIT_SHA256: ${{ inputs.independent_audit_sha256 }}",
+    "INDEPENDENT_EVALUATION: ${{ inputs.independent_evaluation_validation }}",
+    "INDEPENDENT_EVALUATION_ID: ${{ inputs.independent_evaluation_id }}",
+    "INDEPENDENT_EVALUATION_SHA256: ${{ inputs.independent_evaluation_sha256 }}",
     "AUTHORIZED: ${{ inputs.authorize_blocked_prerelease }}",
 )
 ADMISSION_INPUT_COMMANDS = (
-    '[[ "$TAG" =~ ^v0\\.1\\.2-dev\\.round6([.][0-9]+)?$ ]]',
+    '[[ "$TAG" =~ ^v0\\.15-dev\\.round6([.][0-9]+)?$ ]]',
     '[[ "$EXPECTED_COMMIT" =~ ^[0-9a-f]{40}$ ]]',
     '[[ "$EXPECTED_TREE" =~ ^[0-9a-f]{40}$ ]]',
     '[[ "$CI_RUN_ID" =~ ^[1-9][0-9]*$ ]]',
+    '[[ "$CANDIDATE_RUN_ID" =~ ^[1-9][0-9]*$ ]]',
     '[[ "$EXPECTED_SO_SHA256" =~ ^[0-9a-f]{64}$ ]]',
+    '[[ "$EXPECTED_STORE_ZIP_SHA256" =~ ^[0-9a-f]{64}$ ]]',
     '[[ "$DISPATCH_REF" == "refs/tags/$TAG" ]]',
     '[[ "$DISPATCH_SHA" == "$EXPECTED_COMMIT" ]]',
     '[[ "$WORKFLOW_SHA" == "$EXPECTED_COMMIT" ]]',
     '[[ "$WORKFLOW_REF" == "${GITHUB_REPOSITORY}/.github/workflows/round6-blocked-prerelease.yml@refs/tags/$TAG" ]]',
     '[[ "$HOST_V7283" == PASS ]]',
-    '[[ "$HOST_V7282" == PASS ]]',
-    '[[ "$HOST_V7281" == PASS ]]',
     '[[ "$INDEPENDENT_AUDIT" == PASS ]]',
+    '[[ "$INDEPENDENT_EVALUATION" == PASS ]]',
     '[[ "$AUTHORIZED" == true ]]',
     '[[ "$HOST_V7283_SHA256" =~ ^[0-9a-f]{64}$ ]]',
-    '[[ "$HOST_V7282_SHA256" =~ ^[0-9a-f]{64}$ ]]',
-    '[[ "$HOST_V7281_SHA256" =~ ^[0-9a-f]{64}$ ]]',
     '[[ "$INDEPENDENT_AUDIT_SHA256" =~ ^[0-9a-f]{64}$ ]]',
+    '[[ "$INDEPENDENT_EVALUATION_ID" =~ ^evaluation-v(1[1-9]|[2-9][0-9]|[1-9][0-9]{2,})$ ]]',
+    '[[ "$INDEPENDENT_EVALUATION_SHA256" =~ ^[0-9a-f]{64}$ ]]',
 )
 ADMISSION_CI_ENV = (
     "CI_RUN_ID: ${{ inputs.ci_run_id }}",
@@ -171,19 +173,47 @@ ADMISSION_CI_COMMANDS = (
     "   .repository.full_name == $repository' \\",
     '  "$response" >/dev/null',
 )
+CANDIDATE_ADMISSION_ENV = (
+    "CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}",
+    "EXPECTED_COMMIT: ${{ inputs.expected_commit }}",
+    "GH_TOKEN: ${{ github.token }}",
+)
+CANDIDATE_ADMISSION_COMMANDS = (
+    'response="$(mktemp)"',
+    'trap \'rm -f -- "$response"\' EXIT',
+    "curl --fail-with-body --silent --show-error --location \\",
+    "  --header 'Accept: application/vnd.github+json' \\",
+    '  --header "Authorization: Bearer $GH_TOKEN" \\',
+    "  --header 'X-GitHub-Api-Version: 2022-11-28' \\",
+    '  "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/actions/runs/${CANDIDATE_RUN_ID}" \\',
+    '  --output "$response"',
+    "jq -e \\",
+    '  --arg run_id "$CANDIDATE_RUN_ID" \\',
+    '  --arg repository "$GITHUB_REPOSITORY" \\',
+    '  --arg expected_commit "$EXPECTED_COMMIT" \\',
+    "  '(.id | tostring) == $run_id and",
+    '   .name == "Round6 clean candidate - NOT A RELEASE" and',
+    '   .path == ".github/workflows/round6-candidate.yml" and',
+    '   .event == "workflow_dispatch" and',
+    '   .head_sha == $expected_commit and',
+    '   .status == "completed" and',
+    '   .conclusion == "success" and',
+    "   .repository.full_name == $repository' \\",
+    '  "$response" >/dev/null',
+)
 SAFE_GATE_COMMANDS = (
     "python3 -B scripts/round6_safe_gate_contract_test.py",
     "python3 -B scripts/round6_safe_gate_contract.py --root .",
 )
 SAFE_WORKFLOW_ENV_LINES = {
     "GO_VERSION: '1.26.4'",
-    "VERSION: '0.1.2'",
+    "VERSION: '0.15'",
     "CYCLONEDX_GOMOD_VERSION: 'v1.9.0'",
     "GOVULNCHECK_VERSION: 'v1.6.0'",
 }
 SAFE_WORKFLOW_ENV = {
     "GO_VERSION": "1.26.4",
-    "VERSION": "0.1.2",
+    "VERSION": "0.15",
     "CYCLONEDX_GOMOD_VERSION": "v1.9.0",
     "GOVULNCHECK_VERSION": "v1.6.0",
 }
@@ -224,8 +254,8 @@ CLEAN_EXECUTION_ENV = (
 )
 CLEAN_EXECUTION_ENV_MAP = dict(CLEAN_EXECUTION_ENV)
 CLEAN_EXECUTION_ENV_PATHS = {
-    "jobs.verify.steps[9].env",
-    "jobs.verify.steps[10].env",
+    "jobs.verify.steps[12].env",
+    "jobs.verify.steps[13].env",
 }
 BLOCKED_TOP_LEVEL_KEYS = (
     "name",
@@ -260,6 +290,11 @@ BLOCKED_STEP_CONTRACTS = {
             ("name", "env", "run"),
             None,
         ),
+        (
+            "Bind admission to the successful clean-candidate run",
+            ("name", "env", "run"),
+            None,
+        ),
     ),
     "verify": (
         (
@@ -279,14 +314,29 @@ BLOCKED_STEP_CONTRACTS = {
             "actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16",
         ),
         ("Install bounded build dependencies", ("name", "run"), None),
+        (
+            "Download the exact Host-tested clean candidate artifact",
+            ("name", "uses", "with"),
+            "actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131",
+        ),
+        (
+            "Verify candidate manifest and Host-tested artifact bytes",
+            ("name", "env", "run"),
+            None,
+        ),
         ("Run source and Round6 regression gates", ("name", "run"), None),
         (
-            "Verify CPA v7.2.83 primary, v7.2.82 previous, and v7.2.81 backward source compatibility",
+            "Verify current CPA v7.2.83 source compatibility",
             ("name", "env", "run"),
             None,
         ),
         (
-            "Build only privacy-safe blocked-development artifacts",
+            "Rebuild the exact clean Host-tested candidate",
+            ("name", "env", "run"),
+            None,
+        ),
+        (
+            "Prove clean candidate reproducibility against root artifacts",
             ("name", "env", "run"),
             None,
         ),
@@ -314,21 +364,30 @@ BLOCKED_STEP_CONTRACTS = {
             None,
         ),
         (
+            "Upload immutable blocked-attestation artifact for the formal workflow",
+            ("name", "uses", "with"),
+            "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
+        ),
+        (
             "Recheck immutable tag and create draft blocked prerelease",
             ("name", "env", "run"),
             None,
         ),
     ),
 }
-ALLOWED_GITHUB_TOKEN_PATHS = {
+BLOCKED_ALLOWED_GITHUB_TOKEN_PATHS = {
     "jobs.admission.steps[1].env.GH_TOKEN",
-    "jobs.publish.steps[2].env.GH_TOKEN",
+    "jobs.admission.steps[2].env.GH_TOKEN",
+    "jobs.verify.steps[5].with.github-token",
+    "jobs.publish.steps[3].env.GH_TOKEN",
 }
-ALLOWED_GITHUB_IDENTITY_EXPRESSIONS = {
+BLOCKED_ALLOWED_GITHUB_IDENTITY_EXPRESSIONS = {
     "jobs.admission.steps[0].env.DISPATCH_REF": "${{ github.ref }}",
     "jobs.admission.steps[0].env.DISPATCH_SHA": "${{ github.sha }}",
     "jobs.admission.steps[0].env.WORKFLOW_REF": "${{ github.workflow_ref }}",
     "jobs.admission.steps[0].env.WORKFLOW_SHA": "${{ github.workflow_sha }}",
+    "jobs.verify.steps[5].with.repository": "${{ github.repository }}",
+    "jobs.publish.steps[1].env.WORKFLOW_SHA": "${{ github.workflow_sha }}",
 }
 GITHUB_EXPRESSION = re.compile(r"\$\{\{(.*?)\}\}", re.DOTALL)
 SENSITIVE_EXPRESSION_CONTEXT = re.compile(r"(?i)(?<![A-Za-z0-9_])(?:github|secrets)(?![A-Za-z0-9_])")
@@ -356,33 +415,69 @@ ROUND6_SPARSE_PATTERNS = (
     "!/testdata/*blind*",
     "!/testdata/*retired*",
 )
+ROUND6_REPRODUCIBILITY_SCRIPT_SHA256 = (
+    "76c85ccef22a46724c5c464a21b2a73f65d984467756f903b360e3d474ce3715"
+)
+ROUND6_REPRODUCIBILITY_MODE_CONTRACT = """case "$RELEASE_BUILD_KIND" in
+  candidate)
+    release_assert_candidate_build
+    clone_dirty_build=0
+    clone_candidate_build=1
+    artifact_version="$RELEASE_SOURCE_VERSION"
+    ;;
+  formal)
+    release_assert_tag
+    release_assert_formal_build
+    clone_dirty_build=0
+    artifact_version="$RELEASE_SOURCE_VERSION"
+    ;;
+  development) ;;
+  *) release_die "unsupported Round6 reproducibility build kind: $RELEASE_BUILD_KIND" ;;
+esac"""
+ROUND6_REPRODUCIBILITY_FORMAL_PACKAGE_COMMAND = (
+    '    env "${common_env[@]}" "$clone/scripts/package-release.sh"'
+)
+ROUND6_REPRODUCIBILITY_PACKAGE_BRANCH_CONTRACT = """  if [[ "$RELEASE_BUILD_KIND" == formal ]]; then
+    env "${common_env[@]}" "$clone/scripts/package-release.sh"
+  else
+    PLUGIN_BINARY="$clone/dist/$so" \\
+      STORE_ARCHIVE="$clone/dist/$store_zip" \\
+      SOURCE_DATE_EPOCH="$RELEASE_SOURCE_DATE_EPOCH" \\
+      "$clone/scripts/create-store-archive.sh"
+  fi"""
 BLOCKED_STEP_RUN_SHA256 = {
-    ("admission", 0): "0f5d145f08d0da37a2e4a6a5b9d8326ba0480d810c7aa10f30973944803ddd6a",
+    ("admission", 0): "76c5b72d3dfabe90710519c0d299697ec6423adbbea3848974c9b737da674878",
     ("admission", 1): "7f1817ec7b567df4be63fafd9ee2b2347ac37e01982e41ee3338f64c79cae81a",
+    ("admission", 2): "5a315540eb55c2663caeba1fa2f77a80df0f4d2fd6c786c656149d22f638c2f2",
     ("verify", 1): "b38e1f3a74567d8390bde6390c75c7e96a3bd0d5bc13de0e6a7dbbcfeec0a2fe",
     ("verify", 2): "3427df1bdbbcd38976514b679706f45fe6331981e750168beffd9bfdd1efdea1",
-    ("verify", 4): "d53885f6485208a538692ab2737ef0824bc71bcf2f42c0d8c65a60ee906a0503",
-    ("verify", 5): "feb84636bac16fb6245913190b0803f0644ee094423c531ad4e59c752e6bc9fd",
-    ("verify", 6): "fa50af5a75fcdd76f7a5c0900c3f983b2ee285220229e1746c35671713cba7b7",
-    ("verify", 7): "eabde1048cd0f10bfc3540f427c3674b3cf8d5fc0206bebc58e695a328dbb0cb",
-    ("verify", 8): "72ba08821693dcb100be3d4dcfaac32d485191186d46fa22119ae7a7b60990b9",
-    ("verify", 9): "17e57156996beab078ddb62b4b9c0d5dd1fee6f247fc69e859725a21590bc389",
-    ("publish", 1): "d67141ec5e029c4e2176853cb764778a5bfe8afd5ce15cee10417ddc89991182",
-    ("publish", 2): "d9a28c9084a735f88d87ecdc7c1dccf3bc9d8518370f6c6e9f3917e43bd769e9",
+    ("verify", 4): "378f0a3b53f59937e4646b34b7b69f16c839ffb03edf54331fea149479f9c8b9",
+    ("verify", 6): "f44c21af46cc092437d61120ad9f5d9c7984d3013d224ce3c189b32610ed82ba",
+    ("verify", 7): "feb84636bac16fb6245913190b0803f0644ee094423c531ad4e59c752e6bc9fd",
+    ("verify", 8): "fa50af5a75fcdd76f7a5c0900c3f983b2ee285220229e1746c35671713cba7b7",
+    ("verify", 9): "eabde1048cd0f10bfc3540f427c3674b3cf8d5fc0206bebc58e695a328dbb0cb",
+    ("verify", 10): "d6bd0b9f43ef190a6545893891fe514928b3e354a438f357602e2d3a89565bd0",
+    ("verify", 11): "72ba08821693dcb100be3d4dcfaac32d485191186d46fa22119ae7a7b60990b9",
+    ("verify", 12): "25116143b78146e257b7eb89c5466266132755433249c07664c0cdbf01944c7d",
+    ("publish", 1): "107b129aaca0970fb78ee7f1e90ba96f6fe7d34e4121670193a3bf5183627695",
+    ("publish", 3): "40e809494a1e4c8b41cacf1be26a21b6347252addcb5498cffdf21b7358b250e",
 }
 BLOCKED_STEP_RUN_STYLE = {
     ("admission", 0): "|",
     ("admission", 1): "|",
+    ("admission", 2): "|",
     ("verify", 1): "|",
     ("verify", 2): "|",
     ("verify", 4): "|",
-    ("verify", 5): "|",
-    ("verify", 6): None,
-    ("verify", 7): None,
+    ("verify", 6): "|",
+    ("verify", 7): "|",
     ("verify", 8): None,
-    ("verify", 9): "|",
+    ("verify", 9): None,
+    ("verify", 10): None,
+    ("verify", 11): None,
+    ("verify", 12): "|",
     ("publish", 1): "|",
-    ("publish", 2): "|",
+    ("publish", 3): "|",
 }
 BLOCKED_STEP_ENV = {
     ("admission", 0): (
@@ -390,23 +485,29 @@ BLOCKED_STEP_ENV = {
         ("EXPECTED_COMMIT", "${{ inputs.expected_commit }}"),
         ("EXPECTED_TREE", "${{ inputs.expected_tree }}"),
         ("CI_RUN_ID", "${{ inputs.ci_run_id }}"),
+        ("CANDIDATE_RUN_ID", "${{ inputs.candidate_run_id }}"),
         ("EXPECTED_SO_SHA256", "${{ inputs.expected_so_sha256 }}"),
+        ("EXPECTED_STORE_ZIP_SHA256", "${{ inputs.expected_store_zip_sha256 }}"),
         ("DISPATCH_REF", "${{ github.ref }}"),
         ("DISPATCH_SHA", "${{ github.sha }}"),
         ("WORKFLOW_REF", "${{ github.workflow_ref }}"),
         ("WORKFLOW_SHA", "${{ github.workflow_sha }}"),
         ("HOST_V7283", "${{ inputs.host_v7283_validation }}"),
         ("HOST_V7283_SHA256", "${{ inputs.host_v7283_evidence_sha256 }}"),
-        ("HOST_V7282", "${{ inputs.host_v7282_validation }}"),
-        ("HOST_V7282_SHA256", "${{ inputs.host_v7282_evidence_sha256 }}"),
-        ("HOST_V7281", "${{ inputs.host_v7281_validation }}"),
-        ("HOST_V7281_SHA256", "${{ inputs.host_v7281_evidence_sha256 }}"),
         ("INDEPENDENT_AUDIT", "${{ inputs.independent_audit_validation }}"),
         ("INDEPENDENT_AUDIT_SHA256", "${{ inputs.independent_audit_sha256 }}"),
+        ("INDEPENDENT_EVALUATION", "${{ inputs.independent_evaluation_validation }}"),
+        ("INDEPENDENT_EVALUATION_ID", "${{ inputs.independent_evaluation_id }}"),
+        ("INDEPENDENT_EVALUATION_SHA256", "${{ inputs.independent_evaluation_sha256 }}"),
         ("AUTHORIZED", "${{ inputs.authorize_blocked_prerelease }}"),
     ),
     ("admission", 1): (
         ("CI_RUN_ID", "${{ inputs.ci_run_id }}"),
+        ("EXPECTED_COMMIT", "${{ inputs.expected_commit }}"),
+        ("GH_TOKEN", "${{ github.token }}"),
+    ),
+    ("admission", 2): (
+        ("CANDIDATE_RUN_ID", "${{ inputs.candidate_run_id }}"),
         ("EXPECTED_COMMIT", "${{ inputs.expected_commit }}"),
         ("GH_TOKEN", "${{ github.token }}"),
     ),
@@ -415,36 +516,283 @@ BLOCKED_STEP_ENV = {
         ("EXPECTED_COMMIT", "${{ inputs.expected_commit }}"),
         ("EXPECTED_TREE", "${{ inputs.expected_tree }}"),
     ),
-    ("verify", 6): (("CPA_COMPAT_VERIFY_REMOTE", "1"),),
-    ("verify", 7): (
-        ("ALLOW_DIRTY_BUILD", "1"),
+    ("verify", 6): (
+        ("EXPECTED_COMMIT", "${{ inputs.expected_commit }}"),
+        ("EXPECTED_TREE", "${{ inputs.expected_tree }}"),
+        ("CANDIDATE_RUN_ID", "${{ inputs.candidate_run_id }}"),
+        ("EXPECTED_SO_SHA256", "${{ inputs.expected_so_sha256 }}"),
+        ("EXPECTED_STORE_ZIP_SHA256", "${{ inputs.expected_store_zip_sha256 }}"),
+    ),
+    ("verify", 8): (("CPA_COMPAT_VERIFY_REMOTE", "1"),),
+    ("verify", 9): (
+        ("RELEASE_CANDIDATE_BUILD", "1"),
+        ("RELEASE_CANDIDATE_EXPECTED_COMMIT", "${{ inputs.expected_commit }}"),
+        ("RELEASE_CANDIDATE_EXPECTED_TREE", "${{ inputs.expected_tree }}"),
+        ("ROUND6_SAFE_SPARSE_BUILD", "1"),
         ("REQUIRE_DIST_ARTIFACTS", "1"),
     ),
-    ("verify", 9): (
+    ("verify", 10): (
+        ("RELEASE_CANDIDATE_BUILD", "1"),
+        ("RELEASE_CANDIDATE_EXPECTED_COMMIT", "${{ inputs.expected_commit }}"),
+        ("RELEASE_CANDIDATE_EXPECTED_TREE", "${{ inputs.expected_tree }}"),
+        ("ROUND6_SAFE_SPARSE_BUILD", "1"),
+    ),
+    ("verify", 12): (
         ("TAG", "${{ inputs.tag }}"),
         ("EXPECTED_COMMIT", "${{ inputs.expected_commit }}"),
         ("EXPECTED_TREE", "${{ inputs.expected_tree }}"),
         ("EXPECTED_SO_SHA256", "${{ inputs.expected_so_sha256 }}"),
+        ("EXPECTED_STORE_ZIP_SHA256", "${{ inputs.expected_store_zip_sha256 }}"),
     )
     + CLEAN_EXECUTION_ENV,
-    ("verify", 10): CLEAN_EXECUTION_ENV,
+    ("verify", 13): CLEAN_EXECUTION_ENV,
     ("publish", 1): (
         ("EXPECTED_COMMIT", "${{ inputs.expected_commit }}"),
         ("EXPECTED_TREE", "${{ inputs.expected_tree }}"),
         ("EXPECTED_SO_SHA256", "${{ inputs.expected_so_sha256 }}"),
+        ("EXPECTED_STORE_ZIP_SHA256", "${{ inputs.expected_store_zip_sha256 }}"),
+        ("TAG", "${{ inputs.tag }}"),
+        ("CI_RUN_ID", "${{ inputs.ci_run_id }}"),
+        ("CANDIDATE_RUN_ID", "${{ inputs.candidate_run_id }}"),
+        ("HOST_V7283_SHA256", "${{ inputs.host_v7283_evidence_sha256 }}"),
+        ("INDEPENDENT_AUDIT_SHA256", "${{ inputs.independent_audit_sha256 }}"),
+        ("INDEPENDENT_EVALUATION_ID", "${{ inputs.independent_evaluation_id }}"),
+        ("INDEPENDENT_EVALUATION_SHA256", "${{ inputs.independent_evaluation_sha256 }}"),
+        ("WORKFLOW_SHA", "${{ github.workflow_sha }}"),
     ),
-    ("publish", 2): (
+    ("publish", 3): (
         ("GH_TOKEN", "${{ github.token }}"),
         ("TAG", "${{ inputs.tag }}"),
         ("EXPECTED_COMMIT", "${{ inputs.expected_commit }}"),
         ("EXPECTED_TREE", "${{ inputs.expected_tree }}"),
         ("EXPECTED_SO_SHA256", "${{ inputs.expected_so_sha256 }}"),
+        ("EXPECTED_STORE_ZIP_SHA256", "${{ inputs.expected_store_zip_sha256 }}"),
         ("CI_RUN_ID", "${{ inputs.ci_run_id }}"),
+        ("CANDIDATE_RUN_ID", "${{ inputs.candidate_run_id }}"),
         ("HOST_V7283_SHA256", "${{ inputs.host_v7283_evidence_sha256 }}"),
-        ("HOST_V7282_SHA256", "${{ inputs.host_v7282_evidence_sha256 }}"),
-        ("HOST_V7281_SHA256", "${{ inputs.host_v7281_evidence_sha256 }}"),
         ("INDEPENDENT_AUDIT_SHA256", "${{ inputs.independent_audit_sha256 }}"),
+        ("INDEPENDENT_EVALUATION_ID", "${{ inputs.independent_evaluation_id }}"),
+        ("INDEPENDENT_EVALUATION_SHA256", "${{ inputs.independent_evaluation_sha256 }}"),
     ),
+}
+
+CANDIDATE_WORKFLOW_NAME = "Round6 clean candidate - NOT A RELEASE"
+CANDIDATE_INPUT_ORDER = (
+    "expected_commit",
+    "expected_tree",
+    "ci_run_id",
+    "authorize_clean_candidate",
+)
+CANDIDATE_TOP_LEVEL_KEYS = (
+    "name",
+    "on",
+    "permissions",
+    "concurrency",
+    "env",
+    "jobs",
+)
+CANDIDATE_JOB_KEYS = {
+    "admission": ("runs-on", "timeout-minutes", "steps"),
+    "build": ("needs", "permissions", "runs-on", "timeout-minutes", "steps"),
+}
+CANDIDATE_STEP_CONTRACTS = {
+    "admission": (
+        (
+            "Bind dispatch to the exact main tip and candidate workflow",
+            ("name", "env", "run"),
+            None,
+        ),
+        (
+            "Bind candidate admission to successful exact-head push CI",
+            ("name", "env", "run"),
+            None,
+        ),
+    ),
+    "build": (
+        (
+            "Checkout exact Round6-safe source",
+            ("name", "uses", "with"),
+            "actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0",
+        ),
+        ("Recheck restricted-data and workflow contracts", ("name", "run"), None),
+        ("Verify immutable source identity", ("name", "env", "run"), None),
+        (
+            "Set up pinned Go",
+            ("name", "uses", "with"),
+            "actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16",
+        ),
+        ("Install bounded candidate dependencies", ("name", "run"), None),
+        (
+            "Recheck source, regressions, and latest CPA v7.2.83 contract",
+            ("name", "env", "run"),
+            None,
+        ),
+        (
+            "Build exact clean unreleased Host-test assets",
+            ("name", "env", "run"),
+            None,
+        ),
+        (
+            "Rebuild candidate in two clean clones and compare bytes",
+            ("name", "env", "run"),
+            None,
+        ),
+        (
+            "Reverify candidate identity and source cleanliness",
+            ("name", "env", "run"),
+            None,
+        ),
+        (
+            "Upload private exact-commit candidate",
+            ("name", "uses", "with"),
+            "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
+        ),
+    ),
+}
+CANDIDATE_STEP_RUN_SHA256 = {
+    ("admission", 0): "1010c71654565731433ae574c6ac875b36bcd7c164bbab8aed6fb9d56932108b",
+    ("admission", 1): "7f1817ec7b567df4be63fafd9ee2b2347ac37e01982e41ee3338f64c79cae81a",
+    ("build", 1): "b38e1f3a74567d8390bde6390c75c7e96a3bd0d5bc13de0e6a7dbbcfeec0a2fe",
+    ("build", 2): "511fa93896dac8f2d1da9c08e746a60f88089218d47d25627f29a8b836ff599c",
+    ("build", 4): "e94a8d7e6ec6ca9c30a512aa4f6bd8eb93dd3412b406ea2f64a7d2b91e75022f",
+    ("build", 5): "43a1e2b51527edd141c9b4c53ac0c11775f0b8b9948054e5d2f329221a555e60",
+    ("build", 6): "f99bfc855f5afa25f227afce3800b41093b1858f9ae4b8027378ebf530470cf8",
+    ("build", 7): "d6bd0b9f43ef190a6545893891fe514928b3e354a438f357602e2d3a89565bd0",
+    ("build", 8): "841d631459baa6ee68b3021816c7d9da6310be1527d4c01a66a546210e288289",
+}
+CANDIDATE_STEP_RUN_STYLE = {
+    ("admission", 0): "|",
+    ("admission", 1): "|",
+    ("build", 1): "|",
+    ("build", 2): "|",
+    ("build", 4): "|",
+    ("build", 5): "|",
+    ("build", 6): None,
+    ("build", 7): None,
+    ("build", 8): "|",
+}
+CANDIDATE_STEP_ENV = {
+    ("admission", 0): (
+        ("EXPECTED_COMMIT", "${{ inputs.expected_commit }}"),
+        ("EXPECTED_TREE", "${{ inputs.expected_tree }}"),
+        ("CI_RUN_ID", "${{ inputs.ci_run_id }}"),
+        ("AUTHORIZED", "${{ inputs.authorize_clean_candidate }}"),
+        ("DISPATCH_REF", "${{ github.ref }}"),
+        ("DISPATCH_SHA", "${{ github.sha }}"),
+        ("WORKFLOW_REF", "${{ github.workflow_ref }}"),
+        ("WORKFLOW_SHA", "${{ github.workflow_sha }}"),
+    ),
+    ("admission", 1): (
+        ("CI_RUN_ID", "${{ inputs.ci_run_id }}"),
+        ("EXPECTED_COMMIT", "${{ inputs.expected_commit }}"),
+        ("GH_TOKEN", "${{ github.token }}"),
+    ),
+    ("build", 2): (
+        ("EXPECTED_COMMIT", "${{ inputs.expected_commit }}"),
+        ("EXPECTED_TREE", "${{ inputs.expected_tree }}"),
+    ),
+    ("build", 5): (("CPA_COMPAT_VERIFY_REMOTE", "1"),),
+    ("build", 6): (
+        ("RELEASE_CANDIDATE_BUILD", "1"),
+        ("RELEASE_CANDIDATE_EXPECTED_COMMIT", "${{ inputs.expected_commit }}"),
+        ("RELEASE_CANDIDATE_EXPECTED_TREE", "${{ inputs.expected_tree }}"),
+        ("RELEASE_CANDIDATE_WORKFLOW_SHA", "${{ github.workflow_sha }}"),
+        ("ROUND6_SAFE_SPARSE_BUILD", "1"),
+        ("REQUIRE_DIST_ARTIFACTS", "1"),
+    ),
+    ("build", 7): (
+        ("RELEASE_CANDIDATE_BUILD", "1"),
+        ("RELEASE_CANDIDATE_EXPECTED_COMMIT", "${{ inputs.expected_commit }}"),
+        ("RELEASE_CANDIDATE_EXPECTED_TREE", "${{ inputs.expected_tree }}"),
+        ("ROUND6_SAFE_SPARSE_BUILD", "1"),
+    ),
+    ("build", 8): (
+        ("EXPECTED_COMMIT", "${{ inputs.expected_commit }}"),
+        ("EXPECTED_TREE", "${{ inputs.expected_tree }}"),
+    ),
+}
+CANDIDATE_ALLOWED_GITHUB_TOKEN_PATHS = {
+    "jobs.admission.steps[1].env.GH_TOKEN",
+}
+CANDIDATE_ALLOWED_GITHUB_IDENTITY_EXPRESSIONS = {
+    "jobs.admission.steps[0].env.DISPATCH_REF": "${{ github.ref }}",
+    "jobs.admission.steps[0].env.DISPATCH_SHA": "${{ github.sha }}",
+    "jobs.admission.steps[0].env.WORKFLOW_REF": "${{ github.workflow_ref }}",
+    "jobs.admission.steps[0].env.WORKFLOW_SHA": "${{ github.workflow_sha }}",
+    "jobs.build.steps[6].env.RELEASE_CANDIDATE_WORKFLOW_SHA": "${{ github.workflow_sha }}",
+}
+CANDIDATE_ARTIFACTS = (
+    "dist/cyber-abuse-guard-v0.15.so",
+    "dist/cyber-abuse-guard-v0.15.so.sha256",
+    "dist/cyber-abuse-guard_0.15_linux_amd64.zip",
+    "dist/build-metadata.json",
+    "dist/checksums.txt",
+    "dist/ruleset-manifest.json",
+    "dist/ruleset.sha256",
+    "dist/sbom.cdx.json",
+    "dist/candidate-manifest.json",
+)
+CANDIDATE_SCRIPT_SHA256 = {
+    "round6-candidate-artifacts.sh": "11a2a358c3154bd8665f6b5ae27d84c6f97fd33763f9cc602b38425c93bce659",
+    "release-candidate-contract-test.sh": "ef436041e8a8a7f96252b25e38f6fb27bc1c50f35099285ad16ce6b96b928f7d",
+}
+FORMAL_OPERATION_SCRIPTS = (
+    "formal-release.sh",
+    "generate-release-evidence.sh",
+    "package-release.sh",
+    "package-source-release.sh",
+    "release-preflight.sh",
+    "verify-release.sh",
+)
+FORMAL_RELEASE_ARTIFACTS = (
+    "dist/cyber-abuse-guard-v0.15.so",
+    "dist/cyber-abuse-guard-v0.15.so.sha256",
+    "dist/cyber-abuse-guard_0.15_linux_amd64.zip",
+    "dist/cyber-abuse-guard-v0.15-audit-bundle.zip",
+    "dist/build-metadata.json",
+    "dist/checksums.txt",
+    "dist/ruleset-manifest.json",
+    "dist/ruleset.sha256",
+    "dist/sbom.cdx.json",
+    "dist/release-test-summary.txt",
+    "dist/release-test-summary.txt.sha256",
+    "dist/release-evidence-final.md",
+    "dist/release-evidence-final.md.sha256",
+    "dist/cyber-abuse-guard-v0.15-source.tar.gz",
+    "dist/cyber-abuse-guard-v0.15-source.tar.gz.sha256",
+    "dist/round6-prerelease-attestation.json",
+    "dist/round6-prerelease-attestation.json.sha256",
+    "dist/formal-release-attestation.json",
+    "dist/formal-release-attestation.json.sha256",
+)
+FORMAL_RELEASE_STEP_RUN_SHA256 = {
+    ("build-and-verify", 2): "5bc38a90928a7309be0be55b3834ebf28c2eee7c2fd290ef19bf6d3a8dd3857d",
+    ("build-and-verify", 3): "3177c58474d2bd9ee7246a79c02d77fc4afac7b26e13f3193cd456f9cadbb2dd",
+    ("build-and-verify", 4): "e2194c0fb1cc2681adff35d6c0a12e10540e17bb7495597ac1f3ccb992bbc53f",
+    ("build-and-verify", 5): "f3ae1159d54ec14d35c70bc3177d5ac0e520093449e15878391b413818857561",
+    ("build-and-verify", 7): "2ecb4e3db81c81773248547deb2121bd998a7c1aeae69036485603c1760c53e2",
+    ("build-and-verify", 8): "2824c61aa8a13293fe96c4a6f7586466ca90eb0f527182265f9be7df66586ccf",
+    ("build-and-verify", 9): "85ab9b21007e3d06b5c4720274e1fe5753a3634b5611185736e4fc83b738dc38",
+    ("build-and-verify", 10): "59019f683072911ccdd1638400fd5af145c9c6cbd8be29d8c75960b2fc888fbc",
+    ("publish", 1): "ca29fccccf8950a2ddfa783c8420bc8be1b32dd75f790837c825af84b43eee0c",
+    ("publish", 2): "1574a0d0ac458f3e12ab6052955d1027955a8cfad76f5773547da4d4bcb85fb2",
+}
+PROMOTE_STEP_RUN_SHA256 = {
+    ("verify", 0): "5b97351c8f087b8e1d8d2a20c64d7e321302199e9c3e912db4e2459f3ac10e6c",
+    ("verify", 2): "81f3c306c6e57ff95c598cb10fcc9c9bd185361a1bb753ab98de0e4e4a8df813",
+    ("promote", 0): "43f534b666b5a2439a06a8d0f7e37390fb100883acaffc73604a01bd6b198ea9",
+}
+REPRODUCIBILITY_WRAPPER_SCRIPT = "scripts/reproducibility-test.sh"
+REPRODUCIBILITY_WRAPPER_SCRIPT_SHA256 = (
+    "29bf44be67be80aea19f37acbbda01bba247b2319f32626b0f562ce9fda78824"
+)
+FROZEN_EVALUATION_TREE_SCRIPT = "scripts/verify-frozen-evaluation-v10-tree.sh"
+FROZEN_EVALUATION_TREE_SCRIPT_SHA256 = (
+    "be39ad4f8ad0aea3a1e32e28e631cbac614ab03bb29b360985b0bd8c5080255e"
+)
+EXTERNAL_ATTESTATION_SCRIPT_SHA256 = {
+    "verify-external-release-attestation.sh": "af83353e3fd44cd01adcd0830de1f69237d8bb360152ff9777301f1cbab68862",
+    "verify-external-release-attestation-test.sh": "5708ec5ce91847d3c8a150b872da24c135de3aeeadc90330c58a1e255e594a19",
 }
 
 
@@ -572,17 +920,23 @@ def iter_yaml_scalars(node: Node, path: str = ""):
         yield path, node
 
 
-def validate_sensitive_workflow_expressions(document: MappingNode, source: Path) -> None:
+def validate_sensitive_workflow_expressions(
+    document: MappingNode,
+    source: Path,
+    *,
+    allowed_token_paths: set[str],
+    allowed_identity_expressions: dict[str, str],
+) -> None:
     allowed_seen: set[str] = set()
     for path, node in iter_yaml_scalars(document):
         for match in GITHUB_EXPRESSION.finditer(node.value):
             expression = match.group(1).strip()
             if not SENSITIVE_EXPRESSION_CONTEXT.search(expression):
                 continue
-            if path in ALLOWED_GITHUB_TOKEN_PATHS and node.value == "${{ github.token }}":
+            if path in allowed_token_paths and node.value == "${{ github.token }}":
                 allowed_seen.add(path)
                 continue
-            expected_identity = ALLOWED_GITHUB_IDENTITY_EXPRESSIONS.get(path)
+            expected_identity = allowed_identity_expressions.get(path)
             if expected_identity is not None and node.value == expected_identity:
                 allowed_seen.add(path)
                 continue
@@ -590,9 +944,7 @@ def validate_sensitive_workflow_expressions(document: MappingNode, source: Path)
                 "workflow may not expose a repository token, github.token, or secrets context "
                 f"outside the exact reviewed GH_TOKEN env nodes, got {path} in {source}"
             )
-    expected_allowed = ALLOWED_GITHUB_TOKEN_PATHS | set(
-        ALLOWED_GITHUB_IDENTITY_EXPRESSIONS
-    )
+    expected_allowed = allowed_token_paths | set(allowed_identity_expressions)
     if allowed_seen != expected_allowed:
         raise ContractError(
             "workflow must expose only the exact reviewed github token and identity expressions"
@@ -1274,6 +1626,1025 @@ def validate_workflow_safety(text: str, source: Path) -> tuple[tuple[str, ...], 
     return tuple(sparse_sets)
 
 
+def exact_string_mapping(
+    node: Node, source: Path, path: str
+) -> tuple[tuple[str, str], ...]:
+    if not isinstance(node, MappingNode):
+        raise ContractError(f"workflow {path} must be a mapping")
+    values: list[tuple[str, str]] = []
+    for key_node, value_node in node.value:
+        if value_node.tag != "tag:yaml.org,2002:str":
+            raise ContractError(f"workflow {path}.{key_node.value} must be an exact string")
+        values.append(
+            (
+                key_node.value,
+                yaml_scalar(value_node, source, f"{path}.{key_node.value}"),
+            )
+        )
+    return tuple(values)
+
+
+def validate_candidate_workflow(text: str, source: Path) -> None:
+    validate_workflow_safety(text, source)
+    document = parse_workflow_yaml(text, source)
+    validate_sensitive_workflow_expressions(
+        document,
+        source,
+        allowed_token_paths=CANDIDATE_ALLOWED_GITHUB_TOKEN_PATHS,
+        allowed_identity_expressions=CANDIDATE_ALLOWED_GITHUB_IDENTITY_EXPRESSIONS,
+    )
+    root = require_yaml_keys(document, CANDIDATE_TOP_LEVEL_KEYS, source, "workflow")
+    require_yaml_scalar(root["name"], CANDIDATE_WORKFLOW_NAME, source, "name")
+
+    if yaml_mapping_keys(root["on"], source, "on") != ("workflow_dispatch",):
+        raise ContractError("Round6 candidate must remain manual-only workflow_dispatch")
+    on = yaml_mapping(root["on"], source, "on")
+    dispatch = require_yaml_keys(
+        on["workflow_dispatch"], ("inputs",), source, "on.workflow_dispatch"
+    )
+    inputs = require_yaml_keys(
+        dispatch["inputs"],
+        CANDIDATE_INPUT_ORDER,
+        source,
+        "on.workflow_dispatch.inputs",
+    )
+    for input_name, input_node in inputs.items():
+        path = f"on.workflow_dispatch.inputs.{input_name}"
+        expected_keys = (
+            ("description", "required", "type", "default")
+            if input_name == "authorize_clean_candidate"
+            else ("description", "required", "type")
+        )
+        values = require_yaml_keys(input_node, expected_keys, source, path)
+        if not yaml_scalar(values["description"], source, f"{path}.description").strip():
+            raise ContractError(f"workflow {path}.description may not be empty")
+        require_yaml_scalar(
+            values["required"],
+            "true",
+            source,
+            f"{path}.required",
+            tag="tag:yaml.org,2002:bool",
+        )
+        if input_name == "authorize_clean_candidate":
+            require_yaml_scalar(values["type"], "boolean", source, f"{path}.type")
+            require_yaml_scalar(
+                values["default"],
+                "false",
+                source,
+                f"{path}.default",
+                tag="tag:yaml.org,2002:bool",
+            )
+        else:
+            require_yaml_scalar(values["type"], "string", source, f"{path}.type")
+
+    permissions = require_yaml_keys(
+        root["permissions"], ("actions", "contents"), source, "permissions"
+    )
+    require_yaml_scalar(permissions["actions"], "read", source, "permissions.actions")
+    require_yaml_scalar(permissions["contents"], "read", source, "permissions.contents")
+    concurrency = require_yaml_keys(
+        root["concurrency"], ("group", "cancel-in-progress"), source, "concurrency"
+    )
+    require_yaml_scalar(
+        concurrency["group"],
+        "round6-clean-candidate-${{ inputs.expected_commit }}",
+        source,
+        "concurrency.group",
+    )
+    require_yaml_scalar(
+        concurrency["cancel-in-progress"],
+        "false",
+        source,
+        "concurrency.cancel-in-progress",
+        tag="tag:yaml.org,2002:bool",
+    )
+    env = require_yaml_keys(
+        root["env"],
+        ("GO_VERSION", "VERSION", "CYCLONEDX_GOMOD_VERSION", "GOVULNCHECK_VERSION"),
+        source,
+        "env",
+    )
+    for env_name in (
+        "GO_VERSION",
+        "VERSION",
+        "CYCLONEDX_GOMOD_VERSION",
+        "GOVULNCHECK_VERSION",
+    ):
+        require_yaml_scalar(
+            env[env_name], SAFE_WORKFLOW_ENV[env_name], source, f"env.{env_name}"
+        )
+
+    jobs = require_yaml_keys(root["jobs"], ("admission", "build"), source, "jobs")
+    steps_by_job: dict[str, list[Node]] = {}
+    for job_name in ("admission", "build"):
+        job_path = f"jobs.{job_name}"
+        job = require_yaml_keys(
+            jobs[job_name], CANDIDATE_JOB_KEYS[job_name], source, job_path
+        )
+        require_yaml_scalar(job["runs-on"], "ubuntu-24.04", source, f"{job_path}.runs-on")
+        require_yaml_scalar(
+            job["timeout-minutes"],
+            "5" if job_name == "admission" else "45",
+            source,
+            f"{job_path}.timeout-minutes",
+            tag="tag:yaml.org,2002:int",
+        )
+        if job_name == "build":
+            require_yaml_scalar(job["needs"], "admission", source, f"{job_path}.needs")
+            job_permissions = require_yaml_keys(
+                job["permissions"], ("contents",), source, f"{job_path}.permissions"
+            )
+            require_yaml_scalar(
+                job_permissions["contents"],
+                "read",
+                source,
+                f"{job_path}.permissions.contents",
+            )
+
+        steps = yaml_sequence(job["steps"], source, f"{job_path}.steps")
+        contracts = CANDIDATE_STEP_CONTRACTS[job_name]
+        if len(steps) != len(contracts):
+            raise ContractError(
+                f"Round6 candidate {job_name} job must contain exactly "
+                f"{len(contracts)} reviewed steps"
+            )
+        for index, (step_node, contract) in enumerate(zip(steps, contracts)):
+            expected_name, expected_keys, expected_action = contract
+            step_path = f"{job_path}.steps[{index}]"
+            step = require_yaml_keys(step_node, expected_keys, source, step_path)
+            require_yaml_scalar(step["name"], expected_name, source, f"{step_path}.name")
+            if expected_action is not None:
+                require_yaml_scalar(step["uses"], expected_action, source, f"{step_path}.uses")
+            contract_key = (job_name, index)
+            if "run" in step:
+                run_node = step["run"]
+                run_text = yaml_scalar(run_node, source, f"{step_path}.run")
+                expected_hash = CANDIDATE_STEP_RUN_SHA256.get(contract_key)
+                if (
+                    expected_hash is None
+                    or run_node.tag != "tag:yaml.org,2002:str"
+                    or run_node.style != CANDIDATE_STEP_RUN_STYLE[contract_key]
+                    or hashlib.sha256(run_text.encode("utf-8")).hexdigest()
+                    != expected_hash
+                ):
+                    raise ContractError(
+                        f"Round6 candidate {step_path} run must match the exact reviewed text"
+                    )
+                for command in mutation_shell_commands(run_text):
+                    for segment in shell_command_segments(command):
+                        reason = mutating_command_reason(segment)
+                        if reason is not None:
+                            raise ContractError(
+                                f"Round6 candidate forbids {reason}: {step_path}"
+                            )
+            elif contract_key in CANDIDATE_STEP_RUN_SHA256:
+                raise ContractError(f"Round6 candidate {step_path} is missing reviewed run")
+            if "env" in step:
+                actual_env = exact_string_mapping(step["env"], source, f"{step_path}.env")
+                if actual_env != CANDIDATE_STEP_ENV.get(contract_key):
+                    raise ContractError(
+                        f"Round6 candidate {step_path}.env must match the exact reviewed mapping"
+                    )
+            elif contract_key in CANDIDATE_STEP_ENV:
+                raise ContractError(f"Round6 candidate {step_path} is missing reviewed env")
+            if "with" in step:
+                yaml_mapping(step["with"], source, f"{step_path}.with")
+        steps_by_job[job_name] = steps
+
+    checkout = yaml_mapping(steps_by_job["build"][0], source, "jobs.build.steps[0]")
+    checkout_with = require_yaml_keys(
+        checkout["with"],
+        (
+            "ref",
+            "fetch-depth",
+            "persist-credentials",
+            "filter",
+            "sparse-checkout-cone-mode",
+            "sparse-checkout",
+        ),
+        source,
+        "jobs.build.steps[0].with",
+    )
+    require_yaml_scalar(
+        checkout_with["ref"],
+        "${{ inputs.expected_commit }}",
+        source,
+        "jobs.build.steps[0].with.ref",
+    )
+    require_yaml_scalar(
+        checkout_with["fetch-depth"],
+        "0",
+        source,
+        "jobs.build.steps[0].with.fetch-depth",
+        tag="tag:yaml.org,2002:int",
+    )
+    require_yaml_scalar(
+        checkout_with["persist-credentials"],
+        "false",
+        source,
+        "jobs.build.steps[0].with.persist-credentials",
+        tag="tag:yaml.org,2002:bool",
+    )
+    require_yaml_scalar(
+        checkout_with["filter"], "blob:none", source, "jobs.build.steps[0].with.filter"
+    )
+    require_yaml_scalar(
+        checkout_with["sparse-checkout-cone-mode"],
+        "false",
+        source,
+        "jobs.build.steps[0].with.sparse-checkout-cone-mode",
+        tag="tag:yaml.org,2002:bool",
+    )
+    sparse = yaml_scalar(
+        checkout_with["sparse-checkout"], source, "jobs.build.steps[0].with.sparse-checkout"
+    )
+    if tuple(line.strip() for line in sparse.splitlines() if line.strip()) != ROUND6_SPARSE_PATTERNS:
+        raise ContractError("Round6 candidate checkout sparse boundary changed")
+
+    setup_go = yaml_mapping(steps_by_job["build"][3], source, "jobs.build.steps[3]")
+    setup_go_with = require_yaml_keys(
+        setup_go["with"], ("go-version", "cache"), source, "jobs.build.steps[3].with"
+    )
+    require_yaml_scalar(
+        setup_go_with["go-version"],
+        "${{ env.GO_VERSION }}",
+        source,
+        "jobs.build.steps[3].with.go-version",
+    )
+    require_yaml_scalar(
+        setup_go_with["cache"],
+        "true",
+        source,
+        "jobs.build.steps[3].with.cache",
+        tag="tag:yaml.org,2002:bool",
+    )
+
+    upload = yaml_mapping(steps_by_job["build"][9], source, "jobs.build.steps[9]")
+    upload_with = require_yaml_keys(
+        upload["with"],
+        ("name", "path", "if-no-files-found", "retention-days"),
+        source,
+        "jobs.build.steps[9].with",
+    )
+    require_yaml_scalar(
+        upload_with["name"],
+        "round6-v0.15-candidate-${{ inputs.expected_commit }}",
+        source,
+        "jobs.build.steps[9].with.name",
+    )
+    upload_paths = yaml_scalar(upload_with["path"], source, "jobs.build.steps[9].with.path")
+    if tuple(line.strip() for line in upload_paths.splitlines() if line.strip()) != CANDIDATE_ARTIFACTS:
+        raise ContractError("Round6 candidate private artifact allowlist changed")
+    require_yaml_scalar(
+        upload_with["if-no-files-found"],
+        "error",
+        source,
+        "jobs.build.steps[9].with.if-no-files-found",
+    )
+    require_yaml_scalar(
+        upload_with["retention-days"],
+        "30",
+        source,
+        "jobs.build.steps[9].with.retention-days",
+        tag="tag:yaml.org,2002:int",
+    )
+
+    if re.search(r"(?m)^\s*contents\s*:\s*write\s*$", text):
+        raise ContractError("Round6 candidate workflow must remain contents: read only")
+    if re.search(
+        r"(?i)(?:softprops/action-gh-release|\bgh\s+release\b|\bgit\s+(?:tag|push|update-ref)\b)",
+        text,
+    ):
+        raise ContractError("Round6 candidate workflow may not create tags or releases")
+
+
+def validate_candidate_script(text: str, source: Path) -> None:
+    expected_hash = CANDIDATE_SCRIPT_SHA256.get(source.name)
+    if expected_hash is None:
+        raise ContractError(f"unreviewed Round6 candidate script: {source}")
+    if hashlib.sha256(text.encode("utf-8")).hexdigest() != expected_hash:
+        raise ContractError(
+            f"Round6 candidate script must match the exact reviewed safety contract: {source}"
+        )
+
+
+def validate_reproducibility_wrapper_script(text: str, source: Path) -> None:
+    if (
+        hashlib.sha256(text.encode("utf-8")).hexdigest()
+        != REPRODUCIBILITY_WRAPPER_SCRIPT_SHA256
+    ):
+        raise ContractError(
+            f"legacy reproducibility wrapper must match the exact reviewed safety contract: {source}"
+        )
+
+
+def validate_frozen_evaluation_tree_script(text: str, source: Path) -> None:
+    if (
+        hashlib.sha256(text.encode("utf-8")).hexdigest()
+        != FROZEN_EVALUATION_TREE_SCRIPT_SHA256
+    ):
+        raise ContractError(
+            f"frozen evaluation tree verifier must match the exact reviewed metadata-only contract: {source}"
+        )
+
+
+def shell_function_body(text: str, name: str, source: Path) -> str:
+    match = re.search(rf"(?ms)^{re.escape(name)}\(\) \{{\n(.*?)^\}}(?:\n|\Z)", text)
+    if not match:
+        raise ContractError(f"release helper lacks reviewed function {name}: {source}")
+    return match.group(1)
+
+
+def validate_release_mode_contracts(root: Path) -> None:
+    common_path = root / "scripts/release-common.sh"
+    if not common_path.exists():
+        return
+    common = read_regular_text(common_path, root)
+    for script_name, expected_hash in EXTERNAL_ATTESTATION_SCRIPT_SHA256.items():
+        path = root / "scripts" / script_name
+        text = read_regular_text(path, root)
+        if hashlib.sha256(text.encode("utf-8")).hexdigest() != expected_hash:
+            raise ContractError(
+                f"external release attestation script differs from reviewed contract: {script_name}"
+            )
+    formal_body = shell_function_body(
+        common, "release_assert_formal_build", common_path
+    )
+    if (
+        '[[ "$RELEASE_BUILD_KIND" == formal ]]' not in formal_body
+        or '[[ "$RELEASE_DIRTY" == false ]]' not in formal_body
+    ):
+        raise ContractError(
+            "release_assert_formal_build must reject candidate and dirty build modes"
+        )
+    candidate_body = shell_function_body(
+        common, "release_assert_candidate_build", common_path
+    )
+    for required in (
+        '[[ "$RELEASE_BUILD_KIND" == candidate ]]',
+        '[[ "$RELEASE_DIRTY" == false ]]',
+        '[[ "$(git -C "$RELEASE_ROOT" cat-file -t "refs/tags/$formal_tag" 2>/dev/null || true)" != tag ]]',
+    ):
+        if required not in candidate_body:
+            raise ContractError(
+                "release_assert_candidate_build must stay clean, exact-mode, and pre-formal-tag only"
+            )
+
+    for script_name in FORMAL_OPERATION_SCRIPTS:
+        path = root / "scripts" / script_name
+        text = read_regular_text(path, root)
+        commands = tuple(
+            command.strip()
+            for command in logical_shell_commands(text)
+            if command.strip() and not command.lstrip().startswith("#")
+        )
+        required = ("release_init", "release_assert_tag", "release_assert_formal_build")
+        positions: list[int] = []
+        for command in required:
+            matches = [index for index, actual in enumerate(commands) if actual == command]
+            if len(matches) != 1:
+                raise ContractError(
+                    f"formal operation {script_name} must invoke {command} exactly once"
+                )
+            positions.append(matches[0])
+        if positions != sorted(positions):
+            raise ContractError(
+                f"formal operation {script_name} must assert tag then formal build before work"
+            )
+        if any("RELEASE_CANDIDATE_BUILD" in command for command in commands):
+            raise ContractError(
+                f"formal operation {script_name} may not enable candidate build mode"
+            )
+
+
+def validate_run_hash(
+    step: dict[str, Node],
+    expected_hash: str,
+    source: Path,
+    path: str,
+) -> None:
+    run = yaml_scalar(step.get("run"), source, f"{path}.run")
+    if hashlib.sha256(run.encode("utf-8")).hexdigest() != expected_hash:
+        raise ContractError(f"workflow {path}.run must match the exact reviewed text")
+
+
+def validate_formal_release_workflow(text: str, source: Path) -> None:
+    document = parse_workflow_yaml(text, source)
+    root = require_yaml_keys(
+        document,
+        ("name", "on", "permissions", "concurrency", "env", "jobs"),
+        source,
+        "workflow",
+    )
+    require_yaml_scalar(root["name"], "Release", source, "name")
+    on = require_yaml_keys(root["on"], ("push",), source, "on")
+    push = require_yaml_keys(on["push"], ("tags",), source, "on.push")
+    tags = yaml_sequence(push["tags"], source, "on.push.tags")
+    if len(tags) != 1:
+        raise ContractError("formal release workflow must trigger only for exact tag v0.15")
+    require_yaml_scalar(tags[0], "v0.15", source, "on.push.tags[0]")
+    permissions = require_yaml_keys(
+        root["permissions"], ("contents",), source, "permissions"
+    )
+    require_yaml_scalar(permissions["contents"], "read", source, "permissions.contents")
+    concurrency = require_yaml_keys(
+        root["concurrency"], ("group", "cancel-in-progress"), source, "concurrency"
+    )
+    require_yaml_scalar(
+        concurrency["group"],
+        "${{ github.workflow }}-${{ github.ref }}",
+        source,
+        "concurrency.group",
+    )
+    require_yaml_scalar(
+        concurrency["cancel-in-progress"],
+        "false",
+        source,
+        "concurrency.cancel-in-progress",
+        tag="tag:yaml.org,2002:bool",
+    )
+    env = require_yaml_keys(
+        root["env"],
+        ("GO_VERSION", "VERSION", "CYCLONEDX_GOMOD_VERSION", "GOVULNCHECK_VERSION"),
+        source,
+        "env",
+    )
+    for env_name in ("GO_VERSION", "VERSION", "CYCLONEDX_GOMOD_VERSION", "GOVULNCHECK_VERSION"):
+        require_yaml_scalar(env[env_name], SAFE_WORKFLOW_ENV[env_name], source, f"env.{env_name}")
+
+    jobs = require_yaml_keys(
+        root["jobs"], ("build-and-verify", "publish"), source, "jobs"
+    )
+    build_path = "jobs.build-and-verify"
+    build = require_yaml_keys(
+        jobs["build-and-verify"],
+        ("permissions", "env", "runs-on", "timeout-minutes", "steps"),
+        source,
+        build_path,
+    )
+    build_permissions = require_yaml_keys(
+        build["permissions"], ("actions", "contents"), source, f"{build_path}.permissions"
+    )
+    require_yaml_scalar(
+        build_permissions["actions"], "read", source, f"{build_path}.permissions.actions"
+    )
+    require_yaml_scalar(
+        build_permissions["contents"], "read", source, f"{build_path}.permissions.contents"
+    )
+    if exact_string_mapping(build["env"], source, f"{build_path}.env") != (
+        ("ROUND6_SAFE_SPARSE_BUILD", "1"),
+    ):
+        raise ContractError("formal release sparse-build environment changed")
+    require_yaml_scalar(build["runs-on"], "ubuntu-24.04", source, f"{build_path}.runs-on")
+    require_yaml_scalar(
+        build["timeout-minutes"],
+        "60",
+        source,
+        f"{build_path}.timeout-minutes",
+        tag="tag:yaml.org,2002:int",
+    )
+    build_steps = yaml_sequence(build["steps"], source, f"{build_path}.steps")
+    build_contracts = (
+        (
+            "Checkout tagged source and full history",
+            ("name", "uses", "with"),
+            "actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0",
+        ),
+        (
+            "Set up pinned Go",
+            ("name", "uses", "with"),
+            "actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16",
+        ),
+        ("Install native release dependencies", ("name", "run"), None),
+        ("Install pinned security and SBOM tools", ("name", "run"), None),
+        ("Tag, source version, and clean-tree preflight", ("name", "run"), None),
+        (
+            "Verify Host, audit, and independent evaluation attestation before formal gates",
+            ("name", "id", "env", "run"),
+            None,
+        ),
+        (
+            "Download the immutable blocked workflow artifact",
+            ("name", "uses", "with"),
+            "actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131",
+        ),
+        (
+            "Prove the blocked draft matches its immutable workflow artifact",
+            ("name", "run"),
+            None,
+        ),
+        ("Run all release gates and build artifacts", ("name", "env", "run"), None),
+        ("Recheck hashes and source cleanliness", ("name", "run"), None),
+        (
+            "Byte-compare formal assets and bind the verified prerelease attestation",
+            ("name", "env", "run"),
+            None,
+        ),
+        (
+            "Upload exact verified release artifacts",
+            ("name", "uses", "with"),
+            "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
+        ),
+    )
+    if len(build_steps) != len(build_contracts):
+        raise ContractError("formal release build job must contain exactly twelve reviewed steps")
+    for index, (step_node, contract) in enumerate(zip(build_steps, build_contracts)):
+        name, keys, action = contract
+        path = f"{build_path}.steps[{index}]"
+        step = require_yaml_keys(step_node, keys, source, path)
+        require_yaml_scalar(step["name"], name, source, f"{path}.name")
+        if action is not None:
+            require_yaml_scalar(step["uses"], action, source, f"{path}.uses")
+        expected_hash = FORMAL_RELEASE_STEP_RUN_SHA256.get(("build-and-verify", index))
+        if expected_hash is not None:
+            validate_run_hash(step, expected_hash, source, path)
+
+    checkout = yaml_mapping(build_steps[0], source, f"{build_path}.steps[0]")
+    checkout_with = require_yaml_keys(
+        checkout["with"],
+        (
+            "fetch-depth",
+            "persist-credentials",
+            "filter",
+            "sparse-checkout-cone-mode",
+            "sparse-checkout",
+        ),
+        source,
+        f"{build_path}.steps[0].with",
+    )
+    require_yaml_scalar(
+        checkout_with["fetch-depth"],
+        "0",
+        source,
+        f"{build_path}.steps[0].with.fetch-depth",
+        tag="tag:yaml.org,2002:int",
+    )
+    require_yaml_scalar(
+        checkout_with["persist-credentials"],
+        "false",
+        source,
+        f"{build_path}.steps[0].with.persist-credentials",
+        tag="tag:yaml.org,2002:bool",
+    )
+    require_yaml_scalar(
+        checkout_with["filter"],
+        "blob:none",
+        source,
+        f"{build_path}.steps[0].with.filter",
+    )
+    require_yaml_scalar(
+        checkout_with["sparse-checkout-cone-mode"],
+        "false",
+        source,
+        f"{build_path}.steps[0].with.sparse-checkout-cone-mode",
+        tag="tag:yaml.org,2002:bool",
+    )
+    sparse = yaml_scalar(
+        checkout_with["sparse-checkout"],
+        source,
+        f"{build_path}.steps[0].with.sparse-checkout",
+    )
+    if tuple(line.strip() for line in sparse.splitlines() if line.strip()) != ROUND6_SPARSE_PATTERNS:
+        raise ContractError("formal release sparse checkout differs from Round6 restrictions")
+    setup_go = yaml_mapping(build_steps[1], source, f"{build_path}.steps[1]")
+    setup_with = require_yaml_keys(
+        setup_go["with"], ("go-version", "cache"), source, f"{build_path}.steps[1].with"
+    )
+    require_yaml_scalar(
+        setup_with["go-version"], "${{ env.GO_VERSION }}", source, f"{build_path}.steps[1].with.go-version"
+    )
+    require_yaml_scalar(
+        setup_with["cache"],
+        "true",
+        source,
+        f"{build_path}.steps[1].with.cache",
+        tag="tag:yaml.org,2002:bool",
+    )
+    attestation_step = yaml_mapping(build_steps[5], source, f"{build_path}.steps[5]")
+    require_yaml_scalar(
+        attestation_step["id"], "candidate_gate", source, f"{build_path}.steps[5].id"
+    )
+    if exact_string_mapping(
+        attestation_step["env"], source, f"{build_path}.steps[5].env"
+    ) != (("GH_TOKEN", "${{ github.token }}"),):
+        raise ContractError("formal release attestation verification env changed")
+    attestation_run = yaml_scalar(
+        attestation_step["run"], source, f"{build_path}.steps[5].run"
+    )
+    for required in (
+        './scripts/verify-external-release-attestation.sh "$attestation"',
+        "'CI' '.github/workflows/ci.yml' 'push'",
+        "'Round6 clean candidate - NOT A RELEASE'",
+        "'.github/workflows/round6-candidate.yml' 'workflow_dispatch'",
+        "'Round6 prerelease - BLOCKED / PENDING HOST AND INDEPENDENT AUDIT'",
+        "'.github/workflows/round6-blocked-prerelease.yml' 'workflow_dispatch'",
+    ):
+        if required not in attestation_run:
+            raise ContractError(
+                "formal release must verify external attestation and every attested workflow run"
+            )
+    blocked_download = yaml_mapping(build_steps[6], source, f"{build_path}.steps[6]")
+    blocked_download_with = require_yaml_keys(
+        blocked_download["with"],
+        ("name", "path", "github-token", "repository", "run-id"),
+        source,
+        f"{build_path}.steps[6].with",
+    )
+    for key, expected in (
+        ("name", "round6-blocked-attested-${{ steps.candidate_gate.outputs.expected_commit }}"),
+        ("path", "${{ runner.temp }}/blocked-run-assets"),
+        ("github-token", "${{ github.token }}"),
+        ("repository", "${{ github.repository }}"),
+        ("run-id", "${{ steps.candidate_gate.outputs.blocked_run_id }}"),
+    ):
+        require_yaml_scalar(
+            blocked_download_with[key], expected, source, f"{build_path}.steps[6].with.{key}"
+        )
+    step8 = yaml_mapping(build_steps[8], source, f"{build_path}.steps[8]")
+    if exact_string_mapping(step8["env"], source, f"{build_path}.steps[8].env") != (
+        ("CPA_LATEST_VERIFY_REMOTE", "1"),
+    ):
+        raise ContractError("formal release gates must keep remote CPA verification enabled")
+    step10 = yaml_mapping(build_steps[10], source, f"{build_path}.steps[10]")
+    if exact_string_mapping(step10["env"], source, f"{build_path}.steps[10].env") != (
+        ("FORMAL_WORKFLOW_SHA", "${{ github.workflow_sha }}"),
+    ):
+        raise ContractError("formal release provenance binding env changed")
+    upload = yaml_mapping(build_steps[11], source, f"{build_path}.steps[11]")
+    upload_with = require_yaml_keys(
+        upload["with"],
+        ("name", "path", "if-no-files-found"),
+        source,
+        f"{build_path}.steps[11].with",
+    )
+    require_yaml_scalar(
+        upload_with["name"],
+        "cyber-abuse-guard-v0.15-release",
+        source,
+        f"{build_path}.steps[11].with.name",
+    )
+    upload_paths = yaml_scalar(upload_with["path"], source, f"{build_path}.steps[11].with.path")
+    if tuple(line.strip() for line in upload_paths.splitlines() if line.strip()) != FORMAL_RELEASE_ARTIFACTS:
+        raise ContractError("formal release artifact transfer allowlist changed")
+    require_yaml_scalar(
+        upload_with["if-no-files-found"],
+        "error",
+        source,
+        f"{build_path}.steps[11].with.if-no-files-found",
+    )
+
+    publish_path = "jobs.publish"
+    publish = require_yaml_keys(
+        jobs["publish"],
+        ("needs", "environment", "permissions", "runs-on", "timeout-minutes", "steps"),
+        source,
+        publish_path,
+    )
+    require_yaml_scalar(publish["needs"], "build-and-verify", source, f"{publish_path}.needs")
+    require_yaml_scalar(publish["environment"], "formal-release", source, f"{publish_path}.environment")
+    publish_permissions = require_yaml_keys(
+        publish["permissions"], ("actions", "contents"), source, f"{publish_path}.permissions"
+    )
+    require_yaml_scalar(
+        publish_permissions["actions"], "read", source, f"{publish_path}.permissions.actions"
+    )
+    require_yaml_scalar(
+        publish_permissions["contents"], "write", source, f"{publish_path}.permissions.contents"
+    )
+    require_yaml_scalar(publish["runs-on"], "ubuntu-24.04", source, f"{publish_path}.runs-on")
+    require_yaml_scalar(
+        publish["timeout-minutes"],
+        "15",
+        source,
+        f"{publish_path}.timeout-minutes",
+        tag="tag:yaml.org,2002:int",
+    )
+    publish_steps = yaml_sequence(publish["steps"], source, f"{publish_path}.steps")
+    publish_contracts = (
+        (
+            "Download exact verified release artifact",
+            ("name", "uses", "with"),
+            "actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131",
+        ),
+        ("Reverify transferred filenames and checksums", ("name", "env", "run"), None),
+        (
+            "Recheck the release commit is still the exact main tip",
+            ("name", "env", "run"),
+            None,
+        ),
+        (
+            "Create draft v0.15 GitHub release",
+            ("name", "uses", "with"),
+            "softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b",
+        ),
+    )
+    if len(publish_steps) != len(publish_contracts):
+        raise ContractError("formal release publish job must contain exactly four reviewed steps")
+    for index, (step_node, contract) in enumerate(zip(publish_steps, publish_contracts)):
+        name, keys, action = contract
+        path = f"{publish_path}.steps[{index}]"
+        step = require_yaml_keys(step_node, keys, source, path)
+        require_yaml_scalar(step["name"], name, source, f"{path}.name")
+        if action is not None:
+            require_yaml_scalar(step["uses"], action, source, f"{path}.uses")
+        expected_hash = FORMAL_RELEASE_STEP_RUN_SHA256.get(("publish", index))
+        if expected_hash is not None:
+            validate_run_hash(step, expected_hash, source, path)
+    download = yaml_mapping(publish_steps[0], source, f"{publish_path}.steps[0]")
+    download_with = require_yaml_keys(
+        download["with"], ("name", "path"), source, f"{publish_path}.steps[0].with"
+    )
+    require_yaml_scalar(
+        download_with["name"], "cyber-abuse-guard-v0.15-release", source, f"{publish_path}.steps[0].with.name"
+    )
+    require_yaml_scalar(download_with["path"], "dist", source, f"{publish_path}.steps[0].with.path")
+    verifier = yaml_mapping(publish_steps[1], source, f"{publish_path}.steps[1]")
+    expected_verifier_env = (
+        ("BASH_ENV", ""),
+        ("ENV", ""),
+        ("PATH", "/usr/bin:/bin"),
+        ("LC_ALL", "C"),
+        ("LANG", "C"),
+        ("CDPATH", ""),
+        ("GLOBIGNORE", ""),
+        ("PROMPT_COMMAND", ""),
+        ("LD_PRELOAD", ""),
+        ("LD_LIBRARY_PATH", ""),
+        ("LD_AUDIT", ""),
+        ("PYTHONPATH", ""),
+        ("PYTHONHOME", ""),
+        ("PERL5OPT", ""),
+        ("RUBYOPT", ""),
+        ("NODE_OPTIONS", ""),
+        ("NODE_PATH", ""),
+    )
+    if exact_string_mapping(
+        verifier["env"], source, f"{publish_path}.steps[1].env"
+    ) != expected_verifier_env:
+        raise ContractError("formal release publish verifier environment changed")
+    main_tip = yaml_mapping(publish_steps[2], source, f"{publish_path}.steps[2]")
+    if exact_string_mapping(
+        main_tip["env"], source, f"{publish_path}.steps[2].env"
+    ) != (("GH_TOKEN", "${{ github.token }}"),):
+        raise ContractError("formal release main-tip recheck environment changed")
+    release = yaml_mapping(publish_steps[3], source, f"{publish_path}.steps[3]")
+    release_with = require_yaml_keys(
+        release["with"],
+        (
+            "tag_name",
+            "name",
+            "draft",
+            "prerelease",
+            "make_latest",
+            "fail_on_unmatched_files",
+            "body_path",
+            "files",
+        ),
+        source,
+        f"{publish_path}.steps[3].with",
+    )
+    for key, expected in (("tag_name", "v0.15"), ("name", "v0.15"), ("body_path", "dist/release-evidence-final.md")):
+        require_yaml_scalar(release_with[key], expected, source, f"{publish_path}.steps[3].with.{key}")
+    for key, expected in (("draft", "true"), ("prerelease", "false"), ("make_latest", "false"), ("fail_on_unmatched_files", "true")):
+        require_yaml_scalar(
+            release_with[key],
+            expected,
+            source,
+            f"{publish_path}.steps[3].with.{key}",
+            tag="tag:yaml.org,2002:bool",
+        )
+    release_files = yaml_scalar(release_with["files"], source, f"{publish_path}.steps[3].with.files")
+    if tuple(line.strip() for line in release_files.splitlines() if line.strip()) != FORMAL_RELEASE_ARTIFACTS:
+        raise ContractError("draft release file allowlist differs from verified transfer")
+    if any(
+        yaml_scalar(yaml_mapping(step, source, f"{publish_path}.steps[{index}]").get("uses"), source, f"{publish_path}.steps[{index}].uses").startswith("actions/checkout@")
+        for index, step in enumerate(publish_steps)
+        if "uses" in yaml_mapping(step, source, f"{publish_path}.steps[{index}]")
+    ):
+        raise ContractError("contents:write publish job must never checkout repository source")
+    if len(re.findall(r"(?m)^\s+contents:\s*write\s*$", text)) != 1:
+        raise ContractError("formal release contents:write must be isolated to publish")
+
+
+def validate_release_promote_workflow(text: str, source: Path) -> None:
+    document = parse_workflow_yaml(text, source)
+    root = require_yaml_keys(
+        document,
+        ("name", "on", "permissions", "concurrency", "jobs"),
+        source,
+        "workflow",
+    )
+    require_yaml_scalar(root["name"], "Promote verified v0.15 release", source, "name")
+    on = require_yaml_keys(root["on"], ("workflow_dispatch",), source, "on")
+    dispatch = require_yaml_keys(on["workflow_dispatch"], ("inputs",), source, "on.workflow_dispatch")
+    inputs = require_yaml_keys(
+        dispatch["inputs"],
+        ("expected_commit", "expected_tree", "authorize_promotion"),
+        source,
+        "on.workflow_dispatch.inputs",
+    )
+    for name, node in inputs.items():
+        path = f"on.workflow_dispatch.inputs.{name}"
+        keys = (
+            ("description", "required", "type", "default")
+            if name == "authorize_promotion"
+            else ("description", "required", "type")
+        )
+        values = require_yaml_keys(node, keys, source, path)
+        yaml_scalar(values["description"], source, f"{path}.description")
+        require_yaml_scalar(
+            values["required"], "true", source, f"{path}.required", tag="tag:yaml.org,2002:bool"
+        )
+        if name == "authorize_promotion":
+            require_yaml_scalar(values["type"], "boolean", source, f"{path}.type")
+            require_yaml_scalar(
+                values["default"], "false", source, f"{path}.default", tag="tag:yaml.org,2002:bool"
+            )
+        else:
+            require_yaml_scalar(values["type"], "string", source, f"{path}.type")
+    permissions = require_yaml_keys(root["permissions"], ("contents",), source, "permissions")
+    require_yaml_scalar(permissions["contents"], "read", source, "permissions.contents")
+    concurrency = require_yaml_keys(
+        root["concurrency"], ("group", "cancel-in-progress"), source, "concurrency"
+    )
+    require_yaml_scalar(concurrency["group"], "promote-v0.15", source, "concurrency.group")
+    require_yaml_scalar(
+        concurrency["cancel-in-progress"],
+        "false",
+        source,
+        "concurrency.cancel-in-progress",
+        tag="tag:yaml.org,2002:bool",
+    )
+    jobs = require_yaml_keys(root["jobs"], ("verify", "promote"), source, "jobs")
+    verify = require_yaml_keys(
+        jobs["verify"],
+        ("permissions", "runs-on", "timeout-minutes", "outputs", "steps"),
+        source,
+        "jobs.verify",
+    )
+    verify_permissions = require_yaml_keys(
+        verify["permissions"], ("actions", "contents"), source, "jobs.verify.permissions"
+    )
+    require_yaml_scalar(verify_permissions["actions"], "read", source, "jobs.verify.permissions.actions")
+    require_yaml_scalar(verify_permissions["contents"], "read", source, "jobs.verify.permissions.contents")
+    require_yaml_scalar(verify["runs-on"], "ubuntu-24.04", source, "jobs.verify.runs-on")
+    require_yaml_scalar(
+        verify["timeout-minutes"], "10", source, "jobs.verify.timeout-minutes", tag="tag:yaml.org,2002:int"
+    )
+    outputs = require_yaml_keys(
+        verify["outputs"],
+        ("release_id", "asset_fingerprint", "formal_run_id"),
+        source,
+        "jobs.verify.outputs",
+    )
+    require_yaml_scalar(
+        outputs["release_id"], "${{ steps.verify.outputs.release_id }}", source, "jobs.verify.outputs.release_id"
+    )
+    require_yaml_scalar(
+        outputs["asset_fingerprint"],
+        "${{ steps.verify.outputs.asset_fingerprint }}",
+        source,
+        "jobs.verify.outputs.asset_fingerprint",
+    )
+    require_yaml_scalar(
+        outputs["formal_run_id"],
+        "${{ steps.verify.outputs.formal_run_id }}",
+        source,
+        "jobs.verify.outputs.formal_run_id",
+    )
+    verify_steps = yaml_sequence(verify["steps"], source, "jobs.verify.steps")
+    if len(verify_steps) != 3:
+        raise ContractError("release promotion verify job must contain exactly three reviewed steps")
+    verify_step = require_yaml_keys(
+        verify_steps[0], ("name", "id", "env", "run"), source, "jobs.verify.steps[0]"
+    )
+    require_yaml_scalar(
+        verify_step["name"],
+        "Verify immutable draft, provenance, and release assets",
+        source,
+        "jobs.verify.steps[0].name",
+    )
+    require_yaml_scalar(verify_step["id"], "verify", source, "jobs.verify.steps[0].id")
+    expected_verify_env = (
+        ("GH_TOKEN", "${{ github.token }}"),
+        ("EXPECTED_COMMIT", "${{ inputs.expected_commit }}"),
+        ("EXPECTED_TREE", "${{ inputs.expected_tree }}"),
+        ("AUTHORIZED", "${{ inputs.authorize_promotion }}"),
+        ("DISPATCH_REF", "${{ github.ref }}"),
+        ("DISPATCH_SHA", "${{ github.sha }}"),
+        ("WORKFLOW_REF", "${{ github.workflow_ref }}"),
+        ("WORKFLOW_SHA", "${{ github.workflow_sha }}"),
+    )
+    if exact_string_mapping(verify_step["env"], source, "jobs.verify.steps[0].env") != expected_verify_env:
+        raise ContractError("release promotion verify environment changed")
+    validate_run_hash(
+        verify_step,
+        PROMOTE_STEP_RUN_SHA256[("verify", 0)],
+        source,
+        "jobs.verify.steps[0]",
+    )
+    formal_download = require_yaml_keys(
+        verify_steps[1],
+        ("name", "uses", "with"),
+        source,
+        "jobs.verify.steps[1]",
+    )
+    require_yaml_scalar(
+        formal_download["name"],
+        "Download the exact formal workflow artifact",
+        source,
+        "jobs.verify.steps[1].name",
+    )
+    require_yaml_scalar(
+        formal_download["uses"],
+        "actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131",
+        source,
+        "jobs.verify.steps[1].uses",
+    )
+    formal_download_with = require_yaml_keys(
+        formal_download["with"],
+        ("name", "path", "github-token", "repository", "run-id"),
+        source,
+        "jobs.verify.steps[1].with",
+    )
+    for key, expected in (
+        ("name", "cyber-abuse-guard-v0.15-release"),
+        ("path", "${{ runner.temp }}/formal-run-assets"),
+        ("github-token", "${{ github.token }}"),
+        ("repository", "${{ github.repository }}"),
+        ("run-id", "${{ steps.verify.outputs.formal_run_id }}"),
+    ):
+        require_yaml_scalar(
+            formal_download_with[key], expected, source, f"jobs.verify.steps[1].with.{key}"
+        )
+    formal_compare = require_yaml_keys(
+        verify_steps[2], ("name", "run"), source, "jobs.verify.steps[2]"
+    )
+    require_yaml_scalar(
+        formal_compare["name"],
+        "Prove every draft asset is byte-identical to the formal workflow artifact",
+        source,
+        "jobs.verify.steps[2].name",
+    )
+    validate_run_hash(
+        formal_compare,
+        PROMOTE_STEP_RUN_SHA256[("verify", 2)],
+        source,
+        "jobs.verify.steps[2]",
+    )
+
+    promote = require_yaml_keys(
+        jobs["promote"],
+        ("needs", "environment", "permissions", "runs-on", "timeout-minutes", "steps"),
+        source,
+        "jobs.promote",
+    )
+    require_yaml_scalar(promote["needs"], "verify", source, "jobs.promote.needs")
+    require_yaml_scalar(
+        promote["environment"], "formal-release-promotion", source, "jobs.promote.environment"
+    )
+    promote_permissions = require_yaml_keys(
+        promote["permissions"], ("contents",), source, "jobs.promote.permissions"
+    )
+    require_yaml_scalar(
+        promote_permissions["contents"], "write", source, "jobs.promote.permissions.contents"
+    )
+    require_yaml_scalar(promote["runs-on"], "ubuntu-24.04", source, "jobs.promote.runs-on")
+    require_yaml_scalar(
+        promote["timeout-minutes"], "5", source, "jobs.promote.timeout-minutes", tag="tag:yaml.org,2002:int"
+    )
+    promote_steps = yaml_sequence(promote["steps"], source, "jobs.promote.steps")
+    if len(promote_steps) != 1:
+        raise ContractError("release promotion write job must contain exactly one reviewed step")
+    promote_step = require_yaml_keys(
+        promote_steps[0], ("name", "env", "run"), source, "jobs.promote.steps[0]"
+    )
+    require_yaml_scalar(
+        promote_step["name"],
+        "Reverify immutable asset set and publish the same draft",
+        source,
+        "jobs.promote.steps[0].name",
+    )
+    expected_promote_env = (
+        ("GH_TOKEN", "${{ github.token }}"),
+        ("RELEASE_ID", "${{ needs.verify.outputs.release_id }}"),
+        ("EXPECTED_ASSET_FINGERPRINT", "${{ needs.verify.outputs.asset_fingerprint }}"),
+        ("EXPECTED_COMMIT", "${{ inputs.expected_commit }}"),
+    )
+    if exact_string_mapping(promote_step["env"], source, "jobs.promote.steps[0].env") != expected_promote_env:
+        raise ContractError("release promotion write environment changed")
+    validate_run_hash(
+        promote_step,
+        PROMOTE_STEP_RUN_SHA256[("promote", 0)],
+        source,
+        "jobs.promote.steps[0]",
+    )
+    if re.search(r"(?i)actions/checkout@|(?:^|[\s;&|])(?:\./)?scripts/", text):
+        raise ContractError("release promotion must remain no-checkout and script-free")
+    if len(re.findall(r"(?m)^\s+contents:\s*write\s*$", text)) != 1:
+        raise ContractError("release promotion contents:write must be isolated to promote")
+
+
 def validate_blocked_prerelease_structure(
     document: MappingNode, source: Path
 ) -> dict[str, list[Node]]:
@@ -1297,9 +2668,8 @@ def validate_blocked_prerelease_structure(
     )
     choice_inputs = {
         "host_v7283_validation",
-        "host_v7282_validation",
-        "host_v7281_validation",
         "independent_audit_validation",
+        "independent_evaluation_validation",
     }
     for input_name, input_node in inputs.items():
         path = f"on.workflow_dispatch.inputs.{input_name}"
@@ -1403,7 +2773,16 @@ def validate_blocked_prerelease_structure(
         if job_name == "verify":
             require_yaml_scalar(job["needs"], "admission", source, f"{job_path}.needs")
             verify_permissions = require_yaml_keys(
-                job["permissions"], ("contents",), source, f"{job_path}.permissions"
+                job["permissions"],
+                ("actions", "contents"),
+                source,
+                f"{job_path}.permissions",
+            )
+            require_yaml_scalar(
+                verify_permissions["actions"],
+                "read",
+                source,
+                f"{job_path}.permissions.actions",
             )
             require_yaml_scalar(
                 verify_permissions["contents"],
@@ -1421,9 +2800,8 @@ def validate_blocked_prerelease_structure(
             )
             expected_publish_if = (
                 "inputs.host_v7283_validation == 'PASS' && "
-                "inputs.host_v7282_validation == 'PASS' && "
-                "inputs.host_v7281_validation == 'PASS' && "
                 "inputs.independent_audit_validation == 'PASS' && "
+                "inputs.independent_evaluation_validation == 'PASS' && "
                 "inputs.authorize_blocked_prerelease == true"
             )
             if yaml_scalar(job["if"], source, f"{job_path}.if") != expected_publish_if:
@@ -1452,7 +2830,7 @@ def validate_blocked_prerelease_structure(
         steps = yaml_sequence(job["steps"], source, f"{job_path}.steps")
         contracts = BLOCKED_STEP_CONTRACTS[job_name]
         if len(steps) != len(contracts):
-            count_words = {2: "two", 3: "three", 11: "eleven"}
+            count_words = {2: "two", 3: "three", 4: "four", 14: "fourteen"}
             raise ContractError(
                 f"blocked prerelease {job_name} job must contain exactly "
                 f"{count_words.get(len(contracts), str(len(contracts)))} reviewed steps"
@@ -1585,23 +2963,46 @@ def validate_blocked_prerelease_structure(
         tag="tag:yaml.org,2002:bool",
     )
 
-    upload = yaml_mapping(steps_by_job["verify"][10], source, "jobs.verify.steps[10]")
+    candidate_download = yaml_mapping(
+        steps_by_job["verify"][5], source, "jobs.verify.steps[5]"
+    )
+    candidate_download_with = require_yaml_keys(
+        candidate_download["with"],
+        ("name", "path", "github-token", "repository", "run-id"),
+        source,
+        "jobs.verify.steps[5].with",
+    )
+    for key, expected in (
+        ("name", "round6-v0.15-candidate-${{ inputs.expected_commit }}"),
+        ("path", "${{ runner.temp }}/host-tested-candidate"),
+        ("github-token", "${{ github.token }}"),
+        ("repository", "${{ github.repository }}"),
+        ("run-id", "${{ inputs.candidate_run_id }}"),
+    ):
+        require_yaml_scalar(
+            candidate_download_with[key],
+            expected,
+            source,
+            f"jobs.verify.steps[5].with.{key}",
+        )
+
+    upload = yaml_mapping(steps_by_job["verify"][13], source, "jobs.verify.steps[13]")
     upload_with = require_yaml_keys(
         upload["with"],
         ("name", "path", "if-no-files-found", "retention-days"),
         source,
-        "jobs.verify.steps[10].with",
+        "jobs.verify.steps[13].with",
     )
     require_yaml_scalar(
         upload_with["name"],
         "round6-blocked-${{ inputs.expected_commit }}",
         source,
-        "jobs.verify.steps[10].with.name",
+        "jobs.verify.steps[13].with.name",
     )
     expected_artifacts = (
-        "dist/cyber-abuse-guard-v0.1.2-dirty.so",
-        "dist/cyber-abuse-guard-v0.1.2-dirty.so.sha256",
-        "dist/cyber-abuse-guard_0.1.2-dirty_linux_amd64.zip",
+        "dist/cyber-abuse-guard-v0.15.so",
+        "dist/cyber-abuse-guard-v0.15.so.sha256",
+        "dist/cyber-abuse-guard_0.15_linux_amd64.zip",
         "dist/build-metadata.json",
         "dist/checksums.txt",
         "dist/ruleset-manifest.json",
@@ -1609,7 +3010,7 @@ def validate_blocked_prerelease_structure(
         "dist/sbom.cdx.json",
     )
     upload_paths = yaml_scalar(
-        upload_with["path"], source, "jobs.verify.steps[10].with.path"
+        upload_with["path"], source, "jobs.verify.steps[13].with.path"
     )
     if tuple(line.strip() for line in upload_paths.splitlines() if line.strip()) != expected_artifacts:
         raise ContractError("blocked prerelease artifact transfer allowlist changed")
@@ -1617,13 +3018,13 @@ def validate_blocked_prerelease_structure(
         upload_with["if-no-files-found"],
         "error",
         source,
-        "jobs.verify.steps[10].with.if-no-files-found",
+        "jobs.verify.steps[13].with.if-no-files-found",
     )
     require_yaml_scalar(
         upload_with["retention-days"],
         "1",
         source,
-        "jobs.verify.steps[10].with.retention-days",
+        "jobs.verify.steps[13].with.retention-days",
         tag="tag:yaml.org,2002:int",
     )
 
@@ -1642,6 +3043,45 @@ def validate_blocked_prerelease_structure(
     )
     require_yaml_scalar(
         download_with["path"], "dist", source, "jobs.publish.steps[0].with.path"
+    )
+    attested_upload = yaml_mapping(
+        steps_by_job["publish"][2], source, "jobs.publish.steps[2]"
+    )
+    attested_upload_with = require_yaml_keys(
+        attested_upload["with"],
+        ("name", "path", "if-no-files-found", "retention-days"),
+        source,
+        "jobs.publish.steps[2].with",
+    )
+    require_yaml_scalar(
+        attested_upload_with["name"],
+        "round6-blocked-attested-${{ inputs.expected_commit }}",
+        source,
+        "jobs.publish.steps[2].with.name",
+    )
+    expected_attested_artifacts = expected_artifacts + (
+        "dist/round6-prerelease-attestation.json",
+        "dist/round6-prerelease-attestation.json.sha256",
+    )
+    attested_paths = yaml_scalar(
+        attested_upload_with["path"], source, "jobs.publish.steps[2].with.path"
+    )
+    if tuple(
+        line.strip() for line in attested_paths.splitlines() if line.strip()
+    ) != expected_attested_artifacts:
+        raise ContractError("blocked prerelease attested artifact allowlist changed")
+    require_yaml_scalar(
+        attested_upload_with["if-no-files-found"],
+        "error",
+        source,
+        "jobs.publish.steps[2].with.if-no-files-found",
+    )
+    require_yaml_scalar(
+        attested_upload_with["retention-days"],
+        "30",
+        source,
+        "jobs.publish.steps[2].with.retention-days",
+        tag="tag:yaml.org,2002:int",
     )
     return steps_by_job
 
@@ -1999,7 +3439,12 @@ def validate_pre_final_mutations(
 def validate_blocked_prerelease_workflow(text: str, source: Path) -> None:
     validate_workflow_safety(text, source)
     document = parse_workflow_yaml(text, source)
-    validate_sensitive_workflow_expressions(document, source)
+    validate_sensitive_workflow_expressions(
+        document,
+        source,
+        allowed_token_paths=BLOCKED_ALLOWED_GITHUB_TOKEN_PATHS,
+        allowed_identity_expressions=BLOCKED_ALLOWED_GITHUB_IDENTITY_EXPRESSIONS,
+    )
     steps_by_job = validate_blocked_prerelease_structure(document, source)
     validate_pre_final_mutations(steps_by_job, source)
     if not re.search(
@@ -2041,9 +3486,9 @@ def validate_blocked_prerelease_workflow(text: str, source: Path) -> None:
 
     if "${{ secrets." in text:
         raise ContractError("blocked prerelease may not expose repository secrets")
-    if text.count("${{ github.token }}") != 2:
+    if text.count("${{ github.token }}") != 4:
         raise ContractError(
-            "blocked prerelease may expose github.token only to reviewed admission and final publish steps"
+            "blocked prerelease may expose github.token only to reviewed CI, candidate admission, candidate download, and final publish steps"
         )
 
     jobs = job_blocks(text)
@@ -2055,8 +3500,8 @@ def validate_blocked_prerelease_workflow(text: str, source: Path) -> None:
     verify_job = jobs["verify"]
     publish_job = jobs["publish"]
     admission_steps = step_blocks(admission)
-    if len(admission_steps) != 2:
-        raise ContractError("blocked prerelease admission must contain exactly two reviewed steps")
+    if len(admission_steps) != 3:
+        raise ContractError("blocked prerelease admission must contain exactly three reviewed steps")
     reviewed_admission = (
         (
             "Fail closed unless every external gate and authorization is explicit",
@@ -2067,6 +3512,11 @@ def validate_blocked_prerelease_workflow(text: str, source: Path) -> None:
             "Bind admission to a successful CI run for the exact commit",
             ADMISSION_CI_ENV,
             ADMISSION_CI_COMMANDS,
+        ),
+        (
+            "Bind admission to the successful clean-candidate run",
+            CANDIDATE_ADMISSION_ENV,
+            CANDIDATE_ADMISSION_COMMANDS,
         ),
     )
     for step, (name, expected_env, expected_commands) in zip(
@@ -2103,12 +3553,14 @@ def validate_blocked_prerelease_workflow(text: str, source: Path) -> None:
         for line in mapping_block(verify_job, "permissions", 4).splitlines()
         if line.strip()
     )
-    if verify_permissions != ("permissions:", "contents: read"):
-        raise ContractError("blocked prerelease verify job must remain contents: read only")
-    if re.search(r"\$\{\{\s*(?:github\.token|secrets\.)", verify_job) or re.search(
-        r"(?m)^\s+(?:GH_TOKEN|GITHUB_TOKEN):", verify_job
-    ):
-        raise ContractError("blocked prerelease verify job may not receive a repository token")
+    if verify_permissions != ("permissions:", "actions: read", "contents: read"):
+        raise ContractError(
+            "blocked prerelease verify job must remain actions/contents read only"
+        )
+    if re.search(r"(?m)^\s+(?:GH_TOKEN|GITHUB_TOKEN):", verify_job):
+        raise ContractError(
+            "blocked prerelease verify job may pass github.token only to the exact candidate artifact download input"
+        )
 
     verify_steps = step_blocks(verify_job)
     if len(verify_steps) < 4:
@@ -2133,9 +3585,9 @@ def validate_blocked_prerelease_workflow(text: str, source: Path) -> None:
     expected_upload_with = """        with:
           name: round6-blocked-${{ inputs.expected_commit }}
           path: |
-            dist/cyber-abuse-guard-v0.1.2-dirty.so
-            dist/cyber-abuse-guard-v0.1.2-dirty.so.sha256
-            dist/cyber-abuse-guard_0.1.2-dirty_linux_amd64.zip
+            dist/cyber-abuse-guard-v0.15.so
+            dist/cyber-abuse-guard-v0.15.so.sha256
+            dist/cyber-abuse-guard_0.15_linux_amd64.zip
             dist/build-metadata.json
             dist/checksums.txt
             dist/ruleset-manifest.json
@@ -2172,9 +3624,9 @@ def validate_blocked_prerelease_workflow(text: str, source: Path) -> None:
         raise ContractError("contents: write must appear only once in the publish job")
 
     publish_steps = step_blocks(publish_job)
-    if len(publish_steps) != 3:
-        raise ContractError("blocked prerelease publish job must contain exactly three reviewed steps")
-    download_step, transfer_step, final_publish_step = publish_steps
+    if len(publish_steps) != 4:
+        raise ContractError("blocked prerelease publish job must contain exactly four reviewed steps")
+    download_step, transfer_step, _, final_publish_step = publish_steps
     if not re.search(
         r"(?m)^\s+-\s+name:\s*Download exact verified blocked-development artifacts\s*$",
         download_step,
@@ -2217,6 +3669,23 @@ def validate_round6_reproducibility_script(text: str, source: Path) -> None:
     if patterns != ROUND6_SPARSE_PATTERNS:
         raise ContractError(
             f"Round6 reproducibility sparse checkout differs from the workflow contract: {source}"
+        )
+    if text.count(ROUND6_REPRODUCIBILITY_MODE_CONTRACT) != 1:
+        raise ContractError(
+            "Round6 reproducibility modes must keep the exact candidate and formal assertions: "
+            f"{source}"
+        )
+    if text.count(ROUND6_REPRODUCIBILITY_PACKAGE_BRANCH_CONTRACT) != 1:
+        raise ContractError(
+            "Round6 reproducibility package-release must remain in the exact formal-only branch: "
+            f"{source}"
+        )
+    if (
+        hashlib.sha256(text.encode("utf-8")).hexdigest()
+        != ROUND6_REPRODUCIBILITY_SCRIPT_SHA256
+    ):
+        raise ContractError(
+            f"Round6 reproducibility script must match the exact reviewed safety contract: {source}"
         )
 
 
@@ -2349,6 +3818,32 @@ def validate_round6_makefile_contract(text: str, source: Path) -> None:
         raise ContractError(
             f"round6-benchmark must fail closed and execute the extract benchmark: {source}"
         )
+    required_script_commands = (
+        "bash -n ./scripts/round6-candidate-artifacts.sh",
+        "./scripts/release-candidate-contract-test.sh",
+        "bash -n ./scripts/verify-external-release-attestation.sh",
+        "./scripts/verify-external-release-attestation-test.sh",
+    )
+    for target in ("script-test", "round6-script-test"):
+        target_commands = tuple(
+            " ".join(line.split())
+            for line in recipes.get(target, "").splitlines()
+            if line.strip()
+        )
+        positions: list[int] = []
+        for command in required_script_commands:
+            matches = [
+                index for index, actual in enumerate(target_commands) if actual == command
+            ]
+            if len(matches) != 1:
+                raise ContractError(
+                    f"{target} must reach the exact reviewed Round6 script gate: {command}"
+                )
+            positions.append(matches[0])
+        if positions != sorted(positions):
+            raise ContractError(
+                f"{target} must preserve the reviewed Round6 script-gate order"
+            )
 
 
 def dotted_name(node: ast.AST, aliases: dict[str, str]) -> str | None:
@@ -2472,9 +3967,15 @@ def audit_python_source(
 
 def default_entrypoints(root: Path) -> list[Path]:
     entries = [root / ".github/workflows/ci.yml"]
-    optional = root / ".github/workflows/blocked-prerelease.yml"
-    if optional.exists():
-        entries.append(optional)
+    for relative in (
+        ".github/workflows/blocked-prerelease.yml",
+        ".github/workflows/round6-candidate.yml",
+        ".github/workflows/release.yml",
+        ".github/workflows/release-promote.yml",
+    ):
+        optional = root / relative
+        if optional.exists():
+            entries.append(optional)
     for pattern in (
         ".github/workflows/*round6*prerelease*.yml",
         ".github/workflows/*round6*prerelease*.yaml",
@@ -2488,6 +3989,7 @@ def audit(root: Path, entrypoints: list[Path]) -> tuple[set[str], set[str]]:
     root = root.resolve()
     makefile_text = read_regular_text(root / "Makefile", root)
     dependencies, recipes, dynamic_dependencies = parse_makefile(makefile_text)
+    validate_release_mode_contracts(root)
 
     direct_targets: set[str] = set()
     inspected_scripts: set[str] = set()
@@ -2495,15 +3997,36 @@ def audit(root: Path, entrypoints: list[Path]) -> tuple[set[str], set[str]]:
     for entrypoint in entrypoints:
         text = read_regular_text(entrypoint, root)
         if entrypoint.suffix.lower() in {".yml", ".yaml"}:
-            validate_workflow_safety(text, entrypoint)
-            if "prerelease" in entrypoint.name.lower():
+            name = entrypoint.name.lower()
+            if name == "round6-candidate.yml":
+                validate_candidate_workflow(text, entrypoint)
+            elif "prerelease" in name:
                 validate_blocked_prerelease_workflow(text, entrypoint)
+            elif name == "release.yml":
+                validate_formal_release_workflow(text, entrypoint)
+                continue
+            elif name == "release-promote.yml":
+                validate_release_promote_workflow(text, entrypoint)
+                continue
+            else:
+                validate_workflow_safety(text, entrypoint)
             command_text = "\n".join(yaml_run_blocks(text))
         else:
             command_text = text
         targets, scripts = audit_command_text(command_text, entrypoint)
         direct_targets.update(targets)
         script_queue.extend(scripts)
+
+    reviewed_control_scripts = (
+        REPRODUCIBILITY_WRAPPER_SCRIPT,
+        FROZEN_EVALUATION_TREE_SCRIPT,
+    )
+    if (
+        (root / ".github/workflows/ci.yml").resolve()
+        in {path.resolve() for path in entrypoints}
+        and all((root / relative).exists() for relative in reviewed_control_scripts)
+    ):
+        script_queue.extend(reviewed_control_scripts)
 
     visited: set[str] = set()
     target_queue = list(direct_targets)
@@ -2512,19 +4035,57 @@ def audit(root: Path, entrypoints: list[Path]) -> tuple[set[str], set[str]]:
             relative = script_queue.pop().removeprefix("./")
             if relative in inspected_scripts:
                 continue
+            if relative == FROZEN_EVALUATION_TREE_SCRIPT:
+                script_path = root / relative
+                try:
+                    resolved = script_path.resolve(strict=True)
+                except FileNotFoundError as exc:
+                    raise ContractError(
+                        f"required gate input is missing: {script_path}"
+                    ) from exc
+                if (
+                    script_path.is_symlink()
+                    or not script_path.is_file()
+                    or (resolved != root and root not in resolved.parents)
+                ):
+                    raise ContractError(
+                        f"reviewed frozen evaluation verifier must be a regular repository file: {script_path}"
+                    )
+                script_text = script_path.read_text(encoding="utf-8")
+                validate_frozen_evaluation_tree_script(script_text, script_path)
+                inspected_scripts.add(relative)
+                continue
             assert_safe_repo_path(Path(relative), root)
-            if FORBIDDEN_SCRIPT_NAME.search(Path(relative).name):
+            if (
+                FORBIDDEN_SCRIPT_NAME.search(Path(relative).name)
+                and relative != REPRODUCIBILITY_WRAPPER_SCRIPT
+            ):
                 raise ContractError(f"Round6 entrypoint reaches forbidden script: {relative}")
             inspected_scripts.add(relative)
             script_path = root / relative
             script_text = read_regular_text(script_path, root)
             suffix = script_path.suffix.lower()
             if suffix == ".sh":
+                if script_path.name in CANDIDATE_SCRIPT_SHA256:
+                    validate_candidate_script(script_text, script_path)
+                if relative == REPRODUCIBILITY_WRAPPER_SCRIPT:
+                    validate_reproducibility_wrapper_script(script_text, script_path)
                 if script_path.name == "round6-reproducibility-test.sh":
                     validate_round6_reproducibility_script(script_text, script_path)
                 if script_path.name == "build-linux-amd64.sh":
                     validate_round6_linux_build_script(script_text, script_path)
-                targets, scripts = audit_command_text(script_text, script_path)
+                command_text = script_text
+                if script_path.name == "round6-candidate-artifacts.sh":
+                    command_text = command_text.replace(
+                        "release_require_commands make ", "release_require_commands "
+                    ).replace('make -C "$root" -j1', "make")
+                elif script_path.name == "verify-external-release-attestation-test.sh":
+                    command_text = command_text.replace('make -C "$root"', "make")
+                elif script_path.name == "round6-reproducibility-test.sh":
+                    command_text = command_text.replace(
+                        ROUND6_REPRODUCIBILITY_FORMAL_PACKAGE_COMMAND, "", 1
+                    )
+                targets, scripts = audit_command_text(command_text, script_path)
             elif suffix == ".py":
                 targets, scripts = audit_python_source(script_text, script_path, root)
             else:
@@ -2554,6 +4115,25 @@ def audit(root: Path, entrypoints: list[Path]) -> tuple[set[str], set[str]]:
         )
         target_queue.extend(recipe_targets)
         script_queue.extend(recipe_scripts)
+
+    ci_entrypoint = root / ".github/workflows/ci.yml"
+    required_script_paths = {
+        "scripts/round6-candidate-artifacts.sh",
+        "scripts/release-candidate-contract-test.sh",
+        REPRODUCIBILITY_WRAPPER_SCRIPT,
+        FROZEN_EVALUATION_TREE_SCRIPT,
+        "scripts/verify-external-release-attestation.sh",
+        "scripts/verify-external-release-attestation-test.sh",
+    }
+    if ci_entrypoint in {path.resolve() for path in entrypoints} and all(
+        (root / relative).exists() for relative in required_script_paths
+    ):
+        missing = required_script_paths - inspected_scripts
+        if missing:
+            raise ContractError(
+                "Round6 CI script gates do not reach reviewed release-safety scripts: "
+                + ", ".join(sorted(missing))
+            )
 
     return visited, inspected_scripts
 

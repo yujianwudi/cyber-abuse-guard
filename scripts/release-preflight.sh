@@ -8,6 +8,7 @@ go_bin="${GO:-go}"
 release_require_commands "$go_bin" git sed awk sha256sum sort
 release_init
 release_assert_tag
+release_assert_formal_build
 go_version="$($go_bin env GOVERSION)"
 [[ "$go_version" == go1.26.4 ]] || release_die "release requires Go go1.26.4, got $go_version"
 

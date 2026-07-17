@@ -1,189 +1,260 @@
-# Round 6 CI and blocked-prerelease gate
+# Round 6 v0.15 CI, candidate, and release gate
 
-Status: **BLOCKED / PENDING HOST AND INDEPENDENT AUDIT**. This is
-development-only. No release is authorized by this document or by a green
-ordinary CI run.
+Status: **BLOCKED / PENDING HOST AND INDEPENDENT AUDIT**.
 
-All Round 6 build, race, fuzz, benchmark, artifact, and reproducibility evidence
-is Linux amd64-only. Windows and macOS are outside scope and are not required
-release lanes. See
-[ROUND6_DEVELOPMENT_HANDOFF.md](ROUND6_DEVELOPMENT_HANDOFF.md).
+The exact project version is `0.15`; the only formal tag is `v0.15`, never
+`v0.15.0`. This document authorizes neither deployment nor publication. All
+current execution evidence is Linux amd64-only. Windows, macOS, and musl/Alpine
+are outside this round.
+
+Classifier policy identity is `classifier-policy-v3` /
+`577dd913862f2d457eb292bfd02c571e0ea7ff47bc5427bc6be389851ddeb388`;
+scanner identity is `streaming-scanner-v1`.
+
+The release chain is deliberately ordered:
+
+```text
+final PR head + PR CI
+  -> merge to main
+  -> exact post-merge main push CI
+  -> private untagged clean-candidate Actions artifact
+  -> CPA v7.2.83 Host + Mock evidence
+  -> independent source/artifact/Host audit
+  -> candidate-bound external evaluation-v11+ CONSUMED / PASS
+  -> optional annotated development prerelease
+  -> annotated formal v0.15 tag and verified draft
+  -> protected promotion of that unchanged draft
+```
+
+Clean candidate bytes are still **unreleased**. A successful candidate build,
+Host matrix, optional development prerelease, or ordinary CI run cannot convert
+the historical v10 `CONSUMED / FAIL` into a release PASS. Evaluation-v10 cannot
+be rerun and is never a formal-build input.
+
+## Passed pre-version-migration checkpoint
+
+Commit `21ceb57e6b6030e56d7820c9a67a8eecd068c669`, tree
+`e55437442f30bdb1b6b748b9611c6760172784cd`, passed:
+
+- push CI run [29578024185](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29578024185);
+- PR CI run [29578025961](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29578025961).
+
+This is a passed engineering checkpoint before the 0.15 version and candidate
+release-chain migration. It is not the final v0.15 commit/tree, candidate
+artifact, Host result, independent audit, tag, or Release evidence. Final v0.15
+evidence must come from the later final PR head/PR CI, the resulting `main`
+commit/tree, and that exact main commit's successful push CI.
+
+The local final-diff CodeRabbit review reported 0 issues. The remote Draft check
+was skipped. Neither statement is remote CodeRabbit approval or an independent
+audit.
 
 ## Ordinary CI
 
-The public CI runs `make round6-regression`. The target first lists and verifies every required Round 6 test by exact name, then runs the allowlisted suites for:
+The public CI uses explicit Round 6 safe targets and a sparse source boundary.
+It verifies named suites for:
 
 - full-envelope and streaming extraction, including long JSON, chunk, Unicode,
   media, raw multipart, CPA-transformed multipart JSON, role, and budget cases;
-- classifier overlap, boundary reconstruction, negation, role isolation, coverage, and bounded composition;
+- classifier overlap, boundary reconstruction, negation, role isolation,
+  coverage, and bounded composition;
 - Router/disposition and the Linux long-text ladder at 64 KiB, 255 KiB,
   256 KiB, 256 KiB + 1, 270 KiB, 512 KiB, 1 MiB, 4 MiB, and near the
   effective RPC limit;
-- management test/status behavior and legacy `max_scan_bytes` migration.
+- management status, audit privacy, and legacy `max_scan_bytes` migration;
+- source/compile compatibility with the current CPA v7.2.83 release target.
 
-The CI safety checker inspects the reachable Make/script graph. Round 6 entrypoints fail closed if they reach the historical formal-release, package/verification, reproducibility, holdout, consumed-evaluation, or dynamically dispatched Make/shell paths.
+The safety checker inspects the reachable Make/script graph. Ordinary Round 6
+entrypoints must not reach formal release, consumed evaluation, Holdout, or
+unreviewed dynamic Make/shell paths. Consumed evaluation/Holdout gate tests
+remain isolated behind the `consumed_evaluation` build tag. Broad `go test ./...`
+or `go vet ./...` is not an accepted substitute for the allowlist.
 
-The same contract requires every Round 6 job to use the exact
-`ubuntu-24.04` runner label and rejects workflow/job shell defaults, custom
-step shells, containers, services, YAML anchors/aliases/quoted mapping keys,
-and dangerous inherited execution variables such as `BASH_ENV`, `PATH`, or
-`LD_PRELOAD`. Top-level environment is limited to the pinned tool/version
-values. The Linux build script is locked to its reviewed fail-closed command
-sequence, including complete
-`readelf --version-info` GLIBC tag validation before artifact checksum and
-source-identity confirmation.
+The final PR head must pass PR CI and then be merged to `main`. The resulting
+exact main commit must have a completed successful `push` run of
+`.github/workflows/ci.yml` whose `head_sha` is the candidate commit. PR CI is a
+prerequisite but cannot substitute for post-merge main push CI; neither can the
+earlier `21ceb57` checkpoint.
 
-Consumed evaluation/Holdout gate tests are isolated behind the
-`consumed_evaluation` build tag and excluded from the ordinary sparse checkout.
-Broad `./...` Go commands are not accepted as substitutes for the allowlist.
+## Private untagged clean candidate
 
-Round 6 CI builds only these low-sensitivity development artifacts:
+`.github/workflows/round6-candidate.yml` is the only authorized candidate-byte
+producer. A `workflow_dispatch` workflow is callable only after it exists on the
+default branch, so the final PR must already be merged. It is manual-only and
+runs on `ubuntu-24.04`. Admission requires:
+
+- the exact 40-character candidate commit and tree;
+- the run ID of the successful exact post-merge `main` push CI run;
+- dispatch from `refs/heads/main` at that exact commit/tree;
+- an explicit authorization boolean;
+- absence of the formal tag `v0.15`.
+
+The workflow checks out the exact `main` commit without persisted credentials, applies
+the restricted-data gate, rechecks source identity and CPA compatibility, and
+builds with candidate mode rather than `ALLOW_DIRTY_BUILD=1`. Candidate mode
+requires a clean worktree, exact commit/tree, the commit timestamp, and forbids
+formal-release operations. Two clean clones must reproduce the same bytes.
+
+The private Actions artifact is named for the exact commit and contains:
 
 ```text
-cyber-abuse-guard-v0.1.2-dirty.so
-cyber-abuse-guard-v0.1.2-dirty.so.sha256
-cyber-abuse-guard_0.1.2-dirty_linux_amd64.zip
+cyber-abuse-guard-v0.15.so
+cyber-abuse-guard-v0.15.so.sha256
+cyber-abuse-guard_0.15_linux_amd64.zip
 build-metadata.json
 checksums.txt
 ruleset-manifest.json
 ruleset.sha256
 sbom.cdx.json
+candidate-manifest.json
 ```
 
-It does not create or copy an audit bundle. In particular, the Round 6 artifact path does not open or package holdout/evaluation reports, private payloads, production requests, audit databases, credentials, or provider data.
+`candidate-manifest.json` binds version `0.15`, commit, tree, commit timestamp,
+repository, workflow/ref/SHA, run ID/attempt, SO SHA-256, Store ZIP SHA-256,
+metadata hash, ruleset hash, and SBOM hash. Its status is
+`UNRELEASED / HOST AND INDEPENDENT AUDIT REQUIRED`.
 
-`make round6-reproducibility-test` compares two clean sparse-worktree builds of
-only the SO, Store ZIP, metadata, ruleset identity, and SBOM. It deliberately
-does not call the historical `reproducibility-test`, because that target reaches
-the old release bundle path.
+This artifact is private, expiring Actions evidence. It is not associated with a
+tag or GitHub Release. The Store ZIP contains exactly one root `.so`. It does not
+contain an audit bundle, source archive, evaluation/Holdout material, private
+payloads, production requests, audit databases, credentials, or Provider data.
 
-## Manual prerelease workflow
+## Required Host and independent evidence
 
-`.github/workflows/round6-blocked-prerelease.yml` is manual-only
-(`workflow_dispatch`). Its defaults are blocked and authorization defaults to
-false. It has exactly three ordered jobs:
+The candidate SO from the private Actions artifact must be tested in isolated
+Linux amd64 CPA Hosts with a Mock upstream and no real auth pool or Provider:
 
-1. `admission` validates every input and uses a read-only `GH_TOKEN` only to
-   query the cited Actions run. The run must be a completed successful `push`
-   run of `.github/workflows/ci.yml` whose `head_sha` is the exact candidate
-   commit.
-2. `verify` depends on `admission`, has only `contents: read`, checks out the
-   existing annotated tag with `persist-credentials: false`, immediately runs
-   the restricted-data checker, rebuilds the Linux amd64 artifacts, rechecks
-   commit/tree/tag/SO identity, and uploads one commit-named artifact. Checkout
-   necessarily uses the job's read-only GitHub token while fetching; the token
-   is not explicitly mapped into later commands and is not persisted in Git
-   configuration. The final identity step and artifact upload use an exact
-   reviewed clean execution environment: shell startup hooks, loader/language
-   injection variables, Git configuration and askpass paths, CLI config homes,
-   and proxy variables are cleared or pinned, while `PATH` is restricted to
-   `/usr/bin:/bin`. Exact step text and environment mappings also prevent
-   disabling remote CPA compatibility, disabling required artifacts, replacing
-   the regression gate with a no-op, or persisting `BASH_ENV` through
-   `$GITHUB_ENV`.
-3. `publish` depends on `verify`, performs no checkout and runs no repository
-   scripts. It downloads the exact commit-named artifact, rechecks
-   commit/tree/SO identity without explicitly mapping `GH_TOKEN`, and only then
-   enters the final GH-token-bearing publish step. Transfer verification
-   requires the exact eight-file allowlist, the canonical `checksums.txt` file
-   list and hashes, canonical one-line standalone SO/ruleset checksum files,
-   matching commit/tree metadata, a JSON ruleset, and a CycloneDX SBOM. It also
-   rejects unsafe ZIP paths, requires exactly one `.so`, verifies the extracted
-   ZIP-contained SO against `expected_so_sha256`, and byte-compares the
-   ZIP-contained SO checksum, build metadata, ruleset files, and SBOM with the
-   separately transferred files.
+| Target | Exact source identity | Current real Host state |
+|---|---|---|
+| CPA v7.2.83 | `9f4f53ca5a4d1474e3f7eb61d6ffc984995f1f66` | **NOT RUN / PENDING** |
 
-The `publish` job receives `contents: write` only when all five expressions are
-true:
+Earlier v7.2.82/v7.2.81 source/compile checks are historical engineering
+context only. They are not current v0.15 Host or release requirements.
+
+Each Host record and the independent audit must cite the same candidate commit,
+tree, candidate workflow run ID, and Linux SO SHA-256. For every locally blocked
+request, evidence must show zero before/after deltas at all four layers:
+
+1. Auth Selector;
+2. Provider execution;
+3. usage accounting;
+4. Mock-upstream requests.
+
+The records must also cover Store install/load, registration, Router order,
+executor readiness, stream/non-stream formats, privacy canaries, SQLite v3
+migration/quick-check/rollback, and sandbox rollback. Source/compile contracts
+do not substitute for this exact-artifact Host evidence.
+
+The independent auditor must obtain and hash the records independently and
+review the exact source and candidate bytes. A dispatcher-provided `PASS` value
+or 64-character string is not proof by itself. Repository Environment review
+must prohibit self-approval.
+
+The same exact candidate must then receive an externally authored unseen
+evaluation with identity `evaluation-v11` or later. It must be the candidate's
+first-and-only consumed run and the low-sensitivity report must declare
+`CONSUMED / PASS`. The prerelease admission accepts only the evaluation ID and
+report SHA-256 as external fields; it does not check in or package the evaluation
+corpus. Evaluation-v10 remains immutable `CONSUMED / FAIL`, is not rerun, and is
+rejected as a formal input.
+
+Protected reviewers must independently obtain that low-sensitivity report,
+verify its exact-candidate binding, `evaluation-v11`-or-later identity,
+first-and-only `CONSUMED / PASS` status, and SHA-256. Dispatcher fields alone do
+not prove the evaluation gate.
+
+These results are external attestation fields. The reusable source documents do
+not hardcode future PASS hashes or claim that a future merge/tag/Release exists.
+Stable v0.15 eligibility is decided only from the Round 6 candidate/Host/audit
+attestations and the later formal-release attestation assets.
+
+The neutral machine-readable source policy is
+[RELEASE_POLICY.md](RELEASE_POLICY.md). The external decision assets are named
+`round6-prerelease-attestation.json` and `formal-release-attestation.json`.
+
+## Optional annotated development prerelease
+
+An optional durable development handoff may be created only after the v7.2.83
+Host record, the independent audit, and the candidate-bound external evaluation-v11+
+`CONSUMED / PASS` attestation pass. It uses an existing annotated tag:
 
 ```text
-CPA v7.2.83 isolated Host + Mock result == PASS
-CPA v7.2.82 isolated Host + Mock result == PASS
-CPA v7.2.81 isolated Host + Mock result == PASS
-independent audit result == PASS
-explicit blocked-prerelease authorization == true
+v0.15-dev.round6
+v0.15-dev.round6.N
 ```
 
-The `publish` job is also bound to the GitHub Environment
-`round6-independent-audit`. Repository settings must create that Environment
-and configure required independent reviewers before the workflow is used.
-Merely naming the Environment in YAML does not create independent approval. If
-the protection or reviewers are absent, bypassed, or controlled only by the
-implementer, the workflow result cannot be treated as an independent audit
-gate.
+`.github/workflows/round6-blocked-prerelease.yml` binds that tag to the exact
+candidate `main` commit/tree, successful main push CI run, successful clean-candidate run,
+candidate SO SHA-256, the v7.2.83 Host-record hash, and independent-audit hash.
+It rebuilds the same clean exact-source bytes, proves reproducibility, and
+rechecks the SO hash before and after Actions artifact transfer.
 
-The dispatcher must also provide the exact existing annotated development tag,
-its 40-character commit and tree, the exact successful push-CI run ID, the exact
-candidate Linux amd64 SO SHA-256, and SHA-256 identities for all three Host
-evidence records and the independent audit report. All three Host records and the independent
-audit must cite that same candidate SO SHA-256. The `verify` job recomputes the
-rebuilt SO hash before transfer, and the `publish` job recomputes it again after
-download. The publish-side canonical checksum and ZIP-contained identity checks
-also bind every released metadata/ruleset/SBOM file to the verified transfer;
-runner, build, archive, or artifact-transfer drift therefore fails closed. The
-workflow verifies the local and remote tag-to-commit binding before upload. It
-does not create or move a tag.
+The prerelease attaches `round6-prerelease-attestation.json` and its SHA-256
+sidecar. That external record binds the candidate workflow, source identity,
+v7.2.83 Host evidence hash, independent-audit hash, candidate artifact hashes,
+`independent_evaluation_id`, and `independent_evaluation_sha256`; the source tree
+does not predeclare its future values.
 
-The Host PASS values and evidence SHA-256 inputs are externally reviewed
-declarations, not evidence files verified by this workflow. The protected
-`round6-independent-audit` Environment reviewer must obtain each underlying
-Host record independently, recompute its SHA-256, confirm that all three records
-cite the same candidate SO, and have self-review disabled. The workflow checks
-the declaration format and binds the citations into the draft prerelease; a
-dispatcher-supplied `PASS` or 64-character string is not proof by itself.
+The GitHub Environment `round6-independent-audit` must have required independent
+reviewers with self-review disabled. Repository rules must prohibit development
+tag modification and deletion without a participant bypass. YAML declarations
+and peeled-tag checks narrow risk but do not replace repository settings.
 
-Repository settings must also enforce a release-tag ruleset for the Round 6
-development tag pattern. That ruleset must prohibit both tag modification and
-tag deletion, and no actor participating in the release workflow may bypass
-those protections. The `verify` job's `ls-remote` peeled-tag check and the final
-publish step's GitHub API annotated-tag peel narrow the race window but are not
-a substitute for immutable repository-side tags.
-
-The final and only explicitly write-token-bearing publish step first queries the
-GitHub Git References API, requires the ref object to be an annotated `tag`,
-loads that tag object, requires it to peel directly to a `commit`, and compares
-that commit with `expected_commit`. Only after those checks may the pinned
-command sequence run `gh release create` with:
+If created, the GitHub Release must remain:
 
 ```text
---draft
---prerelease
---latest=false
---verify-tag
-title contains BLOCKED / PENDING HOST AND INDEPENDENT AUDIT
-explicit notes file records source, CI, Host, audit, and candidate SO identities
+draft: true
+prerelease: true
+latest: false
+title/status: BLOCKED / NOT A FORMAL RELEASE
 ```
 
-That GH CLI command must remain the end of the final job step. The step's exact
-environment and literal command graph are statically locked; an earlier
-release/tag mutation, a later step, a changed flag, or a missing identity line
-fails the contract.
+It is not production admission and does not authorize a real Provider, account
+pool, production Host, or `observe -> balanced` change.
 
-The release remains a
-`BLOCKED / PENDING HOST AND INDEPENDENT AUDIT` development handoff even after
-those external gates pass. It is not permission to deploy, touch Los Angeles
-production, connect a real provider/account pool, or change production from
-`observe` to `balanced`.
+## Formal v0.15 tag and Release
 
-## Commands
+The formal path is separate from candidate and development-prerelease paths. It
+requires a clean source state at an annotated exact tag `v0.15`, completed Host
+and independent evidence, final release documents, and the candidate-bound
+external `evaluation-v11` or later first-and-only `CONSUMED / PASS` fields in
+`round6-prerelease-attestation.json`. The historical v10 result stays
+`CONSUMED / FAIL` and cannot be rerun, renamed, used for tuning, or passed into
+the formal build.
 
-These checks are safe to run without any restricted corpus:
+Until that candidate-level external evaluation attestation exists, do not create `v0.15`
+or invoke the formal release path. The formal workflow consumes exactly one
+matching blocked development prerelease and its
+`round6-prerelease-attestation.json`, rebuilds the SO and Store ZIP, and requires
+byte identity with the Host-tested candidate. Formal artifacts add the audit
+bundle, source archive, release test summary, and final release evidence to the
+verified SO, Store ZIP, metadata, ruleset identity, and SBOM. It also emits
+`formal-release-attestation.json` plus a SHA-256 sidecar and creates a draft
+non-prerelease `v0.15` GitHub Release.
+
+The formal source archive and audit bundle exclude evaluation, Holdout, private,
+blind, and retired material. Only low-sensitivity evaluation identity/hash and
+release-attestation records may cross the release boundary; no underlying
+evaluation or Holdout payload is packaged.
+
+`.github/workflows/release-promote.yml` is a separate protected step. It
+reverifies the annotated tag, unchanged draft assets, both attestation files,
+and candidate/formal byte bindings before publishing the existing draft as the
+stable/latest v0.15 Release. Creating the formal draft is not publication.
+
+## Safe commands and prohibited shortcuts
+
+Repository-only checks that do not deploy a Host or open consumed evaluation
+data include:
 
 ```bash
 python3 -B scripts/round6_safe_gate_contract_test.py
 python3 -B scripts/round6_safe_gate_contract.py --root .
 make round6-regression
+make round6-script-test
 ```
 
-The artifact and reproducibility targets require Linux amd64, Go 1.26.4, CGO, native build tools, and the pinned CycloneDX tool:
-
-```bash
-ALLOW_DIRTY_BUILD=1 make round6-development-artifacts
-make round6-reproducibility-test
-```
-
-Do not run `make formal-release`, `make release`, `make holdout-test`, `make consumed-boundary-test`, the historical release workflow, or the historical release/reproducibility packaging scripts for this candidate.
-
-CPA v7.2.83, v7.2.82, and v7.2.81 source/compile compatibility belongs to Linux CI.
-Their official real Host + Mock-upstream matrices remain **NOT RUN / PENDING**
-and are mandatory before any blocked prerelease step.
+Do not locally deploy the plugin, start a real CPA Host, connect a real Provider,
+run consumed v10, execute third-party jailbreak repositories, or locally create
+candidate bytes. Candidate creation belongs only to the dedicated GitHub Actions
+workflow; Host validation belongs only to the authorized Linux sandbox.

@@ -73,7 +73,7 @@ const (
 )
 
 // ClassifierFailMode controls the local fallback if the optional classifier is
-// unavailable. v0.1 reserves only the safe deterministic-rules fallback.
+// unavailable. v0.15 reserves only the safe deterministic-rules fallback.
 type ClassifierFailMode string
 
 const ClassifierFailRulesOnly ClassifierFailMode = "rules_only"
@@ -151,7 +151,7 @@ type TrustedProxy struct {
 	CIDRs   []string `yaml:"cidrs"`
 }
 
-// Classifier is a reserved v0.1 interface configuration. This package does not
+// Classifier is a reserved v0.15 interface configuration. This package does not
 // implement the classifier transport; it only prevents unsafe endpoints from
 // entering a valid configuration.
 type Classifier struct {
@@ -527,11 +527,11 @@ func validateDataDir(path string) error {
 
 func validateTrustedProxy(p TrustedProxy) error {
 	if p.Enabled {
-		// CPA v7.2.75 does not expose the direct peer address to ModelRouter.
+		// CPA v7.2.83 does not expose the direct peer address to ModelRouter.
 		// Without that value the plugin cannot prove that a forwarded header was
 		// supplied by one of the configured proxies, so enabling it would make the
 		// subject bucket attacker-controlled.
-		return invalidf("trusted_proxy.enabled is unsupported with CPA v7.2.75 because ModelRouter has no trusted peer address")
+		return invalidf("trusted_proxy.enabled is unsupported with CPA v7.2.83 because ModelRouter has no trusted peer address")
 	}
 	if p.Header != "" && !isHTTPToken(p.Header) {
 		return invalidf("trusted_proxy.header must be a valid HTTP field name")

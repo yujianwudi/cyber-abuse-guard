@@ -80,13 +80,13 @@ plugins:
         max_migration_backups: 3
 
       trusted_proxy:
-        # CPA v7.2.67 ModelRouter lacks a trustworthy direct-peer address;
-        # v0.1.2 therefore rejects enabled: true instead of trusting spoofable headers.
+        # CPA v7.2.83 ModelRouter lacks a trustworthy direct-peer address;
+        # v0.15 therefore rejects enabled: true instead of trusting spoofable headers.
         enabled: false
         header: X-Forwarded-For
         cidrs: []
 
-      # Reserved for a future local-only classifier; v0.1.2 rejects enabled: true.
+      # Reserved for a future local-only classifier; v0.15 rejects enabled: true.
       classifier:
         enabled: false
         endpoint: ""

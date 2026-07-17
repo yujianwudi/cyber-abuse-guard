@@ -7,7 +7,8 @@ source "$root/scripts/release-common.sh"
 release_require_commands make tee install sha256sum mktemp rm mkdir
 release_init
 release_assert_tag
-[[ "$RELEASE_DIRTY" == false ]] || release_die "formal-release.sh refuses dirty development builds"
+release_assert_formal_build
+make -C "$root" external-release-attestation
 CURRENT_RULESET_SHA256="$RELEASE_RULESET_SHA256" \
   "$root/scripts/release-doc-consistency.sh"
 
@@ -20,7 +21,7 @@ cleanup() {
 trap cleanup EXIT
 
 set +e
-make -j1 -C "$root" release verify-release verification-fault-test reproducibility-test 2>&1 | tee "$summary"
+make -j1 -C "$root" release verify-release verification-fault-test round6-reproducibility-test 2>&1 | tee "$summary"
 pipeline_status=("${PIPESTATUS[@]}")
 gate_status=${pipeline_status[0]}
 tee_status=${pipeline_status[1]}

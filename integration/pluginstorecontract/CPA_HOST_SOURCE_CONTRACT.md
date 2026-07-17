@@ -1,7 +1,8 @@
-# CPA v7.2.75 host routing source contract
+# CPA v7.2.83 host routing source contract
 
 This isolated module pins `github.com/router-for-me/CLIProxyAPI/v7` to
-`v7.2.75`. `host_source_contract_test.go` verifies the resolved module version
+`v7.2.83` at commit `9f4f53ca5a4d1474e3f7eb61d6ffc984995f1f66`.
+`host_source_contract_test.go` verifies the resolved module version, tag commit,
 and both module checksums, lists the official `internal/pluginhost` tests,
 requires a fixed set of critical names, and then runs only those exact tests.
 

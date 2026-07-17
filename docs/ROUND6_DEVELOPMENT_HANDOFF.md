@@ -2,6 +2,9 @@
 
 Status: **BLOCKED / PENDING HOST AND INDEPENDENT AUDIT**
 
+Target project version: exact `0.15`; intended formal tag: exact `v0.15`
+(never `v0.15.0`).
+
 This is the current Round 6 source handoff. It is not a deployment approval,
 Host validation report, independent audit approval, merge record, or Release
 record.
@@ -14,13 +17,20 @@ body[:max_scan_bytes] prefix. The legacy max_scan_bytes=262144 setting now
 selects a bounded classifier window rather than limiting inspection to the
 first 256 KiB of the JSON body.
 
-The candidate is still blocked because exact-source Linux amd64 evidence is not
-final, CPA v7.2.83, v7.2.82, and v7.2.81 have not been run as real Hosts with
-the official candidate .so and Mock upstream, and no independent
-source/artifact/Host audit has approved it.
+The candidate is still blocked because the final post-migration v0.15 PR head
+and PR CI, merge to `main`, exact post-merge `main` Linux amd64 push CI, and a
+private clean-candidate artifact do not yet exist; CPA v7.2.83 has not been run
+as a real Host with the
+official candidate `.so` and Mock upstream, and no independent
+source/artifact/Host audit or candidate-bound external evaluation-v11+
+`CONSUMED / PASS` attestation has approved it.
 
-The candidate has not been merged to main and no Round 6 tag or Release has
-been created.
+The candidate has not been merged to main and no `v0.15` tag or Release has
+been created. The final PR head must first pass PR CI, then merge to `main`, and
+the exact resulting main commit/tree must pass push CI. Only then may the clean
+candidate workflow be dispatched from `refs/heads/main` to produce a private,
+untagged, exact-source GitHub Actions artifact. Merge is a candidate-generation
+prerequisite, not release approval; clean candidate bytes remain unreleased.
 
 ## 2. Scope and evidence rules
 
@@ -56,27 +66,44 @@ performance number from them is promoted by this handoff.
 | Identity | Value |
 |---|---|
 | Repository | yujianwudi/cyber-abuse-guard |
+| Project version / formal tag | 0.15 / v0.15 (never v0.15.0) |
 | Development branch | agent/round6-long-text-streaming |
 | Round 5.2 base commit | 7a416df66a79218d73214084d4bf8a733268d894 |
 | Round 5.2 base tree | 63db7b7cb14a636f5ba9ff4453be4ebeef170b68 |
 | Historical Round 5.2 Linux amd64 SO SHA-256 | e859d4882f14ec180cbbe80a1a497ae3cd79d688668e0974f17f91b750e6d5ec |
-| Candidate commit | **PENDING - take from the final PR head** |
-| Candidate tree | **PENDING - take from the final PR head and Linux CI metadata** |
-| Candidate artifact hashes | **PENDING - Linux CI only** |
+| Passed pre-version-migration checkpoint | 21ceb57e6b6030e56d7820c9a67a8eecd068c669 |
+| Checkpoint tree | e55437442f30bdb1b6b748b9611c6760172784cd |
+| Checkpoint CI | Push 29578024185 PASS; PR 29578025961 PASS; not final v0.15 evidence |
+| Final v0.15 candidate commit | **PENDING - exact post-merge `main` commit after final PR CI and merge** |
+| Final v0.15 candidate tree | **PENDING - post-merge `main` push CI, build metadata, and candidate manifest must agree** |
+| Candidate artifact hashes | **PENDING - private untagged clean-candidate Actions run only** |
 | Scanner identity | streaming-scanner-v1 |
 | Classifier policy | classifier-policy-v3 |
-| Classifier policy SHA-256 | ae6fb2c0bccec618bf91b6274d1cd9b9a483499703f21d068e5590f5255fc4bd |
+| Classifier policy SHA-256 | 577dd913862f2d457eb292bfd02c571e0ea7ff47bc5427bc6be389851ddeb388 |
 | YAML ruleset | 1.0.7 |
 | YAML ruleset SHA-256 | 7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134 |
 | Audit schema | v3 |
 
-The candidate commit and tree are deliberately not guessed here. A source file
-cannot reliably self-reference the future commit that contains it. Final
-handoff must copy those values from the PR head and exact-source Linux CI
-build-metadata.json and verify that they agree.
+The final v0.15 candidate commit and tree are deliberately not guessed here. A
+source file cannot reliably self-reference the future merged commit that
+contains it. Final handoff must record the final PR head and PR CI, the actual
+merge result on `main`, the exact post-merge main push CI, and the identities in
+`build-metadata.json` and `candidate-manifest.json`. The candidate commit/tree
+is the post-merge `main` identity, and all candidate records must agree with it.
+The `21ceb57` checkpoint proves the pre-migration implementation state, not the
+later v0.15 candidate identity.
+
+Future Host/audit PASS hashes, merge identity, tag state, and Release state are
+external attestation fields and are intentionally not backfilled into this
+reusable source document. Stable v0.15 eligibility must be read from the Round 6
+and formal attestation assets that bind the final source and candidate bytes.
+The neutral source policy is [RELEASE_POLICY.md](RELEASE_POLICY.md); the external
+decision assets are `round6-prerelease-attestation.json` and
+`formal-release-attestation.json`.
 
 The historical v10 result remains CONSUMED / FAIL. It is not rerun by Round 6,
-and Round 6 engineering work does not convert it into a release PASS.
+Round 6 engineering work does not convert it into a release PASS, and it is not
+accepted as a formal-build input.
 
 ## 4. Root cause and security objective
 
@@ -263,9 +290,11 @@ The source also contains:
   near-8-MiB ordinary/key-rich/semantic-rich cases;
 - BenchmarkRound6StreamingScale for classifier scaling.
 
-These names prove that test code exists, not that the final candidate passed.
-Authoritative unit, race, fuzz, benchmark, allocation, RSS, and concurrency
-results are **PENDING LINUX CI**.
+These names prove that test code exists. The `21ceb57` push/PR checkpoint passed
+its Linux CI, but it predates the v0.15 version/release-chain migration and is
+not the final candidate result. Authoritative final v0.15 unit, race, fuzz,
+benchmark, allocation, RSS, and concurrency evidence remains **PENDING LINUX
+CI**.
 
 The public CI path must use the Round 6 allowlist and must not replace it with
 broad ./... commands because consumed evaluation packages are intentionally
@@ -275,27 +304,20 @@ isolated behind the consumed_evaluation build tag.
 
 | Target | Identity | Source/compile result | Real Host result |
 |---|---|---|---|
-| Primary | CPA v7.2.83 / 9f4f53ca5a4d1474e3f7eb61d6ffc984995f1f66 | Pending final Linux CI | **NOT RUN / PENDING** |
-| Previous compatibility | CPA v7.2.82 / f583414fd9914f9ccfd280fc3a23aebaea30e9eb | Pending final Linux CI | **NOT RUN / PENDING** |
-| Backward compatibility | CPA v7.2.81 / 106270bea6f18ba2f2cc8b0b5887987f2874eed8 | Pending final Linux CI | **NOT RUN / PENDING** |
+| Current release target | CPA v7.2.83 / 9f4f53ca5a4d1474e3f7eb61d6ffc984995f1f66 | `21ceb57` checkpoint PASS; final v0.15 rerun PENDING | **NOT RUN / PENDING** |
 
-The required Host evidence must use the official candidate Linux amd64 .so, an
+Earlier v7.2.82/v7.2.81 source/compile profiles are historical non-gating
+engineering evidence. They are not current v0.15 Host or release requirements.
+
+The required Host evidence must use the private untagged clean-candidate Linux
+amd64 `.so`, an
 isolated CPA Host, a Mock upstream, no real auth pool, and no real Provider.
-All three Host evidence records and the independent audit must cite the same exact
-candidate SO SHA-256. The blocked-prerelease dispatcher supplies that value as
-`expected_so_sha256`; the `verify` job recomputes the rebuilt SO hash before its
-commit-named artifact upload, and the no-checkout `publish` job recomputes it
-after download before the final GH CLI step. Before upload, the final identity
-step and upload action use an exact clean execution environment that clears
-shell startup hooks, loader/language injection, Git/CLI config, askpass, and
-proxy variables and pins `PATH` to `/usr/bin:/bin`. After download, the publish
-job requires the exact eight-file allowlist, canonical `checksums.txt` and
-standalone checksum identities, safe ZIP paths, exactly one ZIP-contained SO,
-the expected SO hash, and byte-identical ZIP/standalone checksum, metadata,
-ruleset, and SBOM files. Any runner, build, archive, or transfer drift therefore
-fails closed. The verify checkout uses only the job's read-only token, sets
-`persist-credentials: false`, and does not explicitly map that token into later
-commands. For
+The v7.2.83 Host evidence record and the independent audit must cite the same
+candidate workflow run ID, commit, tree, and SO SHA-256. The candidate manifest
+binds those values before any tag exists. If an optional blocked development
+prerelease is later needed, its workflow must bind the same successful candidate
+run, rebuild byte-identical clean artifacts, and recheck the expected SO hash
+before and after transfer. For
 every locally blocked request the Host evidence must record before/after zero
 deltas for:
 
@@ -330,7 +352,8 @@ inspection requires more than 128 KiB of encoded source, or exceeds the 64 KiB
 aggregate retained decoded-text bound, is marked incomplete. It is not reported
 as fully covered.
 
-Final CPU/op, B/op, allocations/op, peak RSS, concurrent throughput, and
+The `21ceb57` CI checkpoint passed before the version migration. Final v0.15
+CPU/op, B/op, allocations/op, peak RSS, concurrent throughput, and
 reproducibility numbers are **PENDING LINUX CI**. Development-machine
 diagnostics are excluded from final evidence.
 
@@ -365,7 +388,7 @@ were v2.
 
 ## 12. Known limitations and residual risk
 
-- CPA v7.2.83, v7.2.82, and v7.2.81 real Host behavior is unverified.
+- CPA v7.2.83 real Host behavior is unverified.
 - Linux race, fuzz duration, benchmark, allocation, RSS, and reproducibility
   evidence is not yet attached to the final source identity.
 - The Linux build script now audits complete `readelf --version-info` tags,
@@ -384,8 +407,8 @@ were v2.
 - Host loading, Router fuse/error behavior, Router priority, duplicate
   libraries, and executor readiness can still create fail-open conditions
   outside plugin-internal status.
-- A new independent unseen evaluation is still required for any future stable
-  release decision.
+- A candidate-bound external `evaluation-v11` or later first-and-only
+  `CONSUMED / PASS` attestation is still required for any formal decision.
 
 See [ROUND6_LIMITATIONS.md](ROUND6_LIMITATIONS.md).
 
@@ -408,6 +431,11 @@ or real account data was read. None of those data was used for tuning,
 implementation, test canaries, documentation conclusions, or performance
 claims.
 
+Formal source and audit bundles must exclude all evaluation, Holdout, private,
+blind, and retired material. Only the low-sensitivity external evaluation ID and
+report SHA-256 recorded in `round6-prerelease-attestation.json` may cross the
+release boundary. Historical evaluation-v10 is not a bundle input.
+
 The three public adversarial repositories were treated only as untrusted
 defensive context. Their original payloads were not executed or replayed.
 
@@ -420,10 +448,10 @@ documents and is not erased by this Round 6 statement.
 ## 14. Review status
 
 - Development-time manual static inspection is not an independent approval.
-- CodeRabbit CLI is not installed.
-- The official remote CodeRabbit install script was not executed because the
-  security policy rejected that installation path.
-- No CodeRabbit finding count or PASS is claimed.
+- The local final-diff CodeRabbit review reported **0 issues**.
+- The remote Draft CodeRabbit check was skipped; no remote CodeRabbit approval
+  is claimed.
+- A 0-issue local review is not an independent source/artifact/Host audit.
 - Leo or another independent auditor has not reviewed the frozen Round 6
   source, Linux artifact, or Host evidence.
 - The final `publish` job references the GitHub Environment
@@ -437,9 +465,11 @@ Status therefore remains **BLOCKED / PENDING HOST AND INDEPENDENT AUDIT**.
 
 ## 15. Rollback plan
 
-No Round 6 deployment has occurred, so the immediate repository rollback is to
-leave main unchanged and abandon the development branch after preserving any
-required audit evidence.
+No Round 6 deployment has occurred. Before merge, repository rollback means
+abandoning the development branch after preserving required audit evidence and
+leaving `main` unchanged. After merge, rollback must use a normal reviewed
+revert PR against `main`; never rewrite shared history, move a release tag, or
+delete evidence needed to explain the reverted candidate.
 
 For the authorized Linux sandbox only:
 
@@ -466,49 +496,66 @@ independent PASS and a new explicit user decision.
 
 | Gate | Status |
 |---|---|
-| Final PR head commit/tree frozen | Pending |
-| Exact-source Linux format/module/vet/vulnerability/script gates | Pending |
-| Exact-source Linux unit/race/fuzz/benchmark gates | Pending |
-| Linux artifact build, SBOM, verification, and reproducibility | Pending |
+| Pre-version checkpoint `21ceb57` push/PR CI | **PASS; not final v0.15 evidence** |
+| Final PR head commit/tree frozen after version migration | Pending |
+| Final PR-head PR CI | Pending |
+| Merge final PR to `main` | Pending; candidate-generation prerequisite, not release approval |
+| Exact post-merge `main` push CI | Pending; must bind the candidate commit/tree |
+| Candidate dispatch from `refs/heads/main` | **NOT RUN / PENDING** |
+| Private untagged clean-candidate Actions artifact | **NOT CREATED / PENDING** |
+| Candidate manifest and clean SO/Store ZIP hashes | **PENDING** |
 | CPA v7.2.83 official SO + Host + Mock matrix | **NOT RUN** |
-| CPA v7.2.82 official SO + Host + Mock matrix | **NOT RUN** |
-| CPA v7.2.81 official SO + Host + Mock matrix | **NOT RUN** |
 | Four-layer zero-call proof | **NOT RUN** |
 | SQLite v3 migration, privacy canary, quick-check, and rollback | **NOT RUN** |
 | Independent source/artifact/Host audit | **NOT RUN** |
 | GitHub Environment round6-independent-audit with required independent reviewers | Repository-side configuration required; not evidenced here |
 | Round 6 release-tag ruleset prohibits tag modification and deletion | Repository-side configuration required; not evidenced here |
-| Merge to main | Blocked |
-| Blocked draft prerelease | Not created; blocked |
+| Candidate-bound external evaluation-v11 or later | **NOT RUN**; must be first-and-only `CONSUMED / PASS`; v10 remains immutable FAIL |
+| Optional annotated `v0.15-dev.round6[.N]` draft prerelease | Not created; blocked until Host/audit and candidate-bound evaluation PASS |
+| `round6-prerelease-attestation.json` | External asset; not created / pending |
+| Annotated formal `v0.15` tag and draft Release | Not created; blocked |
+| `formal-release-attestation.json` | External asset; not created / pending |
+| Protected promotion of unchanged formal draft | Not run; blocked |
 | Production deployment or mode change | Prohibited |
 
-The manual workflow in
-[ROUND6_RELEASE_GATE.md](ROUND6_RELEASE_GATE.md) must remain draft,
-prerelease, not latest, and named
-BLOCKED / PENDING HOST AND INDEPENDENT AUDIT. Ordinary green CI alone cannot
-admit it.
+The release chain in [ROUND6_RELEASE_GATE.md](ROUND6_RELEASE_GATE.md) must be
+followed in order: final PR head and PR CI, merge to `main`, exact post-merge
+main push CI, clean-candidate dispatch from `refs/heads/main`, Host and
+independent evidence, candidate-bound external evaluation-v11+ `CONSUMED /
+PASS`, optional annotated development prerelease, annotated formal `v0.15`
+draft, then protected promotion.
 
 ## 17. Handoff summary
 
 ~~~text
 Status: BLOCKED
-Reason: CPA v7.2.83/v7.2.82/v7.2.81 Host, final Linux evidence, and independent audit are pending
+Project version: 0.15
+Formal tag: v0.15 (never v0.15.0)
+Reason: final v0.15 candidate, CPA v7.2.83 Host, independent audit, and candidate-bound evaluation-v11+ PASS are pending
 Base commit: 7a416df66a79218d73214084d4bf8a733268d894
 Base tree: 63db7b7cb14a636f5ba9ff4453be4ebeef170b68
-Candidate commit: PENDING FINAL PR HEAD
-Candidate tree: PENDING FINAL PR / LINUX BUILD METADATA
+Pre-version checkpoint: 21ceb57e6b6030e56d7820c9a67a8eecd068c669 / push+PR CI PASS / not final v0.15 evidence
+Final PR head and PR CI: PENDING AFTER VERSION MIGRATION
+Merged to main: NO / PENDING CANDIDATE-GENERATION PREREQUISITE
+Post-merge main push CI: PENDING
+Candidate commit: PENDING EXACT POST-MERGE MAIN COMMIT
+Candidate tree: PENDING POST-MERGE MAIN CI / BUILD METADATA / CANDIDATE MANIFEST
+Candidate artifact: PRIVATE UNTAGGED CLEAN ACTIONS ARTIFACT / NOT CREATED / PENDING
 Platform: Linux amd64 only
 Streaming scanner identity: streaming-scanner-v1
 Classifier policy: classifier-policy-v3
-Classifier policy SHA-256: ae6fb2c0bccec618bf91b6274d1cd9b9a483499703f21d068e5590f5255fc4bd
+Classifier policy SHA-256: 577dd913862f2d457eb292bfd02c571e0ea7ff47bc5427bc6be389851ddeb388
 CPA v7.2.83 Host result: NOT RUN / PENDING
-CPA v7.2.82 Host result: NOT RUN / PENDING
-CPA v7.2.81 compatibility Host result: NOT RUN / PENDING
-Long-text Linux size ladder result: PENDING EXACT-SOURCE LINUX CI
-Cross-window result: PENDING EXACT-SOURCE LINUX CI
-Race/fuzz/benchmark/RSS result: PENDING EXACT-SOURCE LINUX CI
+Long-text Linux size ladder result: PENDING FINAL PR / POST-MERGE MAIN LINUX CI
+Cross-window result: PENDING FINAL PR / POST-MERGE MAIN LINUX CI
+Race/fuzz/benchmark/RSS result: PENDING FINAL PR / POST-MERGE MAIN LINUX CI
 Independent review: NOT RUN / PENDING
-Merged to main: NO
+Candidate-bound evaluation-v11+ result: NOT RUN / PENDING / requires CONSUMED PASS
+Round6 prerelease attestation: NOT CREATED / PENDING
+Formal release attestation: NOT CREATED / PENDING
+CodeRabbit: LOCAL FINAL-DIFF 0 ISSUES / REMOTE DRAFT CHECK SKIPPED / NOT INDEPENDENT APPROVAL
+Historical v10: CONSUMED / FAIL / immutable / not a formal input
+Formal bundle restricted content: evaluation/holdout/private/blind/retired excluded
 Round 6 Release: NOT CREATED
 Production touched: NO
 Final status: BLOCKED / PENDING HOST AND INDEPENDENT AUDIT

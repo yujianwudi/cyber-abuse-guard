@@ -11,14 +11,24 @@ sys.dont_write_bytecode = True
 
 from round6_safe_gate_contract import (
     BLOCKED_PRERELEASE_MARKER,
+    EXTERNAL_ATTESTATION_SCRIPT_SHA256,
+    FORMAL_OPERATION_SCRIPTS,
     FORBIDDEN_TARGETS,
     ROUND6_SPARSE_PATTERNS,
     ContractError,
     audit,
+    default_entrypoints,
     mutation_shell_commands,
     mutating_command_reason,
     shell_command_segments,
     validate_blocked_prerelease_workflow,
+    validate_candidate_script,
+    validate_candidate_workflow,
+    validate_formal_release_workflow,
+    validate_frozen_evaluation_tree_script,
+    validate_release_mode_contracts,
+    validate_release_promote_workflow,
+    validate_reproducibility_wrapper_script,
     validate_round6_linux_build_script,
     validate_round6_makefile_contract,
     validate_round6_reproducibility_script,
@@ -430,25 +440,56 @@ jobs:
         with self.assertRaisesRegex(ContractError, "duplicate semantic key"):
             audit(root, [entrypoint])
 
-    def reproducibility_script(self, patterns: tuple[str, ...]) -> str:
-        quoted = " \\\n+    ".join(repr(pattern) for pattern in patterns)
-        return f"""#!/usr/bin/env bash
-git -C "$destination" sparse-checkout set --no-cone \\
-    {quoted}
-git -C "$destination" checkout "$commit"
-"""
+    def reproducibility_script(self) -> tuple[str, Path]:
+        source = Path(__file__).with_name("round6-reproducibility-test.sh")
+        return source.read_text(encoding="utf-8"), source
 
     def test_reproducibility_sparse_contract_passes(self):
-        validate_round6_reproducibility_script(
-            self.reproducibility_script(ROUND6_SPARSE_PATTERNS), Path("round6-repro.sh")
-        )
+        text, source = self.reproducibility_script()
+        validate_round6_reproducibility_script(text, source)
 
     def test_reproducibility_sparse_contract_mismatch_fails(self):
-        patterns = ROUND6_SPARSE_PATTERNS[:-1]
+        original, source = self.reproducibility_script()
+        text = original.replace(" '!/testdata/*retired*'", "", 1)
+        self.assertNotEqual(text, original)
         with self.assertRaisesRegex(ContractError, "differs from the workflow contract"):
-            validate_round6_reproducibility_script(
-                self.reproducibility_script(patterns), Path("round6-repro.sh")
+            validate_round6_reproducibility_script(text, source)
+
+    def test_reproducibility_package_release_cannot_escape_formal_branch(self):
+        original, source = self.reproducibility_script()
+        mutations = (
+            original.replace(
+                '  if [[ "$RELEASE_BUILD_KIND" == formal ]]; then\n'
+                '    env "${common_env[@]}" "$clone/scripts/package-release.sh"\n',
+                '  if [[ "$RELEASE_BUILD_KIND" == candidate ]]; then\n'
+                '    env "${common_env[@]}" "$clone/scripts/package-release.sh"\n',
+                1,
+            ),
+            original.replace(
+                '    env "${common_env[@]}" "$clone/scripts/package-release.sh"\n',
+                "    true\n",
+                1,
             )
+            + 'env "${common_env[@]}" "$clone/scripts/package-release.sh"\n',
+        )
+        for text in mutations:
+            self.assertNotEqual(text, original)
+            with self.assertRaisesRegex(ContractError, "formal-only branch"):
+                validate_round6_reproducibility_script(text, source)
+
+    def test_reproducibility_wrapper_is_exact_and_only_delegates(self):
+        source = Path(__file__).with_name("reproducibility-test.sh")
+        text = source.read_text(encoding="utf-8")
+        validate_reproducibility_wrapper_script(text, source)
+        with self.assertRaisesRegex(ContractError, "exact reviewed"):
+            validate_reproducibility_wrapper_script(text + "\ntrue\n", source)
+
+    def test_frozen_evaluation_tree_verifier_is_exact_metadata_only_contract(self):
+        source = Path(__file__).with_name("verify-frozen-evaluation-v10-tree.sh")
+        text = source.read_text(encoding="utf-8")
+        validate_frozen_evaluation_tree_script(text, source)
+        with self.assertRaisesRegex(ContractError, "metadata-only contract"):
+            validate_frozen_evaluation_tree_script(text + "\ntrue\n", source)
 
     def test_linux_build_glibc_contract_passes(self):
         source = Path(__file__).with_name("build-linux-amd64.sh")
@@ -546,6 +587,323 @@ git -C "$destination" checkout "$commit"
         with self.assertRaisesRegex(ContractError, "execute the extract benchmark"):
             validate_round6_makefile_contract(text, source)
 
+    def test_round6_makefile_candidate_script_gates_are_reachable(self):
+        source = Path(__file__).parent.parent / "Makefile"
+        original = source.read_text(encoding="utf-8")
+        required_lines = (
+            "\tbash -n ./scripts/round6-candidate-artifacts.sh\n",
+            "\t./scripts/release-candidate-contract-test.sh\n",
+            "\tbash -n ./scripts/verify-external-release-attestation.sh\n",
+            "\t./scripts/verify-external-release-attestation-test.sh\n",
+        )
+        for required_line in required_lines:
+            with self.subTest(required_line=required_line.strip()):
+                text = original.replace(required_line, "", 1)
+                self.assertNotEqual(text, original)
+                with self.assertRaisesRegex(ContractError, "reviewed Round6 script gate"):
+                    validate_round6_makefile_contract(text, source)
+
+    def candidate_workflow(self) -> str:
+        source = Path(__file__).parent.parent / ".github/workflows/round6-candidate.yml"
+        return source.read_text(encoding="utf-8")
+
+    def formal_release_workflow(self) -> str:
+        source = Path(__file__).parent.parent / ".github/workflows/release.yml"
+        return source.read_text(encoding="utf-8")
+
+    def release_promote_workflow(self) -> str:
+        source = Path(__file__).parent.parent / ".github/workflows/release-promote.yml"
+        return source.read_text(encoding="utf-8")
+
+    def test_candidate_workflow_full_contract_passes(self):
+        validate_candidate_workflow(
+            self.candidate_workflow(), Path("round6-candidate.yml")
+        )
+
+    def test_candidate_workflow_must_remain_manual_and_read_only(self):
+        original = self.candidate_workflow()
+        mutations = (
+            original.replace("  workflow_dispatch:\n", "  push:\n", 1),
+            original.replace("  contents: read\n", "  contents: write\n", 1),
+        )
+        for workflow in mutations:
+            self.assertNotEqual(workflow, original)
+            with self.assertRaisesRegex(ContractError, "manual-only|read|exact scalar"):
+                validate_candidate_workflow(workflow, Path("round6-candidate.yml"))
+
+    def test_candidate_workflow_exact_commit_and_push_ci_binding_are_locked(self):
+        original = self.candidate_workflow()
+        protected_lines = (
+            '          [[ "$DISPATCH_REF" == "refs/heads/main" ]]\n',
+            '          [[ "$DISPATCH_SHA" == "$EXPECTED_COMMIT" ]]\n',
+            '             .event == "push" and\n',
+            '             .head_sha == $expected_commit and\n',
+            '             .conclusion == "success" and\n',
+        )
+        for protected_line in protected_lines:
+            with self.subTest(protected_line=protected_line.strip()):
+                workflow = original.replace(protected_line, "", 1)
+                self.assertNotEqual(workflow, original)
+                with self.assertRaisesRegex(ContractError, "exact reviewed text"):
+                    validate_candidate_workflow(workflow, Path("round6-candidate.yml"))
+
+    def test_candidate_workflow_sparse_boundary_and_gate_are_locked(self):
+        original = self.candidate_workflow()
+        mutations = (
+            original.replace("            !/testdata/*retired*\n", "", 1),
+            original.replace(
+                "          python3 -B scripts/round6_safe_gate_contract.py --root .\n",
+                "          true\n",
+                1,
+            ),
+        )
+        for workflow in mutations:
+            self.assertNotEqual(workflow, original)
+            with self.assertRaisesRegex(ContractError, "sparse|safe-gate"):
+                validate_candidate_workflow(workflow, Path("round6-candidate.yml"))
+
+    def test_candidate_builder_reproducibility_and_clean_names_are_locked(self):
+        original = self.candidate_workflow()
+        mutations = (
+            original.replace(
+                "        run: ./scripts/round6-candidate-artifacts.sh\n",
+                "        run: true\n",
+                1,
+            ),
+            original.replace(
+                "        run: make round6-reproducibility-test\n",
+                "        run: make clean-tree-check\n",
+                1,
+            ),
+            original.replace(
+                "            dist/cyber-abuse-guard_0.15_linux_amd64.zip\n",
+                "            dist/nested/cyber-abuse-guard_0.15-dirty_linux_amd64.zip\n",
+                1,
+            ),
+        )
+        for workflow in mutations:
+            self.assertNotEqual(workflow, original)
+            with self.assertRaisesRegex(ContractError, "exact reviewed text|artifact allowlist"):
+                validate_candidate_workflow(workflow, Path("round6-candidate.yml"))
+
+    def test_candidate_workflow_rejects_release_or_token_expansion(self):
+        original = self.candidate_workflow()
+        release_action = original.replace(
+            "      - name: Upload private exact-commit candidate\n",
+            "      - name: Publish candidate\n"
+            "        uses: softprops/action-gh-release@0123456789abcdef0123456789abcdef01234567\n"
+            "      - name: Upload private exact-commit candidate\n",
+            1,
+        )
+        token_expansion = original.replace(
+            "          CPA_COMPAT_VERIFY_REMOTE: '1'\n",
+            "          CPA_COMPAT_VERIFY_REMOTE: '1'\n"
+            "          UNREVIEWED_TOKEN: ${{ github.token }}\n",
+            1,
+        )
+        git_tag = original.replace(
+            "        run: ./scripts/round6-candidate-artifacts.sh\n",
+            "        run: git tag -f v0.15 HEAD\n",
+            1,
+        )
+        for workflow in (release_action, token_expansion, git_tag):
+            self.assertNotEqual(workflow, original)
+            with self.assertRaisesRegex(
+                ContractError,
+                "reviewed steps|github.token|repository token|exact reviewed text|tags or releases",
+            ):
+                validate_candidate_workflow(workflow, Path("round6-candidate.yml"))
+
+    def test_candidate_scripts_match_reviewed_contract_and_are_ci_reachable(self):
+        root = Path(__file__).parent.parent
+        for name in (
+            "round6-candidate-artifacts.sh",
+            "release-candidate-contract-test.sh",
+        ):
+            with self.subTest(name=name):
+                source = root / "scripts" / name
+                text = source.read_text(encoding="utf-8")
+                validate_candidate_script(text, source)
+                with self.assertRaisesRegex(ContractError, "exact reviewed"):
+                    validate_candidate_script(text + "\n# bypass\n", source)
+        _, inspected = audit(root, default_entrypoints(root))
+        self.assertTrue(
+            {
+                "scripts/round6-candidate-artifacts.sh",
+                "scripts/release-candidate-contract-test.sh",
+                "scripts/reproducibility-test.sh",
+                "scripts/verify-frozen-evaluation-v10-tree.sh",
+                "scripts/verify-external-release-attestation.sh",
+                "scripts/verify-external-release-attestation-test.sh",
+            }.issubset(inspected)
+        )
+
+    def test_formal_release_workflow_full_contract_passes(self):
+        validate_formal_release_workflow(
+            self.formal_release_workflow(), Path("release.yml")
+        )
+
+    def test_formal_release_read_build_and_write_publish_are_separated(self):
+        original = self.formal_release_workflow()
+        mutations = (
+            original.replace("      actions: read\n", "", 1),
+            original.replace("      contents: read\n", "      contents: write\n", 1),
+            original.replace(
+                "      ROUND6_SAFE_SPARSE_BUILD: '1'\n",
+                "      ROUND6_SAFE_SPARSE_BUILD: '0'\n",
+                1,
+            ),
+            original.replace("          BASH_ENV: ''\n", "          BASH_ENV: /tmp/attacker\n", 1),
+            original.replace(
+                "      - name: Download exact verified release artifact\n",
+                "      - name: Checkout in write job\n"
+                "        uses: actions/checkout@0123456789abcdef0123456789abcdef01234567\n"
+                "      - name: Download exact verified release artifact\n",
+                1,
+            ),
+        )
+        for workflow in mutations:
+            self.assertNotEqual(workflow, original)
+            with self.assertRaisesRegex(
+                ContractError,
+                "actions|exact scalar|four reviewed steps|contents|verifier environment|sparse-build",
+            ):
+                validate_formal_release_workflow(workflow, Path("release.yml"))
+
+    def test_formal_release_draft_flags_and_attested_assets_are_locked(self):
+        original = self.formal_release_workflow()
+        mutations = (
+            original.replace("          draft: true\n", "          draft: false\n", 1),
+            original.replace("          make_latest: false\n", "          make_latest: true\n", 1),
+            original.replace(
+                "            dist/formal-release-attestation.json.sha256\n",
+                "",
+                1,
+            ),
+            original.replace(
+                '          cmp -s "$ROUND6_CANDIDATE_SO" dist/cyber-abuse-guard-v0.15.so\n',
+                "",
+                1,
+            ),
+            original.replace(
+                '            ./scripts/verify-external-release-attestation.sh "$attestation"\n',
+                "",
+                1,
+            ),
+            original.replace("            !/testdata/*retired*\n", "", 1),
+        )
+        for workflow in mutations:
+            self.assertNotEqual(workflow, original)
+            with self.assertRaisesRegex(
+                ContractError,
+                "exact scalar|artifact transfer|exact reviewed text|sparse checkout",
+            ):
+                validate_formal_release_workflow(workflow, Path("release.yml"))
+
+    def test_formal_operations_cannot_use_candidate_tag_bypass(self):
+        root = Path(__file__).parent.parent
+        validate_release_mode_contracts(root)
+        for script_name in FORMAL_OPERATION_SCRIPTS:
+            with self.subTest(script_name=script_name):
+                temporary = tempfile.TemporaryDirectory()
+                self.addCleanup(temporary.cleanup)
+                fixture = Path(temporary.name)
+                (fixture / "scripts").mkdir()
+                names = (
+                    "release-common.sh",
+                ) + FORMAL_OPERATION_SCRIPTS + tuple(EXTERNAL_ATTESTATION_SCRIPT_SHA256)
+                for name in names:
+                    text = (root / "scripts" / name).read_text(encoding="utf-8")
+                    if name == script_name:
+                        text = text.replace("release_assert_formal_build\n", "true\n", 1)
+                    (fixture / "scripts" / name).write_text(text, encoding="utf-8")
+                with self.assertRaisesRegex(ContractError, "release_assert_formal_build"):
+                    validate_release_mode_contracts(fixture)
+
+    def test_release_common_formal_assertion_rejects_candidate_mode(self):
+        root = Path(__file__).parent.parent
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        fixture = Path(temporary.name)
+        (fixture / "scripts").mkdir()
+        for name in (
+            "release-common.sh",
+        ) + FORMAL_OPERATION_SCRIPTS + tuple(EXTERNAL_ATTESTATION_SCRIPT_SHA256):
+            text = (root / "scripts" / name).read_text(encoding="utf-8")
+            if name == "release-common.sh":
+                text = text.replace(
+                    '[[ "$RELEASE_BUILD_KIND" == formal ]]',
+                    '[[ "$RELEASE_BUILD_KIND" == candidate ]]',
+                    1,
+                )
+            (fixture / "scripts" / name).write_text(text, encoding="utf-8")
+        with self.assertRaisesRegex(ContractError, "reject candidate"):
+            validate_release_mode_contracts(fixture)
+
+    def test_external_attestation_verifier_and_contract_are_locked(self):
+        root = Path(__file__).parent.parent
+        for changed_name in EXTERNAL_ATTESTATION_SCRIPT_SHA256:
+            with self.subTest(changed_name=changed_name):
+                temporary = tempfile.TemporaryDirectory()
+                self.addCleanup(temporary.cleanup)
+                fixture = Path(temporary.name)
+                (fixture / "scripts").mkdir()
+                names = (
+                    "release-common.sh",
+                ) + FORMAL_OPERATION_SCRIPTS + tuple(EXTERNAL_ATTESTATION_SCRIPT_SHA256)
+                for name in names:
+                    text = (root / "scripts" / name).read_text(encoding="utf-8")
+                    if name == changed_name:
+                        text += "\n# bypass\n"
+                    (fixture / "scripts" / name).write_text(text, encoding="utf-8")
+                with self.assertRaisesRegex(
+                    ContractError, "external release attestation script differs"
+                ):
+                    validate_release_mode_contracts(fixture)
+
+    def test_release_promotion_full_contract_passes(self):
+        validate_release_promote_workflow(
+            self.release_promote_workflow(), Path("release-promote.yml")
+        )
+
+    def test_release_promotion_remains_manual_no_checkout_and_write_isolated(self):
+        original = self.release_promote_workflow()
+        mutations = (
+            original.replace("  workflow_dispatch:\n", "  push:\n", 1),
+            original.replace("    environment: formal-release-promotion\n", "", 1),
+            original.replace("      contents: read\n", "      contents: write\n", 1),
+            original.replace(
+                "      - name: Reverify immutable asset set and publish the same draft\n",
+                "      - name: Checkout attacker source\n"
+                "        uses: actions/checkout@0123456789abcdef0123456789abcdef01234567\n"
+                "      - name: Reverify immutable asset set and publish the same draft\n",
+                1,
+            ),
+        )
+        for workflow in mutations:
+            self.assertNotEqual(workflow, original)
+            with self.assertRaisesRegex(
+                ContractError,
+                "workflow_dispatch|environment|write|read|exact scalar|one reviewed step",
+            ):
+                validate_release_promote_workflow(workflow, Path("release-promote.yml"))
+
+    def test_release_promotion_ref_fingerprint_and_patch_are_locked(self):
+        original = self.release_promote_workflow()
+        protected_lines = (
+            '          [[ "$DISPATCH_REF" == refs/tags/v0.15 ]]\n',
+            '          [[ "$actual_fingerprint" == "$EXPECTED_ASSET_FINGERPRINT" ]]\n',
+            "          promoted=\"$(gh api --method PATCH \\\n",
+        )
+        for protected_line in protected_lines:
+            with self.subTest(protected_line=protected_line.strip()):
+                workflow = original.replace(protected_line, "", 1)
+                self.assertNotEqual(workflow, original)
+                with self.assertRaisesRegex(ContractError, "exact reviewed text"):
+                    validate_release_promote_workflow(
+                        workflow, Path("release-promote.yml")
+                    )
+
     def blocked_workflow(self, trigger: str = "workflow_dispatch", latest: str = "false") -> str:
         source = Path(__file__).parent.parent / ".github/workflows/round6-blocked-prerelease.yml"
         text = source.read_text(encoding="utf-8")
@@ -587,12 +945,92 @@ git -C "$destination" checkout "$commit"
         with self.assertRaisesRegex(ContractError, "ci_run_id"):
             validate_blocked_prerelease_workflow(workflow, Path("round6-prerelease.yml"))
 
+    def test_blocked_prerelease_missing_candidate_run_id_fails(self):
+        workflow = self.blocked_workflow().replace(
+            "      candidate_run_id:\n", "      removed_candidate_run_id:\n", 1
+        )
+        with self.assertRaisesRegex(ContractError, "candidate_run_id"):
+            validate_blocked_prerelease_workflow(workflow, Path("round6-prerelease.yml"))
+
     def test_blocked_prerelease_missing_expected_so_sha256_fails(self):
         workflow = self.blocked_workflow().replace(
             "      expected_so_sha256:\n", "      removed_expected_so_sha256:\n", 1
         )
         with self.assertRaisesRegex(ContractError, "expected_so_sha256"):
             validate_blocked_prerelease_workflow(workflow, Path("round6-prerelease.yml"))
+
+    def test_blocked_prerelease_missing_expected_store_zip_sha256_fails(self):
+        workflow = self.blocked_workflow().replace(
+            "      expected_store_zip_sha256:\n",
+            "      removed_expected_store_zip_sha256:\n",
+            1,
+        )
+        with self.assertRaisesRegex(ContractError, "expected_store_zip_sha256"):
+            validate_blocked_prerelease_workflow(workflow, Path("round6-prerelease.yml"))
+
+    def test_blocked_prerelease_requires_consumed_independent_evaluation(self):
+        original = self.blocked_workflow()
+        for input_name in (
+            "independent_evaluation_validation",
+            "independent_evaluation_id",
+            "independent_evaluation_sha256",
+        ):
+            with self.subTest(input_name=input_name):
+                workflow = original.replace(
+                    f"      {input_name}:\n", f"      removed_{input_name}:\n", 1
+                )
+                self.assertNotEqual(workflow, original)
+                with self.assertRaisesRegex(ContractError, input_name):
+                    validate_blocked_prerelease_workflow(
+                        workflow, Path("round6-prerelease.yml")
+                    )
+
+    def test_blocked_prerelease_evaluation_pass_id_and_hash_gates_are_locked(self):
+        original = self.blocked_workflow()
+        protected_lines = (
+            '          [[ "$INDEPENDENT_EVALUATION" == PASS ]]\n',
+            '          [[ "$INDEPENDENT_EVALUATION_ID" =~ ^evaluation-v(1[1-9]|[2-9][0-9]|[1-9][0-9]{2,})$ ]]\n',
+            '          [[ "$INDEPENDENT_EVALUATION_SHA256" =~ ^[0-9a-f]{64}$ ]]\n',
+            "      inputs.independent_evaluation_validation == 'PASS' &&\n",
+        )
+        for protected_line in protected_lines:
+            with self.subTest(protected_line=protected_line.strip()):
+                workflow = original.replace(protected_line, "", 1)
+                self.assertNotEqual(workflow, original)
+                with self.assertRaisesRegex(
+                    ContractError, "exact reviewed|missing explicit gate"
+                ):
+                    validate_blocked_prerelease_workflow(
+                        workflow, Path("round6-prerelease.yml")
+                    )
+
+        leading_zero_bypass = original.replace(
+            "^evaluation-v(1[1-9]|[2-9][0-9]|[1-9][0-9]{2,})$",
+            "^evaluation-v([0-9]+)$",
+            1,
+        )
+        self.assertNotEqual(leading_zero_bypass, original)
+        with self.assertRaisesRegex(ContractError, "exact reviewed"):
+            validate_blocked_prerelease_workflow(
+                leading_zero_bypass, Path("round6-prerelease.yml")
+            )
+
+    def test_blocked_prerelease_candidate_run_identity_is_locked(self):
+        original = self.blocked_workflow()
+        protected_lines = (
+            '             .name == "Round6 clean candidate - NOT A RELEASE" and\n',
+            '             .path == ".github/workflows/round6-candidate.yml" and\n',
+            '             .event == "workflow_dispatch" and\n'
+            '             .head_sha == $expected_commit and\n',
+        )
+        for protected_line in protected_lines:
+            with self.subTest(protected_line=protected_line.strip()):
+                workflow = original.replace(protected_line, "", 1)
+                self.assertNotEqual(workflow, original)
+                with self.assertRaisesRegex(ContractError, "exact reviewed"):
+                    validate_blocked_prerelease_workflow(
+                        workflow, Path("round6-prerelease.yml")
+                    )
 
     def test_blocked_prerelease_missing_v7283_host_inputs_fail(self):
         original = self.blocked_workflow()
@@ -609,6 +1047,34 @@ git -C "$destination" checkout "$commit"
                     validate_blocked_prerelease_workflow(
                         workflow, Path("round6-prerelease.yml")
                     )
+
+    def test_blocked_prerelease_rejects_legacy_host_blockers(self):
+        original = self.blocked_workflow()
+        legacy_input = original.replace(
+            "      independent_audit_validation:\n",
+            "      host_v7282_validation:\n"
+            "        description: Legacy Host blocker must not return\n"
+            "        required: true\n"
+            "        type: choice\n"
+            "        default: BLOCKED\n"
+            "        options:\n"
+            "          - BLOCKED\n"
+            "          - PASS\n"
+            "      independent_audit_validation:\n",
+            1,
+        )
+        legacy_gate = original.replace(
+            "      inputs.host_v7283_validation == 'PASS' &&\n",
+            "      inputs.host_v7283_validation == 'PASS' &&\n"
+            "      inputs.host_v7282_validation == 'PASS' &&\n",
+            1,
+        )
+        for workflow in (legacy_input, legacy_gate):
+            self.assertNotEqual(workflow, original)
+            with self.assertRaisesRegex(ContractError, "keys/order changed|explicit gate"):
+                validate_blocked_prerelease_workflow(
+                    workflow, Path("round6-prerelease.yml")
+                )
 
     def test_blocked_prerelease_missing_actions_read_fails(self):
         workflow = self.blocked_workflow().replace("  actions: read\n", "")
@@ -682,18 +1148,18 @@ git -C "$destination" checkout "$commit"
 
     def test_blocked_prerelease_if_expression_spoof_fails(self):
         workflow = self.blocked_workflow().replace(
-            "    if: >-\n      inputs.host_v7283_validation == 'PASS' &&\n      inputs.host_v7282_validation == 'PASS' &&\n      inputs.host_v7281_validation == 'PASS' &&\n      inputs.independent_audit_validation == 'PASS' &&\n      inputs.authorize_blocked_prerelease == true\n",
+            "    if: >-\n      inputs.host_v7283_validation == 'PASS' &&\n      inputs.independent_audit_validation == 'PASS' &&\n      inputs.independent_evaluation_validation == 'PASS' &&\n      inputs.authorize_blocked_prerelease == true\n",
             "    if: ${{{{ true }}}}\n"
-            "    # inputs.host_v7283_validation == 'PASS' && inputs.host_v7282_validation == 'PASS' &&\n"
-            "    # inputs.host_v7281_validation == 'PASS' &&\n"
-            "    # inputs.independent_audit_validation == 'PASS' && inputs.authorize_blocked_prerelease == true\n",
+            "    # inputs.host_v7283_validation == 'PASS' &&\n"
+            "    # inputs.independent_audit_validation == 'PASS' && inputs.independent_evaluation_validation == 'PASS' &&\n"
+            "    # inputs.authorize_blocked_prerelease == true\n",
         )
         with self.assertRaisesRegex(ContractError, "missing explicit gate"):
             validate_blocked_prerelease_workflow(workflow, Path("round6-prerelease.yml"))
 
     def test_blocked_prerelease_missing_host_gate_fails(self):
         original = self.blocked_workflow()
-        for version in ("7283", "7282", "7281"):
+        for version in ("7283",):
             with self.subTest(version=version):
                 workflow = original.replace(
                     f"      inputs.host_v{version}_validation == 'PASS' &&\n", "", 1
@@ -706,7 +1172,7 @@ git -C "$destination" checkout "$commit"
 
     def test_blocked_prerelease_missing_remote_tag_recheck_fails(self):
         workflow = self.blocked_workflow().replace(
-            "          remote_tag_commit=\"$(/usr/bin/git ls-remote --tags origin \"refs/tags/$TAG^{}\" | /usr/bin/awk '{print $1}')\"\n",
+            "          tag_ref=\"$(/usr/bin/gh api --header 'Accept: application/vnd.github+json' --header 'X-GitHub-Api-Version: 2022-11-28' \"repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG\")\"\n",
             "",
         )
         self.assertNotEqual(workflow, self.blocked_workflow())
@@ -723,8 +1189,8 @@ git -C "$destination" checkout "$commit"
 
     def test_blocked_prerelease_final_identity_comment_spoof_fails(self):
         workflow = self.blocked_workflow().replace(
-            "          remote_tag_commit=\"$(/usr/bin/git ls-remote --tags origin \"refs/tags/$TAG^{}\" | /usr/bin/awk '{print $1}')\"\n",
-            "          # remote_tag_commit=\"$(/usr/bin/git ls-remote --tags origin \"refs/tags/$TAG^{}\" | /usr/bin/awk '{print $1}')\"\n",
+            "          tag_ref=\"$(/usr/bin/gh api --header 'Accept: application/vnd.github+json' --header 'X-GitHub-Api-Version: 2022-11-28' \"repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG\")\"\n",
+            "          # tag_ref=\"$(/usr/bin/gh api --header 'Accept: application/vnd.github+json' --header 'X-GitHub-Api-Version: 2022-11-28' \"repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG\")\"\n",
         )
         self.assertNotEqual(workflow, self.blocked_workflow())
         with self.assertRaisesRegex(ContractError, "exact reviewed text"):
@@ -732,20 +1198,20 @@ git -C "$destination" checkout "$commit"
 
     def test_blocked_prerelease_final_identity_or_true_fails(self):
         workflow = self.blocked_workflow().replace(
-            '          [[ "$remote_tag_commit" == "$EXPECTED_COMMIT" ]]\n',
-            '          [[ "$remote_tag_commit" == "$EXPECTED_COMMIT" ]] || true\n',
+            '          [[ "$(/usr/bin/jq -r \'.ref\' <<<"$tag_ref")" == "refs/tags/$TAG" ]]\n',
+            '          [[ "$(/usr/bin/jq -r \'.ref\' <<<"$tag_ref")" == "refs/tags/$TAG" ]] || true\n',
         )
         with self.assertRaisesRegex(ContractError, "exact reviewed text"):
             validate_blocked_prerelease_workflow(workflow, Path("round6-prerelease.yml"))
 
     def test_blocked_prerelease_final_identity_if_false_fails(self):
         workflow = self.blocked_workflow().replace(
-            "          remote_tag_commit=\"$(/usr/bin/git ls-remote --tags origin \"refs/tags/$TAG^{}\" | /usr/bin/awk '{print $1}')\"\n",
+            "          tag_ref=\"$(/usr/bin/gh api --header 'Accept: application/vnd.github+json' --header 'X-GitHub-Api-Version: 2022-11-28' \"repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG\")\"\n",
             "          if false; then\n"
-            "          remote_tag_commit=\"$(/usr/bin/git ls-remote --tags origin \"refs/tags/$TAG^{}\" | /usr/bin/awk '{print $1}')\"\n",
+            "          tag_ref=\"$(/usr/bin/gh api --header 'Accept: application/vnd.github+json' --header 'X-GitHub-Api-Version: 2022-11-28' \"repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG\")\"\n",
         ).replace(
-            '          [[ "$remote_tag_commit" == "$EXPECTED_COMMIT" ]]\n',
-            '          [[ "$remote_tag_commit" == "$EXPECTED_COMMIT" ]]\n          fi\n',
+            '          [[ "$(/usr/bin/jq -r \'.ref\' <<<"$tag_ref")" == "refs/tags/$TAG" ]]\n',
+            '          [[ "$(/usr/bin/jq -r \'.ref\' <<<"$tag_ref")" == "refs/tags/$TAG" ]]\n          fi\n',
         )
         with self.assertRaisesRegex(ContractError, "exact reviewed text"):
             validate_blocked_prerelease_workflow(workflow, Path("round6-prerelease.yml"))
@@ -772,7 +1238,7 @@ git -C "$destination" checkout "$commit"
         workflow = self.blocked_workflow() + """      - name: Mutate release afterward
         run: gh release edit "$TAG" --latest
 """
-        with self.assertRaisesRegex(ContractError, "exactly three reviewed steps"):
+        with self.assertRaisesRegex(ContractError, "exactly four reviewed steps"):
             validate_blocked_prerelease_workflow(workflow, Path("round6-prerelease.yml"))
 
     def test_blocked_prerelease_duplicate_action_key_fails(self):
@@ -790,6 +1256,29 @@ git -C "$destination" checkout "$commit"
         )
         with self.assertRaisesRegex(ContractError, "exact reviewed text"):
             validate_blocked_prerelease_workflow(workflow, Path("round6-prerelease.yml"))
+
+    def test_blocked_prerelease_attestation_identity_is_locked(self):
+        original = self.blocked_workflow()
+        protected_lines = (
+            '              status: "HOST_AUDIT_AND_EVALUATION_PASS / FORMAL_RELEASE_BLOCKED",\n',
+            "              candidate_run_id: ($candidate_run_id | tonumber),\n",
+            "                store_zip_sha256: $store_zip_sha256\n",
+            "                independent_audit_sha256: $independent_audit_sha256,\n",
+            "                independent_evaluation_id: $independent_evaluation_id,\n",
+            '                independent_evaluation_status: "CONSUMED / PASS",\n',
+            "                independent_evaluation_sha256: $independent_evaluation_sha256\n",
+            "                ref: $workflow_ref,\n",
+            "            dist/round6-prerelease-attestation.json \\\n",
+            "            dist/round6-prerelease-attestation.json.sha256 \\\n",
+        )
+        for protected_line in protected_lines:
+            with self.subTest(protected_line=protected_line.strip()):
+                workflow = original.replace(protected_line, "", 1)
+                self.assertNotEqual(workflow, original)
+                with self.assertRaisesRegex(ContractError, "exact reviewed text"):
+                    validate_blocked_prerelease_workflow(
+                        workflow, Path("round6-prerelease.yml")
+                    )
 
     def test_blocked_prerelease_missing_v7283_host_evidence_note_fails(self):
         original = self.blocked_workflow()
@@ -1044,8 +1533,8 @@ command /usr/bin/git --no-pager tag v0.1.2-dev.round6
         protected_lines = (
             '          [[ "$actual_checksum_files" == "$expected_checksum_files" ]]\n',
             '          [[ "$(/usr/bin/sha256sum "$zip_so_file" | /usr/bin/awk \'{print $1}\')" == "$EXPECTED_SO_SHA256" ]]\n',
-            '          /usr/bin/cmp -s <(/usr/bin/unzip -p "$zip_path" "$zip_so_checksum") dist/cyber-abuse-guard-v0.1.2-dirty.so.sha256\n',
-            '            /usr/bin/cmp -s <(/usr/bin/unzip -p "$zip_path" "$entry") "dist/$entry"\n',
+            '          [[ "$(/usr/bin/sha256sum "$zip_path" | /usr/bin/awk \'{print $1}\')" == "$EXPECTED_STORE_ZIP_SHA256" ]]\n',
+            '          [[ "$zip_listing" == "$zip_so" ]]\n',
         )
         for protected_line in protected_lines:
             with self.subTest(protected_line=protected_line.strip()):

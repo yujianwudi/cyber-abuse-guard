@@ -197,11 +197,6 @@ run_must_fail bundle-script-content-mismatch env \
   DIST_DIR="$work/bundle-script-content-mismatch" "$verify"
 
 for missing_case in \
-  'bundle-missing-v10:docs/reports/EVALUATION_V10_REPORT.md' \
-  'bundle-missing-v5:docs/reports/EVALUATION_V5_REPORT.md' \
-  'bundle-missing-v4:docs/reports/EVALUATION_V4_REPORT.md' \
-  'bundle-missing-v3:docs/reports/HOLDOUT_V3_REPORT.md' \
-  'bundle-missing-v2:docs/reports/HOLDOUT_V2_REPORT.md' \
   'bundle-missing-audit-handoff:docs/AUDIT_HANDOFF.md' \
   'bundle-missing-phase0-contract:docs/reports/PHASE0_CPA_CONTRACT.md' \
   'bundle-missing-prompt-injection-review:docs/reports/PROMPT_INJECTION_REVIEW.md'; do
@@ -215,6 +210,17 @@ for missing_case in \
   write_checksums "$work/$name"
   run_must_fail "$name" env DIST_DIR="$work/$name" "$verify"
 done
+
+copy_case bundle-forbidden-evaluation
+mkdir -p "$work/bundle-forbidden-evaluation/repack"
+unzip -q "$work/bundle-forbidden-evaluation/$bundle_zip" \
+  -d "$work/bundle-forbidden-evaluation/repack"
+printf '# Synthetic forbidden evaluation placeholder\n' \
+  >"$work/bundle-forbidden-evaluation/repack/docs/reports/EVALUATION_V99_REPORT.md"
+chmod 0644 "$work/bundle-forbidden-evaluation/repack/docs/reports/EVALUATION_V99_REPORT.md"
+repack_bundle bundle-forbidden-evaluation
+run_must_fail bundle-forbidden-evaluation env \
+  DIST_DIR="$work/bundle-forbidden-evaluation" "$verify"
 
 copy_case bundle-mode-mismatch
 mkdir -p "$work/bundle-mode-mismatch/repack"

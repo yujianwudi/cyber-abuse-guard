@@ -1,16 +1,63 @@
-# Test Report — round5.2 post-release re-audit candidate
+# Test Report — v0.15 Round 6 current gate plus frozen Round 5 evidence
 
 Last updated: 2026-07-17 (Asia/Shanghai)
 
-## Round 6 CPA compatibility status
+## Round 6 v0.15 current test status
 
-The checked-in latest-contract primary is now v7.2.83 at
-`9f4f53ca5a4d1474e3f7eb61d6ffc984995f1f66`; v7.2.82 is the previous
-profile and v7.2.81 the backward profile. Exact-source Linux CI and all three
-native Host + Mock matrices remain **PENDING / NOT RUN**. The v7.2.80 PASS rows
-below are retained as historical Round5.2 source/compile evidence only.
+Exact project version is `0.15`; the only formal tag is `v0.15`, never
+`v0.15.0`. The only current source/compile and real-Host release target is CPA
+v7.2.83 at `9f4f53ca5a4d1474e3f7eb61d6ffc984995f1f66`. Earlier
+v7.2.82/v7.2.81 profiles are historical non-gating engineering evidence.
 
-## Round5.2 source-freeze / pre-merge evidence status
+| Current Round 6 evidence | Result |
+|---|---|
+| Pre-version checkpoint source | `21ceb57e6b6030e56d7820c9a67a8eecd068c669`, tree `e55437442f30bdb1b6b748b9611c6760172784cd` |
+| Push CI | [29578024185](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29578024185) **SUCCESS** |
+| PR CI | [29578025961](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29578025961) **SUCCESS** |
+| Checkpoint interpretation | **PASS before version/release-chain migration; not final v0.15 evidence** |
+| Classifier identity | `classifier-policy-v3` / `577dd913862f2d457eb292bfd02c571e0ea7ff47bc5427bc6be389851ddeb388` |
+| Final PR head and PR CI | **PENDING** after all version/release-chain changes |
+| Merge final PR to `main` | **NOT RUN / PENDING**; candidate-generation prerequisite, not release approval |
+| Exact post-merge `main` push CI | **NOT RUN / PENDING**; must bind the candidate commit/tree |
+| Private untagged clean candidate artifact / manifest | **NOT CREATED / PENDING** |
+| CPA v7.2.83 Host + Mock | **NOT RUN / PENDING** |
+| Four-layer Auth/Provider/Usage/Mock zero-call proof | **NOT RUN / PENDING** |
+| Independent source/artifact/Host audit | **NOT RUN / PENDING** |
+| Candidate-bound external evaluation-v11 or later | **NOT RUN / PENDING**; must be first-and-only `CONSUMED / PASS` |
+| `round6-prerelease-attestation.json` | **NOT CREATED / PENDING** |
+| `formal-release-attestation.json` and protected promotion | **NOT CREATED / NOT RUN / BLOCKED** |
+
+The final PR head must pass Linux CI after all 0.15 and release-chain changes,
+then merge to `main`. The exact resulting main commit/tree must pass push CI
+before the candidate workflow is dispatched from `refs/heads/main`. It must
+produce a private, untagged, clean exact-source Actions artifact whose
+`candidate-manifest.json`, `build-metadata.json`, SO, and Store ZIP bind that
+post-merge main commit/tree. Clean candidate bytes are unreleased. The
+v7.2.83 Host record and the independent audit must cite the same SO SHA-256.
+
+After Host/audit and candidate-level evaluation PASS, an optional annotated
+`v0.15-dev.round6[.N]` draft prerelease may preserve the evidence but remains
+`BLOCKED / NOT A FORMAL RELEASE`. Its prerelease attestation records the
+evaluation ID and report SHA-256; the annotated formal `v0.15` tag and verified
+draft consume that same attestation. Protected promotion may publish only the
+unchanged draft.
+
+The local final-diff CodeRabbit review reported 0 issues. The remote Draft check
+was skipped; no remote or independent approval is claimed.
+
+The neutral admission policy is [RELEASE_POLICY.md](../RELEASE_POLICY.md).
+Future decisions are external `round6-prerelease-attestation.json` and
+`formal-release-attestation.json` assets, not source-report self-claims.
+
+Historical evaluation-v10 remains `CONSUMED / FAIL`, cannot be rerun, and is
+not a formal-build input. Formal source/audit bundles exclude evaluation,
+Holdout, private, blind, and retired material.
+
+The v7.2.80 PASS rows below are retained as frozen historical Round5.2
+source/compile evidence only. Historical 0.1.2 hashes, tags, assets, and v10
+facts are not rewritten.
+
+## Frozen Round5.2 source-freeze / pre-merge evidence status
 
 This section records only evidence that can be frozen before merge: source
 identity, safe local gates, exact-source branch push CI, the PR synthetic

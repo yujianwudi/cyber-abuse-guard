@@ -24,8 +24,6 @@ const (
 	cpaCompatibilityModfileEnv = "CPA_COMPAT_MODFILE"
 	cpaCompatibilityCommitEnv  = "CPA_COMPAT_EXPECTED_COMMIT"
 	cpaPrimaryProfile          = "primary"
-	cpaPreviousProfile         = "previous"
-	cpaBackwardProfile         = "backward"
 )
 
 type cpaCompatibilityProfile struct {
@@ -45,22 +43,6 @@ var cpaCompatibilityProfiles = map[string]cpaCompatibilityProfile{
 		ModuleSum:  "h1:fCGraERLPW08Kl8aP3F/A5XQC34ZPD0mEfxpTvevF7Y=",
 		GoModSum:   "h1:ytvZNWbCv7PrAyR80+RKsDJPODsdL6qxyFaXDBNZdqs=",
 		MustLatest: true,
-	},
-	cpaPreviousProfile: {
-		Name:       cpaPreviousProfile,
-		Version:    "v7.2.82",
-		Commit:     "f583414fd9914f9ccfd280fc3a23aebaea30e9eb",
-		ModuleSum:  "h1:5Yl3qmdDiQ4w8WEJ0N8i4YHNB0hF959lMpoOAb4ib8c=",
-		GoModSum:   "h1:ytvZNWbCv7PrAyR80+RKsDJPODsdL6qxyFaXDBNZdqs=",
-		MustLatest: false,
-	},
-	cpaBackwardProfile: {
-		Name:       cpaBackwardProfile,
-		Version:    "v7.2.81",
-		Commit:     "106270bea6f18ba2f2cc8b0b5887987f2874eed8",
-		ModuleSum:  "h1:TNhOAGi8zDfnUE8KKyhi6NEvCI/Lu2VBj953WT9GKCs=",
-		GoModSum:   "h1:ytvZNWbCv7PrAyR80+RKsDJPODsdL6qxyFaXDBNZdqs=",
-		MustLatest: false,
 	},
 }
 
@@ -94,7 +76,7 @@ type latestResolvedCPAModule struct {
 }
 
 // Compile-time binding proves that the latest public plugin API, including the
-// additive UsageRecord.Generate field introduced after v7.2.75, is available.
+// additive UsageRecord.Generate field required by the current v7.2.83 contract is available.
 // The Guard does not register UsagePlugin; this is an API compatibility probe.
 var _ = pluginapi.UsageRecord{Generate: true}
 
@@ -259,8 +241,8 @@ func selectedCPACompatibilityProfile(t *testing.T) cpaCompatibilityProfile {
 	}
 	profile, ok := cpaCompatibilityProfiles[name]
 	if !ok {
-		t.Fatalf("unsupported %s=%q; allowed values are %q, %q, and %q",
-			cpaCompatibilityProfileEnv, name, cpaPrimaryProfile, cpaPreviousProfile, cpaBackwardProfile)
+		t.Fatalf("unsupported %s=%q; allowed value is %q",
+			cpaCompatibilityProfileEnv, name, cpaPrimaryProfile)
 	}
 	if expectedCommit := strings.TrimSpace(os.Getenv(cpaCompatibilityCommitEnv)); expectedCommit != "" && expectedCommit != profile.Commit {
 		t.Fatalf("%s=%q does not match pinned %s commit %s",

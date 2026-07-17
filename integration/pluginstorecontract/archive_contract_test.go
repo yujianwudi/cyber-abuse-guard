@@ -27,7 +27,7 @@ type buildMetadata struct {
 }
 
 func TestOfficialInstallArchiveContract(t *testing.T) {
-	version := "0.1.2"
+	version := "0.15"
 	binaryName := versionedLibraryName(version)
 	binaryData := []byte("opaque synthetic shared-object bytes")
 	archiveName := officialArchiveName(t, version)
@@ -53,7 +53,7 @@ func TestOfficialInstallArchiveContract(t *testing.T) {
 }
 
 func TestOfficialInstallArchiveRejectsLegacyNestedLayout(t *testing.T) {
-	version := "0.1.2"
+	version := "0.15"
 	archiveData := makeArchive(t, map[string]archiveFile{
 		"plugins/linux/amd64/" + versionedLibraryName(version): {
 			data: []byte("opaque synthetic shared-object bytes"),

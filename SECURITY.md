@@ -2,8 +2,11 @@
 
 ## Supported versions
 
-Security fixes are applied to the latest `0.1.x` release line. Older builds and
-unreleased development snapshots may not receive backports.
+The current release candidate targets the exact two-part `0.15` plugin
+version; the project will not publish `0.15.0` as an alias. Until `v0.15` is
+formally published, development snapshots are not production-supported. After
+publication, security fixes apply to that exact release unless this policy is
+updated.
 
 ## Reporting a vulnerability
 

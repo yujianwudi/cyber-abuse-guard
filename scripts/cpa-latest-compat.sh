@@ -7,16 +7,13 @@ cpa_module='github.com/router-for-me/CLIProxyAPI/v7'
 cpa_latest_release_api='https://api.github.com/repos/router-for-me/CLIProxyAPI/releases/latest'
 cpa_tag_ref_api='https://api.github.com/repos/router-for-me/CLIProxyAPI/git/ref/tags'
 
-requested_profile="${CPA_COMPAT_PROFILE:-all}"
+requested_profile="${CPA_COMPAT_PROFILE:-primary}"
 case "$requested_profile" in
-  all)
-    profiles=(primary previous backward)
-    ;;
-  primary|previous|backward)
-    profiles=("$requested_profile")
+  primary)
+    profiles=(primary)
     ;;
   *)
-    printf 'unsupported CPA_COMPAT_PROFILE=%s; use all, primary, previous, or backward\n' "$requested_profile" >&2
+    printf 'unsupported CPA_COMPAT_PROFILE=%s; only primary is supported\n' "$requested_profile" >&2
     exit 2
     ;;
 esac
@@ -38,20 +35,6 @@ select_profile() {
       cpa_module_sum='h1:fCGraERLPW08Kl8aP3F/A5XQC34ZPD0mEfxpTvevF7Y='
       cpa_go_mod_sum='h1:ytvZNWbCv7PrAyR80+RKsDJPODsdL6qxyFaXDBNZdqs='
       cpa_must_be_latest=1
-      ;;
-    previous)
-      cpa_version='v7.2.82'
-      cpa_commit='f583414fd9914f9ccfd280fc3a23aebaea30e9eb'
-      cpa_module_sum='h1:5Yl3qmdDiQ4w8WEJ0N8i4YHNB0hF959lMpoOAb4ib8c='
-      cpa_go_mod_sum='h1:ytvZNWbCv7PrAyR80+RKsDJPODsdL6qxyFaXDBNZdqs='
-      cpa_must_be_latest=0
-      ;;
-    backward)
-      cpa_version='v7.2.81'
-      cpa_commit='106270bea6f18ba2f2cc8b0b5887987f2874eed8'
-      cpa_module_sum='h1:TNhOAGi8zDfnUE8KKyhi6NEvCI/Lu2VBj953WT9GKCs='
-      cpa_go_mod_sum='h1:ytvZNWbCv7PrAyR80+RKsDJPODsdL6qxyFaXDBNZdqs='
-      cpa_must_be_latest=0
       ;;
     *)
       printf 'internal error: unknown CPA compatibility profile %s\n' "$1" >&2
@@ -154,7 +137,7 @@ for profile in "${profiles[@]}"; do
     GOWORK=off CGO_ENABLED=1 "$go_bin" test \
       -mod=readonly -modfile="$root_modfile" \
       -tags=sqlite_omit_load_extension -count=1 \
-      -run='^(TestRegistrationMatchesTargetCPAv7275Contract|TestRouterUsesRoleAwareConversationClassification)$' \
+      -run='^(TestRegistrationMatchesTargetCPAv7283Contract|TestRouterUsesRoleAwareConversationClassification)$' \
       ./internal/plugin
     GOWORK=off CGO_ENABLED=1 "$go_bin" test \
       -mod=readonly -modfile="$root_modfile" \
@@ -171,4 +154,4 @@ for profile in "${profiles[@]}"; do
     "$profile" "$cpa_version" "$cpa_commit" "$cpa_must_be_latest"
 done
 
-printf 'CPA source/compile compatibility matrix PASS: profiles=%s\n' "${profiles[*]}"
+printf 'CPA latest source/compile compatibility PASS: profile=%s\n' "${profiles[*]}"
