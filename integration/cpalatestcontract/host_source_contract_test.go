@@ -38,9 +38,9 @@ type cpaCompatibilityProfile struct {
 var cpaCompatibilityProfiles = map[string]cpaCompatibilityProfile{
 	cpaPrimaryProfile: {
 		Name:       cpaPrimaryProfile,
-		Version:    "v7.2.85",
-		Commit:     "baffbe2cc703fa694c0c72baad13715b9bd28e57",
-		ModuleSum:  "h1:P2ScGZcDxKTii2ZMHEL3QuVw3WB1CYU0Ap9GHf6pUiM=",
+		Version:    "v7.2.86",
+		Commit:     "81d70f5d9f3fdb39a6290ed9c917ff0c6f27ca30",
+		ModuleSum:  "h1:hngt58VNLMXtQ048U59kXOugcMt2Sw60M4gpmwnj1jA=",
 		GoModSum:   "h1:ytvZNWbCv7PrAyR80+RKsDJPODsdL6qxyFaXDBNZdqs=",
 		MustLatest: true,
 	},
@@ -77,7 +77,7 @@ type latestResolvedCPAModule struct {
 }
 
 // Compile-time binding proves that the latest public plugin API, including the
-// additive UsageRecord.Generate field required by the current v7.2.85 contract is available.
+// additive UsageRecord.Generate field required by the current v7.2.86 contract is available.
 // The Guard does not register UsagePlugin; this is an API compatibility probe.
 var _ = pluginapi.UsageRecord{Generate: true}
 

@@ -5,7 +5,7 @@ gate. The fixed profile is:
 
 | Profile | CPA | Commit | Module sum |
 |---|---|---|---|
-| `primary` | `v7.2.85` | `baffbe2cc703fa694c0c72baad13715b9bd28e57` | `h1:P2ScGZcDxKTii2ZMHEL3QuVw3WB1CYU0Ap9GHf6pUiM=` |
+| `primary` | `v7.2.86` | `81d70f5d9f3fdb39a6290ed9c917ff0c6f27ca30` | `h1:hngt58VNLMXtQ048U59kXOugcMt2Sw60M4gpmwnj1jA=` |
 
 The profile pins go.mod sum
 `h1:ytvZNWbCv7PrAyR80+RKsDJPODsdL6qxyFaXDBNZdqs=`. Unknown profile names fail
@@ -18,7 +18,7 @@ checksum-pinned overlays only to ephemeral copies of the selected official CPA
 module. `scripts/cpa-latest-compat.sh` compiles the Guard and integration
 packages and runs the real Guard registration/route tests against the latest
 profile through temporary modfiles. With `CPA_COMPAT_VERIFY_REMOTE=1`, the script
-requires `v7.2.85` to remain GitHub's current `releases/latest` and verifies its
+requires `v7.2.86` to remain GitHub's current `releases/latest` and verifies its
 Tag-to-Commit identity. `CPA_LATEST_VERIFY_REMOTE=1` remains a compatibility
 alias for the same remote check.
 

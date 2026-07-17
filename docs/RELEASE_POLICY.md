@@ -16,7 +16,7 @@ candidate_attestation: candidate-manifest.json
 host_audit_attestation: round6-prerelease-attestation.json
 formal_gate_attestation: formal-release-attestation.json
 promotion_workflow: .github/workflows/release-promote.yml
-host_matrix: v7.2.85
+host_matrix: v7.2.86
 external_admission: required
 minimum_independent_evaluation: evaluation-v11
 independent_evaluation_required_status: CONSUMED/PASS

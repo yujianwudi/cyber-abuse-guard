@@ -24,23 +24,23 @@ on:
         required: true
         type: string
       expected_so_sha256:
-        description: Exact candidate SO SHA-256 cited by the v7.2.85 Host record and independent audit
+        description: Exact candidate SO SHA-256 cited by the v7.2.86 Host record and independent audit
         required: true
         type: string
       expected_store_zip_sha256:
         description: Exact candidate CPA Store ZIP SHA-256 cited by Host and independent audit records
         required: true
         type: string
-      host_v7285_validation:
-        description: Authorized isolated CPA v7.2.85 Host + Mock matrix result
+      host_v7286_validation:
+        description: Authorized isolated CPA v7.2.86 Host + Mock matrix result
         required: true
         type: choice
         default: BLOCKED
         options:
           - BLOCKED
           - PASS
-      host_v7285_evidence_sha256:
-        description: SHA-256 of the low-sensitivity v7.2.85 Host evidence
+      host_v7286_evidence_sha256:
+        description: SHA-256 of the low-sensitivity v7.2.86 Host evidence
         required: true
         type: string
       independent_audit_validation:
@@ -108,8 +108,8 @@ jobs:
           DISPATCH_SHA: ${{ github.sha }}
           WORKFLOW_REF: ${{ github.workflow_ref }}
           WORKFLOW_SHA: ${{ github.workflow_sha }}
-          HOST_V7285: ${{ inputs.host_v7285_validation }}
-          HOST_V7285_SHA256: ${{ inputs.host_v7285_evidence_sha256 }}
+          HOST_V7286: ${{ inputs.host_v7286_validation }}
+          HOST_V7286_SHA256: ${{ inputs.host_v7286_evidence_sha256 }}
           INDEPENDENT_AUDIT: ${{ inputs.independent_audit_validation }}
           INDEPENDENT_AUDIT_SHA256: ${{ inputs.independent_audit_sha256 }}
           INDEPENDENT_EVALUATION: ${{ inputs.independent_evaluation_validation }}
@@ -128,11 +128,11 @@ jobs:
           [[ "$DISPATCH_SHA" == "$EXPECTED_COMMIT" ]]
           [[ "$WORKFLOW_SHA" == "$EXPECTED_COMMIT" ]]
           [[ "$WORKFLOW_REF" == "${GITHUB_REPOSITORY}/.github/workflows/round6-blocked-prerelease.yml@refs/tags/$TAG" ]]
-          [[ "$HOST_V7285" == PASS ]]
+          [[ "$HOST_V7286" == PASS ]]
           [[ "$INDEPENDENT_AUDIT" == PASS ]]
           [[ "$INDEPENDENT_EVALUATION" == PASS ]]
           [[ "$AUTHORIZED" == true ]]
-          [[ "$HOST_V7285_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$HOST_V7286_SHA256" =~ ^[0-9a-f]{64}$ ]]
           [[ "$INDEPENDENT_AUDIT_SHA256" =~ ^[0-9a-f]{64}$ ]]
           [[ "$INDEPENDENT_EVALUATION_ID" =~ ^evaluation-v(1[1-9]|[2-9][0-9]|[1-9][0-9]{2,})$ ]]
           [[ "$INDEPENDENT_EVALUATION_SHA256" =~ ^[0-9a-f]{64}$ ]]
@@ -320,7 +320,7 @@ jobs:
         run: |
           make round6-format-check round6-git-diff-check round6-module-verify round6-regression round6-vet
           go test ./internal/classifier -run '^TestClassifierPolicyIdentity$' -count=1
-      - name: Verify current CPA v7.2.85 source compatibility
+      - name: Verify current CPA v7.2.86 source compatibility
         env:
           CPA_COMPAT_VERIFY_REMOTE: '1'
         run: make cpa-latest-compat
@@ -443,7 +443,7 @@ jobs:
     needs: verify
     environment: round6-independent-audit
     if: >-
-      inputs.host_v7285_validation == 'PASS' &&
+      inputs.host_v7286_validation == 'PASS' &&
       inputs.independent_audit_validation == 'PASS' &&
       inputs.independent_evaluation_validation == 'PASS' &&
       inputs.authorize_blocked_prerelease == true
@@ -467,7 +467,7 @@ jobs:
           TAG: ${{ inputs.tag }}
           CI_RUN_ID: ${{ inputs.ci_run_id }}
           CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
-          HOST_V7285_SHA256: ${{ inputs.host_v7285_evidence_sha256 }}
+          HOST_V7286_SHA256: ${{ inputs.host_v7286_evidence_sha256 }}
           INDEPENDENT_AUDIT_SHA256: ${{ inputs.independent_audit_sha256 }}
           INDEPENDENT_EVALUATION_ID: ${{ inputs.independent_evaluation_id }}
           INDEPENDENT_EVALUATION_SHA256: ${{ inputs.independent_evaluation_sha256 }}
@@ -526,7 +526,7 @@ jobs:
             --arg candidate_run_id "$CANDIDATE_RUN_ID" \
             --arg so_sha256 "$EXPECTED_SO_SHA256" \
             --arg store_zip_sha256 "$EXPECTED_STORE_ZIP_SHA256" \
-            --arg host_v7285_sha256 "$HOST_V7285_SHA256" \
+            --arg host_v7286_sha256 "$HOST_V7286_SHA256" \
             --arg independent_audit_sha256 "$INDEPENDENT_AUDIT_SHA256" \
             --arg independent_evaluation_id "$INDEPENDENT_EVALUATION_ID" \
             --arg independent_evaluation_sha256 "$INDEPENDENT_EVALUATION_SHA256" \
@@ -549,7 +549,7 @@ jobs:
                 store_zip_sha256: $store_zip_sha256
               },
               evidence: {
-                cpa_v7_2_85_sha256: $host_v7285_sha256,
+                cpa_v7_2_86_sha256: $host_v7286_sha256,
                 independent_audit_sha256: $independent_audit_sha256,
                 independent_evaluation_id: $independent_evaluation_id,
                 independent_evaluation_status: "CONSUMED / PASS",
@@ -591,7 +591,7 @@ jobs:
           EXPECTED_STORE_ZIP_SHA256: ${{ inputs.expected_store_zip_sha256 }}
           CI_RUN_ID: ${{ inputs.ci_run_id }}
           CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
-          HOST_V7285_SHA256: ${{ inputs.host_v7285_evidence_sha256 }}
+          HOST_V7286_SHA256: ${{ inputs.host_v7286_evidence_sha256 }}
           INDEPENDENT_AUDIT_SHA256: ${{ inputs.independent_audit_sha256 }}
           INDEPENDENT_EVALUATION_ID: ${{ inputs.independent_evaluation_id }}
           INDEPENDENT_EVALUATION_SHA256: ${{ inputs.independent_evaluation_sha256 }}
@@ -609,7 +609,7 @@ jobs:
             'BLOCKED / NOT A FORMAL RELEASE' \
             '' \
             'Development evidence only. This is not production admission or deployment authorization.' \
-            "CPA v7.2.85 Host evidence SHA-256: $HOST_V7285_SHA256" \
+            "CPA v7.2.86 Host evidence SHA-256: $HOST_V7286_SHA256" \
             "Independent audit SHA-256: $INDEPENDENT_AUDIT_SHA256" \
             "Independent consumed evaluation: $INDEPENDENT_EVALUATION_ID" \
             "Independent evaluation SHA-256: $INDEPENDENT_EVALUATION_SHA256" \
@@ -634,6 +634,16 @@ jobs:
             dist/round6-prerelease-attestation.json
             dist/round6-prerelease-attestation.json.sha256
           )
+          expected_assets_json="$(/usr/bin/jq -cn --args '$ARGS.positional | sort' -- "${release_assets[@]##*/}")"
+          if ! /usr/bin/jq -e '
+            (type == "array") and
+            (length > 0) and
+            all(.[]; type == "string" and length > 0) and
+            (length == (unique | length))
+          ' <<<"$expected_assets_json" >/dev/null; then
+            printf '%s\n' 'blocked prerelease asset allowlist is empty, invalid, or duplicated' >&2
+            exit 1
+          fi
           releases="$RUNNER_TEMP/blocked-prerelease-releases.json"
           /usr/bin/gh api --paginate --slurp \
             --header 'Accept: application/vnd.github+json' \
@@ -657,6 +667,16 @@ jobs:
           else
             [[ "$(/usr/bin/jq -r '.draft' <<<"$existing")" == true ]]
             [[ "$(/usr/bin/jq -r '.prerelease' <<<"$existing")" == true ]]
+            if ! /usr/bin/jq -e --argjson expected "$expected_assets_json" '
+              (.assets | type == "array") and
+              ([.assets[].name] as $actual |
+                all($actual[]; type == "string" and length > 0) and
+                (($actual | length) == ($actual | unique | length)) and
+                (($actual - $expected) | length == 0))
+            ' <<<"$existing" >/dev/null; then
+              printf '%s\n' 'existing blocked prerelease draft contains unattested, duplicate, or invalid assets' >&2
+              exit 1
+            fi
             /usr/bin/gh release edit "$TAG" \
               --draft \
               --prerelease \
@@ -678,7 +698,10 @@ jobs:
           ' "$releases")"
           [[ "$(/usr/bin/jq -r '.draft' <<<"$release")" == true ]]
           [[ "$(/usr/bin/jq -r '.prerelease' <<<"$release")" == true ]]
-          expected_assets="$(printf '%s\n' "${release_assets[@]##*/}" | /usr/bin/sort)"
-          actual_assets="$(/usr/bin/jq -r '.assets[].name' <<<"$release" | /usr/bin/sort)"
-          [[ "$actual_assets" == "$expected_assets" ]]
+          /usr/bin/jq -e --argjson expected "$expected_assets_json" '
+            (.assets | type == "array") and
+            ([.assets[].name] as $actual |
+              all($actual[]; type == "string" and length > 0) and
+              (($actual | sort) == ($expected | sort)))
+          ' <<<"$release" >/dev/null
           /usr/bin/jq -e 'all(.assets[]; .state == "uploaded")' <<<"$release" >/dev/null

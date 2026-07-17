@@ -163,11 +163,11 @@ jobs:
               (.artifacts.so_sha256 | sha256) and
               (.artifacts.store_zip_sha256 | sha256) and
               (.evidence | exact_keys([
-                "cpa_v7_2_85_sha256", "independent_audit_sha256",
+                "cpa_v7_2_86_sha256", "independent_audit_sha256",
                 "independent_evaluation_id", "independent_evaluation_status",
                 "independent_evaluation_sha256"
               ])) and
-              (.evidence.cpa_v7_2_85_sha256 | sha256) and
+              (.evidence.cpa_v7_2_86_sha256 | sha256) and
               (.evidence.independent_audit_sha256 | sha256) and
               (.evidence.independent_evaluation_id |
                 test("^evaluation-v(1[1-9]|[2-9][0-9]|[1-9][0-9]{2,})$")) and

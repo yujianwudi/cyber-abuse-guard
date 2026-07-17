@@ -10,6 +10,8 @@
 *.log
 /coverage.out
 *.test
+__pycache__/
+*.py[cod]
 /integration/.work/
 *.h
 /.cyber-abuse-guard-hmac

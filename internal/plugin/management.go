@@ -33,7 +33,7 @@ const (
 	maxManagementHeaderValues   = 64
 	maxManagementFilterBytes    = 128
 	managementHealthProbePath   = managementBasePath + "/health/probe"
-	managementAuthDocumentation = "CPA v7.2.85 management middleware is authoritative; the plugin additionally rejects callbacks without a management credential header"
+	managementAuthDocumentation = "CPA v7.2.86 management middleware is authoritative; the plugin additionally rejects callbacks without a management credential header"
 )
 
 type managementRoute struct {
@@ -297,7 +297,7 @@ func (p *Plugin) managementStatus(state *runtimeState) []byte {
 		"conflict_detection": map[string]any{
 			"router_enumeration_supported":           false,
 			"duplicate_plugin_binary_scan_supported": false,
-			"reason":                                 "CPA v7.2.85 plugin ABI exposes neither the loaded router ordering nor the plugin directory inventory",
+			"reason":                                 "CPA v7.2.86 plugin ABI exposes neither the loaded router ordering nor the plugin directory inventory",
 		},
 	}
 	if state != nil {

@@ -1227,11 +1227,11 @@ jobs:
                         workflow, Path("round6-prerelease.yml")
                     )
 
-    def test_blocked_prerelease_missing_v7285_host_inputs_fail(self):
+    def test_blocked_prerelease_missing_v7286_host_inputs_fail(self):
         original = self.blocked_workflow()
         for input_name in (
-            "host_v7285_validation",
-            "host_v7285_evidence_sha256",
+            "host_v7286_validation",
+            "host_v7286_evidence_sha256",
         ):
             with self.subTest(input_name=input_name):
                 workflow = original.replace(
@@ -1259,8 +1259,8 @@ jobs:
             1,
         )
         legacy_gate = original.replace(
-            "      inputs.host_v7285_validation == 'PASS' &&\n",
-            "      inputs.host_v7285_validation == 'PASS' &&\n"
+            "      inputs.host_v7286_validation == 'PASS' &&\n",
+            "      inputs.host_v7286_validation == 'PASS' &&\n"
             "      inputs.host_v7282_validation == 'PASS' &&\n",
             1,
         )
@@ -1293,8 +1293,8 @@ jobs:
 
     def test_blocked_prerelease_admission_comment_spoof_fails(self):
         workflow = self.blocked_workflow().replace(
-            '          [[ "$HOST_V7285" == PASS ]]\n',
-            '          # [[ "$HOST_V7285" == PASS ]]\n          true\n',
+            '          [[ "$HOST_V7286" == PASS ]]\n',
+            '          # [[ "$HOST_V7286" == PASS ]]\n          true\n',
         )
         with self.assertRaisesRegex(ContractError, "exact reviewed"):
             validate_blocked_prerelease_workflow(workflow, Path("round6-prerelease.yml"))
@@ -1343,9 +1343,9 @@ jobs:
 
     def test_blocked_prerelease_if_expression_spoof_fails(self):
         workflow = self.blocked_workflow().replace(
-            "    if: >-\n      inputs.host_v7285_validation == 'PASS' &&\n      inputs.independent_audit_validation == 'PASS' &&\n      inputs.independent_evaluation_validation == 'PASS' &&\n      inputs.authorize_blocked_prerelease == true\n",
-            "    if: ${{{{ true }}}}\n"
-            "    # inputs.host_v7285_validation == 'PASS' &&\n"
+            "    if: >-\n      inputs.host_v7286_validation == 'PASS' &&\n      inputs.independent_audit_validation == 'PASS' &&\n      inputs.independent_evaluation_validation == 'PASS' &&\n      inputs.authorize_blocked_prerelease == true\n",
+            "    if: ${{ true }}\n"
+            "    # inputs.host_v7286_validation == 'PASS' &&\n"
             "    # inputs.independent_audit_validation == 'PASS' && inputs.independent_evaluation_validation == 'PASS' &&\n"
             "    # inputs.authorize_blocked_prerelease == true\n",
         )
@@ -1354,7 +1354,7 @@ jobs:
 
     def test_blocked_prerelease_missing_host_gate_fails(self):
         original = self.blocked_workflow()
-        for version in ("7285",):
+        for version in ("7286",):
             with self.subTest(version=version):
                 workflow = original.replace(
                     f"      inputs.host_v{version}_validation == 'PASS' &&\n", "", 1
@@ -1436,6 +1436,34 @@ jobs:
         with self.assertRaisesRegex(ContractError, "exactly four reviewed steps"):
             validate_blocked_prerelease_workflow(workflow, Path("round6-prerelease.yml"))
 
+    def test_blocked_prerelease_existing_draft_extra_asset_guard_is_frozen(self):
+        original = self.blocked_workflow()
+        expected_builder = '          expected_assets_json="$(/usr/bin/jq -cn --args '
+        guard = '            if ! /usr/bin/jq -e --argjson expected "$expected_assets_json" '
+        final_exact_set = '          /usr/bin/jq -e --argjson expected "$expected_assets_json" '
+        self.assertIn(expected_builder, original)
+        self.assertIn(guard, original)
+        self.assertIn(final_exact_set, original)
+        self.assertIn('(($actual - $expected) | length == 0)', original)
+        self.assertIn('(($actual | length) == ($actual | unique | length))', original)
+        self.assertIn('(($actual | sort) == ($expected | sort))', original)
+        self.assertNotIn('/usr/bin/comm -13', original)
+        self.assertLess(
+            original.index(expected_builder),
+            original.index('            /usr/bin/gh release create "$TAG"'),
+        )
+        self.assertLess(
+            original.index(guard),
+            original.index('            /usr/bin/gh release edit "$TAG" \\\n'),
+        )
+        self.assertLess(
+            original.index(guard),
+            original.index('            /usr/bin/gh release upload "$TAG"'),
+        )
+        workflow = original.replace(guard, '            if /usr/bin/true; then # ', 1)
+        with self.assertRaisesRegex(ContractError, "exact reviewed text"):
+            validate_blocked_prerelease_workflow(workflow, Path("round6-prerelease.yml"))
+
     def test_blocked_prerelease_duplicate_action_key_fails(self):
         workflow = self.blocked_workflow().replace(
             "            --draft \\\n", "            --draft \\\n            --draft \\\n", 1
@@ -1478,10 +1506,10 @@ jobs:
                         workflow, Path("round6-prerelease.yml")
                     )
 
-    def test_blocked_prerelease_missing_v7285_host_evidence_note_fails(self):
+    def test_blocked_prerelease_missing_v7286_host_evidence_note_fails(self):
         original = self.blocked_workflow()
         workflow = original.replace(
-            '            "CPA v7.2.85 Host evidence SHA-256: $HOST_V7285_SHA256" \\\n',
+            '            "CPA v7.2.86 Host evidence SHA-256: $HOST_V7286_SHA256" \\\n',
             "",
             1,
         )

@@ -40,10 +40,10 @@ classifier.
 | Merge and release | `main` merge is pending and is required before candidate dispatch; no `v0.15` tag or Release |
 | Validation platform | Linux amd64 only; emitted numeric GLIBC ABI versions must be `<= 2.34` |
 | Out of scope | Windows, macOS, musl/Alpine, local deployment, production validation |
-| CPA Host matrix | Current release target is CPA v7.2.85 only; its real Host + Mock-upstream run is **NOT RUN / PENDING** |
+| CPA Host matrix | Current release target is CPA v7.2.86 only; its real Host + Mock-upstream run is **NOT RUN / PENDING** |
 | Production | Not accessed or modified; no production request, audit database, credential, HMAC key, account pool, or real Provider was used |
 | Scanner identity | `streaming-scanner-v1` |
-| Classifier policy | `classifier-policy-v3` / `5d3456e8494c7da3e5209729a07c41fd8ee5a467613c0d5b02d08391e463092d` |
+| Classifier policy | `classifier-policy-v3` / `e00f64651368bb81a223f1fecbf98b4a6d069bd4bac1f320d22204fbbe5b0601` |
 | Embedded YAML ruleset | `1.0.7` / `7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134` |
 | Audit schema | v3 |
 | Code review | Remote automated review findings have been addressed and locally verified; no independent approval is claimed |
@@ -188,7 +188,7 @@ for implementation or conclusions.
 | Merge final PR to `main` | **PENDING**; prerequisite for candidate dispatch, not release approval |
 | Exact post-merge `main` push CI | **PENDING**; must bind the candidate commit/tree |
 | Private untagged clean candidate Actions artifact | **NOT CREATED / PENDING**; must bind one final commit/tree and emit `candidate-manifest.json` |
-| CPA v7.2.85 Host + Mock upstream | **NOT RUN / PENDING** |
+| CPA v7.2.86 Host + Mock upstream | **NOT RUN / PENDING** |
 | Independent source/artifact/Host audit | **NOT RUN / PENDING** |
 | Candidate-bound external evaluation-v11 or later | **NOT RUN / PENDING**; must be first-and-only `CONSUMED / PASS` for the exact candidate |
 | Annotated `v0.15-dev.round6[.N]` prerelease | Optional and blocked until Host, independent audit, and candidate-level evaluation pass; never a formal release |
@@ -218,7 +218,7 @@ The v0.15 evidence chain is intentionally split:
    deployment or release approval.
 2. A manual, private, **untagged** GitHub Actions dispatch from `main` builds clean exact-source
    Linux amd64 candidate bytes. Its artifact is not a GitHub Release and expires.
-3. The CPA v7.2.85 Host + Mock record, the independent
+3. The CPA v7.2.86 Host + Mock record, the independent
    audit, and a candidate-bound external `evaluation-v11` or later
    `CONSUMED / PASS` report must all bind the same candidate identity.
 4. If a durable development handoff is needed after those gates, an existing
@@ -245,7 +245,7 @@ only by external Round 6/formal attestation assets that bind the final source,
 candidate workflow run, candidate bytes, Host records, independent audit, and
 release evaluation.
 
-Earlier v7.2.84/v7.2.83/v7.2.82/v7.2.81 source/compile compatibility results are retained only
+Earlier v7.2.85/v7.2.84/v7.2.83/v7.2.82/v7.2.81 source/compile compatibility results are retained only
 as historical engineering context. They are not current v0.15 release or Host
 requirements.
 

@@ -201,7 +201,7 @@ policy is separately identified as:
 
 ```text
 classifier_policy_version: classifier-policy-v3
-classifier_policy_sha256: 5d3456e8494c7da3e5209729a07c41fd8ee5a467613c0d5b02d08391e463092d
+classifier_policy_sha256: e00f64651368bb81a223f1fecbf98b4a6d069bd4bac1f320d22204fbbe5b0601
 ```
 
 The policy digest test binds the deterministic classifier, matcher,
@@ -314,14 +314,14 @@ consumed or retired fixtures during normal development.
 Passing unit or CI gates does not authorize deployment. The exact v0.15 chain
 requires final PR CI, merge to `main`, exact post-merge main push CI, and a
 private untagged clean candidate dispatched from `refs/heads/main`, followed by
-CPA v7.2.85 + Mock-upstream Host validation against one SO SHA-256 and independent
+CPA v7.2.86 + Mock-upstream Host validation against one SO SHA-256 and independent
 source/artifact/Host review. An optional annotated development prerelease is
 allowed only after a candidate-bound external `evaluation-v11` or later
 first-and-only `CONSUMED / PASS` attestation and is not a formal release. The
 annotated `v0.15` tag and verified draft consume that same attestation; a
 protected promotion may publish only the unchanged draft.
 
-Earlier v7.2.84/v7.2.83/v7.2.82/v7.2.81 source/compile profiles are historical non-gating
+Earlier v7.2.85/v7.2.84/v7.2.83/v7.2.82/v7.2.81 source/compile profiles are historical non-gating
 engineering evidence, not current release requirements.
 
 Do not run, inspect, print, or obtain through Git history any consumed blind

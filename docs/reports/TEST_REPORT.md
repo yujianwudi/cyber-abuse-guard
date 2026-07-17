@@ -6,21 +6,21 @@ Last updated: 2026-07-17 (Asia/Shanghai)
 
 Exact project version is `0.15`; the only formal tag is `v0.15`, never
 `v0.15.0`. The only current source/compile and real-Host release target is CPA
-v7.2.85 at `baffbe2cc703fa694c0c72baad13715b9bd28e57`. Earlier
-v7.2.84/v7.2.83/v7.2.82/v7.2.81 profiles are historical non-gating engineering evidence.
+v7.2.86 at `81d70f5d9f3fdb39a6290ed9c917ff0c6f27ca30`. Earlier
+v7.2.85/v7.2.84/v7.2.83/v7.2.82/v7.2.81 profiles are historical non-gating engineering evidence.
 
 | Current Round 6 evidence | Result |
 |---|---|
 | Pre-version checkpoint source | `21ceb57e6b6030e56d7820c9a67a8eecd068c669`, tree `e55437442f30bdb1b6b748b9611c6760172784cd` |
 | Push CI | [29578024185](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29578024185) **SUCCESS** |
 | PR CI | [29578025961](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29578025961) **SUCCESS** |
-| Checkpoint interpretation | **PASS for the then-current CPA v7.2.83 latest-source lane before version/release-chain migration; not v7.2.85 or final v0.15 evidence** |
-| Classifier identity | `classifier-policy-v3` / `5d3456e8494c7da3e5209729a07c41fd8ee5a467613c0d5b02d08391e463092d` |
+| Checkpoint interpretation | **PASS for the then-current CPA v7.2.83 latest-source lane before version/release-chain migration; not v7.2.86 or final v0.15 evidence** |
+| Classifier identity | `classifier-policy-v3` / `e00f64651368bb81a223f1fecbf98b4a6d069bd4bac1f320d22204fbbe5b0601` |
 | Final PR head and PR CI | **PENDING** after all version/release-chain changes |
 | Merge final PR to `main` | **NOT RUN / PENDING**; candidate-generation prerequisite, not release approval |
 | Exact post-merge `main` push CI | **NOT RUN / PENDING**; must bind the candidate commit/tree |
 | Private untagged clean candidate artifact / manifest | **NOT CREATED / PENDING** |
-| CPA v7.2.85 Host + Mock | **NOT RUN / PENDING** |
+| CPA v7.2.86 Host + Mock | **NOT RUN / PENDING** |
 | Four-layer Auth/Provider/Usage/Mock zero-call proof | **NOT RUN / PENDING** |
 | Independent source/artifact/Host audit | **NOT RUN / PENDING** |
 | Candidate-bound external evaluation-v11 or later | **NOT RUN / PENDING**; must be first-and-only `CONSUMED / PASS` |
@@ -33,7 +33,7 @@ before the candidate workflow is dispatched from `refs/heads/main`. It must
 produce a private, untagged, clean exact-source Actions artifact whose
 `candidate-manifest.json`, `build-metadata.json`, SO, and Store ZIP bind that
 post-merge main commit/tree. Clean candidate bytes are unreleased. The
-v7.2.85 Host record and the independent audit must cite the same SO SHA-256.
+v7.2.86 Host record and the independent audit must cite the same SO SHA-256.
 
 After Host/audit and candidate-level evaluation PASS, an optional annotated
 `v0.15-dev.round6[.N]` draft prerelease may preserve the evidence but remains

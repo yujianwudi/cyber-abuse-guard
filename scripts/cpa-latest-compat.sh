@@ -30,9 +30,9 @@ esac
 select_profile() {
   case "$1" in
     primary)
-      cpa_version='v7.2.85'
-      cpa_commit='baffbe2cc703fa694c0c72baad13715b9bd28e57'
-      cpa_module_sum='h1:P2ScGZcDxKTii2ZMHEL3QuVw3WB1CYU0Ap9GHf6pUiM='
+      cpa_version='v7.2.86'
+      cpa_commit='81d70f5d9f3fdb39a6290ed9c917ff0c6f27ca30'
+      cpa_module_sum='h1:hngt58VNLMXtQ048U59kXOugcMt2Sw60M4gpmwnj1jA='
       cpa_go_mod_sum='h1:ytvZNWbCv7PrAyR80+RKsDJPODsdL6qxyFaXDBNZdqs='
       cpa_must_be_latest=1
       ;;
@@ -137,7 +137,7 @@ for profile in "${profiles[@]}"; do
     GOWORK=off CGO_ENABLED=1 "$go_bin" test \
       -mod=readonly -modfile="$root_modfile" \
       -tags=sqlite_omit_load_extension -count=1 \
-      -run='^(TestRegistrationMatchesTargetCPAv7285Contract|TestRouterUsesRoleAwareConversationClassification)$' \
+      -run='^(TestRegistrationMatchesTargetCPAv7286Contract|TestRouterUsesRoleAwareConversationClassification)$' \
       ./internal/plugin
     GOWORK=off CGO_ENABLED=1 "$go_bin" test \
       -mod=readonly -modfile="$root_modfile" \

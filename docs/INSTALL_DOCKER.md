@@ -26,7 +26,7 @@ in production.
 
 The v0.15 chain is: final PR head and PR CI, merge to `main`, exact post-merge
 main push CI, private untagged clean candidate dispatched from
-`refs/heads/main`, CPA v7.2.85 Host + Mock evidence, independent
+`refs/heads/main`, CPA v7.2.86 Host + Mock evidence, independent
 source/artifact/Host audit, a candidate-bound external `evaluation-v11` or later
 first-and-only `CONSUMED / PASS` attestation, optional annotated development
 prerelease, the annotated formal `v0.15` tag and verified draft, and protected
@@ -60,11 +60,11 @@ identifies only YAML Cyber Abuse assets; it does not include the Go
 
 ## Preconditions
 
-- The sandbox CPA binary is exactly v7.2.85 at
-  `baffbe2cc703fa694c0c72baad13715b9bd28e57` and was built with
+- The sandbox CPA binary is exactly v7.2.86 at
+  `81d70f5d9f3fdb39a6290ed9c917ff0c6f27ca30` and was built with
   `CGO_ENABLED=1`. Assets labelled `_no-plugin` cannot load native plugins.
   Source/compile compatibility does not substitute for loading the candidate
-  `.so`. Earlier v7.2.84/v7.2.83/v7.2.82/v7.2.81 checks are historical non-gating evidence.
+  `.so`. Earlier v7.2.85/v7.2.84/v7.2.83/v7.2.82/v7.2.81 checks are historical non-gating evidence.
 - The container is Linux amd64 with glibc 2.34 or newer. Debian Bookworm is the
   intended base; musl/Alpine is unsupported.
 - The deployment host has `curl`, `jq`, `unzip`, `sha256sum`, and `openssl`.
@@ -147,11 +147,11 @@ Inspect `$work/audit/build-metadata.json` and require:
 - `ruleset_version` and `ruleset_sha256` match the standalone ruleset manifest;
 - `classifier_policy_version` equals `classifier-policy-v3` and
   `classifier_policy_sha256` equals
-  `5d3456e8494c7da3e5209729a07c41fd8ee5a467613c0d5b02d08391e463092d`;
+  `e00f64651368bb81a223f1fecbf98b4a6d069bd4bac1f320d22204fbbe5b0601`;
 - `$work/release-evidence-final.md` identifies the same commit, annotated tag,
   rules snapshot, source archive, command-log digest, and artifact hashes.
 - `$work/round6-prerelease-attestation.json` binds the exact Host-tested
-  candidate commit/tree, candidate run, SO/Store hashes, the v7.2.85 Host evidence
+  candidate commit/tree, candidate run, SO/Store hashes, the v7.2.86 Host evidence
   hashes, independent-audit hash, and an external `evaluation-v11` or later ID
   plus its low-sensitivity report SHA-256;
 - `$work/formal-release-attestation.json` binds exact tag `v0.15`, the same
@@ -396,7 +396,7 @@ Verify New API → CPA using an ordinary harmless request, confirm other plugins
 still behave normally, and compare the current CPA auth-file list with the saved
 inventory. Installation must not create, delete, or modify auth files.
 
-The CPA v7.2.85 Host matrix must cover OpenAI Chat, OpenAI Responses,
+The CPA v7.2.86 Host matrix must cover OpenAI Chat, OpenAI Responses,
 Claude, and Gemini allow/refusal paths, including streaming pre-SSE 403,
 Anthropic/Gemini token-count 403, and zero Auth Selector, Provider, Usage, and
 Mock Upstream counters for blocked requests. Ordinary CI does not execute that

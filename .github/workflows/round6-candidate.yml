@@ -154,7 +154,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/bin"
           GOBIN="$RUNNER_TEMP/bin" go install github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@${CYCLONEDX_GOMOD_VERSION}
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
-      - name: Recheck source, regressions, and latest CPA v7.2.85 contract
+      - name: Recheck source, regressions, and latest CPA v7.2.86 contract
         env:
           CPA_COMPAT_VERIFY_REMOTE: '1'
         run: |

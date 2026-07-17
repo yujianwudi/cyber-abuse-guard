@@ -1,13 +1,13 @@
 # CPA Integration and Store-Contract Report — v0.15 Round 6 candidate
 
-## 2026-07-17 v7.2.85 matrix status
+## 2026-07-17 v7.2.86 matrix status
 
 Exact project version is `0.15`; the only formal tag is `v0.15`, never
-`v0.15.0`. Round 6 pins CPA v7.2.85 primary at commit
-`baffbe2cc703fa694c0c72baad13715b9bd28e57`, with module sum
-`h1:P2ScGZcDxKTii2ZMHEL3QuVw3WB1CYU0Ap9GHf6pUiM=` and go.mod sum
+`v0.15.0`. Round 6 pins CPA v7.2.86 primary at commit
+`81d70f5d9f3fdb39a6290ed9c917ff0c6f27ca30`, with module sum
+`h1:hngt58VNLMXtQ048U59kXOugcMt2Sw60M4gpmwnj1jA=` and go.mod sum
 `h1:ytvZNWbCv7PrAyR80+RKsDJPODsdL6qxyFaXDBNZdqs=`. It is the only current
-source/compile and real-Host release target. Earlier v7.2.84/v7.2.83/v7.2.82/v7.2.81 profiles
+source/compile and real-Host release target. Earlier v7.2.85/v7.2.84/v7.2.83/v7.2.82/v7.2.81 profiles
 are retained only as historical non-gating engineering evidence.
 
 Commit `21ceb57e6b6030e56d7820c9a67a8eecd068c669` passed push CI
@@ -18,7 +18,7 @@ with the then-current v7.2.83 latest-source matrix. This is a passed
 **pre-version-migration checkpoint**,
 not final v0.15 evidence. Final PR-head Linux CI, merge to `main`, exact
 post-merge main push CI, the private untagged clean candidate artifact, and the
-CPA v7.2.85 native Host + Mock matrix remain **PENDING / NOT RUN**. The v7.2.80
+CPA v7.2.86 native Host + Mock matrix remain **PENDING / NOT RUN**. The v7.2.80
 results in the dated addendum below remain historical source/compile evidence;
 they are not current Round 6 matrix or native Host evidence.
 
@@ -30,7 +30,7 @@ final PR head + PR CI
 -> exact post-merge main push CI
 -> dispatch candidate from refs/heads/main
 -> private untagged clean candidate + candidate-manifest.json
--> v7.2.85 Host + Mock record over one SO SHA-256
+-> v7.2.86 Host + Mock record over one SO SHA-256
 -> independent source/artifact/Host audit
 -> candidate-bound external evaluation-v11+ CONSUMED / PASS
 -> optional annotated v0.15-dev.round6[.N] draft prerelease
@@ -52,7 +52,7 @@ assets are `round6-prerelease-attestation.json` and
 future PASS fields.
 
 Current classifier identity is `classifier-policy-v3` /
-`5d3456e8494c7da3e5209729a07c41fd8ee5a467613c0d5b02d08391e463092d`.
+`e00f64651368bb81a223f1fecbf98b4a6d069bd4bac1f320d22204fbbe5b0601`.
 
 ## Frozen 2026-07-16 Round5.2 latest-compat addendum
 

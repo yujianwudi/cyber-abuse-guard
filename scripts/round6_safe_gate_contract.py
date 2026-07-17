@@ -86,8 +86,8 @@ BLOCKED_PRERELEASE_INPUT_ORDER = (
     "candidate_run_id",
     "expected_so_sha256",
     "expected_store_zip_sha256",
-    "host_v7285_validation",
-    "host_v7285_evidence_sha256",
+    "host_v7286_validation",
+    "host_v7286_evidence_sha256",
     "independent_audit_validation",
     "independent_audit_sha256",
     "independent_evaluation_validation",
@@ -98,7 +98,7 @@ BLOCKED_PRERELEASE_INPUT_ORDER = (
 BLOCKED_PRERELEASE_INPUTS = set(BLOCKED_PRERELEASE_INPUT_ORDER)
 BLOCKED_PRERELEASE_IF_LINES = (
     "if: >-",
-    "inputs.host_v7285_validation == 'PASS' &&",
+    "inputs.host_v7286_validation == 'PASS' &&",
     "inputs.independent_audit_validation == 'PASS' &&",
     "inputs.independent_evaluation_validation == 'PASS' &&",
     "inputs.authorize_blocked_prerelease == true",
@@ -115,8 +115,8 @@ ADMISSION_INPUT_ENV = (
     "DISPATCH_SHA: ${{ github.sha }}",
     "WORKFLOW_REF: ${{ github.workflow_ref }}",
     "WORKFLOW_SHA: ${{ github.workflow_sha }}",
-    "HOST_V7285: ${{ inputs.host_v7285_validation }}",
-    "HOST_V7285_SHA256: ${{ inputs.host_v7285_evidence_sha256 }}",
+    "HOST_V7286: ${{ inputs.host_v7286_validation }}",
+    "HOST_V7286_SHA256: ${{ inputs.host_v7286_evidence_sha256 }}",
     "INDEPENDENT_AUDIT: ${{ inputs.independent_audit_validation }}",
     "INDEPENDENT_AUDIT_SHA256: ${{ inputs.independent_audit_sha256 }}",
     "INDEPENDENT_EVALUATION: ${{ inputs.independent_evaluation_validation }}",
@@ -136,11 +136,11 @@ ADMISSION_INPUT_COMMANDS = (
     '[[ "$DISPATCH_SHA" == "$EXPECTED_COMMIT" ]]',
     '[[ "$WORKFLOW_SHA" == "$EXPECTED_COMMIT" ]]',
     '[[ "$WORKFLOW_REF" == "${GITHUB_REPOSITORY}/.github/workflows/round6-blocked-prerelease.yml@refs/tags/$TAG" ]]',
-    '[[ "$HOST_V7285" == PASS ]]',
+    '[[ "$HOST_V7286" == PASS ]]',
     '[[ "$INDEPENDENT_AUDIT" == PASS ]]',
     '[[ "$INDEPENDENT_EVALUATION" == PASS ]]',
     '[[ "$AUTHORIZED" == true ]]',
-    '[[ "$HOST_V7285_SHA256" =~ ^[0-9a-f]{64}$ ]]',
+    '[[ "$HOST_V7286_SHA256" =~ ^[0-9a-f]{64}$ ]]',
     '[[ "$INDEPENDENT_AUDIT_SHA256" =~ ^[0-9a-f]{64}$ ]]',
     '[[ "$INDEPENDENT_EVALUATION_ID" =~ ^evaluation-v(1[1-9]|[2-9][0-9]|[1-9][0-9]{2,})$ ]]',
     '[[ "$INDEPENDENT_EVALUATION_SHA256" =~ ^[0-9a-f]{64}$ ]]',
@@ -326,7 +326,7 @@ BLOCKED_STEP_CONTRACTS = {
         ),
         ("Run source and Round6 regression gates", ("name", "run"), None),
         (
-            "Verify current CPA v7.2.85 source compatibility",
+            "Verify current CPA v7.2.86 source compatibility",
             ("name", "env", "run"),
             None,
         ),
@@ -508,7 +508,7 @@ ROUND6_REPRODUCIBILITY_PACKAGE_BRANCH_CONTRACT = """  if [[ "$RELEASE_BUILD_KIND
       "$clone/scripts/create-store-archive.sh"
   fi"""
 BLOCKED_STEP_RUN_SHA256 = {
-    ("admission", 0): "b9cbfd38ae0b0f54cdf78ec2c307253847a321deafd3edca49bb5c8b00ec6601",
+    ("admission", 0): "4830e3f84435dda74c87216010d4ca5021d7c75935a95997acf1e416e3ef47fe",
     ("admission", 1): "7f1817ec7b567df4be63fafd9ee2b2347ac37e01982e41ee3338f64c79cae81a",
     ("admission", 2): "5a315540eb55c2663caeba1fa2f77a80df0f4d2fd6c786c656149d22f638c2f2",
     ("verify", 1): "b38e1f3a74567d8390bde6390c75c7e96a3bd0d5bc13de0e6a7dbbcfeec0a2fe",
@@ -521,8 +521,8 @@ BLOCKED_STEP_RUN_SHA256 = {
     ("verify", 10): "d6bd0b9f43ef190a6545893891fe514928b3e354a438f357602e2d3a89565bd0",
     ("verify", 11): "72ba08821693dcb100be3d4dcfaac32d485191186d46fa22119ae7a7b60990b9",
     ("verify", 12): "25116143b78146e257b7eb89c5466266132755433249c07664c0cdbf01944c7d",
-    ("publish", 1): "486348379a6ffebfb3a6277b355acd7983004c81498c486ea600856e38707ef6",
-    ("publish", 3): "572a7675883180e939e4bac5400af8014154e93543ab11dfc5202a50d8f51022",
+    ("publish", 1): "f0b4e25161a56a18cbe2379e048d0151e537eb80d504673f20c8cd2adf4bfbb5",
+    ("publish", 3): "f5d984d926b1ff4cb197863446457871abf2abfc662847024a1cbcf3a51984ff",
 }
 BLOCKED_STEP_RUN_STYLE = {
     ("admission", 0): "|",
@@ -554,8 +554,8 @@ BLOCKED_STEP_ENV = {
         ("DISPATCH_SHA", "${{ github.sha }}"),
         ("WORKFLOW_REF", "${{ github.workflow_ref }}"),
         ("WORKFLOW_SHA", "${{ github.workflow_sha }}"),
-        ("HOST_V7285", "${{ inputs.host_v7285_validation }}"),
-        ("HOST_V7285_SHA256", "${{ inputs.host_v7285_evidence_sha256 }}"),
+        ("HOST_V7286", "${{ inputs.host_v7286_validation }}"),
+        ("HOST_V7286_SHA256", "${{ inputs.host_v7286_evidence_sha256 }}"),
         ("INDEPENDENT_AUDIT", "${{ inputs.independent_audit_validation }}"),
         ("INDEPENDENT_AUDIT_SHA256", "${{ inputs.independent_audit_sha256 }}"),
         ("INDEPENDENT_EVALUATION", "${{ inputs.independent_evaluation_validation }}"),
@@ -616,7 +616,7 @@ BLOCKED_STEP_ENV = {
         ("TAG", "${{ inputs.tag }}"),
         ("CI_RUN_ID", "${{ inputs.ci_run_id }}"),
         ("CANDIDATE_RUN_ID", "${{ inputs.candidate_run_id }}"),
-        ("HOST_V7285_SHA256", "${{ inputs.host_v7285_evidence_sha256 }}"),
+        ("HOST_V7286_SHA256", "${{ inputs.host_v7286_evidence_sha256 }}"),
         ("INDEPENDENT_AUDIT_SHA256", "${{ inputs.independent_audit_sha256 }}"),
         ("INDEPENDENT_EVALUATION_ID", "${{ inputs.independent_evaluation_id }}"),
         ("INDEPENDENT_EVALUATION_SHA256", "${{ inputs.independent_evaluation_sha256 }}"),
@@ -631,7 +631,7 @@ BLOCKED_STEP_ENV = {
         ("EXPECTED_STORE_ZIP_SHA256", "${{ inputs.expected_store_zip_sha256 }}"),
         ("CI_RUN_ID", "${{ inputs.ci_run_id }}"),
         ("CANDIDATE_RUN_ID", "${{ inputs.candidate_run_id }}"),
-        ("HOST_V7285_SHA256", "${{ inputs.host_v7285_evidence_sha256 }}"),
+        ("HOST_V7286_SHA256", "${{ inputs.host_v7286_evidence_sha256 }}"),
         ("INDEPENDENT_AUDIT_SHA256", "${{ inputs.independent_audit_sha256 }}"),
         ("INDEPENDENT_EVALUATION_ID", "${{ inputs.independent_evaluation_id }}"),
         ("INDEPENDENT_EVALUATION_SHA256", "${{ inputs.independent_evaluation_sha256 }}"),
@@ -685,7 +685,7 @@ CANDIDATE_STEP_CONTRACTS = {
         ),
         ("Install bounded candidate dependencies", ("name", "run"), None),
         (
-            "Recheck source, regressions, and latest CPA v7.2.85 contract",
+            "Recheck source, regressions, and latest CPA v7.2.86 contract",
             ("name", "env", "run"),
             None,
         ),
@@ -828,7 +828,7 @@ FORMAL_RELEASE_ARTIFACTS = (
     "dist/formal-release-attestation.json.sha256",
 )
 FORMAL_RELEASE_STEP_RUN_SHA256 = {
-    ("admission", 0): "1ab4e67da6e600016c7645a4ac6fa7e9c5a008eada019417d9522a9b258086d3",
+    ("admission", 0): "dd00f8c8f9a1a732ce9d923f203c83052c953556510bf1015cc2567a596a665b",
     ("build-and-verify", 2): "5bc38a90928a7309be0be55b3834ebf28c2eee7c2fd290ef19bf6d3a8dd3857d",
     ("build-and-verify", 3): "3177c58474d2bd9ee7246a79c02d77fc4afac7b26e13f3193cd456f9cadbb2dd",
     ("build-and-verify", 4): "e2194c0fb1cc2681adff35d6c0a12e10540e17bb7495597ac1f3ccb992bbc53f",
@@ -854,10 +854,10 @@ FROZEN_EVALUATION_TREE_SCRIPT_SHA256 = (
     "be39ad4f8ad0aea3a1e32e28e631cbac614ab03bb29b360985b0bd8c5080255e"
 )
 EXTERNAL_ATTESTATION_SCRIPT_SHA256 = {
-    "verify-external-release-attestation.sh": "79727cc729df0941dc8a202b2738d5bc8977ef0864965e143bea647344775313",
-    "verify-external-release-attestation-test.sh": "a81f3fed32e26f9cc36f9b58d128b369e73f4ca1e9fce9b5583e5977cd68280f",
+    "verify-external-release-attestation.sh": "17d79149b779b01f2e3e733d0deb529927bfe0c6d50b8125abd8b556fd95d476",
+    "verify-external-release-attestation-test.sh": "07683ce09cbdef7c15f8d6b31ff1308380ad21c920d8bc745c9b4599f4555aba",
 }
-GENERATE_RELEASE_EVIDENCE_SCRIPT_SHA256 = "9fce4bafaf6264902862d3d05b9fc24532cbb4b84a1669ddd5a4e1b3ae2b753a"
+GENERATE_RELEASE_EVIDENCE_SCRIPT_SHA256 = "22317f7596fadf7ea39a35b8df1ed5ac22c8f46608cbacf5ba2a25222cc92c1c"
 
 
 class ContractError(RuntimeError):
@@ -3026,7 +3026,7 @@ def validate_blocked_prerelease_structure(
         "on.workflow_dispatch.inputs",
     )
     choice_inputs = {
-        "host_v7285_validation",
+        "host_v7286_validation",
         "independent_audit_validation",
         "independent_evaluation_validation",
     }
@@ -3158,7 +3158,7 @@ def validate_blocked_prerelease_structure(
                 f"{job_path}.environment",
             )
             expected_publish_if = (
-                "inputs.host_v7285_validation == 'PASS' && "
+                "inputs.host_v7286_validation == 'PASS' && "
                 "inputs.independent_audit_validation == 'PASS' && "
                 "inputs.independent_evaluation_validation == 'PASS' && "
                 "inputs.authorize_blocked_prerelease == true"
