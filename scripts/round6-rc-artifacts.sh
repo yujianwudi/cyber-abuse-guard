@@ -36,10 +36,6 @@ export RELEASE_RC_BUILD RELEASE_RC_TAG RELEASE_RC_EXPECTED_COMMIT RELEASE_RC_EXP
 export ROUND6_SAFE_SPARSE_BUILD=1
 export REQUIRE_DIST_ARTIFACTS=1
 
-rm -rf -- "$root/dist"
-make -C "$root" -j1 ARTIFACT_VERSION="$RELEASE_ARTIFACT_VERSION" \
-  round6-development-artifacts round6-cpa-store-contract artifact-hash
-
 dist="$root/dist"
 so="cyber-abuse-guard-v${RELEASE_ARTIFACT_VERSION}.so"
 store_zip="cyber-abuse-guard_${RELEASE_ARTIFACT_VERSION}_linux_amd64.zip"
@@ -53,6 +49,106 @@ core_artifacts=(
   sbom.cdx.json
   checksums.txt
 )
+
+assert_rc_sbom_identity() {
+  local sbom_path="$1"
+  local component_version="v$RELEASE_ARTIFACT_VERSION"
+  local component_ref="pkg:golang/github.com/yujianwudi/cyber-abuse-guard@${component_version}?type=module"
+  local component_purl="${component_ref}&goos=linux&goarch=amd64"
+
+  jq -e \
+    --arg version "$component_version" \
+    --arg ref "$component_ref" \
+    --arg purl "$component_purl" \
+    '.metadata.component.name == "github.com/yujianwudi/cyber-abuse-guard" and
+     .metadata.component.version == $version and
+     .metadata.component["bom-ref"] == $ref and
+     .metadata.component.purl == $purl and
+     ([.dependencies[] | select(.ref == $ref)] | length) == 1' \
+    "$sbom_path" >/dev/null || \
+    release_die "RC SBOM does not bind the exact versioned main module identity: $sbom_path"
+}
+
+normalize_rc_sbom_identity() {
+  local sbom_path="$1"
+  local old_ref temporary
+  local component_version="v$RELEASE_ARTIFACT_VERSION"
+  local component_ref="pkg:golang/github.com/yujianwudi/cyber-abuse-guard@${component_version}?type=module"
+  local component_purl="${component_ref}&goos=linux&goarch=amd64"
+
+  old_ref="$(jq -er \
+    '.metadata.component["bom-ref"] |
+     select(type == "string" and length > 0)' "$sbom_path")" || \
+    release_die "RC SBOM is missing its generated main component reference: $sbom_path"
+  jq -e \
+    --arg old_ref "$old_ref" \
+    '.metadata.component.name == "github.com/yujianwudi/cyber-abuse-guard" and
+     (.metadata.component.version | type == "string") and
+     .metadata.component["bom-ref"] == $old_ref and
+     ($old_ref | startswith("pkg:golang/github.com/yujianwudi/cyber-abuse-guard@")) and
+     ($old_ref | endswith("?type=module")) and
+     (.metadata.component.purl | type == "string") and
+     (.metadata.component.purl |
+       startswith("pkg:golang/github.com/yujianwudi/cyber-abuse-guard@")) and
+     (.metadata.component.purl | contains("?type=module")) and
+     ([.dependencies[] | select(.ref == $old_ref)] | length) == 1' \
+    "$sbom_path" >/dev/null || \
+    release_die "RC SBOM generated main component identity is ambiguous: $sbom_path"
+
+  temporary="$(mktemp "${sbom_path%/*}/.sbom-rc-normalized.XXXXXX")"
+  if ! jq \
+    --arg version "$component_version" \
+    --arg ref "$component_ref" \
+    --arg purl "$component_purl" \
+    '(.metadata.component["bom-ref"]) as $old_ref |
+     .metadata.component.version = $version |
+     .metadata.component["bom-ref"] = $ref |
+     .metadata.component.purl = $purl |
+     .dependencies |= map(
+       (if .ref == $old_ref then .ref = $ref else . end) |
+       (if has("dependsOn") then
+          .dependsOn |= map(if . == $old_ref then $ref else . end)
+        else . end)
+     )' \
+    "$sbom_path" >"$temporary"; then
+    rm -f -- "$temporary"
+    release_die "failed to normalize the exact RC SBOM identity: $sbom_path"
+  fi
+  chmod 0644 "$temporary"
+  mv -f -- "$temporary" "$sbom_path"
+  assert_rc_sbom_identity "$sbom_path"
+}
+
+write_rc_checksums() {
+  local output_dir="$1"
+  local temporary
+  temporary="$(mktemp "$output_dir/.checksums.XXXXXX")"
+  if ! (
+    cd "$output_dir"
+    sha256sum \
+      "$so" \
+      "$so.sha256" \
+      "$store_zip" \
+      build-metadata.json \
+      ruleset-manifest.json \
+      ruleset.sha256 \
+      sbom.cdx.json
+  ) >"$temporary"; then
+    rm -f -- "$temporary"
+    release_die "failed to regenerate checksums for the normalized RC artifacts"
+  fi
+  chmod 0644 "$temporary"
+  mv -f -- "$temporary" "$output_dir/checksums.txt"
+}
+
+rm -rf -- "$dist"
+make -C "$root" -j1 ARTIFACT_VERSION="$RELEASE_ARTIFACT_VERSION" \
+  round6-development-artifacts
+normalize_rc_sbom_identity "$dist/sbom.cdx.json"
+write_rc_checksums "$dist"
+make -C "$root" -j1 ARTIFACT_VERSION="$RELEASE_ARTIFACT_VERSION" \
+  round6-cpa-store-contract artifact-hash
+
 for artifact in "${core_artifacts[@]}"; do
   [[ -f "$dist/$artifact" && ! -L "$dist/$artifact" ]] || \
     release_die "RC artifact must be a regular non-symlink file: $dist/$artifact"
@@ -78,25 +174,6 @@ jq -e \
    .goos == "linux" and .goarch == "amd64" and .cgo_enabled == true' \
   "$dist/build-metadata.json" >/dev/null || \
   release_die "RC build metadata does not describe the clean exact Linux amd64 source"
-
-assert_rc_sbom_identity() {
-  local sbom_path="$1"
-  local component_version="v$RELEASE_ARTIFACT_VERSION"
-  local component_ref="pkg:golang/github.com/yujianwudi/cyber-abuse-guard@${component_version}?type=module"
-  local component_purl="${component_ref}&goos=linux&goarch=amd64"
-
-  jq -e \
-    --arg version "$component_version" \
-    --arg ref "$component_ref" \
-    --arg purl "$component_purl" \
-    '.metadata.component.name == "github.com/yujianwudi/cyber-abuse-guard" and
-     .metadata.component.version == $version and
-     .metadata.component["bom-ref"] == $ref and
-     .metadata.component.purl == $purl and
-     ([.dependencies[] | select(.ref == $ref)] | length) == 1' \
-    "$sbom_path" >/dev/null || \
-    release_die "RC SBOM does not bind the exact versioned main module identity: $sbom_path"
-}
 
 assert_rc_sbom_identity "$dist/sbom.cdx.json"
 
@@ -164,7 +241,24 @@ for name in a b; do
     CYCLONEDX_GOMOD_VERSION="${CYCLONEDX_GOMOD_VERSION:-v1.9.0}" \
     GOCACHE="$work/go-build-cache-$name" \
     make -C "$clone" -j1 ARTIFACT_VERSION="$RELEASE_ARTIFACT_VERSION" \
-      round6-development-artifacts round6-cpa-store-contract artifact-hash
+      round6-development-artifacts
+  normalize_rc_sbom_identity "$clone/dist/sbom.cdx.json"
+  write_rc_checksums "$clone/dist"
+  env \
+    GO="$go_path" \
+    VERSION="$RELEASE_SOURCE_VERSION" \
+    SOURCE_DATE_EPOCH="$RELEASE_SOURCE_DATE_EPOCH" \
+    RELEASE_RC_BUILD=1 \
+    RELEASE_RC_TAG="$RELEASE_RC_TAG" \
+    RELEASE_RC_EXPECTED_COMMIT="$RELEASE_GIT_COMMIT" \
+    RELEASE_RC_EXPECTED_TREE="$RELEASE_GIT_TREE" \
+    ROUND6_SAFE_SPARSE_BUILD=1 \
+    REQUIRE_DIST_ARTIFACTS=1 \
+    CYCLONEDX_GOMOD="$cyclonedx_path" \
+    CYCLONEDX_GOMOD_VERSION="${CYCLONEDX_GOMOD_VERSION:-v1.9.0}" \
+    GOCACHE="$work/go-build-cache-$name" \
+    make -C "$clone" -j1 ARTIFACT_VERSION="$RELEASE_ARTIFACT_VERSION" \
+      round6-cpa-store-contract artifact-hash
   [[ -z "$(git -C "$clone" status --porcelain)" ]] || \
     release_die "RC reproducibility source $name became dirty"
   assert_rc_sbom_identity "$clone/dist/sbom.cdx.json"
