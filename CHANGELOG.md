@@ -7,12 +7,14 @@ version is `0.15` and the only formal tag name is `v0.15` (never `v0.15.0`).
 The Round 6 implementation was merged by PR #9 at
 `main@6782dfaffd4da3f09604113c7d38675f331dc759`, tree
 `a8edbe2e6d19fa725fb962cdd6aaad5b416d4b85`, and exact main/tag CI passed. A
-public source-only `v0.15-rc.1` prerelease exists without attached release
-assets; it is not the private clean candidate, a formal release, or deployment
-authorization. The only validation platform in this round is Linux amd64;
-Windows and macOS are outside scope. The historical v10 result remains
-`CONSUMED / FAIL` and cannot be rerun or used for tuning. A future stable
-release still requires a newly authored independent unseen set.
+public `v0.15-rc.2` prerelease now carries ten Linux amd64 sandbox assets. It
+was published through a direct owner override with automated tests and CPA Host
+integration explicitly skipped as release gates. The RC source CI failed on an
+HTTP 403 while checking the latest CPA source, so this prerelease is not the
+private clean candidate, a formal release, Host compatibility evidence, or
+deployment authorization. Windows and macOS are outside scope. The historical
+v10 result remains `CONSUMED / FAIL` and cannot be rerun or used for tuning. A
+future stable release still requires a newly authored independent unseen set.
 
 - Add a dedicated, manual `v0.15-rc.2` prerelease workflow for clean Linux
   amd64 server-sandbox assets. It binds an annotated RC tag to the exact main
@@ -28,6 +30,12 @@ release still requires a newly authored independent unseen set.
 - Bind every headless `gh release` create/upload/edit operation to the canonical
   repository explicitly, so publication and rollback do not depend on a local
   Git checkout after the build artifact has been verified.
+- Pass the workflow token to the CPA latest-source identity check and run that
+  external check after core regressions, unit/race/vet, build, and artifact
+  generation, so a transient GitHub API failure remains visible without
+  suppressing the local verification evidence.
+- Add a documentation index, archive the obsolete v0.1.2 next-version notes,
+  and synchronize both README entry points with the published RC state.
 
 ### Round 6 long-text streaming candidate
 

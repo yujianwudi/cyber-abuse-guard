@@ -44,7 +44,8 @@ for required_file in \
   "$root/docs/THREAT_MODEL.md" \
   "$root/docs/INSTALL_DOCKER.md" \
   "$root/docs/LIMITATIONS.md" \
-  "$root/docs/NEXT_VERSION.md" \
+  "$root/docs/README.md" \
+  "$root/docs/archive/v0.1.2/NEXT_VERSION.md" \
   "$root/docs/RELEASE_POLICY.md" \
   "$root/docs/ROUND6_CONFIG_MIGRATION.md" \
   "$root/docs/ROUND6_DEVELOPMENT_HANDOFF.md" \
@@ -69,7 +70,8 @@ done
 (cd "$dist" && sha256sum -c "$so.sha256" && sha256sum -c ruleset.sha256)
 
 bundle_stage="$(mktemp -d)"
-mkdir -p "$bundle_stage/plugins/linux/amd64" "$bundle_stage/docs/reports" "$bundle_stage/scripts"
+mkdir -p "$bundle_stage/plugins/linux/amd64" "$bundle_stage/docs/archive/v0.1.2" \
+  "$bundle_stage/docs/reports" "$bundle_stage/scripts"
 find "$bundle_stage" -type d -exec chmod 0755 {} +
 
 install -m 0755 "$dist/$so" "$bundle_stage/plugins/linux/amd64/$so"
@@ -80,12 +82,14 @@ install -m 0644 "$root/README.md" "$root/README_CN.md" "$root/LICENSE" \
   "$root/config.example.yaml" "$bundle_stage/"
 install -m 0644 "$root/docs/AUDIT_HANDOFF.md" "$root/docs/DESIGN.md" "$root/docs/THREAT_MODEL.md" \
   "$root/docs/INSTALL_DOCKER.md" "$root/docs/LIMITATIONS.md" \
-  "$root/docs/NEXT_VERSION.md" "$root/docs/RELEASE_POLICY.md" \
+  "$root/docs/README.md" "$root/docs/RELEASE_POLICY.md" \
   "$root/docs/ROUND6_CONFIG_MIGRATION.md" \
   "$root/docs/ROUND6_DEVELOPMENT_HANDOFF.md" \
   "$root/docs/ROUND6_LIMITATIONS.md" "$root/docs/ROUND6_RELEASE_GATE.md" \
   "$root/docs/ROUND6_STREAMING_SCANNER_DESIGN.md" \
   "$root/docs/RULES.md" "$bundle_stage/docs/"
+install -m 0644 "$root/docs/archive/v0.1.2/NEXT_VERSION.md" \
+  "$bundle_stage/docs/archive/v0.1.2/"
 install -m 0644 "$root/docs/reports/TEST_REPORT.md" \
   "$root/docs/reports/PERFORMANCE.md" "$root/docs/reports/CORPUS_REPORT.md" \
   "$root/docs/reports/CPA_INTEGRATION.md" \

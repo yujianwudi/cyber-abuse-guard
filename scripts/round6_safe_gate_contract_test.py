@@ -1572,6 +1572,15 @@ jobs:
         with self.assertRaisesRegex(ContractError, "exact reviewed text"):
             validate_blocked_prerelease_workflow(workflow, Path("round6-prerelease.yml"))
 
+    def test_blocked_prerelease_release_commands_pin_repository(self):
+        original = self.blocked_workflow()
+        repository_flag = '              --repo "$GITHUB_REPOSITORY" \\\n'
+        self.assertEqual(original.count(repository_flag), 3)
+        workflow = original.replace(repository_flag, "", 1)
+        self.assertNotEqual(workflow, original)
+        with self.assertRaisesRegex(ContractError, "exact reviewed text"):
+            validate_blocked_prerelease_workflow(workflow, Path("round6-prerelease.yml"))
+
     def test_blocked_prerelease_duplicate_action_key_fails(self):
         workflow = self.blocked_workflow().replace(
             "            --draft \\\n", "            --draft \\\n            --draft \\\n", 1

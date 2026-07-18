@@ -197,7 +197,7 @@ docs/AUDIT_HANDOFF.md
 docs/DESIGN.md
 docs/INSTALL_DOCKER.md
 docs/LIMITATIONS.md
-docs/NEXT_VERSION.md
+docs/README.md
 docs/RELEASE_POLICY.md
 docs/ROUND6_CONFIG_MIGRATION.md
 docs/ROUND6_DEVELOPMENT_HANDOFF.md
@@ -206,6 +206,9 @@ docs/ROUND6_RELEASE_GATE.md
 docs/ROUND6_STREAMING_SCANNER_DESIGN.md
 docs/RULES.md
 docs/THREAT_MODEL.md
+docs/archive/
+docs/archive/v0.1.2/
+docs/archive/v0.1.2/NEXT_VERSION.md
 docs/reports/
 docs/reports/CORPUS_REPORT.md
 docs/reports/CPA_INTEGRATION.md
