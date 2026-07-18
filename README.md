@@ -103,6 +103,11 @@ Envelope completeness and text coverage are separate:
 | `balanced` | local block at the balanced threshold | allow + audit |
 | `strict` | local block at the strict threshold | local block + audit |
 
+The safe startup defaults are `mode: observe` and
+`subject_control.enabled: false`. Observe updates bounded counters only: it
+does not block, accumulate subject risk, persist per-request SQLite events, or
+hash the full request body for audit correlation.
+
 Incomplete requests never update subject risk. A partial prefix cannot produce
 a policy block in `balanced`.
 
@@ -110,6 +115,8 @@ a policy block in `balanced`.
 
 | Control | Default / boundary |
 |---|---|
+| Runtime mode | `observe` |
+| Subject control | disabled; explicit opt-in |
 | CPA-visible RPC envelope | 8 MiB |
 | Retained classifier window | 256 KiB through the legacy alias; valid range 16 KiB–1 MiB |
 | Total model-visible text | 8 MiB |

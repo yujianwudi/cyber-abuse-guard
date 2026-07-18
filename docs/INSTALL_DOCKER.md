@@ -312,7 +312,7 @@ plugins:
       mode: observe
       opaque_media_policy: audit
       subject_control:
-        enabled: true
+        enabled: false
         persistence: false
         max_subjects: 10000
       audit:
@@ -326,10 +326,12 @@ plugins:
 
 `log_original_text: true` is always rejected. There is no debug override.
 
-When `persistence: false`, restart clears risk, cooldown, and manual-block state.
-To enable persistence later, keep audit enabled, keep `max_subjects <= 10000`,
-and first verify `hmac_stable: true`. Subject-state rows contain only HMAC IDs
-and typed state.
+Observe leaves subject control disabled, so requests are not correlated and no
+cross-request risk is accumulated. If subject control is explicitly enabled in
+a later Audit/Balanced stage, `persistence: false` means a restart clears risk,
+cooldown, and manual-block state. To enable persistence later, keep audit
+enabled, keep `max_subjects <= 10000`, and first verify `hmac_stable: true`.
+Subject-state rows contain only HMAC IDs and typed state.
 
 ## 6. Upgrade and database migration
 
@@ -444,6 +446,9 @@ coarse categories. No raw prompt exists in the DB; use controlled local test
 fixtures when adjudication needs text. Record every threshold or policy change
 with timestamp, owner, reason, before/after values, and review result.
 
+Keep `subject_control.enabled: false` during the first audit pass unless the
+rollout explicitly includes reviewed cross-request correlation.
+
 Do not send a dangerous probe through `/v1` to a real upstream. Use the built-in
 management health probe or the repository's Mock Upstream integration test.
 
@@ -454,6 +459,9 @@ router/panic counters, or CPA 5xx increase.
 
 After approval, set `mode: balanced`, keep `opaque_media_policy: audit` unless a
 documented local risk decision says otherwise, restart, and run:
+
+Subject control remains a separate opt-in. Enabling Balanced does not require
+enabling cross-request risk accumulation.
 
 ```bash
 CPA_MANAGEMENT_KEY_FILE=/run/secrets/cpa-management.key \

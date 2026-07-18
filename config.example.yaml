@@ -50,7 +50,9 @@ plugins:
         data_exfiltration: true
 
       subject_control:
-        enabled: true
+        # Opt in only after Observe/Audit review. The safe startup default does
+        # not correlate requests or accumulate cross-request subject risk.
+        enabled: false
         # false keeps risk/cooldown/manual-block state in memory only; restart
         # clears it. true requires audit.enabled, max_subjects <= 10000, and a
         # stable CYBER_ABUSE_GUARD_HMAC_KEY_FILE.
@@ -67,6 +69,9 @@ plugins:
         data_dir: ""
         retention_days: 30
         max_db_mb: 256
+        # Observe never persists per-request events and therefore does not hash
+        # the request body for this field. Audit/enforcing modes compute it only
+        # when an event is actually persisted.
         log_request_hash: true
         log_subject_hash: true
         log_rule_ids: true

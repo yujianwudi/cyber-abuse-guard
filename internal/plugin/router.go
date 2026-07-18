@@ -23,6 +23,28 @@ type modelRouteFailure struct {
 	reason string
 }
 
+// requestHashMemo defers the full-body digest until a route actually needs a
+// subject idempotency key, a pending block correlation key, or a persisted
+// audit field. It is local to one router callback and is never shared.
+type requestHashMemo struct {
+	body  []byte
+	value string
+}
+
+func (memo *requestHashMemo) get(p *Plugin) string {
+	if memo == nil {
+		return ""
+	}
+	if memo.value == "" {
+		hasher := audit.HashRequest
+		if p != nil && p.requestHasher != nil {
+			hasher = p.requestHasher
+		}
+		memo.value = hasher(memo.body)
+	}
+	return memo.value
+}
+
 const streamingScannerIdentity = buildinfo.StreamingScannerIdentity
 
 // callModelRoute captures the runtime's failure policy under the same read
@@ -85,19 +107,21 @@ func (p *Plugin) route(state *runtimeState, request pluginapi.ModelRouteRequest)
 	}
 	started := time.Now()
 	p.counters.total.Add(1)
+	requestHash := requestHashMemo{body: request.Body}
 	requestProfile, sourceFormatKnown := extractionProfile(request.SourceFormat)
 	unknownSourceFormat := !sourceFormatKnown
 	if unknownSourceFormat {
 		p.counters.unknownSourceFormats.Add(1)
 		p.reportUnknownSourceFormat()
 		if state.config.Mode == config.ModeStrict && !multipartRequest(request.Headers) {
-			requestHash := audit.HashRequest(request.Body)
+			hash := requestHash.get(p)
+			subjectHash := p.auditSubjectHash(state, request)
 			p.counters.blocked.Add(1)
 			p.counters.incompleteInspections.Add(1)
 			p.counters.incompleteBlocked.Add(1)
 			p.counters.coverageIncomplete.Add(1)
-			p.recordUnknownSourceBlock(state, requestHash, request.Stream, time.Since(started))
-			p.pending.put(requestHash, "unknown_source_format")
+			p.recordUnknownSourceBlock(state, hash, subjectHash, request.Stream, time.Since(started))
+			p.pending.put(hash, "unknown_source_format")
 			return blockedRouteEnvelope("cyber_abuse_guard_unknown_source_format"), nil
 		}
 		// Balanced/audit/observe still run the format-tolerant bounded extractor
@@ -139,7 +163,6 @@ func (p *Plugin) route(state *runtimeState, request pluginapi.ModelRouteRequest)
 	} else {
 		extracted, extractErr = extract.ScanProfiledRequest(request.Body, request.Headers, requestProfile, limits, session)
 	}
-	requestHash := audit.HashRequest(request.Body)
 	if extractErr != nil && len(extracted.IncompleteReasons) == 0 {
 		session.Abort()
 		// Invalid limits or an extractor invariant failure is operational. It is
@@ -233,15 +256,21 @@ func (p *Plugin) route(state *runtimeState, request pluginapi.ModelRouteRequest)
 	decision := inspectionDisposition(state.config.Mode, outcome, state.config.EffectiveOpaqueMediaPolicy())
 	subjectHash := ""
 	subjectReason := ""
-	if decision.EvaluateSubject {
+	if state.config.SubjectControl.Enabled && decision.EvaluateSubject {
 		if p.identifier != nil {
 			subjectHash = p.identifier.FromHeaders(request.Headers).Hash
 		}
-		subjectDecision := state.subject.EvaluateRequest(subjectHash, requestHash, result.Score)
+		subjectDecision := state.subject.EvaluateRequest(subjectHash, requestHash.get(p), result.Score)
 		state.markSubjectPersistenceDirty()
 		subjectReason = string(subjectDecision.Reason)
 		outcome.SubjectBlocked = subjectDecision.Blocked
 		decision = inspectionDisposition(state.config.Mode, outcome, state.config.EffectiveOpaqueMediaPolicy())
+	}
+	// Audit identity is independent from subject-risk accumulation. A disabled
+	// controller must not erase the privacy-safe subject field from an event the
+	// operator explicitly chose to persist.
+	if (decision.Block || decision.Audit) && subjectHash == "" {
+		subjectHash = p.auditSubjectHash(state, request)
 	}
 
 	if len(incompleteReasons) != 0 {
@@ -259,8 +288,8 @@ func (p *Plugin) route(state *runtimeState, request pluginapi.ModelRouteRequest)
 		p.counters.allowed.Add(1)
 	}
 
-	if decision.Block || decision.Audit || decision.Observe {
-		p.recordDecision(state, request, requestHash, subjectHash, extracted.TextBytesScanned, result, decision, incompleteReasons, subjectReason, time.Since(started))
+	if decision.Block || decision.Audit {
+		p.recordDecision(state, request, &requestHash, subjectHash, extracted.TextBytesScanned, result, decision, incompleteReasons, subjectReason, time.Since(started))
 	}
 	if !decision.Block {
 		return okEnvelope(pluginapi.ModelRouteResponse{Handled: false}), nil
@@ -270,7 +299,7 @@ func (p *Plugin) route(state *runtimeState, request pluginapi.ModelRouteRequest)
 	if category == "" {
 		category = string(result.Category)
 	}
-	p.pending.put(requestHash, category)
+	p.pending.put(requestHash.get(p), category)
 	reason := decision.RouteReason
 	if reason == "" {
 		reason = "cyber_abuse_guard_policy"
@@ -279,6 +308,15 @@ func (p *Plugin) route(state *runtimeState, request pluginapi.ModelRouteRequest)
 		reason = "cyber_abuse_guard_hard_policy"
 	}
 	return blockedRouteEnvelope(reason), nil
+}
+
+func (p *Plugin) auditSubjectHash(state *runtimeState, request pluginapi.ModelRouteRequest) string {
+	if p == nil || p.identifier == nil || state == nil || state.audit == nil ||
+		!state.config.Audit.Enabled || state.config.Mode == config.ModeObserve ||
+		!state.config.Audit.LogSubjectHash {
+		return ""
+	}
+	return p.identifier.FromHeaders(request.Headers).Hash
 }
 
 func opaqueMediaDisposition(cfg config.Config, present bool) (auditOnly, block bool) {
@@ -488,7 +526,7 @@ func (p *Plugin) recordStreamingCounters(extracted extract.Result, result classi
 	}
 }
 
-func (p *Plugin) recordUnknownSourceBlock(state *runtimeState, requestHash string, stream bool, latency time.Duration) {
+func (p *Plugin) recordUnknownSourceBlock(state *runtimeState, requestHash, subjectHash string, stream bool, latency time.Duration) {
 	if state == nil || state.audit == nil || !state.config.Audit.Enabled {
 		return
 	}
@@ -509,6 +547,9 @@ func (p *Plugin) recordUnknownSourceBlock(state *runtimeState, requestHash strin
 	}
 	if state.config.Audit.LogRequestHash {
 		event.RequestHash = requestHash
+	}
+	if state.config.Audit.LogSubjectHash {
+		event.SubjectHash = subjectHash
 	}
 	p.recordAuditEvent(state, event)
 }
@@ -606,8 +647,8 @@ func (p *Plugin) recordIncompleteCounters(reasons []extract.IncompleteReason, de
 	}
 }
 
-func (p *Plugin) recordDecision(state *runtimeState, request pluginapi.ModelRouteRequest, requestHash, subjectHash string, scanned int, result classifier.Result, decision inspectionDecision, incompleteReasons []extract.IncompleteReason, subjectReason string, latency time.Duration) {
-	if state == nil || state.audit == nil || !state.config.Audit.Enabled {
+func (p *Plugin) recordDecision(state *runtimeState, request pluginapi.ModelRouteRequest, requestHash *requestHashMemo, subjectHash string, scanned int, result classifier.Result, decision inspectionDecision, incompleteReasons []extract.IncompleteReason, subjectReason string, latency time.Duration) {
+	if state == nil || state.audit == nil || !state.config.Audit.Enabled || state.config.Mode == config.ModeObserve {
 		return
 	}
 	action := "audit"
@@ -646,7 +687,7 @@ func (p *Plugin) recordDecision(state *runtimeState, request pluginapi.ModelRout
 		event.RuleIDs = append([]string(nil), result.RuleIDs...)
 	}
 	if state.config.Audit.LogRequestHash {
-		event.RequestHash = requestHash
+		event.RequestHash = requestHash.get(p)
 	}
 	if state.config.Audit.LogSubjectHash {
 		event.SubjectHash = subjectHash

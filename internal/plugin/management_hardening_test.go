@@ -48,7 +48,7 @@ func TestManagementUnblockAuthenticationAndBodyContract(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			p := New()
 			t.Cleanup(p.Shutdown)
-			register(t, p, "audit:\n  enabled: false\n")
+			register(t, p, "audit:\n  enabled: false\nsubject_control:\n  enabled: true\n")
 			state := p.runtime.Load()
 			for iteration := 0; iteration < 3; iteration++ {
 				state.subject.Evaluate(subjectHash, 100)
@@ -220,6 +220,57 @@ func TestManagementEventDeletionWritesPrivacySafeAuditMarker(t *testing.T) {
 	if strings.Contains(string(encoded), "browser cookies") {
 		t.Fatalf("delete marker contained request text: %s", encoded)
 	}
+}
+
+func TestObserveManagementMutationsStillWriteAuditMarkers(t *testing.T) {
+	t.Run("delete events", func(t *testing.T) {
+		p := New()
+		t.Cleanup(p.Shutdown)
+		register(t, p, "mode: observe\naudit:\n  enabled: true\n  data_dir: \""+strings.ReplaceAll(t.TempDir(), "\\", "/")+"\"\nsubject_control:\n  enabled: false\n")
+
+		response, body := callManagementResponse(t, p, authenticatedManagementRequest(http.MethodDelete, managementBasePath+"/events", nil))
+		if response.StatusCode != http.StatusOK {
+			t.Fatalf("observe delete status=%d body=%s", response.StatusCode, body)
+		}
+		events := managementJSON(t, p, http.MethodGet, managementBasePath+"/events", nil)
+		items, ok := events["events"].([]any)
+		if !ok || len(items) != 1 {
+			t.Fatalf("observe delete events=%#v, want one mutation marker", events)
+		}
+		marker, ok := items[0].(map[string]any)
+		if !ok || marker["classifier"] != "management_delete_events" || marker["category"] != "management_operation" {
+			t.Fatalf("observe delete marker=%#v", items[0])
+		}
+	})
+
+	t.Run("unblock subject", func(t *testing.T) {
+		const subjectHash = "hmac-sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+		p := New()
+		t.Cleanup(p.Shutdown)
+		register(t, p, "mode: observe\naudit:\n  enabled: true\n  data_dir: \""+strings.ReplaceAll(t.TempDir(), "\\", "/")+"\"\nsubject_control:\n  enabled: true\n")
+		state := p.runtime.Load()
+		for iteration := 0; iteration < 3; iteration++ {
+			state.subject.Evaluate(subjectHash, 100)
+		}
+
+		response, body := callManagementResponse(t, p, authenticatedManagementRequest(
+			http.MethodPost,
+			managementBasePath+"/subjects/unblock",
+			[]byte(`{"subject_hash":"`+subjectHash+`"}`),
+		))
+		if response.StatusCode != http.StatusOK {
+			t.Fatalf("observe unblock status=%d body=%s", response.StatusCode, body)
+		}
+		events := managementJSON(t, p, http.MethodGet, managementBasePath+"/events", nil)
+		items, ok := events["events"].([]any)
+		if !ok || len(items) != 1 {
+			t.Fatalf("observe unblock events=%#v, want one mutation marker", events)
+		}
+		marker, ok := items[0].(map[string]any)
+		if !ok || marker["classifier"] != "management_unblock" || marker["category"] != "management_operation" || marker["subject_hash"] != subjectHash {
+			t.Fatalf("observe unblock marker=%#v", items[0])
+		}
+	})
 }
 
 func TestManagementObserveActionFilterSupportsGetAndDelete(t *testing.T) {

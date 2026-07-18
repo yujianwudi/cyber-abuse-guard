@@ -161,12 +161,13 @@ type Classifier struct {
 	FailMode  ClassifierFailMode `yaml:"fail_mode"`
 }
 
-// Default returns the secure production defaults from the task book.
+// Default returns safe startup defaults. Enforcement and cross-request subject
+// state are explicit operator opt-ins after an observe-only rollout.
 func Default() Config {
 	return Config{
 		Enabled:      true,
 		Priority:     300,
-		Mode:         ModeBalanced,
+		Mode:         ModeObserve,
 		MaxScanBytes: 262144,
 		// MaxTextWindowBytes remains zero unless the new key is explicitly
 		// configured. EffectiveTextWindowBytes then migrates the legacy
@@ -197,7 +198,7 @@ func Default() Config {
 			DataExfiltration:     true,
 		},
 		SubjectControl: SubjectControl{
-			Enabled:          true,
+			Enabled:          false,
 			Persistence:      false,
 			MaxSubjects:      10000,
 			WindowMinutes:    60,

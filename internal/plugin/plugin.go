@@ -143,6 +143,7 @@ type Plugin struct {
 	identifier              *subject.Identifier
 	identifierErr           error
 	loadRules               func() (*rules.RuleSet, error)
+	requestHasher           func([]byte) string
 	pending                 pendingCache
 	counters                counters
 	lastAuditNotice         atomic.Int64
@@ -166,6 +167,7 @@ func New() *Plugin {
 		identifier:    identifier,
 		identifierErr: err,
 		loadRules:     rules.LoadDefault,
+		requestHasher: audit.HashRequest,
 		pending:       newPendingCache(4096, 2*time.Minute),
 	}
 }
@@ -472,7 +474,8 @@ func (p *Plugin) routeOversized(state *runtimeState) []byte {
 }
 
 func (p *Plugin) recordOversizedRoute(state *runtimeState, decision inspectionDecision) {
-	if state == nil || state.audit == nil || !state.config.Audit.Enabled || state.config.Mode == config.ModeOff {
+	if state == nil || state.audit == nil || !state.config.Audit.Enabled ||
+		state.config.Mode == config.ModeOff || state.config.Mode == config.ModeObserve {
 		return
 	}
 	action := "audit"

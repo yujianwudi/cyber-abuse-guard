@@ -8,11 +8,11 @@ import (
 	"testing"
 )
 
-func TestDefaultMatchesTaskBook(t *testing.T) {
+func TestDefaultMatchesSafeStartupContract(t *testing.T) {
 	t.Parallel()
 
 	got := Default()
-	if !got.Enabled || got.Priority != 300 || got.Mode != ModeBalanced {
+	if !got.Enabled || got.Priority != 300 || got.Mode != ModeObserve {
 		t.Fatalf("top-level defaults = %#v", got)
 	}
 	if got.MaxScanBytes != 262144 || got.MaxJSONDepth != 32 || got.MaxTextParts != 512 {
@@ -44,7 +44,7 @@ func TestDefaultMatchesTaskBook(t *testing.T) {
 		t.Fatalf("hard-block defaults = %#v", got.HardBlockEvenIfAuthorized)
 	}
 	if got.SubjectControl != (SubjectControl{
-		Enabled: true, MaxSubjects: 10000, WindowMinutes: 60, CooldownScore: 150,
+		Enabled: false, MaxSubjects: 10000, WindowMinutes: 60, CooldownScore: 150,
 		ManualBlockScore: 250, CooldownMinutes: 30,
 	}) {
 		t.Fatalf("subject-control defaults = %#v", got.SubjectControl)
