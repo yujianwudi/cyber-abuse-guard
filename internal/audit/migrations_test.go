@@ -2,6 +2,7 @@ package audit
 
 import (
 	"database/sql"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -116,7 +117,7 @@ func TestMigrationBackupPublishCollisionBlocksMigrationWithoutChangingSchema(t *
 		t.Fatal(err)
 	}
 	stamp := fixedMigrationTime().UTC().Format("20060102T150405.000000000Z")
-	backupPath := path + ".pre-v2-" + stamp + ".bak"
+	backupPath := fmt.Sprintf("%s.pre-v%d-%s.bak", path, currentSchemaVersion, stamp)
 	const sentinel = "operator-owned collision sentinel"
 	if err := os.WriteFile(backupPath, []byte(sentinel), 0o400); err != nil {
 		t.Fatal(err)

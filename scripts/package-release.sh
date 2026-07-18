@@ -8,6 +8,7 @@ go_bin="${GO:-go}"
 release_require_commands "$go_bin" install zip sha256sum mktemp find touch sort mkdir rm git sed awk cmp
 release_init
 release_assert_tag
+release_assert_formal_build
 
 dist="${DIST_DIR:-$root/dist}"
 so="cyber-abuse-guard-v${RELEASE_ARTIFACT_VERSION}.so"
@@ -43,21 +44,12 @@ for required_file in \
   "$root/docs/INSTALL_DOCKER.md" \
   "$root/docs/LIMITATIONS.md" \
   "$root/docs/NEXT_VERSION.md" \
+  "$root/docs/RELEASE_POLICY.md" \
   "$root/docs/RULES.md" \
   "$root/docs/reports/TEST_REPORT.md" \
   "$root/docs/reports/PERFORMANCE.md" \
   "$root/docs/reports/CORPUS_REPORT.md" \
   "$root/docs/reports/CPA_INTEGRATION.md" \
-  "$root/docs/reports/HOLDOUT_REPORT.md" \
-  "$root/docs/reports/HOLDOUT_V2_REPORT.md" \
-  "$root/docs/reports/HOLDOUT_V3_REPORT.md" \
-  "$root/docs/reports/EVALUATION_V4_REPORT.md" \
-  "$root/docs/reports/EVALUATION_V5_REPORT.md" \
-  "$root/docs/reports/EVALUATION_V6_REPORT.md" \
-  "$root/docs/reports/EVALUATION_V7_REPORT.md" \
-  "$root/docs/reports/EVALUATION_V8_REPORT.md" \
-  "$root/docs/reports/EVALUATION_V9_REPORT.md" \
-  "$root/docs/reports/EVALUATION_V10_REPORT.md" \
   "$root/docs/reports/PHASE0_CPA_CONTRACT.md" \
   "$root/docs/reports/PROMPT_INJECTION_REVIEW.md" \
   "$root/docs/reports/PRIVACY.md" \
@@ -81,16 +73,11 @@ install -m 0644 "$root/README.md" "$root/README_CN.md" "$root/LICENSE" \
   "$root/config.example.yaml" "$bundle_stage/"
 install -m 0644 "$root/docs/AUDIT_HANDOFF.md" "$root/docs/DESIGN.md" "$root/docs/THREAT_MODEL.md" \
   "$root/docs/INSTALL_DOCKER.md" "$root/docs/LIMITATIONS.md" \
-  "$root/docs/NEXT_VERSION.md" "$root/docs/RULES.md" "$bundle_stage/docs/"
+  "$root/docs/NEXT_VERSION.md" "$root/docs/RELEASE_POLICY.md" \
+  "$root/docs/RULES.md" "$bundle_stage/docs/"
 install -m 0644 "$root/docs/reports/TEST_REPORT.md" \
   "$root/docs/reports/PERFORMANCE.md" "$root/docs/reports/CORPUS_REPORT.md" \
-  "$root/docs/reports/CPA_INTEGRATION.md" "$root/docs/reports/HOLDOUT_REPORT.md" \
-  "$root/docs/reports/HOLDOUT_V2_REPORT.md" "$root/docs/reports/HOLDOUT_V3_REPORT.md" \
-  "$root/docs/reports/EVALUATION_V4_REPORT.md" "$root/docs/reports/EVALUATION_V5_REPORT.md" \
-  "$root/docs/reports/EVALUATION_V6_REPORT.md" "$root/docs/reports/EVALUATION_V7_REPORT.md" \
-  "$root/docs/reports/EVALUATION_V8_REPORT.md" \
-  "$root/docs/reports/EVALUATION_V9_REPORT.md" \
-  "$root/docs/reports/EVALUATION_V10_REPORT.md" \
+  "$root/docs/reports/CPA_INTEGRATION.md" \
   "$root/docs/reports/PHASE0_CPA_CONTRACT.md" \
   "$root/docs/reports/PROMPT_INJECTION_REVIEW.md" \
   "$root/docs/reports/PRIVACY.md" "$root/docs/reports/RELEASE_EVIDENCE.md" \

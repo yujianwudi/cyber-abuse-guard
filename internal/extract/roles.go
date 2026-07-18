@@ -19,6 +19,10 @@ const (
 	RoleUser      Role = "user"
 	RoleAssistant Role = "assistant"
 	RoleTool      Role = "tool"
+	// RoleUnknown is an internal streaming marker for a complete request whose
+	// schema does not prove role attribution. Classifiers must treat it as
+	// untrusted all-parts input rather than silently upgrading it to RoleUser.
+	RoleUnknown Role = "unknown"
 )
 
 // SegmentProvenance distinguishes natural conversation content from arguments

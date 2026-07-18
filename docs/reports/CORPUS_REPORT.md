@@ -1,4 +1,7 @@
-# Project Regression Corpus Report — v0.1.2 candidate
+# Historical Project Regression Corpus Report — v0.1.2 candidate
+
+Status: **FROZEN HISTORICAL DEVELOPMENT EVIDENCE ONLY**. This report is not a
+current v0.15 test result, release decision, or release-document hash input.
 
 ## Scope
 

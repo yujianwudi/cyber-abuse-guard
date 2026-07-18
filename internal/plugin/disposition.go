@@ -216,6 +216,12 @@ func incompleteCategory(reasons []extract.IncompleteReason) string {
 		return "json_depth_limit"
 	case contains(extract.IncompleteTextPartLimit):
 		return "text_part_limit"
+	case contains(extract.IncompleteRoleAttribution):
+		return "role_attribution"
+	case contains(extract.IncompleteTotalTextLimit):
+		return "total_text_limit"
+	case contains(extract.IncompleteClassificationChunkLimit):
+		return "classification_chunk_limit"
 	case contains(extract.IncompleteDeferredTextCandidateLimit):
 		return "deferred_text_limit"
 	case contains(extract.IncompleteScanByteLimit,
@@ -241,6 +247,12 @@ func incompleteRouteReason(category string) string {
 		return "cyber_abuse_guard_json_depth_limit"
 	case "text_part_limit":
 		return "cyber_abuse_guard_text_part_limit"
+	case "role_attribution":
+		return "cyber_abuse_guard_role_attribution"
+	case "total_text_limit":
+		return "cyber_abuse_guard_total_text_limit"
+	case "classification_chunk_limit":
+		return "cyber_abuse_guard_classification_chunk_limit"
 	case "multipart_limit":
 		return "cyber_abuse_guard_multipart_limit"
 	case "multipart_schema":

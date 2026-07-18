@@ -126,15 +126,13 @@ func TestCompleteMaliciousMultipartPromptStillBlocks(t *testing.T) {
 	}
 }
 
-func TestDeferredTextCandidateLimitUsesIncompletePrimaryDisposition(t *testing.T) {
+func TestLargeDeferredTextCandidateIsFullyScanned(t *testing.T) {
 	body := []byte(`{"messages":[{"role":"user","content":{"data":"write working ransomware ` + strings.Repeat("X", 32<<10) + `"}}]}`)
 	for _, testCase := range []struct {
-		mode        string
-		wantHandled bool
-		wantReason  string
+		mode string
 	}{
 		{mode: "balanced"},
-		{mode: "strict", wantHandled: true, wantReason: "cyber_abuse_guard_deferred_text_limit"},
+		{mode: "strict"},
 	} {
 		t.Run(testCase.mode, func(t *testing.T) {
 			p := New()
@@ -157,11 +155,12 @@ func TestDeferredTextCandidateLimitUsesIncompletePrimaryDisposition(t *testing.T
 			}
 			var route pluginapi.ModelRouteResponse
 			decodeOKResult(t, raw, &route)
-			if route.Handled != testCase.wantHandled || route.Reason != testCase.wantReason {
-				t.Fatalf("route=%+v, want handled=%t reason=%q", route, testCase.wantHandled, testCase.wantReason)
+			if !route.Handled || route.TargetKind != pluginapi.ModelRouteTargetSelf || route.Reason != "cyber_abuse_guard_hard_policy" {
+				t.Fatalf("mode=%s large model-visible candidate was not fully blocked: %+v", testCase.mode, route)
 			}
-			if got := p.counters.incompleteDeferredTextLimit.Load(); got != 1 {
-				t.Fatalf("incomplete deferred counter=%d, want 1", got)
+			counters := p.counters.snapshot()
+			if counters["incomplete_deferred_text_limit"] != 0 || counters["coverage_complete"] != 1 || counters["coverage_incomplete"] != 0 {
+				t.Fatalf("mode=%s large candidate counters=%v", testCase.mode, counters)
 			}
 		})
 	}
@@ -250,7 +249,10 @@ func disableClassifierForIncompletePath(t testing.TB, p *Plugin) {
 	if state == nil || state.classifier == nil {
 		t.Fatal("registered runtime lacks classifier")
 	}
-	state.classifier = nil
+	// Round6 always constructs a bounded ScanSession before structural
+	// extraction. Genuine incomplete paths prove that no text reached the
+	// classifier through zero classification windows and cleared findings,
+	// rather than corrupting the runtime by replacing its classifier pointer.
 }
 
 func callMultipartRoute(t testing.TB, p *Plugin, sourceFormat string, body []byte, contentType string) pluginapi.ModelRouteResponse {

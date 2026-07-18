@@ -16,20 +16,28 @@ management test input are untrusted. CPA's Plugin Host and authenticated
 management middleware are trusted. No upstream or external classifier is
 trusted with request text.
 
-The root dependency is CPA v7.2.75 at upstream tag commit
-`e57416731aec87051ac00d0812df6aebd0e9d57a`. Source overlays, developer tests,
-authorized GitHub CI, and Leo's isolated real-Host run are separate evidence
-classes. A source implementation, local WSL run, unit PASS, GitHub CI PASS, or
-older PASS is never treated as production admission for the implementation
-freeze. The fifth-round exact-source CI artifact was produced and verified for
-freeze `170de7f324c2bdf9a473b1866bdfc1e097182301`; the authorized Tencent Cloud
-CPA v7.2.75 + Mock-upstream Host matrix and independent review remain pending.
+The active project version is exact `0.15`; the only formal tag is `v0.15`,
+never `v0.15.0`. The required compatibility and real-Host target is CPA
+v7.2.86 (`81d70f5d9f3fdb39a6290ed9c917ff0c6f27ca30`). Source overlays, CI,
+private candidate bytes, Host records, and independent review are separate
+evidence classes. Commit `21ceb57e6b6030e56d7820c9a67a8eecd068c669`
+passed the then-current v7.2.83 latest-source lane in push and PR CI as a
+pre-version-migration checkpoint; it is not final
+v0.15 artifact or Host evidence. The final PR head and PR CI must precede merge
+to `main`, exact post-merge main push CI, and candidate dispatch from
+`refs/heads/main`.
+
+Earlier v7.2.85/v7.2.84/v7.2.83/v7.2.82/v7.2.81 source/compile profiles are historical non-gating
+engineering evidence, not current v0.15 release requirements.
+
+The current classifier identity is `classifier-policy-v3` /
+`99e0ce7f59d2e687ebb3e79e1a71300afee8bb56f723cd8ba3f478c71a64cfd2`.
 
 ## Principal threats and controls
 
 | Threat | Control |
 |---|---|
-| Explicit malicious request reaches an upstream account | ModelRouter runs before provider/auth selection; handled decisions target only the local executor. The historical v7.2.72 harness counted Auth Selector, Provider, Usage, and Mock Upstream calls independently for four protocols, but does not validate this candidate. The fifth-round exact-source CI artifact is recorded for freeze `170de7f324c2bdf9a473b1866bdfc1e097182301`; Tencent Cloud Host validation and independent verification remain pending, and ordinary CI is still source-contract plus integration compile-only rather than a native Host run. |
+| Explicit malicious request reaches an upstream account | ModelRouter runs before provider/auth selection; handled decisions target only the local executor. Historical v7.2.72 evidence does not validate v0.15. The private untagged clean candidate must be loaded by CPA v7.2.86, and each local block must prove zero Auth Selector, Provider, Usage, and Mock Upstream deltas. The v7.2.86 Host record and independent verification are pending. |
 | Another router handles the request first | Install at priority 300, verify effective ordering, disable the obsolete identity-rewrite filter, and document that any higher-priority handled Router can bypass this guard. At equal priority CPA orders by plugin ID ascending, so a lexicographically earlier handled Router can also win. |
 | Plugin is absent, registration fails, it is fused, or its self executor is unusable | Treat load/registration/fuse state, Router errors or pre-result panics, invalid/empty targets, and executor-not-ready as CPA host fail-open conditions that may continue other Routers or native routing. `enforcement_ready` is internal plugin state only; external load/order/readiness monitoring remains required. |
 | Keyword-only false positive blocks legitimate security work | Base behavior requires related action/object plus operationalization, target, evasion, impact, or scale evidence; defensive/lab/remediation scope is explicit and wrapper evidence cannot manufacture a taxonomy. |
@@ -43,7 +51,7 @@ CPA v7.2.75 + Mock-upstream Host matrix and independent review remain pending.
 | A media marker placed after `source.data` turns opaque bytes into classifier text | Payload-adjacent `data`/`bytes`/`blob`/`binary`/`filename`/`format`/`detail`/`width`/`height`/`duration` values are bounded object-level candidates. A later media marker discards them before Parts, Segments, decoding, or text-budget accounting; a final non-media object commits them as text. Candidate propagation is restricted to media-style ownership, tool boundaries cut inherited media meaning, and opaque kinds have fixed ordering. |
 | An attacker labels executable tool data as media to suppress inspection | Provider-native tool/tool-payload boundaries retain text semantics. Tool `data` remains inspectable and cannot make itself opaque merely by adding `type=image` outside a reviewed media container. |
 | An unknown multipart field injects text into classification or creates a partial-score block | Multipart text is selected only by a fixed SourceFormat profile. `openai-image` admits prompt/negative-prompt text; unknown non-file fields and text/file type mismatches become fixed incomplete schema without retaining name/value. Balanced allows+audits, Strict blocks for the incomplete reason, and neither uses partial rule IDs, score, or subject state. |
-| Parser tests are mistaken for real ingress/Host proof | CPA v7.2.75 `ModelRouteRequest` has no general HTTP path and the image handler may rebuild multipart before routing. Parser tests prove only the plugin-input contract; exact-artifact Host tests must separately prove CPA reconstruction, pre-SSE behavior, and Auth/Provider/Usage/upstream deltas. |
+| Parser tests are mistaken for real ingress/Host proof | CPA `ModelRouteRequest` has no general HTTP path and the image handler may rebuild multipart before routing. Parser tests prove only the plugin-input contract; the exact-candidate Host test on v7.2.86 must separately prove CPA reconstruction, pre-SSE behavior, and Auth/Provider/Usage/upstream deltas. |
 | Base64 or high-risk words are split across provider blocks, ordered tool fields, or isolated characters | Same-message content and ordered tool-payload/output strings are re-decoded after pristine joining, and a tightly bounded isolated-character reconstruction path closes simple fragmentation. |
 | Public adversarial material contaminates later evaluation | External repositories are reviewed read-only, sanitized into mechanism-level development tests, never executed, and never reused as a blind Holdout. |
 | A local instruction file or remote template injects higher-priority policy before CPA sees the request | This is outside the Router boundary. The host must allowlist instruction paths, enforce owner/mode and write restrictions, bind SHA-256/signatures, verify at startup and every reload, audit changes, and pin human-approved remote templates to a commit/hash. The Router cannot attest to `model_instructions_file`, `AGENTS.md`, or remote-template integrity. |
@@ -58,21 +66,21 @@ CPA v7.2.75 + Mock-upstream Host matrix and independent review remain pending.
 | Router and executor retries count one logical request multiple times | Subject risk uses a domain-separated request digest and bounded idempotency receipts. The same subject/request pair is counted once across execute, stream, token count, retry, concurrency, pending-cache miss/expiry, enabled reconfigure, and shutdown races. Receipts persist with optional subject snapshots. |
 | Regex denial of service | Default rules use normalized literal terms; validation rejects unsupported/oversized rule constructs. |
 | Prompt or secret leakage through Guard audit | Fixed minimal event schema; SHA-256/HMAC correlation; tests search the DB for canary prompt/key/unknown-field values. This does not cover CPA Host request/error logs. |
-| CPA Host logging persists request bodies outside the Guard audit boundary | CPA v7.2.75 may temporarily spool non-multipart bodies and persist a raw body in an HTTP error log. Sandbox tests use a temporary log directory and must review commercial mode, retention, permissions, canary absence/presence, and cleanup before any production observation. |
+| CPA Host logging persists request bodies outside the Guard audit boundary | CPA may temporarily spool non-multipart bodies and persist a raw body in an HTTP error log. Every current Host-matrix sandbox uses a temporary log directory and must review mode, retention, permissions, canary absence/presence, and cleanup before any production observation. |
 | Subject hash reversal/correlation or secret-file path swap | HMAC-SHA256 with a production mode-0600 regular-file secret; Linux uses `O_NOFOLLOW` and validates/reads the same descriptor; no plaintext subjects; status exposes no secret. |
 | Persisted subject state leaks plaintext or is restored under a different key | Typed HMAC-only schema, bounded atomic snapshots, one-way key ID, explicit key mismatch with writes blocked, expiry/decay/capacity on restore. |
-| Forged `X-Forwarded-For` | CPA v7.2.75 exposes no trusted peer address to ModelRouter, so v0.1.2 rejects trusted-proxy activation and never accepts the header as identity. |
+| Forged `X-Forwarded-For` | CPA ABI v1 exposes no trusted peer address to ModelRouter, so v0.15 rejects trusted-proxy activation and never accepts the header as identity. |
 | High-cardinality subject IDs exhaust memory or displace manual blocks | `max_subjects` defaults to 10,000; least-recent-risk non-manual entries are evicted, manual blocks are protected, and new risky subjects fail closed if no entry is evictable. |
 | Audit DB lock/corruption takes CPA down or path swap changes another file | Busy timeout, bounded queue, fail-open audit path, deadline-bounded close, rate-limited diagnostics, exact schema/index/history validation, rejection of writable/final-symlink directories and DB/WAL/SHM symlinks, and visible runtime permission degradation. Enforcement continues while audit/persistence degrades. |
 | A local DB writer deletes valid persisted subjects | Filesystem ownership/mode is the trust boundary. Schema v2 detects malformed or inconsistent rows but has no keyed whole-snapshot MAC and does not claim adversarial completeness. |
 | v0.1.1 database upgrade is partial, exposes a temporary copy, or destroys the old store | Explicit schema version/history, transactional v1→v2 migration, private mode-0700 staging, mode-0400 sync-before-publish backup, bounded backup count, and failure rollback tests. |
 | Invalid hot reload weakens policy or erases enforcement history | Parse/compile/validate full state before atomic swap; last valid state is retained; compatible enabled-to-enabled changes preserve subject risk, cooldown, and manual blocks; unsafe capacity shrink is rejected. |
 | Plugin panic crashes CPA or bypasses enforcement | ABI entrypoints recover. A recovered `model.route` panic self-routes in a validated Balanced/Strict runtime and increments counters; other methods preserve a non-zero ABI failure signal. CPA may still fuse a plugin, so monitoring remains required. |
-| Router error silently weakens enforcement | Known scan-boundary, oversized-RPC, recovered panic, and guarded Router failures self-route in enforcing modes. Status exposes readiness/error/panic counters; the watchdog alarms on deltas. CPA v7.2.75 still owns a host-level fail-open policy that the plugin cannot change. |
+| Router error silently weakens enforcement | Known scan-boundary, oversized-RPC, recovered panic, and guarded Router failures self-route in enforcing modes. Status exposes readiness/error/panic counters; the watchdog alarms on deltas. CPA still owns host-level fail-open policy that the plugin cannot change; the CPA v7.2.86 Host matrix must verify it. |
 | Management test/unblock exposed to normal API keys | Routes registered exclusively through CPA Management API; no public resource routes. |
 | Oversized management HTTP body is fully buffered by CPA before plugin limits run | CPA currently uses `io.ReadAll` in `ServeManagementHTTP`, so plugin 1 MiB body / 2 MiB envelope checks are not a host memory ceiling. The deployment proxy sets `client_max_body_size 1m`; the server sandbox must prove Nginx returns 413 before CPA receives the request. |
 | CPA store rejects or misinstalls the release archive | Keep the store ZIP separate from the audit bundle. CI must require real `.so`/ZIP/metadata/checksums, use `InstallManifest` for first install and Host load, then verify same-Dist repeat-skip/tamper-repair with `TestPublishedStoreArchive`. Synthetic fallback is source evidence only. |
-| SSRF or prompt/media exfiltration via classifier or URL inspection | v0.1.2 rejects classifier activation, never fetches media URLs, and performs no outbound classification/telemetry call. |
+| SSRF or prompt/media exfiltration via classifier or URL inspection | v0.15 rejects classifier activation, never fetches media URLs, and performs no outbound classification/telemetry call. |
 | Identity spoofing to evade upstream policy | Plugin never changes model, system prompt, client name, headers that claim identity, or upstream safety declarations. |
 
 ## Abuse cases intentionally still blocked
@@ -89,12 +97,10 @@ Deterministic local rules cannot infer intent perfectly, can be evaded by novel
 language or encoding, and can produce false positives/negatives. Decoding is
 bounded, images/audio/video are not semantically inspected, and public media
 URLs are never fetched. `observe` and `audit` deliberately do not block. CPA or
-upstream behavior outside the pinned ABI may change. The repository root now
-targets CPA v7.2.75. The authorized exact-source GitHub CI artifact is recorded
-for freeze `170de7f324c2bdf9a473b1866bdfc1e097182301`, but only that artifact plus
-Leo's independent real-Host run against the implementation freeze can establish
-native compatibility. CPA retains the host-level Router fail-open conditions described
-above. Holdout/evaluation generations v1-v9 are
+upstream behavior outside the pinned ABI may change. Native compatibility for
+v0.15 requires one private untagged clean candidate plus the exact CPA v7.2.86
+Host record and an independent audit. CPA retains the
+host-level Router fail-open conditions described above. Holdout/evaluation generations v1-v9 are
 retired, consumed, or methodology-invalid history; methodologically valid v10
 was consumed and failed. Any future release attempt requires a new
 independently authored unseen set for a materially new implementation and must
@@ -116,7 +122,20 @@ excluded from evidence. Historical results are reported in
 `reports/RELEASE_EVIDENCE.md`. Any missing final-commit Host,
 GitHub CI, artifact, or proxy result is **NOT RUN** or **BLOCKED**, never an
 inferred PASS. Embedded ruleset `1.0.7` identifies YAML assets only and does
-not include the Go `META-OVERRIDE-001` overlay. The fifth-round Tencent Cloud
-Host run and independent source/artifact review remain pending; even after
-engineering gates pass, the maximum status is
-`READY FOR INDEPENDENT SOURCE/ARTIFACT REVIEW`, not production approval.
+not include the Go `META-OVERRIDE-001` overlay. The current CPA v7.2.86 Host
+matrix, independent source/artifact/Host review, and candidate-bound external
+`evaluation-v11` or later first-and-only `CONSUMED / PASS` attestation remain
+pending. If they pass, an annotated `v0.15-dev.round6[.N]` draft prerelease is optional but remains
+`BLOCKED / NOT A FORMAL RELEASE`. The annotated formal `v0.15` tag and verified
+draft additionally consume that same attestation; protected promotion may
+publish only that unchanged draft. Historical v10 remains `CONSUMED / FAIL`, cannot
+be rerun, and is not a formal-build input. Formal source/audit bundles exclude
+evaluation, Holdout, private, blind, and retired material.
+
+The final PR head must have no unresolved, non-outdated actionable review
+threads before merge. Automated review is development feedback only and does
+not reduce the independent-review threat boundary.
+
+The neutral source gate is [RELEASE_POLICY.md](RELEASE_POLICY.md). Only external
+`round6-prerelease-attestation.json` and `formal-release-attestation.json`
+assets can close Host/audit and formal publication boundaries.

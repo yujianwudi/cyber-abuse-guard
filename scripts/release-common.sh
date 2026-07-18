@@ -76,14 +76,31 @@ release_ruleset_hash() {
   done < <(release_ruleset_files) | sha256sum | awk '{print $1}'
 }
 
+release_round6_safe_sparse_path() {
+  local path="${1,,}"
+  case "$path" in
+    cmd/*evaluation*|cmd/*holdout*|cmd/*consumed*|cmd/*private*|cmd/*blind*|cmd/*retired*|\
+    docs/*EVALUATION_*|docs/*HOLDOUT_*|docs/*HOLDOUT_REPORT.md|\
+    docs/*consumed*|docs/*private*|docs/*blind*|docs/*retired*|\
+    internal/classifier/*evaluation*|internal/classifier/*holdout*|\
+    internal/classifier/*consumed*|internal/classifier/*private*|internal/classifier/*blind*|internal/classifier/*retired*|\
+    testdata/*evaluation*|testdata/*holdout*|testdata/*consumed*|testdata/*private*|testdata/*blind*|testdata/*retired*)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 release_init() {
 	release_require_commands git sed awk sha256sum sort head
 	local buildinfo_ruleset_version unsafe_index_entries
 
   RELEASE_SOURCE_VERSION="$(sed -nE 's/^[[:space:]]*Version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' \
     "$RELEASE_ROOT/internal/buildinfo/buildinfo.go" | head -n 1)"
-  [[ "$RELEASE_SOURCE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || \
-    release_die "cannot read a semantic source version from internal/buildinfo/buildinfo.go"
+  [[ "$RELEASE_SOURCE_VERSION" =~ ^[0-9]+\.[0-9]+$ ]] || \
+    release_die "cannot read the exact two-component source version from internal/buildinfo/buildinfo.go"
 
   RELEASE_RULESET_VERSION="$(sed -nE 's/^[[:space:]]*version:[[:space:]]*"([^"]+)".*/\1/p' \
     "$RELEASE_ROOT/rules/manifest.yaml" | head -n 1)"
@@ -94,6 +111,19 @@ release_init() {
 	[[ "$buildinfo_ruleset_version" == "$RELEASE_RULESET_VERSION" ]] || \
 		release_die "buildinfo ruleset version $buildinfo_ruleset_version does not match manifest $RELEASE_RULESET_VERSION"
 
+  RELEASE_CLASSIFIER_POLICY_VERSION="$(sed -nE 's/^[[:space:]]*const[[:space:]]+ClassifierPolicyVersion[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' \
+    "$RELEASE_ROOT/internal/classifier/policy_identity.go" | head -n 1)"
+  [[ "$RELEASE_CLASSIFIER_POLICY_VERSION" =~ ^classifier-policy-v[0-9]+$ ]] || \
+    release_die "cannot read classifier policy version from internal/classifier/policy_identity.go"
+  RELEASE_CLASSIFIER_POLICY_SHA256="$(sed -nE 's/^[[:space:]]*const[[:space:]]+ClassifierPolicySHA256[[:space:]]*=[[:space:]]*"([0-9a-f]+)".*/\1/p' \
+    "$RELEASE_ROOT/internal/classifier/policy_identity.go" | head -n 1)"
+  [[ "$RELEASE_CLASSIFIER_POLICY_SHA256" =~ ^[0-9a-f]{64}$ ]] || \
+    release_die "cannot read classifier policy SHA-256 from internal/classifier/policy_identity.go"
+  RELEASE_STREAMING_SCANNER="$(sed -nE 's/^[[:space:]]*const[[:space:]]+StreamingScannerIdentity[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' \
+    "$RELEASE_ROOT/internal/buildinfo/buildinfo.go" | head -n 1)"
+  [[ "$RELEASE_STREAMING_SCANNER" =~ ^streaming-scanner-v[0-9]+$ ]] || \
+    release_die "cannot read streaming scanner identity from internal/buildinfo/buildinfo.go"
+
   RELEASE_VERSION="${VERSION:-$RELEASE_SOURCE_VERSION}"
   [[ "$RELEASE_VERSION" == "$RELEASE_SOURCE_VERSION" ]] || \
     release_die "VERSION=$RELEASE_VERSION does not match source version $RELEASE_SOURCE_VERSION"
@@ -101,12 +131,17 @@ release_init() {
   RELEASE_GIT_COMMIT="$(git -C "$RELEASE_ROOT" rev-parse --verify HEAD)"
   [[ "$RELEASE_GIT_COMMIT" =~ ^[0-9a-f]{40}$ ]] || \
     release_die "Git HEAD is not a full commit SHA"
+  RELEASE_GIT_TREE="$(git -C "$RELEASE_ROOT" rev-parse --verify 'HEAD^{tree}')"
+  [[ "$RELEASE_GIT_TREE" =~ ^[0-9a-f]{40}$ ]] || \
+    release_die "Git HEAD tree is not a full tree SHA"
 
   RELEASE_DIRTY_STATUS="$(git -C "$RELEASE_ROOT" status --porcelain --untracked-files=normal)"
-  case "${ALLOW_DIRTY_BUILD:-0}" in
-    0)
+  local dirty_build="${ALLOW_DIRTY_BUILD:-0}"
+  local candidate_build="${RELEASE_CANDIDATE_BUILD:-0}"
+  case "$dirty_build:$candidate_build" in
+    0:0|0:1)
       if [[ -n "$RELEASE_DIRTY_STATUS" ]]; then
-        release_error "formal builds require a clean Git worktree"
+        release_error "clean formal and candidate builds require a clean Git worktree"
         printf '%s\n' "$RELEASE_DIRTY_STATUS" >&2
         release_error "set ALLOW_DIRTY_BUILD=1 only for a non-release development build"
         exit 1
@@ -114,22 +149,51 @@ release_init() {
       unsafe_index_entries="$(git -C "$RELEASE_ROOT" ls-files -v | \
         awk 'substr($0, 1, 1) == "S" || substr($0, 1, 1) ~ /[a-z]/')"
       if [[ -n "$unsafe_index_entries" ]]; then
-        release_error "formal builds reject skip-worktree and assume-unchanged index flags"
-        printf '%s\n' "$unsafe_index_entries" >&2
-        release_error "clear the flags and verify the tracked worktree before releasing"
-        exit 1
+        if [[ "${ROUND6_SAFE_SPARSE_BUILD:-0}" == 1 ]]; then
+          git -C "$RELEASE_ROOT" sparse-checkout list >/dev/null 2>&1 || \
+            release_die "ROUND6_SAFE_SPARSE_BUILD requires an active sparse checkout"
+          while IFS= read -r entry; do
+            status="${entry:0:1}"
+            path="${entry:2}"
+            if [[ "$status" != S ]] || ! release_round6_safe_sparse_path "$path"; then
+              release_die "Round6 sparse checkout contains an unapproved index flag or excluded path: $path"
+            fi
+          done <<<"$unsafe_index_entries"
+        else
+          release_error "formal builds reject skip-worktree and assume-unchanged index flags"
+          printf '%s\n' "$unsafe_index_entries" >&2
+          release_error "clear the flags and verify the tracked worktree before releasing"
+          exit 1
+        fi
       fi
       RELEASE_DIRTY=false
       RELEASE_ARTIFACT_VERSION="$RELEASE_VERSION"
+      if [[ "$candidate_build" == 1 ]]; then
+        [[ "${RELEASE_CANDIDATE_EXPECTED_COMMIT:-}" =~ ^[0-9a-f]{40}$ ]] || \
+          release_die "candidate builds require RELEASE_CANDIDATE_EXPECTED_COMMIT"
+        [[ "${RELEASE_CANDIDATE_EXPECTED_TREE:-}" =~ ^[0-9a-f]{40}$ ]] || \
+          release_die "candidate builds require RELEASE_CANDIDATE_EXPECTED_TREE"
+        [[ "$RELEASE_CANDIDATE_EXPECTED_COMMIT" == "$RELEASE_GIT_COMMIT" ]] || \
+          release_die "candidate expected commit does not match HEAD"
+        [[ "$RELEASE_CANDIDATE_EXPECTED_TREE" == "$RELEASE_GIT_TREE" ]] || \
+          release_die "candidate expected tree does not match HEAD"
+        RELEASE_BUILD_KIND=candidate
+      else
+        RELEASE_BUILD_KIND=formal
+      fi
       ;;
-    1)
+    1:0)
       RELEASE_DIRTY=true
       RELEASE_ARTIFACT_VERSION="${RELEASE_VERSION}-dirty"
+      RELEASE_BUILD_KIND=development
       printf 'warning: ALLOW_DIRTY_BUILD=1 creates development-only artifacts marked %s\n' \
         "$RELEASE_ARTIFACT_VERSION" >&2
       ;;
+    1:1)
+      release_die "RELEASE_CANDIDATE_BUILD and ALLOW_DIRTY_BUILD are mutually exclusive"
+      ;;
     *)
-      release_die "ALLOW_DIRTY_BUILD must be 0 or 1"
+      release_die "ALLOW_DIRTY_BUILD and RELEASE_CANDIDATE_BUILD must each be 0 or 1"
       ;;
   esac
 
@@ -137,22 +201,41 @@ release_init() {
   [[ "$RELEASE_RULESET_SHA256" =~ ^[0-9a-f]{64}$ ]] || \
     release_die "failed to calculate the embedded ruleset SHA256"
 
-  RELEASE_SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(git -C "$RELEASE_ROOT" show -s --format=%ct HEAD)}"
+  local commit_source_date_epoch
+  commit_source_date_epoch="$(git -C "$RELEASE_ROOT" show -s --format=%ct HEAD)"
+  RELEASE_SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$commit_source_date_epoch}"
   [[ "$RELEASE_SOURCE_DATE_EPOCH" =~ ^[0-9]+$ ]] || \
     release_die "SOURCE_DATE_EPOCH must be an integer"
   ((RELEASE_SOURCE_DATE_EPOCH >= 315532800)) || \
     release_die "SOURCE_DATE_EPOCH must be at or after 1980-01-01"
+  if [[ "$RELEASE_BUILD_KIND" != development && \
+    "$RELEASE_SOURCE_DATE_EPOCH" != "$commit_source_date_epoch" ]]; then
+    release_die "clean candidate and formal builds require the exact commit timestamp"
+  fi
 
   export RELEASE_ROOT RELEASE_SOURCE_VERSION RELEASE_RULESET_VERSION
-  export RELEASE_VERSION RELEASE_GIT_COMMIT RELEASE_DIRTY RELEASE_ARTIFACT_VERSION
-  export RELEASE_RULESET_SHA256 RELEASE_SOURCE_DATE_EPOCH
+  export RELEASE_VERSION RELEASE_GIT_COMMIT RELEASE_GIT_TREE RELEASE_DIRTY RELEASE_ARTIFACT_VERSION
+  export RELEASE_BUILD_KIND
+  export RELEASE_RULESET_SHA256 RELEASE_CLASSIFIER_POLICY_VERSION RELEASE_CLASSIFIER_POLICY_SHA256
+  export RELEASE_STREAMING_SCANNER RELEASE_SOURCE_DATE_EPOCH
 }
 
 release_assert_tag() {
-  if [[ "$RELEASE_DIRTY" == true ]]; then
-    printf 'development build: annotated release tag check skipped\n' >&2
-    return 0
-  fi
+  case "$RELEASE_BUILD_KIND" in
+    development)
+      printf 'development build: annotated release tag check skipped\n' >&2
+      return 0
+      ;;
+    candidate)
+      printf 'candidate build: exact commit/tree binding replaces release-tag authorization\n' >&2
+      return 0
+      ;;
+    formal)
+      ;;
+    *)
+      release_die "unknown release build kind: ${RELEASE_BUILD_KIND:-<unset>}"
+      ;;
+  esac
 	local tag="v$RELEASE_SOURCE_VERSION"
 	if [[ "${GITHUB_ACTIONS:-false}" == true ]]; then
 		[[ "${GITHUB_REF_TYPE:-}" == tag ]] || \
@@ -166,8 +249,26 @@ release_assert_tag() {
     release_die "tag $tag does not point to HEAD $RELEASE_GIT_COMMIT"
 }
 
+release_assert_formal_build() {
+  [[ "$RELEASE_BUILD_KIND" == formal ]] || \
+    release_die "this operation requires a formal annotated-tag build"
+  [[ "$RELEASE_DIRTY" == false ]] || \
+    release_die "formal operations refuse dirty development builds"
+}
+
+release_assert_candidate_build() {
+  [[ "$RELEASE_BUILD_KIND" == candidate ]] || \
+    release_die "this operation requires an exact-commit candidate build"
+  [[ "$RELEASE_DIRTY" == false ]] || \
+    release_die "candidate builds must use clean release bytes"
+  local formal_tag="v$RELEASE_SOURCE_VERSION"
+  if git -C "$RELEASE_ROOT" show-ref --verify --quiet "refs/tags/$formal_tag"; then
+    release_die "candidate builds are forbidden after any formal tag ref $formal_tag exists"
+  fi
+}
+
 release_assert_source_unchanged() {
-  [[ "$RELEASE_DIRTY" == true ]] && return 0
+  [[ "$RELEASE_BUILD_KIND" == development ]] && return 0
   [[ "$(git -C "$RELEASE_ROOT" rev-parse --verify HEAD)" == "$RELEASE_GIT_COMMIT" ]] || \
     release_die "Git HEAD changed during the release operation"
   local current_status

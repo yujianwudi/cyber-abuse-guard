@@ -1,6 +1,60 @@
-# CPA Integration and Store-Contract Report — v0.1.2 candidate
+# CPA Integration and Store-Contract Report — v0.15 Round 6 candidate
 
-## 2026-07-16 latest-compat addendum
+## 2026-07-17 v7.2.86 matrix status
+
+Exact project version is `0.15`; the only formal tag is `v0.15`, never
+`v0.15.0`. Round 6 pins CPA v7.2.86 primary at commit
+`81d70f5d9f3fdb39a6290ed9c917ff0c6f27ca30`, with module sum
+`h1:hngt58VNLMXtQ048U59kXOugcMt2Sw60M4gpmwnj1jA=` and go.mod sum
+`h1:ytvZNWbCv7PrAyR80+RKsDJPODsdL6qxyFaXDBNZdqs=`. It is the only current
+source/compile and real-Host release target. Earlier v7.2.85/v7.2.84/v7.2.83/v7.2.82/v7.2.81 profiles
+are retained only as historical non-gating engineering evidence.
+
+Commit `21ceb57e6b6030e56d7820c9a67a8eecd068c669` passed push CI
+[29578024185](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29578024185)
+and PR CI
+[29578025961](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29578025961)
+with the then-current v7.2.83 latest-source matrix. This is a passed
+**pre-version-migration checkpoint**,
+not final v0.15 evidence. Final PR-head Linux CI, merge to `main`, exact
+post-merge main push CI, the private untagged clean candidate artifact, and the
+CPA v7.2.86 native Host + Mock matrix remain **PENDING / NOT RUN**. The v7.2.80
+results in the dated addendum below remain historical source/compile evidence;
+they are not current Round 6 matrix or native Host evidence.
+
+The exact-artifact chain is:
+
+```text
+final PR head + PR CI
+-> merge to main
+-> exact post-merge main push CI
+-> dispatch candidate from refs/heads/main
+-> private untagged clean candidate + candidate-manifest.json
+-> v7.2.86 Host + Mock record over one SO SHA-256
+-> independent source/artifact/Host audit
+-> candidate-bound external evaluation-v11+ CONSUMED / PASS
+-> optional annotated v0.15-dev.round6[.N] draft prerelease
+-> annotated formal v0.15 tag and verified draft
+-> protected promotion of the unchanged draft
+```
+
+For each blocked request, every Host record must prove zero deltas at Auth
+Selector, Provider execution, usage accounting, and Mock upstream. Candidate
+bytes are clean but unreleased. Historical v10 remains `CONSUMED / FAIL` and
+cannot be rerun or used as a formal input. Formal source/audit bundles exclude
+evaluation, Holdout, private, blind, and retired material. The final PR head
+must have no unresolved, non-outdated actionable review threads before merge;
+automated review is advisory and no independent approval is claimed.
+
+See [RELEASE_POLICY.md](../RELEASE_POLICY.md). The Host/audit and formal decision
+assets are `round6-prerelease-attestation.json` and
+`formal-release-attestation.json`; this source report does not predeclare their
+future PASS fields.
+
+Current classifier identity is `classifier-policy-v3` /
+`99e0ce7f59d2e687ebb3e79e1a71300afee8bb56f723cd8ba3f478c71a64cfd2`.
+
+## Frozen 2026-07-16 Round5.2 latest-compat addendum
 
 The runtime/artifact baseline for the round5.2 development tree remains CPA
 v7.2.75. A separate source/compile compatibility lane now pins the latest

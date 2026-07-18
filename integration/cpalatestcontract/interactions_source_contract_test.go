@@ -116,6 +116,7 @@ func runLatestRequiredPackageTests(t *testing.T, goBinary string, moduleArgument
 func runLatestCPAOverlayFixture(t *testing.T, fixture latestCPAOverlayFixture) {
 	t.Helper()
 	goBinary, _, module := prepareLatestCPAModule(t)
+	profile := selectedCPACompatibilityProfile(t)
 	fixturePath, errFixtureAbs := filepath.Abs(filepath.Join("..", "pluginstorecontract", "testfixtures", fixture.fixtureName))
 	if errFixtureAbs != nil {
 		t.Fatalf("resolve latest CPA overlay fixture %s: %v", fixture.fixtureName, errFixtureAbs)
@@ -133,7 +134,7 @@ func runLatestCPAOverlayFixture(t *testing.T, fixture latestCPAOverlayFixture) {
 		t.Fatalf("latest CPA overlay fixture %s sha256=%s, want %s", fixture.fixtureName, actual, fixture.fixtureSHA256)
 	}
 
-	moduleCopy := filepath.Join(t.TempDir(), "cpa-v7.2.80-interactions")
+	moduleCopy := filepath.Join(t.TempDir(), "cpa-"+profile.Version+"-interactions")
 	if errCopyModule := os.CopyFS(moduleCopy, os.DirFS(module.Dir)); errCopyModule != nil {
 		t.Fatalf("copy latest CPA module for interactions overlay: %v", errCopyModule)
 	}

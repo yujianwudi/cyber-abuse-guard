@@ -2,31 +2,41 @@
 
 ## Release warning
 
-The v0.1.2 working tree is **release-blocked and must not be deployed**. v1-v8
+The exact v0.15 Round 6 working tree is **release-blocked and must not be
+deployed**. The only formal tag name is `v0.15`, never `v0.15.0`. v1-v8
 are retired or consumed failures; v9 is a consumed methodology-invalid
 failure; methodologically valid v10 failed its first and only formal run with
 28/320 benign false positives, 49/320 policy blocks, and 33/320 exact
-classifications. v10 cannot be rerun. Do not create a `v0.1.2` tag or GitHub
+classifications. v10 cannot be rerun. Do not create a `v0.15` tag or GitHub
 Release and do not use the installation/rollout procedure below for this
 candidate. It is retained for future releases only after a new implementation
-passes a newly and independently authored unseen set.
+receives a candidate-bound external `evaluation-v11` or later first-and-only
+`CONSUMED / PASS` attestation.
 
 An owner-operated server sandbox result for the post-v10 prompt-injection
 development tree can provide engineering feedback only. It cannot reverse the
 consumed v10 failure, authorize this installation procedure, or substitute for
-a new independent release evaluation.
+that candidate-level external evaluation attestation.
 
 Development artifacts containing `-dirty` are test-only and must not be placed
-in a production plugin directory.
+in a production plugin directory. The dedicated candidate workflow instead
+produces clean exact-source bytes in a private, untagged, expiring Actions
+artifact; clean candidate bytes are still unreleased and also must not be placed
+in production.
 
-The fifth-round candidate must first pass exact-commit source/artifact gates and
-be handed off for independent review. A later Tencent Cloud server run is
-limited to CPA v7.2.75
-in an isolated container with Mock upstream, no real auth pool, and no real
-Provider. It is a Host acceptance gate, not production observation or release
-approval. Unit tests or GitHub CI success do not authorize this installation
-procedure. The strongest possible handoff state before independent review is
-`READY FOR INDEPENDENT SOURCE/ARTIFACT REVIEW`, never `PRODUCTION APPROVED`.
+The v0.15 chain is: final PR head and PR CI, merge to `main`, exact post-merge
+main push CI, private untagged clean candidate dispatched from
+`refs/heads/main`, CPA v7.2.86 Host + Mock evidence, independent
+source/artifact/Host audit, a candidate-bound external `evaluation-v11` or later
+first-and-only `CONSUMED / PASS` attestation, optional annotated development
+prerelease, the annotated formal `v0.15` tag and verified draft, and protected
+promotion of that unchanged draft. The server runs are isolated Host acceptance
+gates, not production observation or release approval. Unit tests, CI success, clean
+candidate bytes, or a development prerelease do not authorize this procedure.
+
+See the neutral [RELEASE_POLICY.md](RELEASE_POLICY.md). Installation is eligible
+only from a published formal Release carrying
+`round6-prerelease-attestation.json` and `formal-release-attestation.json`.
 
 ## Host controls outside the Router boundary
 
@@ -50,17 +60,11 @@ identifies only YAML Cyber Abuse assets; it does not include the Go
 
 ## Preconditions
 
-- CPA is exactly `v7.2.75` at commit
-  `e57416731aec87051ac00d0812df6aebd0e9d57a` and was built with
+- The sandbox CPA binary is exactly v7.2.86 at
+  `81d70f5d9f3fdb39a6290ed9c917ff0c6f27ca30` and was built with
   `CGO_ENABLED=1`. Assets labelled `_no-plugin` cannot load native plugins.
-  The repository root and isolated contract module both pin this version.
-  Ordinary fifth-round GitHub CI compiles integration-tagged code but does not
-  start CPA or load the `.so`. The real Store-installed guard and pure-C second
-  Router/executor targets are reserved for the later authorized Tencent Cloud
-  isolated Host run. The exact-commit CI result, Host result, and independent
-  verification are still required. The pinned module sums are
-  `h1:WcCCeENtQ5F2bT86FVIOZJJbWCkPqrp3idl8kyZqARM=` and
-  `h1:f4pcyAej8RoeRhIxJfm+OUMkCKaApiA8WzxR2XVlBh8=` for `go.mod`.
+  Source/compile compatibility does not substitute for loading the candidate
+  `.so`. Earlier v7.2.85/v7.2.84/v7.2.83/v7.2.82/v7.2.81 checks are historical non-gating evidence.
 - The container is Linux amd64 with glibc 2.34 or newer. Debian Bookworm is the
   intended base; musl/Alpine is unsupported.
 - The deployment host has `curl`, `jq`, `unzip`, `sha256sum`, and `openssl`.
@@ -89,11 +93,13 @@ formal GitHub Release exists for a release-eligible version:
 
 ```bash
 set -eu
-VERSION=0.1.2
+VERSION=0.15
 STORE_ARCHIVE="cyber-abuse-guard_${VERSION}_linux_amd64.zip"
 AUDIT_BUNDLE="cyber-abuse-guard-v${VERSION}-audit-bundle.zip"
 EVIDENCE="release-evidence-final.md"
 SOURCE="cyber-abuse-guard-v${VERSION}-source.tar.gz"
+ROUND6_ATTESTATION="round6-prerelease-attestation.json"
+FORMAL_ATTESTATION="formal-release-attestation.json"
 RELEASE_BASE="${CYBER_ABUSE_GUARD_RELEASE_BASE:-https://github.com/yujianwudi/cyber-abuse-guard/releases/download/v${VERSION}}"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
@@ -105,7 +111,15 @@ curl -fL "$RELEASE_BASE/$EVIDENCE" -o "$work/$EVIDENCE"
 curl -fL "$RELEASE_BASE/$EVIDENCE.sha256" -o "$work/$EVIDENCE.sha256"
 curl -fL "$RELEASE_BASE/$SOURCE" -o "$work/$SOURCE"
 curl -fL "$RELEASE_BASE/$SOURCE.sha256" -o "$work/$SOURCE.sha256"
-(cd "$work" && sha256sum -c "$EVIDENCE.sha256" && sha256sum -c "$SOURCE.sha256")
+curl -fL "$RELEASE_BASE/$ROUND6_ATTESTATION" -o "$work/$ROUND6_ATTESTATION"
+curl -fL "$RELEASE_BASE/$ROUND6_ATTESTATION.sha256" -o "$work/$ROUND6_ATTESTATION.sha256"
+curl -fL "$RELEASE_BASE/$FORMAL_ATTESTATION" -o "$work/$FORMAL_ATTESTATION"
+curl -fL "$RELEASE_BASE/$FORMAL_ATTESTATION.sha256" -o "$work/$FORMAL_ATTESTATION.sha256"
+(cd "$work" && \
+  sha256sum -c "$EVIDENCE.sha256" && \
+  sha256sum -c "$SOURCE.sha256" && \
+  sha256sum -c "$ROUND6_ATTESTATION.sha256" && \
+  sha256sum -c "$FORMAL_ATTESTATION.sha256")
 (cd "$work" && grep -F "  $STORE_ARCHIVE" checksums.txt | sha256sum -c -)
 (cd "$work" && grep -F "  $AUDIT_BUNDLE" checksums.txt | sha256sum -c -)
 mkdir -p "$work/store" "$work/audit"
@@ -121,15 +135,31 @@ cmp "$work/store/cyber-abuse-guard-v${VERSION}.so" \
 
 The store ZIP is deliberately minimal: its root contains exactly one `.so`.
 The audit bundle is separate and must not be passed to CPA's plugin store.
+The formal audit bundle and source archive exclude evaluation, Holdout, private,
+blind, and retired material. They may contain only low-sensitivity attestation
+identities and hashes, never the underlying evaluation/Holdout payloads.
 
 Inspect `$work/audit/build-metadata.json` and require:
 
-- `source_version` equals `0.1.2`;
+- `source_version` equals `0.15`;
 - `dirty` is `false`;
 - `commit` is a full 40-character release commit;
 - `ruleset_version` and `ruleset_sha256` match the standalone ruleset manifest;
+- `classifier_policy_version` equals `classifier-policy-v3` and
+  `classifier_policy_sha256` equals
+  `99e0ce7f59d2e687ebb3e79e1a71300afee8bb56f723cd8ba3f478c71a64cfd2`;
 - `$work/release-evidence-final.md` identifies the same commit, annotated tag,
   rules snapshot, source archive, command-log digest, and artifact hashes.
+- `$work/round6-prerelease-attestation.json` binds the exact Host-tested
+  candidate commit/tree, candidate run, SO/Store hashes, the v7.2.86 Host evidence
+  hashes, independent-audit hash, and an external `evaluation-v11` or later ID
+  plus its low-sensitivity report SHA-256;
+- `$work/formal-release-attestation.json` binds exact tag `v0.15`, the same
+  commit/tree and candidate-attestation SHA-256, and the byte-compared formal
+  SO/Store hashes.
+
+Historical evaluation-v10 remains `CONSUMED / FAIL`, cannot be rerun, and must
+not appear as the formal evaluation identity or as bundle content.
 
 `checksums.txt` intentionally covers the eight reproducible core files: the
 shared object, its sidecar, the CPA store ZIP, the audit bundle, build metadata,
@@ -165,7 +195,7 @@ find "${CPA_AUTH_DIR:?set CPA_AUTH_DIR to the CPA auth directory}" \
 ```
 
 If a prior plugin exists, copy it to the rollback directory and remove it from
-the active directory before installing v0.1.2. Do not leave v0.1.1 and v0.1.2
+the active directory before installing v0.15. Do not leave a prior version and v0.15
 active together:
 
 ```bash
@@ -201,7 +231,7 @@ commit it, copy it into a Docker build context, include it in a release archive,
 print it, or put it in YAML. The plugin status exposes only stability/degraded
 state and a one-way key identity, never the key.
 
-v0.1.2 has no dual-key rotation implementation. Preserve this file for normal
+v0.15 has no dual-key rotation implementation. Preserve this file for normal
 upgrades and rollbacks. Changing it is an explicit subject-correlation reset;
 with persistence enabled, a mismatch is reported and old state is not
 overwritten.
@@ -302,10 +332,10 @@ and typed state.
 
 ## 6. Upgrade and database migration
 
-At first v0.1.2 open, a v0.1.1 database is detected as schema v1 and migrated
-atomically to schema v2. With backup enabled, a consistent mode-0400
-`events.db.pre-v2-*.bak` is created through SQLite `VACUUM INTO`; only the newest
-configured number is retained.
+At first v0.15 open, supported legacy databases are migrated atomically to
+schema v3. With backup enabled, a consistent mode-0400
+`events.db.pre-v3-*.bak` is created through SQLite `VACUUM INTO`; only the
+newest configured number is retained.
 
 Before restart, make a separate operator backup while CPA is stopped if the
 database is business-critical:
@@ -319,8 +349,8 @@ docker compose up -d cli-proxy-api
 
 Migration failure must not partially advance the schema, but it can leave audit
 degraded and must block promotion. Check status `audit.schema_version` and
-`audit_degraded`. v0.1.1 is not claimed to read schema v2; restore the matching
-pre-migration database when rolling the binary back.
+`audit_degraded`. Older binaries are not claimed to read schema v3; restore the
+matching pre-migration database when rolling the binary back.
 
 ## 7. Restart and baseline checks
 
@@ -349,8 +379,8 @@ executor, or earlier handled Router can cause CPA to continue routing.
 The explicit Host harness is designed to make this boundary concrete with a
 real pure-C second Router/executor. It asserts higher-priority bypass,
 same-priority plugin-ID ordering, invalid/error/not-ready continuation, guard
-missing/registration failure/disabled behavior, and native fallback. It is not
-invoked by ordinary fifth-round CI. Panic/fuse remain covered only by the
+  missing/registration failure/disabled behavior, and native fallback. It is not
+  invoked by ordinary Round 6 CI. Panic/fuse remain covered only by the
 checksum-pinned official-source Host overlay because ABI v1 cannot safely
 inject those private Go states from a C plugin.
 
@@ -366,18 +396,18 @@ Verify New API → CPA using an ordinary harmless request, confirm other plugins
 still behave normally, and compare the current CPA auth-file list with the saved
 inventory. Installation must not create, delete, or modify auth files.
 
-The v7.2.75 Host harness is designed to cover OpenAI Chat, OpenAI Responses,
+The CPA v7.2.86 Host matrix must cover OpenAI Chat, OpenAI Responses,
 Claude, and Gemini allow/refusal paths, including streaming pre-SSE 403,
 Anthropic/Gemini token-count 403, and zero Auth Selector, Provider, Usage, and
-Mock Upstream counters for blocked requests. Ordinary fifth-round CI does not
-execute that harness. Earlier implementation-freeze Host results are historical
-only; the Tencent Cloud isolated v7.2.75 run and independent review remain
-`NOT RUN` before any release decision.
+Mock Upstream counters for blocked requests. Ordinary CI does not execute that
+harness. Earlier implementation-freeze Host results are historical only; all
+exact-candidate run and independent review remain `NOT RUN` before any
+release decision.
 
 `executor.http_request` is different: current tests reach the official
 `ProviderExecutor.HttpRequest` adapter as `(nil, error)` with `StatusCode()==405`
 and a project-owned `httptest.Server` that manually maps that error to HTTP.
-CPA v7.2.75 does expose `POST /v1/alpha/search`, but its ordinary selection path
+The current CPA matrix exposes `POST /v1/alpha/search`, but its ordinary selection path
 is fixed to `codex` and it maps every `HttpRequest` error to HTTP 502. No current
 official public route maps Guard's status error to a final client 405. That
 result is `NOT AVAILABLE / NOT RUN`, cannot be created by the current CI job,
@@ -385,9 +415,10 @@ and remains an explicit `BLOCKED FOR HANDOFF` item.
 
 ## 8. Observe → Audit → Balanced rollout
 
-**Do not execute this rollout for the current v0.1.2 candidate.** Its formal
-evaluation gate failed. These stages document the operational process for a
-future candidate that passes a new independent evaluation.
+**Do not execute this rollout for the current v0.15 candidate.** Its candidate-
+bound external evaluation-v11+ gate is pending. These stages document the
+operational process only after that exact candidate has a first-and-only
+`CONSUMED / PASS` attestation and the formal Release is published.
 
 ### Stage 1: Observe (24–48 hours)
 
@@ -471,14 +502,14 @@ Do not delete the audit database or HMAC secret as part of the fastest rollback.
 
 ## 10. Roll back to the previous binary and database
 
-Stop CPA, remove v0.1.2 from the active directory, restore exactly one previous
+Stop CPA, remove v0.15 from the active directory, restore exactly one previous
 `.so`, restore the matching configuration, and—when moving back to v0.1.1—use
 the saved pre-migration database:
 
 ```bash
 set -eu
 docker compose stop cli-proxy-api
-rm -f -- plugins/linux/amd64/cyber-abuse-guard-v0.1.2.so
+rm -f -- plugins/linux/amd64/cyber-abuse-guard-v0.15.so
 install -m 0755 \
   rollback/cyber-abuse-guard/cyber-abuse-guard-v0.1.1.so \
   plugins/linux/amd64/cyber-abuse-guard-v0.1.1.so
@@ -510,7 +541,7 @@ set -eu
 test "$REMOVE_CYBER_ABUSE_GUARD" = YES
 
 docker compose stop cli-proxy-api
-rm -f -- plugins/linux/amd64/cyber-abuse-guard-v0.1.2.so
+rm -f -- plugins/linux/amd64/cyber-abuse-guard-v0.15.so
 
 # Remove the cyber-abuse-guard config block from config.yaml manually. Do not
 # delete the global plugins section or another plugin's configuration.

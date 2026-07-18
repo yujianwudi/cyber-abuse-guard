@@ -17,16 +17,38 @@ import (
 
 const (
 	cpaLatestModulePath        = "github.com/router-for-me/CLIProxyAPI/v7"
-	cpaLatestVersion           = "v7.2.80"
-	cpaLatestCommit            = "09da52ad509e2c18e7b9540db3b98c2214c280aa"
-	cpaLatestModuleSum         = "h1:QIa5T/KYvJACHVPPRzXcRwq/HLpbwWYJYpZAC1eY2WA="
-	cpaLatestGoModSum          = "h1:ytvZNWbCv7PrAyR80+RKsDJPODsdL6qxyFaXDBNZdqs="
 	cpaLatestPluginHostPackage = cpaLatestModulePath + "/internal/pluginhost"
-	cpaLatestFixtureSHA256     = "9d8b420cac74ea54bb54753269bdebf5e9fbc0f8c0192034a8ea4dda83adbb80"
+	cpaLatestFixtureSHA256     = "113645c584a40ce6c8887d83ab9443e9c62f21201358bcb336c6e5eb1ebe6b1d"
+
+	cpaCompatibilityProfileEnv = "CPA_COMPAT_PROFILE"
+	cpaCompatibilityModfileEnv = "CPA_COMPAT_MODFILE"
+	cpaCompatibilityCommitEnv  = "CPA_COMPAT_EXPECTED_COMMIT"
+	cpaPrimaryProfile          = "primary"
 )
+
+type cpaCompatibilityProfile struct {
+	Name       string
+	Version    string
+	Commit     string
+	ModuleSum  string
+	GoModSum   string
+	MustLatest bool
+}
+
+var cpaCompatibilityProfiles = map[string]cpaCompatibilityProfile{
+	cpaPrimaryProfile: {
+		Name:       cpaPrimaryProfile,
+		Version:    "v7.2.86",
+		Commit:     "81d70f5d9f3fdb39a6290ed9c917ff0c6f27ca30",
+		ModuleSum:  "h1:hngt58VNLMXtQ048U59kXOugcMt2Sw60M4gpmwnj1jA=",
+		GoModSum:   "h1:ytvZNWbCv7PrAyR80+RKsDJPODsdL6qxyFaXDBNZdqs=",
+		MustLatest: true,
+	},
+}
 
 var latestCriticalCPAHostTests = []string{
 	"TestDecodeEnvelopeResultPreservesPluginHTTPStatus",
+	"TestSanitizePluginRequestRemovesNonJSONMetadata",
 	"TestHostRouteModelAllowsExplicitExecutorPluginTarget",
 	"TestHostRouteModelClonesPluginMetadata",
 	"TestHostRouteModelContinuesAfterUnhandled",
@@ -55,7 +77,7 @@ type latestResolvedCPAModule struct {
 }
 
 // Compile-time binding proves that the latest public plugin API, including the
-// additive UsageRecord.Generate field introduced after v7.2.75, is available.
+// additive UsageRecord.Generate field required by the current v7.2.86 contract is available.
 // The Guard does not register UsagePlugin; this is an API compatibility probe.
 var _ = pluginapi.UsageRecord{Generate: true}
 
@@ -90,6 +112,7 @@ func TestLatestCPAOfficialHostRoutingSourceContract(t *testing.T) {
 
 func TestLatestCPAHostFailOpenFixtureContract(t *testing.T) {
 	goBinary, _, module := prepareLatestCPAModule(t)
+	profile := selectedCPACompatibilityProfile(t)
 	fixturePath, errFixtureAbs := filepath.Abs(filepath.Join("..", "pluginstorecontract", "testfixtures", "host_failopen_overlay_test.go.txt"))
 	if errFixtureAbs != nil {
 		t.Fatalf("resolve shared Host fixture path: %v", errFixtureAbs)
@@ -110,7 +133,7 @@ func TestLatestCPAHostFailOpenFixtureContract(t *testing.T) {
 		t.Fatalf("shared Host fixture sha256=%s, want %s", actual, cpaLatestFixtureSHA256)
 	}
 
-	moduleCopy := filepath.Join(t.TempDir(), "cpa-v7.2.80")
+	moduleCopy := filepath.Join(t.TempDir(), "cpa-"+profile.Version)
 	if errCopyModule := os.CopyFS(moduleCopy, os.DirFS(module.Dir)); errCopyModule != nil {
 		t.Fatalf("copy latest CPA module for Host fixture: %v", errCopyModule)
 	}
@@ -133,19 +156,49 @@ func TestLatestCPAHostFailOpenFixtureContract(t *testing.T) {
 
 func prepareLatestCPAModule(t *testing.T) (string, []string, latestResolvedCPAModule) {
 	t.Helper()
+	profile := selectedCPACompatibilityProfile(t)
 	goBinary, errLookPath := exec.LookPath("go")
 	if errLookPath != nil {
 		t.Fatalf("locate go tool: %v", errLookPath)
 	}
-	moduleData, errReadModule := os.ReadFile("go.mod")
+	sourceModfile := strings.TrimSpace(os.Getenv(cpaCompatibilityModfileEnv))
+	if sourceModfile == "" {
+		sourceModfile = "go.mod"
+	}
+	if !filepath.IsAbs(sourceModfile) {
+		absoluteModfile, errAbs := filepath.Abs(sourceModfile)
+		if errAbs != nil {
+			t.Fatalf("resolve CPA compatibility modfile: %v", errAbs)
+		}
+		sourceModfile = absoluteModfile
+	}
+	if filepath.Ext(sourceModfile) != ".mod" {
+		t.Fatalf("CPA compatibility modfile must end in .mod: %s", sourceModfile)
+	}
+	moduleInfo, errModuleInfo := os.Lstat(sourceModfile)
+	if errModuleInfo != nil {
+		t.Fatalf("stat CPA compatibility modfile: %v", errModuleInfo)
+	}
+	if !moduleInfo.Mode().IsRegular() || moduleInfo.Mode()&os.ModeSymlink != 0 {
+		t.Fatalf("CPA compatibility modfile must be a regular non-symlink file: %s", sourceModfile)
+	}
+	sourceSumfile := strings.TrimSuffix(sourceModfile, ".mod") + ".sum"
+	sumInfo, errSumInfo := os.Lstat(sourceSumfile)
+	if errSumInfo != nil {
+		t.Fatalf("stat CPA compatibility sumfile: %v", errSumInfo)
+	}
+	if !sumInfo.Mode().IsRegular() || sumInfo.Mode()&os.ModeSymlink != 0 {
+		t.Fatalf("CPA compatibility sumfile must be a regular non-symlink file: %s", sourceSumfile)
+	}
+	moduleData, errReadModule := os.ReadFile(sourceModfile)
 	if errReadModule != nil {
-		t.Fatalf("read latest contract module: %v", errReadModule)
+		t.Fatalf("read CPA compatibility module: %v", errReadModule)
 	}
-	moduleSumData, errReadModuleSum := os.ReadFile("go.sum")
+	moduleSumData, errReadModuleSum := os.ReadFile(sourceSumfile)
 	if errReadModuleSum != nil {
-		t.Fatalf("read latest contract checksums: %v", errReadModuleSum)
+		t.Fatalf("read CPA compatibility checksums: %v", errReadModuleSum)
 	}
-	temporaryModule := filepath.Join(t.TempDir(), "latest-host-contract.mod")
+	temporaryModule := filepath.Join(t.TempDir(), profile.Name+"-host-contract.mod")
 	if errWriteModule := os.WriteFile(temporaryModule, moduleData, 0o600); errWriteModule != nil {
 		t.Fatalf("write temporary latest module: %v", errWriteModule)
 	}
@@ -168,17 +221,35 @@ func prepareLatestCPAModule(t *testing.T) (string, []string, latestResolvedCPAMo
 	if module.Replace != nil {
 		t.Fatal("latest CPA module unexpectedly uses a replacement")
 	}
-	if module.Path != cpaLatestModulePath || module.Version != cpaLatestVersion || strings.TrimSpace(module.Dir) == "" {
+	if module.Path != cpaLatestModulePath || module.Version != profile.Version || strings.TrimSpace(module.Dir) == "" {
 		t.Fatalf("resolved latest CPA module = %s@%s dir=%q, want %s@%s with source dir",
-			module.Path, module.Version, module.Dir, cpaLatestModulePath, cpaLatestVersion)
+			module.Path, module.Version, module.Dir, cpaLatestModulePath, profile.Version)
 	}
-	if module.Sum != cpaLatestModuleSum || module.GoModSum != cpaLatestGoModSum {
+	if module.Sum != profile.ModuleSum || module.GoModSum != profile.GoModSum {
 		t.Fatalf("resolved latest CPA checksums = module %q go.mod %q, want module %q go.mod %q",
-			module.Sum, module.GoModSum, cpaLatestModuleSum, cpaLatestGoModSum)
+			module.Sum, module.GoModSum, profile.ModuleSum, profile.GoModSum)
 	}
-	t.Logf("latest CPA source contract: %s@%s commit=%s sum=%s go_mod_sum=%s",
-		module.Path, module.Version, cpaLatestCommit, module.Sum, module.GoModSum)
+	t.Logf("CPA compatibility source contract: profile=%s %s@%s commit=%s sum=%s go_mod_sum=%s latest_required=%t",
+		profile.Name, module.Path, module.Version, profile.Commit, module.Sum, module.GoModSum, profile.MustLatest)
 	return goBinary, moduleArguments, module
+}
+
+func selectedCPACompatibilityProfile(t *testing.T) cpaCompatibilityProfile {
+	t.Helper()
+	name := strings.TrimSpace(os.Getenv(cpaCompatibilityProfileEnv))
+	if name == "" {
+		name = cpaPrimaryProfile
+	}
+	profile, ok := cpaCompatibilityProfiles[name]
+	if !ok {
+		t.Fatalf("unsupported %s=%q; allowed value is %q",
+			cpaCompatibilityProfileEnv, name, cpaPrimaryProfile)
+	}
+	if expectedCommit := strings.TrimSpace(os.Getenv(cpaCompatibilityCommitEnv)); expectedCommit != "" && expectedCommit != profile.Commit {
+		t.Fatalf("%s=%q does not match pinned %s commit %s",
+			cpaCompatibilityCommitEnv, expectedCommit, profile.Name, profile.Commit)
+	}
+	return profile
 }
 
 func linePresent(output, want string) bool {

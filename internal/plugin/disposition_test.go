@@ -17,6 +17,9 @@ func TestInspectionDispositionIncompleteOverridesMaliciousPrefix(t *testing.T) {
 		extract.IncompleteJSONNodeLimit,
 		extract.IncompleteTextPartLimit,
 		extract.IncompleteTextPartByteLimit,
+		extract.IncompleteRoleAttribution,
+		extract.IncompleteTotalTextLimit,
+		extract.IncompleteClassificationChunkLimit,
 		extract.IncompleteMultipartBoundaryLimit,
 		extract.IncompleteMultipartPartLimit,
 		extract.IncompleteMultipartHeaderLimit,
@@ -24,6 +27,7 @@ func TestInspectionDispositionIncompleteOverridesMaliciousPrefix(t *testing.T) {
 		extract.IncompleteMultipartParseError,
 		extract.IncompleteMultipartUnknownField,
 		extract.IncompleteMultipartTextFieldTypeMismatch,
+		extract.IncompleteToolSchema,
 		extract.IncompleteDeferredTextCandidateLimit,
 		extract.IncompleteUnsupportedMediaType,
 		extract.IncompleteUnsupportedContentEncoding,
@@ -101,8 +105,12 @@ func TestIncompleteCountersAreBoundedAndVisibleWithoutAuditStore(t *testing.T) {
 		extract.IncompleteScanByteLimit,
 		extract.IncompleteJSONDepthLimit,
 		extract.IncompleteTextPartLimit,
+		extract.IncompleteRoleAttribution,
+		extract.IncompleteTotalTextLimit,
+		extract.IncompleteClassificationChunkLimit,
 		extract.IncompleteMultipartPartLimit,
 		extract.IncompleteMultipartUnknownField,
+		extract.IncompleteToolSchema,
 		extract.IncompleteDeferredTextCandidateLimit,
 		extract.IncompleteUnsupportedMediaType,
 		extract.IncompleteUnsupportedContentEncoding,
@@ -117,8 +125,10 @@ func TestIncompleteCountersAreBoundedAndVisibleWithoutAuditStore(t *testing.T) {
 		"incomplete_scan_limit",
 		"incomplete_json_depth_limit",
 		"incomplete_text_part_limit",
+		"incomplete_role_attribution",
 		"incomplete_multipart_limit",
 		"incomplete_multipart_schema",
+		"incomplete_tool_schema",
 		"incomplete_deferred_text_limit",
 		"incomplete_unsupported_content_type",
 		"incomplete_rpc_body_limit",
@@ -129,5 +139,8 @@ func TestIncompleteCountersAreBoundedAndVisibleWithoutAuditStore(t *testing.T) {
 	}
 	if got := snapshot["incomplete_blocked"]; got != 0 {
 		t.Fatalf("incomplete_blocked=%d, want 0", got)
+	}
+	if got := snapshot["truncated"]; got != 1 {
+		t.Fatalf("truncated=%d, want one bounded request-level increment", got)
 	}
 }

@@ -13,8 +13,8 @@ import (
 )
 
 const selectColumns = `id, timestamp_ns, action, mode, category, risk_score, rule_ids,
-request_hash, subject_hash, model, source_format, stream, text_bytes_scanned,
-classifier, latency_us`
+ request_hash, subject_hash, model, source_format, stream, text_bytes_scanned,
+ classifier, decision, coverage, incomplete_reason, scanner, latency_us`
 
 // Query returns only the fixed Event schema. All caller-controlled filters are
 // SQL parameters; limit and offset are validated integers.
@@ -152,7 +152,7 @@ func (s *Store) ExportCSV(ctx context.Context, writer io.Writer, query Query) er
 	header := []string{
 		"id", "timestamp", "action", "mode", "category", "risk_score", "rule_ids",
 		"request_hash", "subject_hash", "model", "source_format", "stream",
-		"text_bytes_scanned", "classifier", "latency_us",
+		"text_bytes_scanned", "classifier", "decision", "coverage", "incomplete_reason", "scanner", "latency_us",
 	}
 	if err := csvWriter.Write(header); err != nil {
 		return fmt.Errorf("audit: write CSV header: %w", err)
@@ -173,6 +173,10 @@ func (s *Store) ExportCSV(ctx context.Context, writer io.Writer, query Query) er
 			strconv.FormatBool(event.Stream),
 			strconv.Itoa(event.TextBytesScanned),
 			safeCSV(event.Classifier),
+			safeCSV(event.Decision),
+			safeCSV(event.Coverage),
+			safeCSV(event.IncompleteReason),
+			safeCSV(event.Scanner),
 			strconv.FormatInt(event.LatencyUS, 10),
 		}
 		if err := csvWriter.Write(record); err != nil {
@@ -228,7 +232,8 @@ func scanEvent(row rowScanner) (Event, error) {
 		&event.ID, &timestampNS, &event.Action, &event.Mode, &event.Category,
 		&event.RiskScore, &ruleJSON, &event.RequestHash, &event.SubjectHash,
 		&event.Model, &event.SourceFormat, &stream, &event.TextBytesScanned,
-		&event.Classifier, &event.LatencyUS,
+		&event.Classifier, &event.Decision, &event.Coverage, &event.IncompleteReason,
+		&event.Scanner, &event.LatencyUS,
 	); err != nil {
 		return Event{}, fmt.Errorf("audit: scan event: %w", err)
 	}

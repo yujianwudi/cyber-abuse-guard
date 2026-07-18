@@ -19,12 +19,13 @@ import (
 	"github.com/yujianwudi/cyber-abuse-guard/internal/buildinfo"
 	"github.com/yujianwudi/cyber-abuse-guard/internal/classifier"
 	"github.com/yujianwudi/cyber-abuse-guard/internal/config"
+	"github.com/yujianwudi/cyber-abuse-guard/internal/extract"
 )
 
 const (
 	managementBasePath          = "/v0/management/plugins/" + ID
-	maxManagementBody           = 1 << 20
-	maxManagementEnvelope       = 2 << 20
+	maxManagementBody           = 2 << 20
+	maxManagementEnvelope       = 4 << 20
 	maxManagementPathBytes      = 512
 	maxManagementQueryBytes     = 4096
 	maxManagementQueryKeys      = 16
@@ -32,7 +33,7 @@ const (
 	maxManagementHeaderValues   = 64
 	maxManagementFilterBytes    = 128
 	managementHealthProbePath   = managementBasePath + "/health/probe"
-	managementAuthDocumentation = "CPA v7.2.75 management middleware is authoritative; the plugin additionally rejects callbacks without a management credential header"
+	managementAuthDocumentation = "CPA v7.2.86 management middleware is authoritative; the plugin additionally rejects callbacks without a management credential header"
 )
 
 type managementRoute struct {
@@ -296,7 +297,7 @@ func (p *Plugin) managementStatus(state *runtimeState) []byte {
 		"conflict_detection": map[string]any{
 			"router_enumeration_supported":           false,
 			"duplicate_plugin_binary_scan_supported": false,
-			"reason":                                 "CPA v7.2.75 plugin ABI exposes neither the loaded router ordering nor the plugin directory inventory",
+			"reason":                                 "CPA v7.2.86 plugin ABI exposes neither the loaded router ordering nor the plugin directory inventory",
 		},
 	}
 	if state != nil {
@@ -306,14 +307,27 @@ func (p *Plugin) managementStatus(state *runtimeState) []byte {
 		}
 		body["enabled"] = state.config.Enabled
 		body["priority"] = state.config.Priority
+		body["effective_limits"] = map[string]any{
+			"max_raw_bytes":                    maxRPCRequestBytes,
+			"max_text_window_bytes":            state.config.EffectiveTextWindowBytes(),
+			"max_total_text_bytes":             state.config.MaxTotalTextBytes,
+			"max_multipart_text_bytes":         extract.HardMaxMultipartTextBytes,
+			"max_classification_chunks":        state.config.EffectiveMaxClassificationChunks(),
+			"max_text_parts":                   state.config.MaxTextParts,
+			"legacy_max_scan_bytes_mode":       state.config.TextWindowMigrationMode(),
+			"legacy_max_scan_bytes_configured": state.config.MaxScanBytes,
+		}
 		body["started_at"] = state.startedAt
 		body["configured_at"] = state.configuredAt
 		body["subjects"] = subjects
 		body["classifier"] = map[string]any{
-			"kind":            "deterministic_local_rules",
-			"enabled":         state.config.Enabled,
-			"remote":          false,
-			"policy_identity": policyIdentity,
+			"kind":                          "deterministic_local_rules",
+			"enabled":                       state.config.Enabled,
+			"remote":                        false,
+			"policy_identity":               policyIdentity,
+			"streaming_scanner_identity":    streamingScannerIdentity,
+			"required_overlap_bytes":        classifier.RequiredChunkOverlapBytes(state.classifier),
+			"verified_hard_finding_enabled": false,
 		}
 		body["thresholds"] = state.config.Thresholds
 		body["opaque_media_policy"] = state.config.EffectiveOpaqueMediaPolicy()
@@ -388,13 +402,6 @@ func (p *Plugin) managementTest(state *runtimeState, raw []byte) []byte {
 	if len(parts) > state.config.MaxTextParts {
 		return managementError(http.StatusRequestEntityTooLarge, "request_too_large", "test input exceeds max_text_parts")
 	}
-	totalBytes := 0
-	for _, part := range parts {
-		totalBytes += len(part)
-		if totalBytes > state.config.MaxScanBytes {
-			return managementError(http.StatusRequestEntityTooLarge, "request_too_large", "test text exceeds max_scan_bytes")
-		}
-	}
 	mode := state.config.Mode
 	if request.Mode != "" {
 		mode = config.Mode(strings.ToLower(strings.TrimSpace(request.Mode)))
@@ -404,28 +411,71 @@ func (p *Plugin) managementTest(state *runtimeState, raw []byte) []byte {
 			return managementError(http.StatusBadRequest, "invalid_mode", "test mode is invalid")
 		}
 	}
-	result := state.classifier.ClassifyWithPolicy(parts, classifierMode(mode), classifier.Thresholds{
+	session, err := state.classifier.NewScanSession(classifierMode(mode), classifier.Thresholds{
 		Audit:         state.config.Thresholds.Audit,
 		BalancedBlock: state.config.Thresholds.BalancedBlock,
 		HardBlock:     state.config.Thresholds.HardBlock,
-	}, classifierPolicy(state.config))
-	policyConfig := state.config
-	policyConfig.Mode = mode
-	if mode == config.ModeObserve && result.Score >= policyConfig.Thresholds.Audit {
-		result.Action = classifier.ActionObserve
+	}, classifierPolicy(state.config), classifier.ScanLimits{
+		WindowBytes:   state.config.EffectiveTextWindowBytes(),
+		MaxTotalBytes: state.config.MaxTotalTextBytes,
+		MaxChunks:     state.config.EffectiveMaxClassificationChunks(),
+	})
+	if err != nil {
+		return managementError(http.StatusInternalServerError, "inspection_failure", "streaming classifier limits are invalid")
 	}
-	if mode == config.ModeAudit && result.Score >= policyConfig.Thresholds.Audit {
-		result.Action = classifier.ActionAudit
+	for index, part := range parts {
+		if err := session.AddSegment(extract.SegmentChunk{
+			Role:       extract.RoleUser,
+			Provenance: extract.ProvenanceContent,
+			FieldID:    uint64(index + 1),
+			Start:      true,
+			End:        true,
+			Text:       []byte(part),
+		}); err != nil {
+			session.Abort()
+			return managementError(http.StatusInternalServerError, "inspection_failure", "streaming classifier rejected the test input")
+		}
+	}
+	result := session.Finish()
+	incompleteReasons := []extract.IncompleteReason(nil)
+	if reason := classifierCoverageReason(result.Coverage); reason != "" {
+		incompleteReasons = append(incompleteReasons, reason)
+		result = incompleteClassificationResult(result, state.rulesVersion)
+	}
+	decision := inspectionDisposition(mode, inspectionOutcome{
+		Classification: result,
+		Incomplete:     incompleteReasons,
+	}, config.OpaqueMediaPolicyAllow)
+	action := classifier.ActionAllow
+	switch {
+	case decision.Block:
+		action = classifier.ActionBlock
+	case decision.Audit:
+		action = classifier.ActionAudit
+	case decision.Observe:
+		action = classifier.ActionObserve
 	}
 	p.counters.managementTests.Add(1)
+	incompleteReason := ""
+	if len(incompleteReasons) != 0 {
+		incompleteReason = incompleteCategory(incompleteReasons)
+	}
 	return managementJSONResponse(http.StatusOK, map[string]any{
-		"score":           result.Score,
-		"category":        result.Category,
-		"action":          result.Action,
-		"rule_ids":        result.RuleIDs,
-		"context":         result.Context,
-		"truncated":       result.Truncated,
-		"ruleset_version": result.RuleSetVersion,
+		"score":                           result.Score,
+		"category":                        result.Category,
+		"action":                          action,
+		"decision":                        decision.Code,
+		"rule_ids":                        result.RuleIDs,
+		"context":                         result.Context,
+		"truncated":                       result.Truncated,
+		"coverage":                        result.Coverage.State,
+		"incomplete_reason":               incompleteReason,
+		"text_bytes_scanned":              result.Coverage.Bytes,
+		"classification_windows":          result.Coverage.Windows,
+		"window_boundary_reconstructions": result.Coverage.BoundaryReconstructions,
+		"peak_text_bytes_retained":        result.Coverage.PeakRetained,
+		"scanner":                         streamingScannerIdentity,
+		"ruleset_version":                 result.RuleSetVersion,
 	})
 }
 
@@ -596,7 +646,7 @@ func auditQuery(values url.Values) (audit.Query, error) {
 		}
 	}
 	query := audit.Query{Action: values.Get("action"), Category: values.Get("category"), SubjectHash: values.Get("subject_hash")}
-	if query.Action != "" && !oneOfString(query.Action, "allow", "audit", "block", "cooldown") {
+	if query.Action != "" && !oneOfString(query.Action, "allow", "observe", "audit", "block", "cooldown") {
 		return audit.Query{}, fmt.Errorf("action is invalid")
 	}
 	if query.Category != "" && !validManagementFilterToken(query.Category) {

@@ -827,7 +827,9 @@ func TestValidUTF8PrefixHandlesInteriorInvalidByte(t *testing.T) {
 
 func TestNormalizationAndPartBudgetsAreBounded(t *testing.T) {
 	t.Parallel()
-	expanding := strings.Repeat("\ufdfa", 15000)
+	// U+FDFA expands to 18 compatibility-normalized runes. Size the fixture
+	// from the active bound so a larger streaming window remains covered.
+	expanding := strings.Repeat("\ufdfa", maxClassifierNormalizedRunes/18+1024)
 	views := normalizeParts([]string{expanding})
 	if len(views.standardRunes) > maxClassifierNormalizedRunes || !views.truncated {
 		t.Fatalf("normalization expansion was not capped: runes=%d truncated=%v", len(views.standardRunes), views.truncated)
@@ -875,6 +877,24 @@ func TestAnalyzeDoesNotReturnPromptFragments(t *testing.T) {
 	}
 	if strings.Contains(string(b), canary) || strings.Contains(string(b), "steal browser cookies") {
 		t.Fatalf("result leaked prompt text: %s", b)
+	}
+}
+
+func TestResultJSONOmitsZeroCoverage(t *testing.T) {
+	encoded, err := json.Marshal(Result{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), `"coverage"`) {
+		t.Fatalf("zero coverage was serialized: %s", encoded)
+	}
+
+	encoded, err = json.Marshal(Result{Coverage: Coverage{State: CoverageComplete}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(encoded), `"coverage"`) {
+		t.Fatalf("non-zero coverage was omitted: %s", encoded)
 	}
 }
 

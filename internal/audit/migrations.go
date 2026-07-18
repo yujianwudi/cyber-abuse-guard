@@ -15,7 +15,7 @@ import (
 	sqlite3 "github.com/mattn/go-sqlite3"
 )
 
-const currentSchemaVersion = 2
+const currentSchemaVersion = 3
 
 const migrationMetadataSchema = `
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -44,6 +44,12 @@ CREATE TABLE IF NOT EXISTS subject_state (
 );
 CREATE INDEX IF NOT EXISTS idx_subject_state_updated_at
     ON subject_state(updated_at_ns DESC);`
+
+const round6AuditEventColumns = `
+ALTER TABLE audit_events ADD COLUMN decision TEXT NOT NULL DEFAULT 'legacy_unspecified';
+ALTER TABLE audit_events ADD COLUMN coverage TEXT NOT NULL DEFAULT 'legacy_unknown';
+ALTER TABLE audit_events ADD COLUMN incomplete_reason TEXT NOT NULL DEFAULT '';
+ALTER TABLE audit_events ADD COLUMN scanner TEXT NOT NULL DEFAULT 'legacy';`
 
 type rowQueryer interface {
 	QueryRow(query string, args ...any) *sql.Row
@@ -100,6 +106,10 @@ var auditEventColumnContract = []sqliteColumnContract{
 	{name: "text_bytes_scanned", typeName: "INTEGER", notNull: true},
 	{name: "classifier", typeName: "TEXT", notNull: true},
 	{name: "latency_us", typeName: "INTEGER", notNull: true},
+	{name: "decision", typeName: "TEXT", notNull: true},
+	{name: "coverage", typeName: "TEXT", notNull: true},
+	{name: "incomplete_reason", typeName: "TEXT", notNull: true},
+	{name: "scanner", typeName: "TEXT", notNull: true},
 }
 
 var auditEventIndexContract = []sqliteIndexContract{
@@ -180,6 +190,11 @@ ON CONFLICT(singleton) DO UPDATE SET version=excluded.version, updated_at_ns=exc
 			if _, err := locked.Exec(subjectStateSchema); err != nil {
 				return fmt.Errorf("audit: apply schema migration 2: %w", err)
 			}
+		case 3:
+			description = "add Round6 decision, coverage, incomplete reason, and scanner identity"
+			if _, err := locked.Exec(round6AuditEventColumns); err != nil {
+				return fmt.Errorf("audit: apply schema migration 3: %w", err)
+			}
 		default:
 			return fmt.Errorf("audit: missing schema migration %d", next)
 		}
@@ -234,7 +249,12 @@ func validateLegacyAuditPrivacy(db sqliteQueryer) error {
 
 func validateSchemaContract(db sqliteQueryer, version int) error {
 	if version >= 1 {
-		if err := requireSQLiteTable(db, "audit_events", auditEventColumnContract); err != nil {
+		columns := auditEventColumnContract
+		if version < 3 {
+			// Versions 1 and 2 predate the four fixed Round6 metadata columns.
+			columns = auditEventColumnContract[:15]
+		}
+		if err := requireSQLiteTable(db, "audit_events", columns); err != nil {
 			return err
 		}
 		for _, index := range auditEventIndexContract {

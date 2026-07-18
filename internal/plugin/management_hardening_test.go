@@ -10,6 +10,7 @@ import (
 
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginabi"
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
+	"github.com/yujianwudi/cyber-abuse-guard/internal/audit"
 	"github.com/yujianwudi/cyber-abuse-guard/internal/subject"
 )
 
@@ -218,6 +219,97 @@ func TestManagementEventDeletionWritesPrivacySafeAuditMarker(t *testing.T) {
 	encoded, _ := json.Marshal(marker)
 	if strings.Contains(string(encoded), "browser cookies") {
 		t.Fatalf("delete marker contained request text: %s", encoded)
+	}
+}
+
+func TestManagementObserveActionFilterSupportsGetAndDelete(t *testing.T) {
+	p := New()
+	t.Cleanup(p.Shutdown)
+	register(t, p, "mode: observe\naudit:\n  enabled: true\n  data_dir: \""+strings.ReplaceAll(t.TempDir(), "\\", "/")+"\"\nsubject_control:\n  enabled: false\n")
+
+	state := p.runtime.Load()
+	for _, event := range []audit.Event{
+		{
+			Action:     "observe",
+			Mode:       "observe",
+			Category:   "observe_fixture",
+			Decision:   "observe_malicious_text",
+			Coverage:   "complete",
+			Scanner:    streamingScannerIdentity,
+			Classifier: "management_filter_test",
+		},
+		{
+			Action:     "audit",
+			Mode:       "audit",
+			Category:   "audit_fixture",
+			Decision:   "audit_malicious_text",
+			Coverage:   "complete",
+			Scanner:    streamingScannerIdentity,
+			Classifier: "management_filter_test",
+		},
+	} {
+		if !state.audit.Record(event) {
+			t.Fatalf("failed to enqueue %q fixture", event.Action)
+		}
+	}
+
+	observeQuery := url.Values{"action": []string{"observe"}}
+	request := authenticatedManagementRequest(http.MethodGet, managementBasePath+"/events", nil)
+	request.Query = observeQuery
+	response, body := callManagementResponse(t, p, request)
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("observe GET status=%d body=%s", response.StatusCode, body)
+	}
+	var queried struct {
+		Events []audit.Event `json:"events"`
+	}
+	if err := json.Unmarshal(body, &queried); err != nil {
+		t.Fatal(err)
+	}
+	if len(queried.Events) != 1 || queried.Events[0].Action != "observe" || queried.Events[0].Category != "observe_fixture" {
+		t.Fatalf("observe GET events=%+v, want only observe fixture", queried.Events)
+	}
+
+	request = authenticatedManagementRequest(http.MethodDelete, managementBasePath+"/events", nil)
+	request.Query = observeQuery
+	response, body = callManagementResponse(t, p, request)
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("observe DELETE status=%d body=%s", response.StatusCode, body)
+	}
+	var deletion struct {
+		Deleted int64 `json:"deleted"`
+	}
+	if err := json.Unmarshal(body, &deletion); err != nil {
+		t.Fatal(err)
+	}
+	if deletion.Deleted != 1 {
+		t.Fatalf("observe DELETE deleted=%d, want 1", deletion.Deleted)
+	}
+
+	request = authenticatedManagementRequest(http.MethodGet, managementBasePath+"/events", nil)
+	request.Query = observeQuery
+	response, body = callManagementResponse(t, p, request)
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("post-delete observe GET status=%d body=%s", response.StatusCode, body)
+	}
+	if err := json.Unmarshal(body, &queried); err != nil {
+		t.Fatal(err)
+	}
+	if len(queried.Events) != 0 {
+		t.Fatalf("post-delete observe events=%+v, want none", queried.Events)
+	}
+
+	auditRequest := authenticatedManagementRequest(http.MethodGet, managementBasePath+"/events", nil)
+	auditRequest.Query = url.Values{"action": []string{"audit"}, "category": []string{"audit_fixture"}}
+	response, body = callManagementResponse(t, p, auditRequest)
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("selective audit GET status=%d body=%s", response.StatusCode, body)
+	}
+	if err := json.Unmarshal(body, &queried); err != nil {
+		t.Fatal(err)
+	}
+	if len(queried.Events) != 1 || queried.Events[0].Action != "audit" || queried.Events[0].Category != "audit_fixture" {
+		t.Fatalf("observe DELETE removed non-observe fixture: %+v", queried.Events)
 	}
 }
 

@@ -451,18 +451,18 @@ func TestExtractRequestScalarCarrierOverflowDisposition(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if nonMediaResult.IsComplete() || !nonMediaResult.HasIncompleteReason(IncompleteDeferredTextCandidateLimit) {
-					t.Fatalf("final-nonmedia overflow did not fail closed: %#v", nonMediaResult)
+				if !nonMediaResult.IsComplete() || nonMediaResult.HasIncompleteReason(IncompleteDeferredTextCandidateLimit) {
+					t.Fatalf("final-nonmedia long carrier was not fully streamed: %#v", nonMediaResult)
 				}
-				if nonMediaResult.OpaqueMedia || nonMediaResult.TextBytesScanned != 0 || strings.Contains(strings.Join(nonMediaResult.Parts, "\n"), payload.value[:64]) {
-					t.Fatalf("final-nonmedia overflow classified a prefix or became opaque: %#v", nonMediaResult)
+				if nonMediaResult.OpaqueMedia || nonMediaResult.TextBytesScanned < len(payload.value) || !strings.Contains(strings.Join(nonMediaResult.Parts, "\n"), payload.value[:64]) {
+					t.Fatalf("final-nonmedia long carrier was not inspectable: %#v", nonMediaResult)
 				}
 			})
 		}
 	}
 }
 
-func TestExtractRequestToolScalarCarrierOverflowIsIncomplete(t *testing.T) {
+func TestExtractRequestToolScalarCarrierLongTextIsInspectable(t *testing.T) {
 	payload := "data:image/png;base64," + strings.Repeat("V", maxDeferredCandidateBytes+1)
 	body := []byte(`{"messages":[{"role":"assistant","tool_calls":[{"function":{"name":"inspect","arguments":{"image_url":` + strconv.Quote(payload) + `}}}]}]}`)
 	result, err := ExtractRequest(body, round5JSONHeaders(), Limits{
@@ -473,11 +473,11 @@ func TestExtractRequestToolScalarCarrierOverflowIsIncomplete(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.IsComplete() || !result.HasIncompleteReason(IncompleteDeferredTextCandidateLimit) {
-		t.Fatalf("tool scalar overflow did not fail closed: %#v", result)
+	if !result.IsComplete() || result.HasIncompleteReason(IncompleteDeferredTextCandidateLimit) {
+		t.Fatalf("tool scalar long text was not fully streamed: %#v", result)
 	}
-	if result.OpaqueMedia || result.TextBytesScanned != 0 || strings.Contains(strings.Join(result.Parts, "\n"), payload[:64]) {
-		t.Fatalf("tool scalar overflow leaked or became opaque: %#v", result)
+	if result.OpaqueMedia || result.TextBytesScanned < len(payload) || !strings.Contains(strings.Join(result.Parts, "\n"), payload[:64]) {
+		t.Fatalf("tool scalar long text was not inspectable: %#v", result)
 	}
 }
 
@@ -528,10 +528,6 @@ func TestExtractRequestScalarCarrierPerformanceAcceptance(t *testing.T) {
 }
 
 func FuzzExtractRequestScalarMediaCarrierPermutation(f *testing.F) {
-	f.Add(uint8(0), uint8(0), "https://example.test/fuzz-media")
-	f.Add(uint8(1), uint8(3), "ordinary scalar carrier")
-	f.Add(uint8(3), uint8(5), "../relative/media")
-	f.Add(uint8(3), uint8(7), "data:image/png;base64,SU5TUEVDVEFCTEVfRlVaWg==")
 	keys := []string{"source", "uri", "url", "image_url"}
 	markers := []string{
 		`"type":"image"`,
@@ -542,6 +538,12 @@ func FuzzExtractRequestScalarMediaCarrierPermutation(f *testing.F) {
 		`"mime_type":"image/png"`,
 		`"media_type":"image/jpeg"`,
 	}
+	f.Add(uint8(0), uint8(0), "https://example.test/fuzz-media")
+	f.Add(uint8(1), uint8(3), "ordinary scalar carrier")
+	f.Add(uint8(3), uint8(5), "../relative/media")
+	f.Add(uint8(3), uint8(7), "data:image/png;base64,SU5TUEVDVEFCTEVfRlVaWg==")
+	f.Add(uint8(0), uint8(len(markers)), "0+00000000000000")
+	f.Add(uint8(0), uint8(len(markers)), "dAtA:0000000000,00000000000000000000000=")
 	f.Fuzz(func(t *testing.T, keyIndex, markerIndex uint8, value string) {
 		if len(value) > 4096 {
 			value = value[:4096]
@@ -561,25 +563,128 @@ func FuzzExtractRequestScalarMediaCarrierPermutation(f *testing.F) {
 			if containsBinaryControl(normalized) {
 				t.Skip()
 			}
-			if _, opaque := opaqueDataURLKind(normalized); !opaque {
-				_, encoded, incomplete := decodeBoundedText(normalized)
-				if encoded && incomplete {
-					body := []byte(`{"messages":[{"role":"user","content":[{` + jsonQuote(key) + `:` + jsonQuote(normalized) + `}]}]}`)
-					result, err := ExtractRequest(body, round5JSONHeaders(), Limits{})
-					if err != nil {
-						t.Fatal(err)
-					}
-					if result.IsComplete() || result.OpaqueMedia {
-						t.Fatalf("malformed encoded scalar carrier silently completed: %#v", result)
-					}
-					return
+			_, encoded, incomplete := decodeStreamingBoundedText(normalized, true)
+			if encoded && incomplete {
+				body := []byte(`{"messages":[{"role":"user","content":[{` + jsonQuote(key) + `:` + jsonQuote(normalized) + `}]}]}`)
+				result, err := ExtractRequest(body, round5JSONHeaders(), Limits{})
+				if err != nil {
+					t.Fatal(err)
 				}
+				if result.IsComplete() || result.TextCoverage != TextCoverageUnavailable ||
+					!result.HasIncompleteReason(IncompleteTextPartByteLimit) || result.OpaqueMedia {
+					t.Fatalf("malformed encoded scalar carrier silently completed: %#v", result)
+				}
+				if len(result.Parts) != 0 || len(result.Segments) != 0 {
+					t.Fatalf("aborted scalar carrier leaked text: parts=%#v segments=%#v", result.Parts, result.Segments)
+				}
+				return
 			}
 			assertScalarCarrierFallback(t, key, normalized)
 			return
 		}
 		assertScalarMediaPermutations(t, key, normalized, markers[selection], "fuzz visible caption")
 	})
+}
+
+func TestExtractRequestScalarMediaCarrierMalformedTextDataURLFailsClosed(t *testing.T) {
+	const value = "dAtA:;"
+	for _, key := range []string{"source", "uri", "url", "image_url"} {
+		t.Run(key, func(t *testing.T) {
+			body := []byte(`{"messages":[{"role":"user","content":[{` + jsonQuote(key) + `:` + jsonQuote(value) + `}]}]}`)
+			result, err := ExtractRequest(body, round5JSONHeaders(), Limits{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result.IsComplete() || result.Envelope != EnvelopeComplete ||
+				result.TextCoverage != TextCoverageUnavailable ||
+				!reflect.DeepEqual(result.IncompleteReasons, []IncompleteReason{IncompleteTextPartByteLimit}) ||
+				result.TextBytesScanned != 0 || result.RawBytesObserved != int64(len(body)) ||
+				result.LogicalTextParts != 1 || result.ClassificationChunks != 0 ||
+				!result.Truncated || result.OpaqueMedia {
+				t.Fatalf("malformed textual data scalar carrier silently completed: %#v", result)
+			}
+			if len(result.Parts) != 0 || len(result.Segments) != 0 {
+				t.Fatalf("aborted malformed scalar carrier leaked text: parts=%#v segments=%#v", result.Parts, result.Segments)
+			}
+		})
+	}
+}
+
+func TestExtractRequestScalarMediaCarrierBareBinaryBase64FailsClosed(t *testing.T) {
+	const value = "0+00000000000000"
+	variants, encoded, incomplete := decodeBoundedText(value)
+	if len(variants) != 0 || !encoded || !incomplete {
+		t.Fatalf("fixture decode = variants:%q encoded:%v incomplete:%v", variants, encoded, incomplete)
+	}
+
+	for _, key := range []string{"source", "uri", "url", "image_url"} {
+		t.Run(key, func(t *testing.T) {
+			body := []byte(`{"messages":[{"role":"user","content":[{` + jsonQuote(key) + `:` + jsonQuote(value) + `}]}]}`)
+			result, err := ExtractRequest(body, round5JSONHeaders(), Limits{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result.IsComplete() || result.TextCoverage != TextCoverageUnavailable ||
+				!result.HasIncompleteReason(IncompleteTextPartByteLimit) || result.OpaqueMedia {
+				t.Fatalf("scalar carrier silently completed: %#v", result)
+			}
+			if len(result.Parts) != 0 || len(result.Segments) != 0 {
+				t.Fatalf("aborted scalar carrier leaked text: parts=%#v segments=%#v", result.Parts, result.Segments)
+			}
+		})
+	}
+
+	t.Run("oversized-source", func(t *testing.T) {
+		oversized := "0+" + strings.Repeat("0", maxDecodeSourceBytes+2)
+		variants, encoded, incomplete := decodeBoundedText(oversized)
+		if len(variants) != 0 || !encoded || !incomplete {
+			t.Fatalf("oversized fixture decode = variants:%d encoded:%v incomplete:%v", len(variants), encoded, incomplete)
+		}
+		body := []byte(`{"messages":[{"role":"user","content":[{"source":` + jsonQuote(oversized) + `}]}]}`)
+		result, err := ExtractRequest(body, round5JSONHeaders(), Limits{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if result.IsComplete() || result.TextCoverage != TextCoverageUnavailable ||
+			!result.HasIncompleteReason(IncompleteTextPartByteLimit) || result.OpaqueMedia {
+			t.Fatalf("oversized scalar carrier silently completed: %#v", result)
+		}
+	})
+
+	body := []byte(`{"messages":[{"role":"user","content":` + jsonQuote(value) + `}]}`)
+	result, err := ExtractRequest(body, round5JSONHeaders(), Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.IsComplete() || result.OpaqueMedia || !reflect.DeepEqual(result.Parts, []string{value}) ||
+		len(result.Segments) != 1 || result.Segments[0].Text != value {
+		t.Fatalf("ordinary text identifier was affected: %#v", result)
+	}
+}
+
+func TestExtractRequestScalarMediaCarrierMalformedMixedCaseDataURLFailsClosed(t *testing.T) {
+	const value = "dAtA:0000000000,00000000000000000000000="
+	variants, encoded, incomplete := decodeBoundedText(value)
+	if len(variants) != 0 || !encoded || !incomplete {
+		t.Fatalf("fixture decode = variants:%q encoded:%v incomplete:%v", variants, encoded, incomplete)
+	}
+
+	for _, key := range []string{"source", "uri", "url", "image_url"} {
+		t.Run(key, func(t *testing.T) {
+			body := []byte(`{"messages":[{"role":"user","content":[{` + jsonQuote(key) + `:` + jsonQuote(value) + `}]}]}`)
+			result, err := ExtractRequest(body, round5JSONHeaders(), Limits{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result.IsComplete() || result.TextCoverage != TextCoverageUnavailable ||
+				!result.HasIncompleteReason(IncompleteTextPartByteLimit) || result.OpaqueMedia {
+				t.Fatalf("malformed mixed-case data scalar carrier silently completed: %#v", result)
+			}
+			if len(result.Parts) != 0 || len(result.Segments) != 0 {
+				t.Fatalf("aborted malformed scalar carrier leaked text: parts=%#v segments=%#v", result.Parts, result.Segments)
+			}
+		})
+	}
 }
 
 func BenchmarkExtractRequestScalarCarrierPermutation(b *testing.B) {

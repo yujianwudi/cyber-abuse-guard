@@ -12,6 +12,7 @@ import (
 
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
 	"github.com/yujianwudi/cyber-abuse-guard/internal/audit"
+	"github.com/yujianwudi/cyber-abuse-guard/internal/buildinfo"
 	"github.com/yujianwudi/cyber-abuse-guard/internal/classifier"
 	"github.com/yujianwudi/cyber-abuse-guard/internal/config"
 	"github.com/yujianwudi/cyber-abuse-guard/internal/extract"
@@ -21,6 +22,8 @@ type modelRouteFailure struct {
 	code   string
 	reason string
 }
+
+const streamingScannerIdentity = buildinfo.StreamingScannerIdentity
 
 // callModelRoute captures the runtime's failure policy under the same read
 // lock that protects the runtime itself. The lock is released before a
@@ -90,7 +93,10 @@ func (p *Plugin) route(state *runtimeState, request pluginapi.ModelRouteRequest)
 		if state.config.Mode == config.ModeStrict && !multipartRequest(request.Headers) {
 			requestHash := audit.HashRequest(request.Body)
 			p.counters.blocked.Add(1)
-			p.recordUnknownSourceBlock(state, requestHash, time.Since(started))
+			p.counters.incompleteInspections.Add(1)
+			p.counters.incompleteBlocked.Add(1)
+			p.counters.coverageIncomplete.Add(1)
+			p.recordUnknownSourceBlock(state, requestHash, request.Stream, time.Since(started))
 			p.pending.put(requestHash, "unknown_source_format")
 			return blockedRouteEnvelope("cyber_abuse_guard_unknown_source_format"), nil
 		}
@@ -99,21 +105,43 @@ func (p *Plugin) route(state *runtimeState, request pluginapi.ModelRouteRequest)
 		// because a future provider shape may hide semantics under unknown fields.
 	}
 
+	mode := classifierMode(state.config.Mode)
+	thresholds := classifier.Thresholds{
+		Audit:         state.config.Thresholds.Audit,
+		BalancedBlock: state.config.Thresholds.BalancedBlock,
+		HardBlock:     state.config.Thresholds.HardBlock,
+	}
+	policy := classifierPolicy(state.config)
+	session, sessionErr := state.classifier.NewScanSession(mode, thresholds, policy, classifier.ScanLimits{
+		WindowBytes:   state.config.EffectiveTextWindowBytes(),
+		MaxTotalBytes: state.config.MaxTotalTextBytes,
+		MaxChunks:     state.config.EffectiveMaxClassificationChunks(),
+	})
+	if sessionErr != nil {
+		return nil, &modelRouteFailure{code: "invalid_classifier_limits", reason: "cyber_abuse_guard_inspection_failure"}
+	}
 	limits := extract.Limits{
-		MaxScanBytes: state.config.MaxScanBytes,
-		MaxRawBytes:  maxRPCRequestBytes,
-		MaxJSONDepth: state.config.MaxJSONDepth,
-		MaxTextParts: state.config.MaxTextParts,
+		// MaxScanBytes is now only the deprecated window alias. The streaming
+		// entry points below never slice the raw JSON body by this value.
+		MaxScanBytes:            state.config.MaxScanBytes,
+		MaxRawBytes:             maxRPCRequestBytes,
+		MaxTextWindowBytes:      state.config.EffectiveTextWindowBytes(),
+		MaxTotalTextBytes:       state.config.MaxTotalTextBytes,
+		MaxClassificationChunks: state.config.EffectiveMaxClassificationChunks(),
+		MaxJSONDepth:            state.config.MaxJSONDepth,
+		MaxTextParts:            state.config.MaxTextParts,
+		MaxMultipartTextBytes:   extract.HardMaxMultipartTextBytes,
 	}
 	var extracted extract.Result
 	var extractErr error
 	if unknownSourceFormat {
-		extracted, extractErr = extract.ExtractUntrustedRequest(request.Body, request.Headers, limits)
+		extracted, extractErr = extract.ScanUntrustedRequest(request.Body, request.Headers, limits, session)
 	} else {
-		extracted, extractErr = extract.ExtractProfiledRequest(request.Body, request.Headers, requestProfile, limits)
+		extracted, extractErr = extract.ScanProfiledRequest(request.Body, request.Headers, requestProfile, limits, session)
 	}
 	requestHash := audit.HashRequest(request.Body)
 	if extractErr != nil && len(extracted.IncompleteReasons) == 0 {
+		session.Abort()
 		// Invalid limits or an extractor invariant failure is operational. It is
 		// deliberately kept on the existing mode-aware runtime-failure path and
 		// is never confused with request-content incompleteness.
@@ -122,41 +150,32 @@ func (p *Plugin) route(state *runtimeState, request pluginapi.ModelRouteRequest)
 		}
 		return nil, &modelRouteFailure{code: "inspection_failure", reason: "cyber_abuse_guard_inspection_failure"}
 	}
+	result := session.Finish()
 	incompleteReasons := append([]extract.IncompleteReason(nil), extracted.IncompleteReasons...)
 	if !extracted.IsComplete() && len(incompleteReasons) == 0 {
 		// Defensive invariant fallback. The category remains bounded and no raw
 		// parser diagnostic is logged or persisted.
 		incompleteReasons = append(incompleteReasons, extract.IncompleteParseError)
 	}
-
-	result := classifier.Result{
-		Action:         classifier.ActionAllow,
-		RuleSetVersion: state.rulesVersion,
-	}
 	if len(incompleteReasons) == 0 {
-		mode := classifierMode(state.config.Mode)
-		thresholds := classifier.Thresholds{
-			Audit:         state.config.Thresholds.Audit,
-			BalancedBlock: state.config.Thresholds.BalancedBlock,
-			HardBlock:     state.config.Thresholds.HardBlock,
-		}
-		policy := classifierPolicy(state.config)
-		if extracted.RoleAware {
-			result = state.classifier.ClassifySegmentsWithPolicy(extracted.Segments, mode, thresholds, policy)
-		} else {
-			result = state.classifier.ClassifyUntrustedPartsWithPolicy(extracted.Parts, mode, thresholds, policy)
-		}
-		if result.Truncated {
-			// Decoder/classifier budget exhaustion is still incomplete content
-			// inspection. Discard the prefix score before policy or subject state
-			// sees it; balanced must allow+audit and strict alone may enforce.
-			incompleteReasons = append(incompleteReasons, extract.IncompleteScanByteLimit)
-			result = classifier.Result{
-				Action:         classifier.ActionAllow,
-				RuleSetVersion: state.rulesVersion,
-			}
+		if reason := classifierCoverageReason(result.Coverage); reason != "" {
+			incompleteReasons = appendIncompleteReason(incompleteReasons, reason)
 		}
 	}
+	if len(incompleteReasons) == 0 && result.Coverage.State == classifier.CoverageComplete &&
+		result.Coverage.Bytes != int64(extracted.TextBytesScanned) {
+		// A byte-accounting mismatch means full classifier coverage was not
+		// proven. Treat it as bounded classification exhaustion, never as a
+		// complete finding or an operational fail-open.
+		incompleteReasons = appendIncompleteReason(incompleteReasons, extract.IncompleteClassificationChunkLimit)
+	}
+	if len(incompleteReasons) != 0 {
+		// The first Round6 implementation intentionally does not enable the
+		// verified-hard-under-incomplete exception. Remove every partial score,
+		// category, rule and behavior before disposition or subject accounting.
+		result = incompleteClassificationResult(result, state.rulesVersion)
+	}
+	p.recordStreamingCounters(extracted, result, incompleteReasons, state.config.EffectiveTextWindowBytes())
 	if len(incompleteReasons) == 0 && result.Behavior != nil && result.Behavior.Wrapper {
 		// Control-plane observation is deliberately orthogonal to the winning
 		// cyber-abuse taxonomy and subject-risk state. The management surface
@@ -240,8 +259,8 @@ func (p *Plugin) route(state *runtimeState, request pluginapi.ModelRouteRequest)
 		p.counters.allowed.Add(1)
 	}
 
-	if decision.Block || decision.Audit {
-		p.recordDecision(state, request, requestHash, subjectHash, extracted.TextBytesScanned, result, decision, subjectReason, time.Since(started))
+	if decision.Block || decision.Audit || decision.Observe {
+		p.recordDecision(state, request, requestHash, subjectHash, extracted.TextBytesScanned, result, decision, incompleteReasons, subjectReason, time.Since(started))
 	}
 	if !decision.Block {
 		return okEnvelope(pluginapi.ModelRouteResponse{Handled: false}), nil
@@ -385,19 +404,108 @@ func classifierMode(mode config.Mode) classifier.Mode {
 	}
 }
 
-func (p *Plugin) recordUnknownSourceBlock(state *runtimeState, requestHash string, latency time.Duration) {
+func classifierCoverageReason(coverage classifier.Coverage) extract.IncompleteReason {
+	switch coverage.State {
+	case classifier.CoverageComplete:
+		return ""
+	case classifier.CoverageBudgetExhausted:
+		switch coverage.Reason {
+		case classifier.CoverageReasonTotalTextLimit:
+			return extract.IncompleteTotalTextLimit
+		default:
+			return extract.IncompleteClassificationChunkLimit
+		}
+	case classifier.CoverageUnavailable:
+		if coverage.Reason == classifier.CoverageReasonInvalidUTF8 {
+			return extract.IncompleteParseError
+		}
+		return extract.IncompleteClassificationChunkLimit
+	default:
+		return extract.IncompleteClassificationChunkLimit
+	}
+}
+
+func appendIncompleteReason(reasons []extract.IncompleteReason, reason extract.IncompleteReason) []extract.IncompleteReason {
+	if reason == "" {
+		return reasons
+	}
+	for _, existing := range reasons {
+		if existing == reason {
+			return reasons
+		}
+	}
+	return append(reasons, reason)
+}
+
+func incompleteClassificationResult(result classifier.Result, rulesVersion string) classifier.Result {
+	return classifier.Result{
+		PolicyVersion:     result.PolicyVersion,
+		PolicySHA256:      result.PolicySHA256,
+		RuleSetVersion:    rulesVersion,
+		Action:            classifier.ActionAllow,
+		Coverage:          result.Coverage,
+		FindingConfidence: classifier.FindingNone,
+		Truncated:         true,
+	}
+}
+
+func (p *Plugin) recordStreamingCounters(extracted extract.Result, result classifier.Result, reasons []extract.IncompleteReason, windowBytes int) {
+	p.counters.streamingScanRequests.Add(1)
+	if extracted.TextBytesScanned > 0 {
+		p.counters.textBytesScannedTotal.Add(uint64(extracted.TextBytesScanned))
+	}
+	if result.Coverage.Windows > 0 {
+		p.counters.classificationWindowsTotal.Add(uint64(result.Coverage.Windows))
+	}
+	if result.Coverage.BoundaryReconstructions > 0 {
+		p.counters.windowBoundaryReconstructions.Add(uint64(result.Coverage.BoundaryReconstructions))
+	}
+	longText := extracted.TextBytesScanned > windowBytes
+	maxWindows := result.Coverage.Reason == classifier.CoverageReasonClassificationLimit
+	totalText := result.Coverage.Reason == classifier.CoverageReasonTotalTextLimit
+	for _, reason := range reasons {
+		switch reason {
+		case extract.IncompleteClassificationChunkLimit:
+			maxWindows = true
+		case extract.IncompleteTotalTextLimit:
+			totalText = true
+			longText = true
+		}
+	}
+	if longText {
+		p.counters.longTextRequests.Add(1)
+	}
+	if len(reasons) == 0 && extracted.TextCoverage == extract.TextCoverageComplete && result.Coverage.State == classifier.CoverageComplete {
+		p.counters.coverageComplete.Add(1)
+	} else {
+		p.counters.coverageIncomplete.Add(1)
+	}
+	if maxWindows {
+		p.counters.maxWindowsExhausted.Add(1)
+	}
+	if totalText {
+		p.counters.totalTextLimitExhausted.Add(1)
+	}
+}
+
+func (p *Plugin) recordUnknownSourceBlock(state *runtimeState, requestHash string, stream bool, latency time.Duration) {
 	if state == nil || state.audit == nil || !state.config.Audit.Enabled {
 		return
 	}
 	event := audit.Event{
-		ID:           newEventID(),
-		Timestamp:    time.Now().UTC(),
-		Action:       "block",
-		Mode:         string(state.config.Mode),
-		Category:     "unknown_source_format",
-		SourceFormat: audit.SourceFormatUnknown,
-		Classifier:   state.rulesVersion,
-		LatencyUS:    latency.Microseconds(),
+		ID:               newEventID(),
+		Timestamp:        time.Now().UTC(),
+		Action:           "block",
+		Mode:             string(state.config.Mode),
+		Category:         "unknown_source_format",
+		SourceFormat:     audit.SourceFormatUnknown,
+		Stream:           stream,
+		Classifier:       state.rulesVersion,
+		Decision:         "block_unknown_source_format",
+		Coverage:         "incomplete",
+		IncompleteReason: "incomplete_inspection",
+		Scanner:          streamingScannerIdentity,
+		LatencyUS:        latency.Microseconds(),
 	}
 	if state.config.Audit.LogRequestHash {
 		event.RequestHash = requestHash
@@ -413,7 +521,7 @@ func (p *Plugin) recordIncompleteCounters(reasons []extract.IncompleteReason, de
 		p.counters.incompleteAllowed.Add(1)
 	}
 
-	var parseError, scanLimit, jsonDepth, textPart, multipartLimit, multipartSchema, toolSchema, deferredTextLimit, unsupported, rpcBody bool
+	var parseError, scanLimit, jsonDepth, textPart, roleAttribution, multipartLimit, multipartSchema, toolSchema, deferredTextLimit, unsupported, rpcBody bool
 	var truncated bool
 	for _, reason := range reasons {
 		switch reason {
@@ -431,6 +539,10 @@ func (p *Plugin) recordIncompleteCounters(reasons []extract.IncompleteReason, de
 			truncated = true
 		case extract.IncompleteTextPartLimit:
 			textPart = true
+			truncated = true
+		case extract.IncompleteRoleAttribution:
+			roleAttribution = true
+		case extract.IncompleteTotalTextLimit, extract.IncompleteClassificationChunkLimit:
 			truncated = true
 		case extract.IncompleteMultipartBoundaryLimit,
 			extract.IncompleteMultipartPartLimit,
@@ -468,6 +580,9 @@ func (p *Plugin) recordIncompleteCounters(reasons []extract.IncompleteReason, de
 	if textPart {
 		p.counters.incompleteTextPartLimit.Add(1)
 	}
+	if roleAttribution {
+		p.counters.incompleteRoleAttribution.Add(1)
+	}
 	if multipartLimit {
 		p.counters.incompleteMultipartLimit.Add(1)
 	}
@@ -491,12 +606,14 @@ func (p *Plugin) recordIncompleteCounters(reasons []extract.IncompleteReason, de
 	}
 }
 
-func (p *Plugin) recordDecision(state *runtimeState, request pluginapi.ModelRouteRequest, requestHash, subjectHash string, scanned int, result classifier.Result, decision inspectionDecision, subjectReason string, latency time.Duration) {
+func (p *Plugin) recordDecision(state *runtimeState, request pluginapi.ModelRouteRequest, requestHash, subjectHash string, scanned int, result classifier.Result, decision inspectionDecision, incompleteReasons []extract.IncompleteReason, subjectReason string, latency time.Duration) {
 	if state == nil || state.audit == nil || !state.config.Audit.Enabled {
 		return
 	}
 	action := "audit"
-	if decision.Block {
+	if decision.Observe {
+		action = "observe"
+	} else if decision.Block {
 		action = "block"
 		if subjectReason == "cooldown" {
 			action = "cooldown"
@@ -513,7 +630,14 @@ func (p *Plugin) recordDecision(state *runtimeState, request pluginapi.ModelRout
 		Stream:           request.Stream,
 		TextBytesScanned: scanned,
 		Classifier:       result.RuleSetVersion,
+		Decision:         decision.Code,
+		Coverage:         "complete",
+		Scanner:          streamingScannerIdentity,
 		LatencyUS:        latency.Microseconds(),
+	}
+	if len(incompleteReasons) != 0 {
+		event.Coverage = "incomplete"
+		event.IncompleteReason = incompleteCategory(incompleteReasons)
 	}
 	if state.config.Audit.LogCategory {
 		event.Category = decision.Category

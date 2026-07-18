@@ -1,19 +1,135 @@
 # Changelog
 
-## 0.1.2 — Unreleased candidate
+## 0.15 — 2026-07-17
 
-Release status: **blocked candidate; not production-ready**. Blind generations
-v1-v8 are retired or consumed failures. v9 is frozen as
-`CONSUMED / METHODOLOGY INVALID / FAIL` because the exact taxonomy-enum
-validator was missing. The first and only methodologically valid v10 run failed
-with 28/320 benign false positives, 49/320 policy blocks, and 33/320 exact
-  classifications. v10 is consumed and cannot be rerun. No stable `v0.1.2` tag,
-  production release, or production deployment may be created from this
-  candidate. The repository owner may publish an explicitly marked development
-  prerelease snapshot such as `v0.1.2-dev.round5.1`; it is not release admission,
-  must not be marked latest, and may contain only dirty development artifacts.
-  A future stable release attempt requires a new implementation and a newly
-  authored independent unseen set.
+Release status: **BLOCKED / PENDING HOST AND INDEPENDENT AUDIT**. Exact project
+version is `0.15` and the only formal tag name is `v0.15` (never `v0.15.0`).
+Round 6 is an unmerged development candidate based on
+`main@7a416df66a79218d73214084d4bf8a733268d894`. No Round 6 tag or Release has
+been created, and production deployment or an `observe -> balanced` change is
+not authorized. The only validation platform in this round is Linux amd64;
+Windows and macOS are outside scope. The historical v10 result remains
+`CONSUMED / FAIL` and cannot be rerun or used for tuning. A future stable
+release still requires a newly authored independent unseen set.
+
+### Round 6 long-text streaming candidate
+
+- Record `21ceb57e6b6030e56d7820c9a67a8eecd068c669` (tree
+  `e55437442f30bdb1b6b748b9611c6760172784cd`) as a passed
+  **pre-version-migration checkpoint**: push CI `29578024185` and PR CI
+  `29578025961` passed, including the then-current CPA v7.2.83 latest-source
+  lane. This checkpoint is engineering evidence only and is not
+  the final v0.15 source, artifact, Host, audit, tag, or release identity.
+- Migrate the active project/build/release identity from the historical `0.1.2`
+  development line to exact version `0.15`, Linux amd64 only. Historical
+  Round 5 `0.1.2` tags, hashes, assets, and evaluation records remain frozen.
+
+- Remove production parsing of `body[:max_scan_bytes]`. Supported JSON requests
+  now traverse the complete CPA-visible envelope and replay proven
+  model-visible string spans incrementally.
+- Migrate legacy `max_scan_bytes` into a compatibility alias for the retained
+  classifier window. Add bounded `max_total_text_bytes` and
+  `max_classification_chunks` controls so cumulative coverage and retained
+  memory are independent.
+- Add a streaming classifier session with derived overlap/carry, logical field
+  boundaries, role/provenance isolation, bounded cross-window reconstruction,
+  and fixed coverage states.
+- Retain only bounded classifier signal facts inside each logical field. If
+  independently safe-looking windows contribute different risk ingredients
+  whose aggregate reaches the balanced threshold, report classifier-window
+  coverage as unavailable instead of incorrectly returning complete allow.
+- Treat assistant/system safety quotes as provisional until a real closing
+  delimiter is observed. Closed quotations discard their bounded provisional
+  result; an unclosed logical field commits it as ordinary content, including
+  later-window and cross-window malicious text.
+- Inspect oversized Base64 candidates with a constant-memory full-stream syntax
+  and decoded-text signal so a binary first sample cannot hide printable text
+  near the end, malformed trailing bytes cannot erase an already proven strong
+  printable Base64 prefix, and high-density text cannot evade detection by
+  inserting a control byte before every 32-byte run. Enforce `max_classification_chunks`
+  before every actual emitted UTF-8-safe chunk rather than relying only on a
+  byte-length estimate.
+- Keep media, metadata, tool-schema, multipart, and role decisions
+  transactional. Add `RoleUnknown` so unknown schema cannot impersonate proven
+  user text.
+- Replace the CPA-transformed OpenAI image multipart JSON legacy collector with
+  a schema-bound raw-span streaming planner. Approved 270 KiB and 1 MiB prompts
+  now receive complete classification in balanced/strict mode, while unknown
+  fields, non-string prompts, opaque files, binary controls, and oversized
+  encoded views retain their fixed multipart contracts.
+- Neutralize every partial finding when envelope or text coverage is
+  incomplete. The optional verified-local-hard exception remains disabled:
+  `balanced` allows plus audits, `strict` blocks plus audits, and incomplete
+  input never updates subject risk.
+- Add audit schema v3 fields `decision`, `coverage`,
+  `incomplete_reason`, and `scanner`, scanner identity
+  `streaming-scanner-v1`, effective-limit status, and fixed low-cardinality
+  counters.
+- Publish classifier identity `classifier-policy-v3` /
+  `99e0ce7f59d2e687ebb3e79e1a71300afee8bb56f723cd8ba3f478c71a64cfd2`.
+- Compact the transactional shadow plan by collapsing caller-controlled keys
+  and semantic values to closed representatives, skipping metadata spans, and
+  using short base-36 markers. Residual allocation remains bounded by structural
+  token/node/field limits and awaits authoritative Linux memory evidence.
+- Add Linux long-text coverage tiers at 64 KiB, 255 KiB, 256 KiB,
+  256 KiB + 1, 270 KiB, 512 KiB, 1 MiB, 4 MiB, and near the effective RPC
+  boundary, plus classifier/extractor fuzz and scaling benchmarks. The
+  `21ceb57` push/PR checkpoint passed these Linux engineering gates; final v0.15
+  evidence remains pending after the version/release-chain migration.
+- Isolate consumed evaluation/Holdout gate tests behind the
+  `consumed_evaluation` build tag and restrict ordinary Round 6 CI to explicit
+  safe targets and sparse source checkout.
+- Make the Linux build itself audit the complete `readelf --version-info` set,
+  reject non-numeric GLIBC ABI tags and numeric versions above 2.34, and make
+  the long-JSON benchmark fail if its exact extract-package benchmark name is
+  absent instead of accepting a zero-match run.
+- Add a dedicated private, untagged clean-candidate Actions workflow. It binds a
+  post-merge `main` commit/tree to its successful main push CI run, requires
+  dispatch from `main` after the workflow exists on the default branch, requires
+  the formal `v0.15` tag to be absent, produces clean reproducible Linux amd64
+  bytes plus `candidate-manifest.json`, and uploads an expiring Actions artifact.
+  The bytes are explicitly unreleased and cannot invoke a formal operation.
+- Add the neutral source policy in
+  [RELEASE_POLICY.md](docs/RELEASE_POLICY.md). Future external decisions are
+  carried by `round6-prerelease-attestation.json` and
+  `formal-release-attestation.json`; reusable source documents do not hardcode
+  future PASS hashes or Release state.
+- Require the CPA v7.2.86 Host + Mock record, the independent
+  audit, and a candidate-bound external `evaluation-v11` or later first-and-only
+  `CONSUMED / PASS` report to cite the same candidate identity. If a durable development handoff
+  is needed after those gates pass, an existing annotated
+  `v0.15-dev.round6[.N]` may create a draft prerelease marked
+  `BLOCKED / NOT A FORMAL RELEASE`. A later annotated formal `v0.15` tag and
+  formal draft remain separate and consume that candidate-level external
+  evaluation attestation. The formal workflow consumes the
+  prerelease attestation, rebuilds and byte-compares the Host-tested bytes, and
+  emits `formal-release-attestation.json`; a protected promotion workflow
+  publishes the unchanged draft only after another approval.
+- Keep historical evaluation-v10 immutable at `CONSUMED / FAIL`: it cannot be
+  rerun and is not a formal-build input. Formal source and audit bundles exclude
+  evaluation, Holdout, private, blind, and retired material; they carry only
+  low-sensitivity attestation identities and hashes.
+- Preserve two deliberate compatibility boundaries: dense encoded derived
+  views beyond the 128 KiB source / 64 KiB retained decoded budget are
+  incomplete, and legacy `ExtractText` keeps materialized `Parts` segmentation
+  semantics while production routing uses streaming APIs.
+- Make CPA v7.2.86 the only current source/compile and real Linux Host +
+  Mock-upstream release target; its Host matrix is **NOT RUN / PENDING**. Earlier
+  v7.2.85/v7.2.84/v7.2.83/v7.2.82/v7.2.81 compatibility results remain historical non-gating engineering
+  evidence. The final PR must merge to `main` and pass exact-main push CI before
+  candidate dispatch. Do not create a development tag or Release before the
+  v7.2.86 Host gate, independent audit, and candidate-level evaluation pass.
+- Require the final PR head to have no unresolved, non-outdated actionable
+  review threads before merge. Automated review is advisory and does not
+  constitute independent approval.
+- Add the Round 6 design, configuration migration, limitations, release-gate,
+  and development-handoff documents.
+
+## 0.1.2 — Historical unreleased development line
+
+The following Round 5 material, hashes, prerelease tags, and v10 facts are
+frozen historical evidence. They are not renamed to 0.15 and do not validate
+the Round 6 candidate.
 
 - Complete the Phase 0 CPA contract alignment without changing the root runtime
   baseline from CPA v7.2.67. Local `execute`, `execute_stream`, and

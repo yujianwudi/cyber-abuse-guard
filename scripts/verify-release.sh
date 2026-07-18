@@ -26,6 +26,7 @@ if ! command -v "$cyclonedx" >/dev/null 2>&1; then
 fi
 release_init
 release_assert_tag
+release_assert_formal_build
 
 dist="${DIST_DIR:-$root/dist}"
 so="cyber-abuse-guard-v${RELEASE_ARTIFACT_VERSION}.so"
@@ -108,7 +109,9 @@ done
 # management/integration tests validate that the runtime exposes the same data.
 binary_strings="$(strings "$so")"
 for identity in "$RELEASE_ARTIFACT_VERSION" "$RELEASE_GIT_COMMIT" \
-  "$RELEASE_RULESET_VERSION" "$RELEASE_RULESET_SHA256"; do
+  "$RELEASE_RULESET_VERSION" "$RELEASE_RULESET_SHA256" \
+  "$RELEASE_CLASSIFIER_POLICY_VERSION" "$RELEASE_CLASSIFIER_POLICY_SHA256" \
+  "$RELEASE_STREAMING_SCANNER"; do
   if ! grep -Fq -- "$identity" <<<"$binary_strings"; then
     printf 'compiled release identity is missing: %s\n' "$identity" >&2
     exit 1
@@ -194,21 +197,12 @@ docs/DESIGN.md
 docs/INSTALL_DOCKER.md
 docs/LIMITATIONS.md
 docs/NEXT_VERSION.md
+docs/RELEASE_POLICY.md
 docs/RULES.md
 docs/THREAT_MODEL.md
 docs/reports/
 docs/reports/CORPUS_REPORT.md
 docs/reports/CPA_INTEGRATION.md
-docs/reports/EVALUATION_V4_REPORT.md
-docs/reports/EVALUATION_V5_REPORT.md
-docs/reports/EVALUATION_V6_REPORT.md
-docs/reports/EVALUATION_V7_REPORT.md
-docs/reports/EVALUATION_V8_REPORT.md
-docs/reports/EVALUATION_V9_REPORT.md
-docs/reports/EVALUATION_V10_REPORT.md
-docs/reports/HOLDOUT_REPORT.md
-docs/reports/HOLDOUT_V2_REPORT.md
-docs/reports/HOLDOUT_V3_REPORT.md
 docs/reports/PERFORMANCE.md
 docs/reports/PHASE0_CPA_CONTRACT.md
 docs/reports/PROMPT_INJECTION_REVIEW.md
@@ -245,6 +239,10 @@ fi
 forbidden_listing="$(grep -Fvx 'scripts/generate-hmac-key.sh' <<<"$bundle_listing")"
 if grep -Eiq '(^|/)(\.git|.*\.db($|[-.])|.*secret.*|.*hmac.*|.*\.key|.*\.pem|\.env.*|.*\.log)($|/)' <<<"$forbidden_listing"; then
   echo "audit bundle contains a forbidden repository, database, or secret-like path" >&2
+  exit 1
+fi
+if grep -Eiq '(^|/)[^/]*(evaluation|holdout|consumed|private|blind|retired)[^/]*($|/)' <<<"$bundle_listing"; then
+  echo "audit bundle contains evaluation, holdout, consumed, private, blind, or retired material" >&2
   exit 1
 fi
 

@@ -25,25 +25,29 @@ func (c *Classifier) ClassifySegments(segments []extract.Segment, mode Mode, thr
 // ClassifyUntrustedPartsWithPolicy is the fallback for valid provider bodies
 // whose role provenance is absent or ambiguous. It preserves the legacy joint
 // decision while also scanning each part and adjacent pair so older explicit
-// abuse cannot be hidden behind appended benign fields. Work is capped by the
-// same role-segment bound and reported as truncation when that cap is exceeded.
+// abuse cannot be hidden behind appended benign fields. Longer inputs use the
+// bounded streaming adapter instead of silently retaining only the tail.
 func (c *Classifier) ClassifyUntrustedPartsWithPolicy(parts []string, mode Mode, thresholds Thresholds, policy Policy) Result {
-	start := 0
 	if len(parts) > maxRoleClassifierSegments {
-		start = len(parts) - maxRoleClassifierSegments
+		segments := make([]extract.Segment, len(parts))
+		for index, part := range parts {
+			segments[index] = extract.Segment{Role: extract.RoleUnknown, Provenance: extract.ProvenanceContent, Text: part}
+		}
+		result := c.classifyStreamingSegmentsCompat(segments, mode, thresholds, policy)
+		attachBehaviorGraph(&result, "untrusted_parts", "")
+		return result
 	}
-	segments := make([]extract.Segment, len(parts)-start)
-	for index, part := range parts[start:] {
+	segments := make([]extract.Segment, len(parts))
+	for index, part := range parts {
 		segments[index] = extract.Segment{Role: extract.Role("untrusted"), Text: part}
 	}
 	result := c.ClassifySegmentsWithPolicy(segments, mode, thresholds, policy)
-	for _, reconstructed := range reconstructedIsolatedPartRuns(parts[start:]) {
+	for _, reconstructed := range reconstructedIsolatedPartRuns(parts) {
 		candidate := c.ClassifyWithPolicy([]string{reconstructed}, mode, thresholds, policy)
 		if roleResultBetter(candidate, result) {
 			result = candidate
 		}
 	}
-	result.Truncated = result.Truncated || start > 0
 	attachBehaviorGraph(&result, "untrusted_parts", "")
 	return result
 }
@@ -57,11 +61,10 @@ func (c *Classifier) ClassifyUntrustedPartsWithPolicy(parts []string, mode Mode,
 // history. Unknown roles or provenance use the legacy all-parts classifier as a
 // conservative fallback.
 func (c *Classifier) ClassifySegmentsWithPolicy(segments []extract.Segment, mode Mode, thresholds Thresholds, policy Policy) Result {
-	truncated := false
 	if len(segments) > maxRoleClassifierSegments {
-		segments = segments[len(segments)-maxRoleClassifierSegments:]
-		truncated = true
+		return c.classifyStreamingSegmentsCompat(segments, mode, thresholds, policy)
 	}
+	truncated := false
 	if !knownSegmentRoles(segments) {
 		parts := make([]string, 0, len(segments))
 		for _, segment := range segments {
@@ -102,7 +105,7 @@ func (c *Classifier) ClassifySegmentsWithPolicy(segments []extract.Segment, mode
 		}
 		controlCandidate := c.ClassifyWithPolicy([]string{nonUser, user}, mode, thresholds, policy)
 		truncated = truncated || controlCandidate.Truncated
-		if resultContainsRuleID(controlCandidate, metaOverrideRuleID) && roleResultBetter(controlCandidate, best) {
+		if standaloneMetaControlResult(controlCandidate) && roleResultBetter(controlCandidate, best) {
 			best = controlCandidate
 		}
 	}

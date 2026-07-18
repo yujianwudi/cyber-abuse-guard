@@ -12,8 +12,8 @@ done
 work="$(mktemp -d)"
 trap 'rm -rf -- "$work"' EXIT
 
-binary="$work/cyber-abuse-guard-v0.1.2.so"
-archive="$work/cyber-abuse-guard_0.1.2_linux_amd64.zip"
+binary="$work/cyber-abuse-guard-v0.15.so"
+archive="$work/cyber-abuse-guard_0.15_linux_amd64.zip"
 printf 'synthetic shared-object bytes for archive layout testing\n' >"$binary"
 chmod 0755 "$binary"
 
@@ -36,7 +36,7 @@ mkdir -p "$work/relative"
 [[ -f "$work/relative/store.zip" ]]
 [[ "$(unzip -Z1 "$work/relative/store.zip")" == "$(basename "$binary")" ]]
 
-printf '{"version":"0.1.2"}\n' >"$work/build-metadata.json"
+printf '{"version":"0.15"}\n' >"$work/build-metadata.json"
 (
   cd "$work"
   sha256sum "$(basename "$archive")" >checksums.txt

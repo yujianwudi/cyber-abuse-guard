@@ -12,14 +12,26 @@ func TestCurrentReturnsNormalizedCopy(t *testing.T) {
 		Dirty = originalDirty
 	})
 
-	Version = " 0.1.2 "
+	Version = " 0.15 "
 	Commit = " abc123 "
 	RulesetVersion = " 1.0.7 "
 	RulesetSHA256 = " AABBCC "
 	Dirty = " FALSE "
 
 	got := Current()
-	if got.Version != "0.1.2" || got.Commit != "abc123" || got.RulesetVersion != "1.0.7" || got.RulesetSHA256 != "aabbcc" || got.Dirty {
+	if got.Version != "0.15" || got.Commit != "abc123" || got.RulesetVersion != "1.0.7" || got.RulesetSHA256 != "aabbcc" ||
+		got.StreamingScanner != StreamingScannerIdentity || got.Dirty {
 		t.Fatalf("Current() = %#v", got)
+	}
+}
+
+func TestDefaultVersionUsesExactTwoPartV015(t *testing.T) {
+	switch Version {
+	case "0.15":
+		return
+	case "0.15.0":
+		t.Fatal("Version must not use the unsupported 0.15.0 alias")
+	default:
+		t.Fatalf("Version = %q, want exact two-part release version 0.15", Version)
 	}
 }

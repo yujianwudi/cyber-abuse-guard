@@ -16,12 +16,16 @@ go_version="$($go_bin env GOVERSION)"
 
 {
   printf '{\n'
-  printf '  "schema_version": 1,\n'
+  printf '  "schema_version": 3,\n'
   printf '  "version": "%s",\n' "$RELEASE_ARTIFACT_VERSION"
   printf '  "source_version": "%s",\n' "$RELEASE_SOURCE_VERSION"
   printf '  "commit": "%s",\n' "$RELEASE_GIT_COMMIT"
+  printf '  "tree": "%s",\n' "$RELEASE_GIT_TREE"
   printf '  "ruleset_version": "%s",\n' "$RELEASE_RULESET_VERSION"
   printf '  "ruleset_sha256": "%s",\n' "$RELEASE_RULESET_SHA256"
+  printf '  "classifier_policy_version": "%s",\n' "$RELEASE_CLASSIFIER_POLICY_VERSION"
+  printf '  "classifier_policy_sha256": "%s",\n' "$RELEASE_CLASSIFIER_POLICY_SHA256"
+  printf '  "streaming_scanner": "%s",\n' "$RELEASE_STREAMING_SCANNER"
   printf '  "dirty": %s,\n' "$RELEASE_DIRTY"
   printf '  "source_date_epoch": %s,\n' "$RELEASE_SOURCE_DATE_EPOCH"
   printf '  "go_version": "%s",\n' "$go_version"

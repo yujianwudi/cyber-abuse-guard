@@ -17,23 +17,30 @@ import (
 )
 
 const (
-	MaxConfigBytes       = 64 << 10
-	MaxAllowedScanBytes  = 4 << 20
-	MaxAllowedJSONDepth  = 128
-	MaxAllowedTextParts  = 4096
-	maxYAMLLines         = 1024
-	maxYAMLLineBytes     = 8 << 10
-	maxYAMLIndent        = 64
-	maxYAMLFlowDepth     = 32
-	maxPriority          = 100000
-	maxSubjectMinutes    = 30 * 24 * 60
-	maxSubjectScore      = 1000000
-	maxSubjectEntries    = 1000000
-	maxPersistedSubjects = 10000
-	maxAuditRetentionDay = 3650
-	maxAuditDBMB         = 10240
-	maxClassifierTimeout = 10000
-	maxDataDirBytes      = 4096
+	MaxConfigBytes                 = 64 << 10
+	MaxAllowedScanBytes            = 4 << 20
+	MinAllowedTextWindowBytes      = 16 << 10
+	MaxAllowedTextWindowBytes      = 1 << 20
+	DefaultMaxTotalTextBytes       = 8 << 20
+	DefaultMaxClassificationChunks = 2048
+	StreamingOverlapBudgetBytes    = 4 << 10
+	MaxAllowedTotalTextBytes       = 8 << 20
+	MaxAllowedClassificationChunks = 16384
+	MaxAllowedJSONDepth            = 128
+	MaxAllowedTextParts            = 4096
+	maxYAMLLines                   = 1024
+	maxYAMLLineBytes               = 8 << 10
+	maxYAMLIndent                  = 64
+	maxYAMLFlowDepth               = 32
+	maxPriority                    = 100000
+	maxSubjectMinutes              = 30 * 24 * 60
+	maxSubjectScore                = 1000000
+	maxSubjectEntries              = 1000000
+	maxPersistedSubjects           = 10000
+	maxAuditRetentionDay           = 3650
+	maxAuditDBMB                   = 10240
+	maxClassifierTimeout           = 10000
+	maxDataDirBytes                = 4096
 )
 
 var (
@@ -66,7 +73,7 @@ const (
 )
 
 // ClassifierFailMode controls the local fallback if the optional classifier is
-// unavailable. v0.1 reserves only the safe deterministic-rules fallback.
+// unavailable. v0.15 reserves only the safe deterministic-rules fallback.
 type ClassifierFailMode string
 
 const ClassifierFailRulesOnly ClassifierFailMode = "rules_only"
@@ -77,6 +84,9 @@ type Config struct {
 	Priority                  int                       `yaml:"priority"`
 	Mode                      Mode                      `yaml:"mode"`
 	MaxScanBytes              int                       `yaml:"max_scan_bytes"`
+	MaxTextWindowBytes        int                       `yaml:"max_text_window_bytes"`
+	MaxTotalTextBytes         int                       `yaml:"max_total_text_bytes"`
+	MaxClassificationChunks   int                       `yaml:"max_classification_chunks"`
 	MaxJSONDepth              int                       `yaml:"max_json_depth"`
 	MaxTextParts              int                       `yaml:"max_text_parts"`
 	OpaqueMediaPolicy         OpaqueMediaPolicy         `yaml:"opaque_media_policy"`
@@ -141,7 +151,7 @@ type TrustedProxy struct {
 	CIDRs   []string `yaml:"cidrs"`
 }
 
-// Classifier is a reserved v0.1 interface configuration. This package does not
+// Classifier is a reserved v0.15 interface configuration. This package does not
 // implement the classifier transport; it only prevents unsafe endpoints from
 // entering a valid configuration.
 type Classifier struct {
@@ -158,8 +168,15 @@ func Default() Config {
 		Priority:     300,
 		Mode:         ModeBalanced,
 		MaxScanBytes: 262144,
-		MaxJSONDepth: 32,
-		MaxTextParts: 512,
+		// MaxTextWindowBytes remains zero unless the new key is explicitly
+		// configured. EffectiveTextWindowBytes then migrates the legacy
+		// max_scan_bytes value from a raw/text coverage cap into a bounded
+		// classifier window.
+		MaxTextWindowBytes:      0,
+		MaxTotalTextBytes:       DefaultMaxTotalTextBytes,
+		MaxClassificationChunks: 0,
+		MaxJSONDepth:            32,
+		MaxTextParts:            512,
 		Thresholds: Thresholds{
 			Audit:         35,
 			BalancedBlock: 60,
@@ -229,6 +246,10 @@ func Parse(data []byte) (Config, error) {
 	if err := preflightYAML(data); err != nil {
 		return Config{}, err
 	}
+	keys, err := topLevelYAMLKeys(data)
+	if err != nil {
+		return Config{}, invalidf("decode YAML structure")
+	}
 
 	decoder := yaml.NewDecoder(bytes.NewReader(data))
 	decoder.KnownFields(true)
@@ -237,6 +258,15 @@ func Parse(data []byte) (Config, error) {
 			return cfg, nil
 		}
 		return Config{}, invalidf("decode YAML")
+	}
+	if keys["max_text_window_bytes"] && cfg.MaxTextWindowBytes == 0 {
+		return Config{}, invalidf("max_text_window_bytes must not be zero when explicitly configured")
+	}
+	if keys["max_classification_chunks"] && cfg.MaxClassificationChunks == 0 {
+		return Config{}, invalidf("max_classification_chunks must not be zero when explicitly configured")
+	}
+	if keys["max_scan_bytes"] && keys["max_text_window_bytes"] && cfg.MaxScanBytes != cfg.MaxTextWindowBytes {
+		return Config{}, invalidf("max_scan_bytes and max_text_window_bytes conflict")
 	}
 	var extra any
 	if err := decoder.Decode(&extra); err == nil {
@@ -260,6 +290,28 @@ func Validate(cfg Config) error {
 	}
 	if cfg.MaxScanBytes < 1 || cfg.MaxScanBytes > MaxAllowedScanBytes {
 		return invalidf("max_scan_bytes must be between 1 and %d", MaxAllowedScanBytes)
+	}
+	if cfg.MaxTextWindowBytes < 0 || cfg.MaxTextWindowBytes > MaxAllowedTextWindowBytes {
+		return invalidf("max_text_window_bytes must be omitted or between %d and %d", MinAllowedTextWindowBytes, MaxAllowedTextWindowBytes)
+	}
+	if cfg.MaxTextWindowBytes > 0 && cfg.MaxTextWindowBytes < MinAllowedTextWindowBytes {
+		return invalidf("max_text_window_bytes must be omitted or between %d and %d", MinAllowedTextWindowBytes, MaxAllowedTextWindowBytes)
+	}
+	if cfg.MaxTotalTextBytes < 1 || cfg.MaxTotalTextBytes > MaxAllowedTotalTextBytes {
+		return invalidf("max_total_text_bytes must be between 1 and %d", MaxAllowedTotalTextBytes)
+	}
+	if cfg.MaxTotalTextBytes < cfg.EffectiveTextWindowBytes() {
+		return invalidf("max_total_text_bytes must be at least the effective text window size")
+	}
+	if cfg.MaxClassificationChunks < 0 || cfg.MaxClassificationChunks > MaxAllowedClassificationChunks {
+		return invalidf("max_classification_chunks must be omitted or between 1 and %d", MaxAllowedClassificationChunks)
+	}
+	minimumChunks := cfg.MinimumClassificationChunks()
+	if minimumChunks > MaxAllowedClassificationChunks {
+		return invalidf("effective text limits require more than %d classification chunks", MaxAllowedClassificationChunks)
+	}
+	if cfg.MaxClassificationChunks > 0 && cfg.MaxClassificationChunks < minimumChunks {
+		return invalidf("max_classification_chunks must be at least %d for the configured text limits", minimumChunks)
 	}
 	if cfg.MaxJSONDepth < 1 || cfg.MaxJSONDepth > MaxAllowedJSONDepth {
 		return invalidf("max_json_depth must be between 1 and %d", MaxAllowedJSONDepth)
@@ -296,6 +348,63 @@ func Validate(cfg Config) error {
 		return err
 	}
 	return nil
+}
+
+// EffectiveTextWindowBytes returns the bounded classifier window. The legacy
+// max_scan_bytes key is retained as a compatibility alias, but it no longer
+// limits raw JSON traversal or total model-visible text coverage. Very small
+// legacy values are clamped to a safe streaming minimum instead of producing
+// an attacker-controlled explosion of tiny chunks.
+func (cfg Config) EffectiveTextWindowBytes() int {
+	if cfg.MaxTextWindowBytes > 0 {
+		return cfg.MaxTextWindowBytes
+	}
+	window := cfg.MaxScanBytes
+	if window < MinAllowedTextWindowBytes {
+		window = MinAllowedTextWindowBytes
+	}
+	if window > MaxAllowedTextWindowBytes {
+		window = MaxAllowedTextWindowBytes
+	}
+	return window
+}
+
+// TextWindowMigrationMode is a fixed, low-cardinality status value.
+func (cfg Config) TextWindowMigrationMode() string {
+	if cfg.MaxTextWindowBytes > 0 {
+		return "explicit_max_text_window_bytes"
+	}
+	if cfg.MaxScanBytes < MinAllowedTextWindowBytes || cfg.MaxScanBytes > MaxAllowedTextWindowBytes {
+		return "legacy_max_scan_bytes_clamped"
+	}
+	return "legacy_max_scan_bytes_alias"
+}
+
+// MinimumClassificationChunks keeps logical text units and internal streaming
+// chunks on separate budgets. The formula leaves one bounded role-
+// reconstruction batch per logical unit, one first text window per potentially
+// non-empty logical unit, enough additional overlapping windows to cover the
+// configured total text limit, and one final batch for an isolated user-rune
+// run finalized by ScanSession.Finish. This intentionally overestimates by up
+// to MaxTextParts windows, keeping the validation formula simple and safe.
+func (cfg Config) MinimumClassificationChunks() int {
+	window := cfg.EffectiveTextWindowBytes()
+	stride := window - StreamingOverlapBudgetBytes
+	if stride < 1 {
+		return MaxAllowedClassificationChunks + 1
+	}
+	minimum := 2*cfg.MaxTextParts + (cfg.MaxTotalTextBytes+stride-1)/stride + 1
+	if minimum < DefaultMaxClassificationChunks {
+		minimum = DefaultMaxClassificationChunks
+	}
+	return minimum
+}
+
+func (cfg Config) EffectiveMaxClassificationChunks() int {
+	if cfg.MaxClassificationChunks > 0 {
+		return cfg.MaxClassificationChunks
+	}
+	return cfg.MinimumClassificationChunks()
 }
 
 // EffectiveOpaqueMediaPolicy returns the explicit policy or the conservative
@@ -418,11 +527,11 @@ func validateDataDir(path string) error {
 
 func validateTrustedProxy(p TrustedProxy) error {
 	if p.Enabled {
-		// CPA v7.2.75 does not expose the direct peer address to ModelRouter.
+		// CPA v7.2.86 does not expose the direct peer address to ModelRouter.
 		// Without that value the plugin cannot prove that a forwarded header was
 		// supplied by one of the configured proxies, so enabling it would make the
 		// subject bucket attacker-controlled.
-		return invalidf("trusted_proxy.enabled is unsupported with CPA v7.2.75 because ModelRouter has no trusted peer address")
+		return invalidf("trusted_proxy.enabled is unsupported with CPA v7.2.86 because ModelRouter has no trusted peer address")
 	}
 	if p.Header != "" && !isHTTPToken(p.Header) {
 		return invalidf("trusted_proxy.header must be a valid HTTP field name")
@@ -593,6 +702,33 @@ func preflightYAML(data []byte) error {
 		return invalidf("unterminated quoted YAML scalar")
 	}
 	return nil
+}
+
+func topLevelYAMLKeys(data []byte) (map[string]bool, error) {
+	keys := make(map[string]bool)
+	if len(bytes.TrimSpace(data)) == 0 {
+		return keys, nil
+	}
+	var document yaml.Node
+	if err := yaml.Unmarshal(data, &document); err != nil {
+		return nil, err
+	}
+	if len(document.Content) == 0 || document.Content[0].Kind == 0 ||
+		(document.Content[0].Kind == yaml.ScalarNode && document.Content[0].Tag == "!!null") {
+		return keys, nil
+	}
+	if len(document.Content) != 1 || document.Content[0].Kind != yaml.MappingNode {
+		return nil, errors.New("top-level YAML must be a mapping")
+	}
+	root := document.Content[0]
+	for index := 0; index+1 < len(root.Content); index += 2 {
+		key := root.Content[index]
+		if key.Kind != yaml.ScalarNode {
+			return nil, errors.New("top-level YAML key must be a scalar")
+		}
+		keys[key.Value] = true
+	}
+	return keys, nil
 }
 
 func isHTTPToken(value string) bool {

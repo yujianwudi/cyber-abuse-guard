@@ -139,7 +139,7 @@ func TestExtractRequestMultipartUnknownFieldPrecedesFileEvidence(t *testing.T) {
 		if err != nil || result.IsComplete() || !result.HasIncompleteReason(IncompleteMultipartUnknownField) {
 			t.Fatalf("order %d result=%s err_present=%t", index, multipartResultSummary(result), err != nil)
 		}
-		if !reflect.DeepEqual(result.Parts, []string{prompt}) || result.TextBytesScanned != len(prompt) {
+		if len(result.Parts) != 0 || len(result.Segments) != 0 || result.TextBytesScanned != 0 {
 			t.Fatalf("order %d classifier text mismatch: parts=%d bytes=%d", index, len(result.Parts), result.TextBytesScanned)
 		}
 		if strings.Contains(multipartResultSurface(result), canary) {

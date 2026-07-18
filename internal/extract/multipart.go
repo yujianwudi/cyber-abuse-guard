@@ -29,6 +29,9 @@ func extractMultipart(body []byte, boundary string, profile RequestProfile, limi
 	for {
 		part, err := reader.NextPart()
 		if err == io.EOF {
+			if partCount == 0 {
+				result.addIncomplete(IncompleteMultipartParseError)
+			}
 			break
 		}
 		if err != nil {
@@ -343,7 +346,7 @@ func preflightMultipart(body []byte, boundary string, limits Limits) IncompleteR
 	marker := []byte("--" + boundary)
 	position := findMultipartBoundary(body, 0, marker)
 	if position < 0 {
-		return ""
+		return IncompleteMultipartParseError
 	}
 	partCount := 0
 	for position >= 0 {

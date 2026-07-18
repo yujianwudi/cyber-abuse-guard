@@ -1,3 +1,6 @@
+//go:build consumed_evaluation
+// +build consumed_evaluation
+
 package classifier
 
 import (

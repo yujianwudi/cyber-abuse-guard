@@ -21,51 +21,11 @@ safe_packages=(
   ./internal/subject
   ./rules
 )
-compile_only_packages=(
-  ./cmd/evaluation-snapshot-hash
-  ./cmd/evaluation-v10-author
-  ./cmd/evaluation-v4-author
-  ./cmd/evaluation-v5-author
-  ./cmd/evaluation-v6-author
-  ./cmd/evaluation-v7-author
-  ./cmd/evaluation-v7-validator
-  ./cmd/evaluation-v8-author
-  ./cmd/evaluation-v9-author
-  ./cmd/holdout-fixtures
-  ./cmd/holdout-v3-author
-)
-excluded_packages=(
-  "${compile_only_packages[@]}"
-  ./integration
-  ./internal/classifier
-)
-
-declare -A safe_package_set=() excluded_package_set=() package_seen=()
-for package in "${safe_packages[@]}"; do
-  safe_package_set["$package"]=1
-done
-for package in "${excluded_packages[@]}"; do
-  excluded_package_set["$package"]=1
-done
-module_path="$("$go_bin" list -m)"
-listed_package_output="$("$go_bin" list ./...)"
-mapfile -t listed_packages <<<"$listed_package_output"
-for full_package in "${listed_packages[@]}"; do
-  relative_package="./${full_package#"$module_path"/}"
-  if [[ "$full_package" == "$module_path" ]]; then
-    relative_package="."
-  fi
-  if [[ ! -v safe_package_set["$relative_package"] && ! -v excluded_package_set["$relative_package"] ]]; then
-    printf 'unreviewed Go package is outside the development test boundary: %s\n' "$relative_package" >&2
+for package in "${safe_packages[@]}" ./internal/classifier; do
+  if ! "$go_bin" list -tags="$test_tags" "$package" >/dev/null; then
+    printf 'required Round6 safe package is missing or unloadable: %s\n' "$package" >&2
     exit 1
   fi
-  package_seen["$relative_package"]=1
-done
-for package in "${safe_packages[@]}" "${excluded_packages[@]}"; do
-	if [[ ! -v package_seen["$package"] ]]; then
-    printf 'reviewed Go package is missing from the module: %s\n' "$package" >&2
-    exit 1
-	fi
 done
 
 join_regex() {
@@ -98,11 +58,10 @@ for name in "${expected_round5_extract_entries[@]}"; do
   fi
 done
 
-# Every classifier test-like entry is explicitly classified. The safe list is
-# the only set executed by development test/race modes; the consumed list is
-# compiled and listed but never selected, except for the three v10 aggregate
-# boundary checks below. Any new test, fuzz target, benchmark, or example fails
-# closed until it is reviewed and added to exactly one list.
+# Every classifier test-like entry visible without the consumed_evaluation build
+# tag is explicitly classified. Restricted evaluation/holdout tests are not
+# compiled or listed in development test/race/list modes. Any new visible test,
+# fuzz target, benchmark, or example fails closed until it is reviewed here.
 expected_safe_classifier_entries=(
   BenchmarkClassifier
   BenchmarkClassifierCandidateRichMaxParts
@@ -112,10 +71,13 @@ expected_safe_classifier_entries=(
   BenchmarkMetaOverrideBilingualMixed
   BenchmarkMetaOverrideLongPrompt
   BenchmarkMetaOverrideManyParts
+  BenchmarkRound6StreamingOneMiB
+  BenchmarkRound6StreamingScale
   FuzzDefensiveQuotedSampleBoundary
   FuzzClassifier
   FuzzMetaOverrideClausePermutation
   FuzzMetaOverrideEncodingAndPartSplit
+  FuzzRound6StreamingChunkAndRoleBoundaries
   TestAnalyzeDoesNotReturnPromptFragments
   TestAssistantClosedQuoteCannotHideNewOperationalSentence
   TestAssistantOperationalTextInsideClosedQuoteRemainsInert
@@ -205,6 +167,7 @@ expected_safe_classifier_entries=(
   TestPriorSafetyContextDoesNotSanitizeLaterAbuse
   TestProtectedAuthorizationAcrossPartsDoesNotBypass
   TestQualifiedNeutralCoreBecomesOperationalAbuse
+  TestResultJSONOmitsZeroCoverage
   TestRoleAwareClassifierNeverSilentlyAgesOutAbuse
   TestRoleAwareClearSafetyContentIsNotAttributedAsIntent
   TestRoleAwareExplicitNonUserAbuseStillBlocks
@@ -252,6 +215,58 @@ expected_safe_classifier_entries=(
 	TestRound5UnrelatedPassiveNegationCannotLaunderMetaTarget
   TestRound5UnrelatedSignalsDoNotPolluteMetaTail
   TestRound5WrapperAuditSurvivesIncidentalLowScoreTaxonomyTerms
+  TestRound6DefaultBudgetCoversMaximumLogicalFieldFragmentation
+  TestRound6HardLogicalFieldBoundHasCompleteBudget
+  TestRound6IncompleteClearsUnverifiedFinding
+  TestRound6NormalizeBytesMatchesStringNormalization
+  TestRound6NormalizeBytesRejectsInvalidUTF8
+  TestRound6RequiredChunkOverlapFitsConfigurationBudget
+  TestRound6SingleWindowHasNoBoundaryReconstruction
+  TestRound6StreamingClosedSafetyQuoteDiscardsProvisionalFinding
+  TestRound6StreamingClosedSafetyQuoteTailStaysInertAcrossNextUserField
+  TestRound6StreamingCompactMatcherSurvivesMoreThanOverlapSeparators
+  TestRound6StreamingControlPairDoesNotCarryBaseBehaviorAcrossRoles
+  TestRound6StreamingCoverageReasonsAreSeparateFromProofBudgets
+  TestRound6StreamingCrossWindowLiteralAndNFKC
+  TestRound6StreamingDoesNotJoinDifferentRoleFields
+  TestRound6StreamingInternalChunksDoNotConsumeLogicalPartBudget
+  TestRound6StreamingInvalidOrderIsOperationalError
+  TestRound6StreamingLateHarmConflictBecomesIncomplete
+  TestRound6StreamingLateUnnegatedSyntheticIntentBecomesIncomplete
+  TestRound6StreamingLongAssistantQuotedRefusalRemainsInert
+  TestRound6StreamingLongAssistantTailDoesNotComposeBaseBehaviorWithUser
+  TestRound6StreamingLongPriorUserCoreAndFollowUpBecomesIncomplete
+  TestRound6StreamingMappedToolControlRemainsAuditOnly
+  TestRound6StreamingNegationAcrossWindowRemainsInert
+  TestRound6StreamingNegatedSyntheticIntentRemainsComplete
+  TestRound6StreamingPreservesBoundedRoleCompositionsAfterSixtyFourFields
+  TestRound6StreamingPreservesShortRoleAwareDecisions
+  TestRound6StreamingPreservesThreeTurnRoleSemanticsAfterSixtyFourFields
+  TestRound6StreamingProcessesAllSixtyFiveFields
+  TestRound6StreamingPriorSafetyWindowDoesNotLaunderLaterInstruction
+  TestRound6StreamingQuotedSafetyPrefixDoesNotLaunderEarlierInstruction
+  TestRound6StreamingSplitSyntheticCoreBecomesIncomplete
+  TestRound6StreamingSplitSyntheticQualifiersBecomeIncomplete
+  TestRound6StreamingStrictSplitSyntheticCoreBecomesIncomplete
+  TestRound6StreamingStrictSplitWrapperOnlyMetaRemainsComplete
+  TestRound6StreamingSyntheticFactsStayInsideLogicalField
+  TestRound6StreamingSyntheticSafetyQuoteTransactions
+  TestRound6StreamingUnclosedSafetyQuoteCommitsProvisionalFinding
+  TestRound6StreamingUnclosedSafetyQuoteHarmConflictBecomesIncomplete
+  TestRound6StreamingUnquotedTailAfterSafetyQuoteLinksNextUserField
+  TestRound6StreamingUnrelatedMetaWindowsDoNotCompose
+  TestRound6StreamingUntrustedFallbackPreservesAdjacentProofBudget
+  TestRound6StreamingUnknownLongFieldRetainsBoundedRiskFacts
+  TestRound6StreamingUnknownPersistentControlPlaneSplitFailsClosed
+  TestRound6StreamingUnknownLongBenignFieldDoesNotPromoteSingleRisk
+  TestRound6StreamingRiskAfterLongBenignBoundaryFailsClosed
+  TestRound6StreamingRepeatedRiskAfterContextBoundaryFailsClosed
+  TestRound6StreamingExactUnknownBlockSurvivesLongRiskSuffix
+  TestRound6StreamingUnknownToolPayloadClearsRiskBoundary
+  TestRound6StreamingKnownRoleClearsUnknownRiskFacts
+  TestRound6StreamingLongUnknownBoundaryClearsUserComposition
+  TestRound6StreamingUntrustedOverSixtyFourRetainsEarlyAndLateProofs
+  TestRound6StreamingPersistentControlPlaneAcrossWindowsBecomesIncomplete
   TestSafetyLabelsCannotWashOutOperationalAbuse
   TestSameCategoryEvidenceCompositionIsScopedAndConservative
   TestScopedAuthorizationNamingActionCarriesForNonProtectedCategory
@@ -265,53 +280,13 @@ expected_safe_classifier_entries=(
   TestWrapperBaseBehaviorMinimalContrasts
   TestWrapperOnlyNeverBlocksAnyMode
 )
-expected_consumed_tests=(
-  TestEvaluationV10Integrity
-  TestEvaluationV10HistoricalSnapshotRecordIntegrity
-  TestEvaluationV10ConsumedRerunRejected
-  TestIndependentHoldoutV10
-  TestEvaluationV4Integrity
-  TestEvaluationV4ProductionSnapshotIntegrity
-  TestIndependentHoldoutV4
-  TestEvaluationV5Integrity
-  TestEvaluationV5ProductionSnapshotIntegrity
-  TestIndependentHoldoutV5
-  TestEvaluationV6Integrity
-  TestEvaluationV6ProductionSnapshotIntegrity
-  TestIndependentHoldoutV6
-  TestEvaluationV7Integrity
-  TestEvaluationV7ProductionSnapshotIntegrity
-  TestIndependentHoldoutV7
-  TestEvaluationV8Integrity
-  TestEvaluationV8ProductionSnapshotIntegrity
-  TestIndependentHoldoutV8
-  TestEvaluationV9Integrity
-  TestEvaluationV9HistoricalSnapshotRecordIntegrity
-  TestEvaluationV9ConsumedRerunRejected
-  TestIndependentHoldoutV9
-  TestRetiredHoldoutV1Diagnostic
-  TestRetiredHoldoutV1FrozenIntegrity
-  TestRetiredHoldoutV1ThresholdDiagnosticsRejectFailures
-  TestRetiredHoldoutV2Gate
-  TestIndependentHoldoutV2FrozenIntegrity
-  TestIndependentHoldoutV3FrozenIntegrity
-  TestIndependentHoldoutV3Gate
-)
-
-declare -A safe_seen=() consumed_seen=()
+declare -A safe_seen=()
 for name in "${expected_safe_classifier_entries[@]}"; do
-  if [[ -v safe_seen["$name"] || -v consumed_seen["$name"] ]]; then
+	if [[ -v safe_seen["$name"] ]]; then
     printf 'duplicate classifier allowlist entry: %s\n' "$name" >&2
     exit 1
   fi
   safe_seen["$name"]=0
-done
-for name in "${expected_consumed_tests[@]}"; do
-  if [[ -v safe_seen["$name"] || -v consumed_seen["$name"] ]]; then
-    printf 'duplicate classifier allowlist entry: %s\n' "$name" >&2
-    exit 1
-  fi
-  consumed_seen["$name"]=0
 done
 
 listed_test_output="$(
@@ -323,8 +298,6 @@ for name in "${listed_tests[@]}"; do
   [[ "$name" =~ ^(Test|Fuzz|Benchmark|Example)[A-Za-z0-9_]*$ ]] || continue
   if [[ -v safe_seen["$name"] ]]; then
     safe_seen["$name"]=1
-  elif [[ -v consumed_seen["$name"] ]]; then
-    consumed_seen["$name"]=1
   else
     printf 'unclassified classifier test-like entry: %s\n' "$name" >&2
     exit 1
@@ -337,12 +310,6 @@ for name in "${expected_safe_classifier_entries[@]}"; do
     exit 1
   fi
 done
-for name in "${expected_consumed_tests[@]}"; do
-  if [[ "${consumed_seen[$name]}" != 1 ]]; then
-    printf 'required consumed-boundary test name is missing: %s\n' "$name" >&2
-    exit 1
-  fi
-done
 
 safe_pattern="$(join_regex "${expected_safe_classifier_entries[@]}")"
 boundary_pattern="$(join_regex \
@@ -351,24 +318,23 @@ boundary_pattern="$(join_regex \
   TestEvaluationV10ConsumedRerunRejected)"
 
 case "$mode" in
+  list)
+    printf 'Round6 safe development boundary: packages=%d classifier_entries=%d\n' \
+      "${#safe_packages[@]}" "${#expected_safe_classifier_entries[@]}"
+    ;;
   test)
-    # Compile/link authoring and historical tooling tests without selecting any
-    # test function or opening their evaluation/holdout fixtures.
-    "$go_bin" test -tags="$test_tags" -count=1 -run='^$' "${compile_only_packages[@]}"
     "$go_bin" test -tags="$test_tags" -count=1 "${safe_packages[@]}"
     "$go_bin" test -tags="$test_tags" -count=1 -run="$safe_pattern" ./internal/classifier
     ;;
   race)
-    CGO_ENABLED=1 "$go_bin" test -race -tags="$test_tags" -count=1 -run='^$' "${compile_only_packages[@]}"
     CGO_ENABLED=1 "$go_bin" test -race -tags="$test_tags" -count=1 "${safe_packages[@]}"
     CGO_ENABLED=1 "$go_bin" test -race -tags="$test_tags" -count=1 -run="$safe_pattern" ./internal/classifier
     ;;
   boundary)
-    "$go_bin" test -tags="$test_tags" -count=1 -run='^$' "${compile_only_packages[@]}"
-    "$go_bin" test -tags="$test_tags" -count=1 -v -run="$boundary_pattern" ./internal/classifier
+    "$go_bin" test -tags="$test_tags,consumed_evaluation" -count=1 -v -run="$boundary_pattern" ./internal/classifier
     ;;
   *)
-    printf 'usage: %s test|race|boundary\n' "${0##*/}" >&2
+	printf 'usage: %s list|test|race|boundary\n' "${0##*/}" >&2
     exit 2
     ;;
 esac

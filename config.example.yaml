@@ -8,11 +8,20 @@ plugins:
     cyber-abuse-guard:
       enabled: true
       priority: 300
-      # First production deployment: observe for 24-48h, then audit for
-      # 24-48h, then balanced after review. Do not start directly in strict.
+      # Sandbox/candidate default only. Production rollout remains prohibited
+      # until the documented Host, audit, evaluation, and formal-release gates pass.
       mode: observe
 
+      # Legacy compatibility alias. It now selects the bounded text window;
+      # it no longer truncates raw JSON or caps cumulative inspected text.
       max_scan_bytes: 262144
+      # Prefer this explicit key for new configurations. If both keys are
+      # present they must match.
+      # max_text_window_bytes: 262144
+      max_total_text_bytes: 8388608
+      # Omit to derive a safe value from total text, window size, and logical
+      # text-part capacity.
+      # max_classification_chunks: 2048
       max_json_depth: 32
       max_text_parts: 512
 
@@ -71,13 +80,13 @@ plugins:
         max_migration_backups: 3
 
       trusted_proxy:
-        # CPA v7.2.67 ModelRouter lacks a trustworthy direct-peer address;
-        # v0.1.2 therefore rejects enabled: true instead of trusting spoofable headers.
+        # CPA v7.2.86 ModelRouter lacks a trustworthy direct-peer address;
+        # v0.15 therefore rejects enabled: true instead of trusting spoofable headers.
         enabled: false
         header: X-Forwarded-For
         cidrs: []
 
-      # Reserved for a future local-only classifier; v0.1.2 rejects enabled: true.
+      # Reserved for a future local-only classifier; v0.15 rejects enabled: true.
       classifier:
         enabled: false
         endpoint: ""

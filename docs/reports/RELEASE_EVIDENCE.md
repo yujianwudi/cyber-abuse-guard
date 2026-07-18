@@ -1,8 +1,87 @@
-# v0.1.2 Fifth-Round Development Evidence — Round5.2 Source-Freeze Record / Round5.1 Historical
+# v0.15 Round 6 Development Evidence — current gate plus frozen Round 5 history
 
-Last updated: 2026-07-16 (Asia/Shanghai)
+Last updated: 2026-07-17 (Asia/Shanghai)
 
-## Round5.2 source-freeze / pre-merge record
+## Round 6 v0.15 current evidence status — not a release PASS
+
+Exact project version is `0.15`; the only formal tag is `v0.15`, never
+`v0.15.0`. The only current source/compile and real-Host release target is CPA
+v7.2.86 (`81d70f5d9f3fdb39a6290ed9c917ff0c6f27ca30`). Earlier
+v7.2.85/v7.2.84/v7.2.83/v7.2.82/v7.2.81 profiles are historical non-gating engineering evidence.
+
+```text
+status: BLOCKED / PENDING HOST AND INDEPENDENT AUDIT
+project_version: 0.15
+formal_tag: v0.15
+pre_version_checkpoint_commit: 21ceb57e6b6030e56d7820c9a67a8eecd068c669
+pre_version_checkpoint_tree: e55437442f30bdb1b6b748b9611c6760172784cd
+pre_version_checkpoint_push_ci: 29578024185 / SUCCESS
+pre_version_checkpoint_pr_ci: 29578025961 / SUCCESS
+final_pr_head_and_pr_ci: PENDING
+merge_main: NOT RUN / PENDING / CANDIDATE-GENERATION PREREQUISITE
+post_merge_main_push_ci: NOT RUN / PENDING
+final_v0.15_commit_tree: PENDING EXACT POST-MERGE MAIN IDENTITY
+private_untagged_clean_candidate: NOT CREATED / PENDING
+candidate_manifest: NOT CREATED / PENDING
+cpa_v7.2.86_host_mock: NOT RUN / PENDING
+four_layer_zero_call_evidence: NOT RUN / PENDING
+independent_source_artifact_host_audit: NOT RUN / PENDING
+candidate_bound_evaluation_v11_plus: NOT RUN / PENDING / requires CONSUMED PASS
+round6_prerelease_attestation: NOT CREATED / PENDING
+historical_v10: CONSUMED / FAIL / IMMUTABLE / NOT A FORMAL INPUT
+formal_v0.15_tag_draft: NOT CREATED / BLOCKED
+formal_release_attestation: NOT CREATED / PENDING
+formal_v0.15_promotion: NOT RUN / BLOCKED
+```
+
+The `21ceb57` push/PR checkpoint passed before the 0.15 version and
+release-chain migration. It is not final v0.15 candidate, Host, audit, tag, or
+Release evidence. The final PR head must pass PR CI, merge to `main`, and the
+exact resulting main commit/tree must pass push CI. The dedicated private,
+untagged candidate workflow must then be dispatched from `refs/heads/main`.
+That workflow
+must produce clean Linux amd64 bytes plus `candidate-manifest.json`; clean bytes
+remain unreleased.
+
+The CPA v7.2.86 Host + Mock record and the independent audit must bind the same
+candidate workflow run, commit, tree, and SO SHA-256. Every local block must
+show zero Auth Selector, Provider, usage, and Mock-upstream deltas. The exact
+candidate must also receive an external `evaluation-v11` or later first-and-only
+`CONSUMED / PASS` report. Only after those gates may an optional annotated
+`v0.15-dev.round6[.N]` draft prerelease be created, still marked
+`BLOCKED / NOT A FORMAL RELEASE`. Its `round6-prerelease-attestation.json`
+records the evaluation ID and report SHA-256; the annotated formal `v0.15` tag
+and verified draft consume that same candidate-level attestation. Protected
+promotion may publish only the unchanged draft.
+
+Current policy identity is `classifier-policy-v3` /
+`99e0ce7f59d2e687ebb3e79e1a71300afee8bb56f723cd8ba3f478c71a64cfd2`;
+scanner identity is `streaming-scanner-v1`; ruleset identity remains `1.0.7` /
+`7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134`.
+
+The final PR head must have no unresolved, non-outdated actionable review
+threads before merge. No automated-review result is treated as an independent
+audit PASS.
+
+This reusable source report does not self-record future Host/audit PASS hashes,
+merge identity, tag state, or Release state. Those remain external attestation
+fields. Stable v0.15 eligibility is determined only by the Round 6 and formal
+attestation assets that bind the final source and candidate bytes.
+The neutral policy is [RELEASE_POLICY.md](../RELEASE_POLICY.md); the named
+external assets are `round6-prerelease-attestation.json` and
+`formal-release-attestation.json`.
+
+Historical evaluation-v10 cannot be rerun and is not accepted by the formal
+build. Formal source and audit bundles exclude evaluation, Holdout, private,
+blind, and retired material; only low-sensitivity attestation IDs and hashes may
+cross the packaging boundary.
+
+The Round5.2 v7.2.80 PASS record below remains frozen historical
+source/compile evidence and is not rewritten or reused as current Round 6
+matrix evidence. All historical 0.1.2 tags, hashes, assets, and v10 facts remain
+unchanged.
+
+## Frozen Round5.2 source-freeze / pre-merge record
 
 This section is intentionally limited to evidence that can be fixed before
 merge: source-freeze identity, safe local gates, exact-source branch push CI,

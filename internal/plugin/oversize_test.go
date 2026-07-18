@@ -45,6 +45,9 @@ func TestOversizedModelRouteUsesIncompleteInspectionContract(t *testing.T) {
 				if got := p.counters.incompleteRPCBodyLimit.Load(); got != 1 {
 					t.Fatalf("mode=%s incomplete_rpc_body_limit=%d, want 1", testCase.mode, got)
 				}
+				if got := p.counters.coverageIncomplete.Load(); got != 1 {
+					t.Fatalf("mode=%s coverage_incomplete=%d, want 1", testCase.mode, got)
+				}
 			}
 		})
 	}
@@ -112,6 +115,7 @@ func TestOversizedRouteWritesPrivacyMinimalAuditEvent(t *testing.T) {
 	}{
 		{mode: "balanced", wantAction: "audit"},
 		{mode: "audit", wantAction: "audit"},
+		{mode: "observe", wantAction: "observe"},
 	} {
 		t.Run(testCase.mode, func(t *testing.T) {
 			p := New()
@@ -127,8 +131,19 @@ func TestOversizedRouteWritesPrivacyMinimalAuditEvent(t *testing.T) {
 				t.Fatalf("oversized audit events=%#v", events)
 			}
 			event := items[0].(map[string]any)
-			if event["action"] != testCase.wantAction || event["category"] != "rpc_body_limit" {
+			if event["action"] != testCase.wantAction || event["category"] != "rpc_body_limit" ||
+				event["coverage"] != "incomplete" || event["incomplete_reason"] != "rpc_body_limit" ||
+				event["scanner"] != streamingScannerIdentity {
 				t.Fatalf("oversized event=%#v", event)
+			}
+			wantDecision := "allow_due_to_incomplete_inspection"
+			if testCase.mode == "audit" {
+				wantDecision = "audit_incomplete_inspection"
+			} else if testCase.mode == "observe" {
+				wantDecision = "observe_incomplete_inspection"
+			}
+			if event["decision"] != wantDecision {
+				t.Fatalf("oversized event decision=%#v, want %q", event, wantDecision)
 			}
 			for _, key := range []string{"request_hash", "model", "source_format"} {
 				if value, exists := event[key]; exists && value != "" {

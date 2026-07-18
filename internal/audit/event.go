@@ -44,6 +44,10 @@ type Event struct {
 	Stream           bool   `json:"stream"`
 	TextBytesScanned int    `json:"text_bytes_scanned"`
 	Classifier       string `json:"classifier,omitempty"`
+	Decision         string `json:"decision"`
+	Coverage         string `json:"coverage"`
+	IncompleteReason string `json:"incomplete_reason,omitempty"`
+	Scanner          string `json:"scanner"`
 	LatencyUS        int64  `json:"latency_us"`
 }
 
@@ -110,6 +114,17 @@ func prepareEvent(event Event, now time.Time) (Event, error) {
 	event.RuleIDs = append([]string(nil), event.RuleIDs...)
 	event.Model = privacySafeModel(event.Model)
 	event.SourceFormat = privacySafeSourceFormat(event.SourceFormat)
+	// Source compatibility for pre-Round6 callers and migration tests. New
+	// routing code always supplies explicit fixed values.
+	if event.Decision == "" {
+		event.Decision = "legacy_unspecified"
+	}
+	if event.Coverage == "" {
+		event.Coverage = "legacy_unknown"
+	}
+	if event.Scanner == "" {
+		event.Scanner = "legacy"
+	}
 	if err := validateEvent(event); err != nil {
 		return Event{}, err
 	}
@@ -123,7 +138,7 @@ func validateEvent(event Event) error {
 	if event.Timestamp.Year() < 1970 || event.Timestamp.Year() > 9999 {
 		return errors.New("audit: invalid event timestamp")
 	}
-	if !oneOf(event.Action, "allow", "audit", "block", "cooldown") {
+	if !oneOf(event.Action, "allow", "observe", "audit", "block", "cooldown") {
 		return fmt.Errorf("audit: invalid action %q", event.Action)
 	}
 	if !oneOf(event.Mode, "off", "observe", "audit", "balanced", "strict") {
@@ -133,12 +148,38 @@ func validateEvent(event Event) error {
 		value string
 		limit int
 	}{
-		"category":   {event.Category, 128},
-		"classifier": {event.Classifier, 64},
+		"category":          {event.Category, 128},
+		"classifier":        {event.Classifier, 64},
+		"decision":          {event.Decision, 96},
+		"coverage":          {event.Coverage, 32},
+		"incomplete_reason": {event.IncompleteReason, 64},
+		"scanner":           {event.Scanner, 64},
 	} {
 		if err := validateField(name, field.value, field.limit, true); err != nil {
 			return err
 		}
+	}
+	if !validDecision(event.Decision) {
+		return fmt.Errorf("audit: invalid decision %q", event.Decision)
+	}
+	if !oneOf(event.Coverage, "complete", "incomplete", "legacy_unknown") {
+		return fmt.Errorf("audit: invalid coverage %q", event.Coverage)
+	}
+	if !validIncompleteReason(event.IncompleteReason) {
+		return fmt.Errorf("audit: invalid incomplete_reason %q", event.IncompleteReason)
+	}
+	switch event.Coverage {
+	case "complete":
+		if event.IncompleteReason != "" {
+			return errors.New("audit: complete coverage must not include incomplete_reason")
+		}
+	case "incomplete":
+		if event.IncompleteReason == "" {
+			return errors.New("audit: incomplete coverage requires incomplete_reason")
+		}
+	}
+	if !oneOf(event.Scanner, "legacy", "streaming-scanner-v1") {
+		return fmt.Errorf("audit: invalid scanner %q", event.Scanner)
 	}
 	if event.Model != "" && !validDigest(event.Model, modelHashPrefix) {
 		return errors.New("audit: model is not a domain-separated SHA-256 correlation value")
@@ -170,6 +211,27 @@ func validateEvent(event Event) error {
 		return errors.New("audit: subject_hash is not an HMAC-SHA256 correlation value")
 	}
 	return nil
+}
+
+func validDecision(value string) bool {
+	return oneOf(value,
+		"legacy_unspecified",
+		"allow_clean",
+		"observe_malicious_text", "audit_malicious_text", "block_malicious_text",
+		"observe_suspicious_text", "audit_suspicious_text",
+		"observe_incomplete_inspection", "audit_incomplete_inspection",
+		"allow_due_to_incomplete_inspection", "block_due_to_incomplete_inspection",
+		"allow_incomplete_inspection_off", "block_verified_hard_policy_under_incomplete_inspection",
+		"observe_opaque_media", "audit_opaque_media", "allow_with_opaque_media_audit", "block_opaque_media",
+		"audit_subject_risk", "block_subject_risk",
+		"block_unknown_source_format", "cooldown_subject_risk")
+}
+
+func validIncompleteReason(value string) bool {
+	return oneOf(value, "", "parse_error", "scan_limit", "rpc_body_limit", "json_depth_limit",
+		"text_part_limit", "role_attribution", "classification_chunk_limit", "total_text_limit", "multipart_limit",
+		"multipart_schema", "tool_schema", "deferred_text_limit", "unsupported_content_type",
+		"incomplete_inspection")
 }
 
 // privacySafeModel is also used when reading legacy databases so management
