@@ -47,7 +47,7 @@ classifier.
 | RC source commit CI | [29644688551](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29644688551) **FAILED** at the CPA latest-source compatibility request with HTTP 403; downstream regression, test, build, and reproducibility steps were skipped |
 | Validation platform | Linux amd64 only; emitted numeric GLIBC ABI versions must be `<= 2.34` |
 | Out of scope | Windows, macOS, musl/Alpine, local deployment, production validation |
-| CPA Host matrix | Active validation and the supported release target are limited to CPA v7.2.86; owner-operated isolated Host + Mock-upstream evidence is **NOT RUN / PENDING** |
+| CPA Host matrix | Active validation and the supported release target are pinned to CPA v7.2.88 (`93d74a890a44802f656d7f39a573916b2611896e`); owner-operated isolated Host + Mock-upstream evidence is **NOT RUN / PENDING** |
 | Production | Not accessed or modified; no production request, audit database, credential, HMAC key, account pool, or real Provider was used |
 | Scanner identity | `streaming-scanner-v1` |
 | Classifier policy | `classifier-policy-v3` / `99e0ce7f59d2e687ebb3e79e1a71300afee8bb56f723cd8ba3f478c71a64cfd2` |
@@ -196,7 +196,7 @@ for implementation or conclusions.
 | RC source exact-main CI | [29644688551](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29644688551) **FAILED** on HTTP 403 in the CPA latest-source check; it was explicitly not used as the RC release gate |
 | Source-only `v0.15-rc.1` tag CI | [29630926354](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29630926354) **SUCCESS** for `6782dfa` / tree `a8edbe2` |
 | Private untagged clean candidate Actions artifact | **NOT CREATED / PENDING**; must bind one final commit/tree and emit `candidate-manifest.json` |
-| CPA v7.2.86 Host + Mock upstream | **NOT RUN / PENDING** |
+| CPA v7.2.88 Host + Mock upstream | **NOT RUN / PENDING** |
 | Independent source/artifact/Host audit | **NOT RUN / PENDING** |
 | Candidate-bound external evaluation-v11 or later | **NOT RUN / PENDING**; must be first-and-only `CONSUMED / PASS` for the exact candidate |
 | Annotated `v0.15-dev.round6[.N]` prerelease | Optional and blocked until Host, independent audit, and candidate-level evaluation pass; never a formal release |
@@ -228,9 +228,11 @@ The v0.15 evidence chain is intentionally split:
    deployment or release approval.
 2. A manual, private, **untagged** GitHub Actions dispatch from `main` builds clean exact-source
    Linux amd64 candidate bytes. Its artifact is not a GitHub Release and expires.
-3. The CPA v7.2.86 Host + Mock record, the independent
+3. The CPA v7.2.88 Host + Mock record, the independent
    audit, and a candidate-bound external `evaluation-v11` or later
    `CONSUMED / PASS` report must all bind the same candidate identity.
+   The Host identity and evidence hash are carried by attestation schema v2 as
+   `cpa_version`, `cpa_commit`, and `cpa_host_sha256`.
 4. If a durable development handoff is needed after those gates, an existing
    annotated `v0.15-dev.round6` (or numbered suffix) may produce a draft prerelease only
    after those external gates pass. It remains `BLOCKED / NOT A FORMAL RELEASE`.
@@ -255,7 +257,9 @@ only by external Round 6/formal attestation assets that bind the final source,
 candidate workflow run, candidate bytes, Host records, independent audit, and
 release evaluation.
 
-Active CPA validation supports only v7.2.86. Legacy version-specific test
+Active release and Host validation is pinned to CPA v7.2.88 at
+`93d74a890a44802f656d7f39a573916b2611896e`. Later upstream CPA versions do
+not automatically change the supported, tested, or release-admitted target. Legacy version-specific test
 profiles and Make aliases have been removed; older observations remain only as
 non-executable historical records and are not current release or Host evidence.
 

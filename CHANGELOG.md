@@ -16,6 +16,21 @@ deployment authorization. Windows and macOS are outside scope. The historical
 v10 result remains `CONSUMED / FAIL` and cannot be rerun or used for tuning. A
 future stable release still requires a newly authored independent unseen set.
 
+- Advance the active release and Host pin to CPA v7.2.88 at
+  `93d74a890a44802f656d7f39a573916b2611896e`, use the generic
+  `cpa-host-blackbox` entry point, and bind Host evidence through attestation
+  schema v2 fields `cpa_version`, `cpa_commit`, and `cpa_host_sha256`. Later
+  upstream CPA versions do not automatically retarget the supported Host or
+  formal release identity.
+- Bind the fixed CPA identity to the exact official lightweight Git tag, all
+  three checked-in module requirements, Go module Origin, and both checksums.
+  The compatibility lane no longer depends on rate-limited GitHub REST Release
+  metadata or exposes a repository token to checked-out source; remote Git
+  lookup is time-bounded and isolated from repository-local Git configuration.
+- Extend release-policy and CI contracts so schema-v2 Host evidence fields,
+  fixed CPA verification, and the absence of checked-out repository tokens are
+  covered by mutation tests rather than documentation alone.
+
 - Add a dedicated, manual `v0.15-rc.2` prerelease workflow for clean Linux
   amd64 server-sandbox assets. It binds an annotated RC tag to the exact main
   commit/tree and successful main push CI, embeds `0.15-rc.2` in the SO and CPA

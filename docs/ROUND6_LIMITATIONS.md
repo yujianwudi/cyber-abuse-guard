@@ -16,7 +16,7 @@ Current classifier identity is `classifier-policy-v3` /
 
 ## Release blockers
 
-- Official CPA v7.2.86 source/compile compatibility is the current CI gate, and
+- Official CPA v7.2.88 source/compile compatibility is the current CI gate, and
   its real Host + Mock-upstream validation must be performed by the user in the
   authorized server sandbox. Earlier v7.2.85/v7.2.84/v7.2.83/v7.2.82/v7.2.81 checks are historical and
   non-gating.
@@ -41,7 +41,7 @@ Current classifier identity is `classifier-policy-v3` /
   `refs/heads/main` and produces only a private untagged Actions artifact. The
   separate development-prerelease workflow
   defaults to blocked and cannot create a draft prerelease without the same
-  successful candidate run, an explicit PASS input for the CPA v7.2.86 Host
+  successful candidate run, an explicit PASS input for the CPA v7.2.88 Host
   record, an independent audit PASS, candidate-bound evaluation-v11+ PASS ID
   and report hash, and a separate authorization boolean.
 - Host evidence PASS values and SHA-256 inputs are externally reviewed declarations. The workflow validates their format and candidate binding but does not download the underlying evidence files or recompute those evidence hashes; protected Environment reviewers must independently obtain and verify the files, with self-review disabled.
@@ -109,5 +109,6 @@ The external auditor should independently verify:
 7. exact binding between final commit/tree, candidate workflow run,
    `candidate-manifest.json`, clean SO SHA-256, and every Host/audit record.
 
-The CPA v7.2.86 real Host + Mock-upstream result is **NOT RUN / PENDING**.
+The CPA v7.2.88 real Host + Mock-upstream result is **NOT RUN / PENDING**.
 Source/compile checks cannot substitute for this gate.
+Later upstream CPA versions do not automatically change this supported target.

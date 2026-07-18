@@ -28,7 +28,9 @@ from round6_safe_gate_contract import (
     validate_blocked_prerelease_workflow,
     validate_candidate_script,
     validate_candidate_workflow,
+    validate_ci_workflow,
     validate_cpa_compat_script,
+    validate_cpa_module_pins,
     validate_consumed_boundary_files,
     validate_formal_release_workflow,
     validate_frozen_evaluation_tree_script,
@@ -650,13 +652,65 @@ jobs:
                 wrapper_text + "\ntrue\n", wrapper, root
             )
 
-    def test_cpa_local_compatibility_output_cannot_claim_latest_pass(self):
+    def test_fixed_cpa_compatibility_output_cannot_claim_latest_pass(self):
         source = Path(__file__).with_name("cpa-latest-compat.sh")
         text = source.read_text(encoding="utf-8")
         validate_cpa_compat_script(text, source)
         mutation = text + "\nprintf 'CPA latest source/compile compatibility PASS'\n"
-        with self.assertRaisesRegex(ContractError, "only after remote verification"):
+        with self.assertRaisesRegex(ContractError, "must not claim latest PASS"):
             validate_cpa_compat_script(mutation, source)
+
+    def test_checked_in_cpa_module_pins_cannot_drift(self):
+        source_root = Path(__file__).resolve().parent.parent
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        fixture_root = Path(temporary.name)
+        module_files = (
+            "go.mod",
+            "go.sum",
+            "integration/cpalatestcontract/go.mod",
+            "integration/cpalatestcontract/go.sum",
+            "integration/pluginstorecontract/go.mod",
+            "integration/pluginstorecontract/go.sum",
+        )
+        for relative in module_files:
+            target = fixture_root / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes((source_root / relative).read_bytes())
+        validate_cpa_module_pins(fixture_root)
+
+        for relative in (
+            "go.mod",
+            "integration/cpalatestcontract/go.mod",
+            "integration/pluginstorecontract/go.mod",
+        ):
+            with self.subTest(relative=relative):
+                target = fixture_root / relative
+                original = target.read_text(encoding="utf-8")
+                target.write_text(
+                    original.replace(
+                        "github.com/router-for-me/CLIProxyAPI/v7 v7.2.88",
+                        "github.com/router-for-me/CLIProxyAPI/v7 v7.2.89",
+                        1,
+                    ),
+                    encoding="utf-8",
+                )
+                with self.assertRaisesRegex(ContractError, "checked-in CPA module pin"):
+                    validate_cpa_module_pins(fixture_root)
+                target.write_text(original, encoding="utf-8")
+
+        sum_path = fixture_root / "go.sum"
+        original_sum = sum_path.read_text(encoding="utf-8")
+        sum_path.write_text(
+            original_sum.replace(
+                "github.com/router-for-me/CLIProxyAPI/v7 v7.2.88 h1:YfLBYPvkasjqFLzdht+UrEgRLsU3HcM0WDMurNEjIDo=",
+                "github.com/router-for-me/CLIProxyAPI/v7 v7.2.88 h1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+                1,
+            ),
+            encoding="utf-8",
+        )
+        with self.assertRaisesRegex(ContractError, "checked-in CPA sums"):
+            validate_cpa_module_pins(fixture_root)
 
     def test_cpa_compatibility_remote_control_flow_is_frozen(self):
         source = Path(__file__).with_name("cpa-latest-compat.sh")
@@ -664,15 +718,37 @@ jobs:
         mutations = (
             text + "\n: <<'ROUND6_INERT'\nremote check bypass fixture\nROUND6_INERT\n",
             text.replace(
-                'if [[ "$verify_remote" == 1 ]]; then\n  for required_command in curl jq; do',
-                'if false; then\n  for required_command in curl jq; do',
+                'if [[ "$verify_remote" == 1 ]]; then\n  for required_command in git timeout; do',
+                'if false; then\n  for required_command in git timeout; do',
                 1,
             ),
+            text.replace('git -C "$git_identity_dir" \\\n', 'git \\\n', 1),
         )
         for mutation in mutations:
             self.assertNotEqual(mutation, text)
-            with self.assertRaisesRegex(ContractError, "exact reviewed remote-verification contract"):
+            with self.assertRaisesRegex(
+                ContractError,
+                "exact reviewed remote-verification contract|bind the exact lightweight tag",
+            ):
                 validate_cpa_compat_script(mutation, source)
+
+    def test_cpa_compatibility_forbids_rest_metadata_and_repository_tokens(self):
+        source = Path(__file__).with_name("cpa-latest-compat.sh")
+        text = source.read_text(encoding="utf-8")
+        for forbidden in (
+            "api.github.com",
+            "GITHUB_TOKEN",
+            "GH_TOKEN",
+            "${{ github.token }}",
+            "Authorization:",
+            "releases/latest",
+        ):
+            with self.subTest(forbidden=forbidden):
+                mutation = text + f"\n# {forbidden}\n"
+                with self.assertRaisesRegex(
+                    ContractError, "must not depend on GitHub REST metadata or a repository token"
+                ):
+                    validate_cpa_compat_script(mutation, source)
 
     def test_linux_build_glibc_contract_passes(self):
         source = Path(__file__).with_name("build-linux-amd64.sh")
@@ -1021,6 +1097,58 @@ jobs:
             ):
                 validate_candidate_workflow(workflow, Path("candidate.yml"))
 
+    def test_ci_workflow_rejects_checked_out_repository_token_exposure(self):
+        source = Path(__file__).resolve().parent.parent / ".github/workflows/ci.yml"
+        original = source.read_text(encoding="utf-8")
+        validate_ci_workflow(original, source)
+        mutations = (
+            original.replace(
+                '          CPA_COMPAT_VERIFY_REMOTE: "1"\n',
+                '          CPA_COMPAT_VERIFY_REMOTE: "1"\n'
+                '          GITHUB_TOKEN: ${{ github.token }}\n',
+                1,
+            ),
+            original.replace(
+                '          CPA_COMPAT_VERIFY_REMOTE: "1"\n',
+                '          CPA_COMPAT_VERIFY_REMOTE: "1"\n'
+                "          GH_TOKEN: ${{ github['token'] }}\n",
+                1,
+            ),
+        )
+        for workflow in mutations:
+            self.assertNotEqual(workflow, original)
+            with self.assertRaisesRegex(ContractError, "github.token|repository token"):
+                validate_ci_workflow(workflow, source)
+
+    def test_ci_workflow_requires_exact_remote_cpa_verification_step(self):
+        source = Path(__file__).resolve().parent.parent / ".github/workflows/ci.yml"
+        original = source.read_text(encoding="utf-8")
+        mutations = (
+            original.replace(
+                '          CPA_COMPAT_VERIFY_REMOTE: "1"\n',
+                '          CPA_COMPAT_VERIFY_REMOTE: "0"\n',
+                1,
+            ),
+            original.replace(
+                '          CPA_COMPAT_VERIFY_REMOTE: "1"\n',
+                '          CPA_LATEST_VERIFY_REMOTE: "1"\n',
+                1,
+            ),
+            original.replace('          CPA_COMPAT_VERIFY_REMOTE: "1"\n', "", 1),
+            original.replace(
+                "        run: bash ./scripts/cpa-latest-compat.sh\n",
+                "        run: true\n",
+                1,
+            ),
+        )
+        for workflow in mutations:
+            self.assertNotEqual(workflow, original)
+            with self.assertRaisesRegex(
+                ContractError,
+                "remote CPA verification|must be a mapping|exact scalar",
+            ):
+                validate_ci_workflow(workflow, source)
+
     def test_candidate_scripts_match_reviewed_contract_and_are_ci_reachable(self):
         root = Path(__file__).parent.parent
         for name in (
@@ -1049,6 +1177,35 @@ jobs:
         validate_formal_release_workflow(
             self.formal_release_workflow(), Path("release.yml")
         )
+
+    def test_formal_release_remote_cpa_verification_cannot_be_disabled_or_renamed(self):
+        original = self.formal_release_workflow()
+        mutations = (
+            (
+                original.replace(
+                    "          CPA_COMPAT_VERIFY_REMOTE: '1'\n",
+                    "          CPA_COMPAT_VERIFY_REMOTE: '0'\n",
+                    1,
+                ),
+                "remote CPA verification",
+            ),
+            (
+                original.replace(
+                    "          CPA_COMPAT_VERIFY_REMOTE: '1'\n",
+                    "          CPA_LATEST_VERIFY_REMOTE: '1'\n",
+                    1,
+                ),
+                "remote CPA verification",
+            ),
+            (
+                original.replace("          CPA_COMPAT_VERIFY_REMOTE: '1'\n", "", 1),
+                "must be a mapping",
+            ),
+        )
+        for workflow, error_pattern in mutations:
+            self.assertNotEqual(workflow, original)
+            with self.assertRaisesRegex(ContractError, error_pattern):
+                validate_formal_release_workflow(workflow, Path("release.yml"))
 
     def test_formal_release_read_build_and_write_publish_are_separated(self):
         original = self.formal_release_workflow()
@@ -1408,11 +1565,11 @@ jobs:
                         workflow, Path("round6-prerelease.yml")
                     )
 
-    def test_blocked_prerelease_missing_v7286_host_inputs_fail(self):
+    def test_blocked_prerelease_missing_host_inputs_fail(self):
         original = self.blocked_workflow()
         for input_name in (
-            "host_v7286_validation",
-            "host_v7286_evidence_sha256",
+            "host_validation",
+            "host_evidence_sha256",
         ):
             with self.subTest(input_name=input_name):
                 workflow = original.replace(
@@ -1440,8 +1597,8 @@ jobs:
             1,
         )
         legacy_gate = original.replace(
-            "      inputs.host_v7286_validation == 'PASS' &&\n",
-            "      inputs.host_v7286_validation == 'PASS' &&\n"
+            "      inputs.host_validation == 'PASS' &&\n",
+            "      inputs.host_validation == 'PASS' &&\n"
             "      inputs.host_v7282_validation == 'PASS' &&\n",
             1,
         )
@@ -1474,8 +1631,8 @@ jobs:
 
     def test_blocked_prerelease_admission_comment_spoof_fails(self):
         workflow = self.blocked_workflow().replace(
-            '          [[ "$HOST_V7286" == PASS ]]\n',
-            '          # [[ "$HOST_V7286" == PASS ]]\n          true\n',
+            '          [[ "$HOST_VALIDATION" == PASS ]]\n',
+            '          # [[ "$HOST_VALIDATION" == PASS ]]\n          true\n',
         )
         with self.assertRaisesRegex(ContractError, "exact reviewed"):
             validate_blocked_prerelease_workflow(workflow, Path("round6-prerelease.yml"))
@@ -1524,9 +1681,9 @@ jobs:
 
     def test_blocked_prerelease_if_expression_spoof_fails(self):
         workflow = self.blocked_workflow().replace(
-            "    if: >-\n      inputs.host_v7286_validation == 'PASS' &&\n      inputs.independent_audit_validation == 'PASS' &&\n      inputs.independent_evaluation_validation == 'PASS' &&\n      inputs.authorize_blocked_prerelease == true\n",
+            "    if: >-\n      inputs.host_validation == 'PASS' &&\n      inputs.independent_audit_validation == 'PASS' &&\n      inputs.independent_evaluation_validation == 'PASS' &&\n      inputs.authorize_blocked_prerelease == true\n",
             "    if: ${{ true }}\n"
-            "    # inputs.host_v7286_validation == 'PASS' &&\n"
+            "    # inputs.host_validation == 'PASS' &&\n"
             "    # inputs.independent_audit_validation == 'PASS' && inputs.independent_evaluation_validation == 'PASS' &&\n"
             "    # inputs.authorize_blocked_prerelease == true\n",
         )
@@ -1535,16 +1692,14 @@ jobs:
 
     def test_blocked_prerelease_missing_host_gate_fails(self):
         original = self.blocked_workflow()
-        for version in ("7286",):
-            with self.subTest(version=version):
-                workflow = original.replace(
-                    f"      inputs.host_v{version}_validation == 'PASS' &&\n", "", 1
-                )
-                self.assertNotEqual(workflow, original)
-                with self.assertRaisesRegex(ContractError, "missing explicit gate"):
-                    validate_blocked_prerelease_workflow(
-                        workflow, Path("round6-prerelease.yml")
-                    )
+        workflow = original.replace(
+            "      inputs.host_validation == 'PASS' &&\n", "", 1
+        )
+        self.assertNotEqual(workflow, original)
+        with self.assertRaisesRegex(ContractError, "missing explicit gate"):
+            validate_blocked_prerelease_workflow(
+                workflow, Path("round6-prerelease.yml")
+            )
 
     def test_blocked_prerelease_missing_remote_tag_recheck_fails(self):
         workflow = self.blocked_workflow().replace(
@@ -1696,10 +1851,10 @@ jobs:
                         workflow, Path("round6-prerelease.yml")
                     )
 
-    def test_blocked_prerelease_missing_v7286_host_evidence_note_fails(self):
+    def test_blocked_prerelease_missing_host_evidence_note_fails(self):
         original = self.blocked_workflow()
         workflow = original.replace(
-            '            "CPA v7.2.86 Host evidence SHA-256: $HOST_V7286_SHA256" \\\n',
+            '            "CPA Host evidence SHA-256: $HOST_EVIDENCE_SHA256" \\\n',
             "",
             1,
         )

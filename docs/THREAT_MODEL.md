@@ -17,8 +17,9 @@ management middleware are trusted. No upstream or external classifier is
 trusted with request text.
 
 The active project version is exact `0.15`; the only formal tag is `v0.15`,
-never `v0.15.0`. The required compatibility and real-Host target is CPA
-v7.2.86 (`81d70f5d9f3fdb39a6290ed9c917ff0c6f27ca30`). Source overlays, CI,
+never `v0.15.0`. The required compatibility and real-Host target is fixed at CPA
+v7.2.88 (`93d74a890a44802f656d7f39a573916b2611896e`). Later upstream versions
+are not followed automatically. Source overlays, CI,
 private candidate bytes, Host records, and independent review are separate
 evidence classes. Commit `21ceb57e6b6030e56d7820c9a67a8eecd068c669`
 passed the then-current v7.2.83 latest-source lane in push and PR CI as a
@@ -37,7 +38,7 @@ The current classifier identity is `classifier-policy-v3` /
 
 | Threat | Control |
 |---|---|
-| Explicit malicious request reaches an upstream account | ModelRouter runs before provider/auth selection; handled decisions target only the local executor. Historical v7.2.72 evidence does not validate v0.15. The private untagged clean candidate must be loaded by CPA v7.2.86, and each local block must prove zero Auth Selector, Provider, Usage, and Mock Upstream deltas. The v7.2.86 Host record and independent verification are pending. |
+| Explicit malicious request reaches an upstream account | ModelRouter runs before provider/auth selection; handled decisions target only the local executor. Historical v7.2.72 evidence does not validate v0.15. The private untagged clean candidate must be loaded by CPA v7.2.88, and each local block must prove zero Auth Selector, Provider, Usage, and Mock Upstream deltas. The v7.2.88 Host record and independent verification are pending. |
 | Another router handles the request first | Install at priority 300, verify effective ordering, disable the obsolete identity-rewrite filter, and document that any higher-priority handled Router can bypass this guard. At equal priority CPA orders by plugin ID ascending, so a lexicographically earlier handled Router can also win. |
 | Plugin is absent, registration fails, it is fused, or its self executor is unusable | Treat load/registration/fuse state, Router errors or pre-result panics, invalid/empty targets, and executor-not-ready as CPA host fail-open conditions that may continue other Routers or native routing. `enforcement_ready` is internal plugin state only; external load/order/readiness monitoring remains required. |
 | Keyword-only false positive blocks legitimate security work | Base behavior requires related action/object plus operationalization, target, evasion, impact, or scale evidence; defensive/lab/remediation scope is explicit and wrapper evidence cannot manufacture a taxonomy. |
@@ -51,7 +52,7 @@ The current classifier identity is `classifier-policy-v3` /
 | A media marker placed after `source.data` turns opaque bytes into classifier text | Payload-adjacent `data`/`bytes`/`blob`/`binary`/`filename`/`format`/`detail`/`width`/`height`/`duration` values are bounded object-level candidates. A later media marker discards them before Parts, Segments, decoding, or text-budget accounting; a final non-media object commits them as text. Candidate propagation is restricted to media-style ownership, tool boundaries cut inherited media meaning, and opaque kinds have fixed ordering. |
 | An attacker labels executable tool data as media to suppress inspection | Provider-native tool/tool-payload boundaries retain text semantics. Tool `data` remains inspectable and cannot make itself opaque merely by adding `type=image` outside a reviewed media container. |
 | An unknown multipart field injects text into classification or creates a partial-score block | Multipart text is selected only by a fixed SourceFormat profile. `openai-image` admits prompt/negative-prompt text; unknown non-file fields and text/file type mismatches become fixed incomplete schema without retaining name/value. Balanced allows+audits, Strict blocks for the incomplete reason, and neither uses partial rule IDs, score, or subject state. |
-| Parser tests are mistaken for real ingress/Host proof | CPA `ModelRouteRequest` has no general HTTP path and the image handler may rebuild multipart before routing. Parser tests prove only the plugin-input contract; the exact-candidate Host test on v7.2.86 must separately prove CPA reconstruction, pre-SSE behavior, and Auth/Provider/Usage/upstream deltas. |
+| Parser tests are mistaken for real ingress/Host proof | CPA `ModelRouteRequest` has no general HTTP path and the image handler may rebuild multipart before routing. Parser tests prove only the plugin-input contract; the exact-candidate Host test on v7.2.88 must separately prove CPA reconstruction, pre-SSE behavior, and Auth/Provider/Usage/upstream deltas. |
 | Base64 or high-risk words are split across provider blocks, ordered tool fields, or isolated characters | Same-message content and ordered tool-payload/output strings are re-decoded after pristine joining, and a tightly bounded isolated-character reconstruction path closes simple fragmentation. |
 | Public adversarial material contaminates later evaluation | External repositories are reviewed read-only, sanitized into mechanism-level development tests, never executed, and never reused as a blind Holdout. |
 | A local instruction file or remote template injects higher-priority policy before CPA sees the request | This is outside the Router boundary. The host must allowlist instruction paths, enforce owner/mode and write restrictions, bind SHA-256/signatures, verify at startup and every reload, audit changes, and pin human-approved remote templates to a commit/hash. The Router cannot attest to `model_instructions_file`, `AGENTS.md`, or remote-template integrity. |
@@ -76,7 +77,7 @@ The current classifier identity is `classifier-policy-v3` /
 | v0.1.1 database upgrade is partial, exposes a temporary copy, or destroys the old store | Explicit schema version/history, transactional v1→v2 migration, private mode-0700 staging, mode-0400 sync-before-publish backup, bounded backup count, and failure rollback tests. |
 | Invalid hot reload weakens policy or erases enforcement history | Parse/compile/validate full state before atomic swap; last valid state is retained; compatible enabled-to-enabled changes preserve subject risk, cooldown, and manual blocks; unsafe capacity shrink is rejected. |
 | Plugin panic crashes CPA or bypasses enforcement | ABI entrypoints recover. A recovered `model.route` panic self-routes in a validated Balanced/Strict runtime and increments counters; other methods preserve a non-zero ABI failure signal. CPA may still fuse a plugin, so monitoring remains required. |
-| Router error silently weakens enforcement | Known scan-boundary, oversized-RPC, recovered panic, and guarded Router failures self-route in enforcing modes. Status exposes readiness/error/panic counters; the watchdog alarms on deltas. CPA still owns host-level fail-open policy that the plugin cannot change; the CPA v7.2.86 Host matrix must verify it. |
+| Router error silently weakens enforcement | Known scan-boundary, oversized-RPC, recovered panic, and guarded Router failures self-route in enforcing modes. Status exposes readiness/error/panic counters; the watchdog alarms on deltas. CPA still owns host-level fail-open policy that the plugin cannot change; the CPA v7.2.88 Host matrix must verify it. |
 | Management test/unblock exposed to normal API keys | Routes registered exclusively through CPA Management API; no public resource routes. |
 | Oversized management HTTP body is fully buffered by CPA before plugin limits run | CPA currently uses `io.ReadAll` in `ServeManagementHTTP`, so plugin 1 MiB body / 2 MiB envelope checks are not a host memory ceiling. The deployment proxy sets `client_max_body_size 1m`; the server sandbox must prove Nginx returns 413 before CPA receives the request. |
 | CPA store rejects or misinstalls the release archive | Keep the store ZIP separate from the audit bundle. CI must require real `.so`/ZIP/metadata/checksums, use `InstallManifest` for first install and Host load, then verify same-Dist repeat-skip/tamper-repair with `TestPublishedStoreArchive`. Synthetic fallback is source evidence only. |
@@ -98,7 +99,7 @@ language or encoding, and can produce false positives/negatives. Decoding is
 bounded, images/audio/video are not semantically inspected, and public media
 URLs are never fetched. `observe` and `audit` deliberately do not block. CPA or
 upstream behavior outside the pinned ABI may change. Native compatibility for
-v0.15 requires one private untagged clean candidate plus the exact CPA v7.2.86
+v0.15 requires one private untagged clean candidate plus the exact CPA v7.2.88
 Host record and an independent audit. CPA retains the
 host-level Router fail-open conditions described above. Holdout/evaluation generations v1-v9 are
 retired, consumed, or methodology-invalid history; methodologically valid v10
@@ -123,7 +124,7 @@ tree. Current source and pending-candidate status are recorded in `AUDIT_HANDOFF
 `reports/RELEASE_EVIDENCE.md`. Any missing final-commit Host,
 GitHub CI, artifact, or proxy result is **NOT RUN** or **BLOCKED**, never an
 inferred PASS. Embedded ruleset `1.0.7` identifies YAML assets only and does
-not include the Go `META-OVERRIDE-001` overlay. The current CPA v7.2.86 Host
+not include the Go `META-OVERRIDE-001` overlay. The current CPA v7.2.88 Host
 matrix, independent source/artifact/Host review, and candidate-bound external
 `evaluation-v11` or later first-and-only `CONSUMED / PASS` attestation remain
 pending. If they pass, an annotated `v0.15-dev.round6[.N]` draft prerelease is optional but remains

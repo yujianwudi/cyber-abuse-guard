@@ -314,7 +314,7 @@ consumed or retired fixtures during normal development.
 Passing unit or CI gates does not authorize deployment. The exact v0.15 chain
 requires final PR CI, merge to `main`, exact post-merge main push CI, and a
 private untagged clean candidate dispatched from `refs/heads/main`, followed by
-CPA v7.2.86 + Mock-upstream Host validation against one SO SHA-256 and independent
+CPA v7.2.88 + Mock-upstream Host validation against one SO SHA-256 and independent
 source/artifact/Host review. An optional annotated development prerelease is
 allowed only after a candidate-bound external `evaluation-v11` or later
 first-and-only `CONSUMED / PASS` attestation and is not a formal release. The

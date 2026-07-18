@@ -60,7 +60,7 @@
    can remain outside the deterministic follow-up window.
 
 8. **CPA router failures are host-level fail-open.** The current required Host
-   target is CPA v7.2.86 only. CPA may continue other Routers or native routing if
+   target is CPA v7.2.88 only. CPA may continue other Routers or native routing if
    the plugin is not loaded, registration fails, it is fused, the Router returns
    an error, a panic occurs before the host accepts a valid handled result, the
    target is invalid/empty, or the self executor is not ready. The plugin
@@ -88,7 +88,7 @@
     frame; successful chunks would force HTTP 200. The policy executor routes
     `execute`, `execute_stream`, and `count_tokens` to the same policy HTTP 403;
     `http_request` returns an unsupported-method RPC error whose `StatusCode()`
-    is 405; the official adapter returns `(nil, error)`. CPA v7.2.86's public
+    is 405; the official adapter returns `(nil, error)`. CPA v7.2.88's public
     `/v1/alpha/search` consumer normally selects `codex` and maps every executor
     error to HTTP 502. The project-owned `httptest.Server` manually maps the
     status error, so final official CPA client HTTP 405 is `NOT AVAILABLE / NOT
@@ -103,7 +103,7 @@
 13. **No `Retry-After` on executor errors.** ABI-v1 RPC errors cannot attach
     arbitrary downstream response headers.
 
-14. **Exact management routes only.** CPA v7.2.86 rejects dynamic `:`/`*`
+14. **Exact management routes only.** CPA v7.2.88 rejects dynamic `:`/`*`
     plugin routes, so subject unblock uses a fixed path and bounded JSON body.
     CPA host middleware, not the plugin, is the Management Key verification
     authority; ABI v1 does not reveal the configured key to the plugin. Host
@@ -124,7 +124,7 @@
     reserved, but `classifier.enabled: true` is rejected. The plugin makes no
     classifier network request and does not upload prompts to a third party.
 
-17. **No authenticated management UI.** CPA v7.2.86 resource routes are not a
+17. **No authenticated management UI.** CPA v7.2.88 resource routes are not a
     safe place for audit/subject data. This version exposes exact authenticated
     management API routes only.
 
@@ -191,9 +191,9 @@
 
 29. **Only one platform and one CPA Host version are in scope.** The release
     platform is Linux amd64 with glibc 2.34+; musl/Alpine is unsupported. The
-    root `go.mod` and current compatibility contract pin CPA v7.2.86, but
+    root `go.mod` and current compatibility contract pin CPA v7.2.88, but
     source/compile success is not runtime admission. Exact-candidate Host
-    evidence is required for CPA v7.2.86.
+    evidence is required for CPA v7.2.88.
     Earlier v7.2.85/v7.2.84/v7.2.83/v7.2.82/v7.2.81 checks are historical and non-gating.
     Windows/macOS checks and source contracts do
     not establish native compatibility.
@@ -253,7 +253,7 @@
     components and cleaned up without residual fixture processes. Those local
     results are excluded. Earlier CPA v7.2.72 and Round 5 v7.2.75 records remain
     frozen historical evidence only. Current v0.15 requires a private untagged
-    clean candidate and one external v7.2.86 Host record,
+    clean candidate and one external v7.2.88 Host record,
     followed by independent verification. It has not run, and no Host result can
     reverse the frozen v10 failure.
 
@@ -360,7 +360,7 @@
     unit, race, vet, fuzz, benchmark, privacy, packaging, or reproducibility
     gates shows only that the named command passed on the named commit and
     environment. It cannot replace artifact inspection, the authorized CPA
-    v7.2.86 + Mock-upstream Host matrix, or independent
+    v7.2.88 + Mock-upstream Host matrix, or independent
     review, and it cannot reverse the frozen v10 failure.
 
 48. **The Round 6 deployment decision is still blocked.** Historical
@@ -424,19 +424,20 @@
     restricted access; v10 remains `CONSUMED / FAIL`, and methodology handoff
     remains blocked.
 
-54. **CPA v7.2.86 compatibility is source/compile evidence only.** The separate
-    `integration/cpalatestcontract` module pins current target v7.2.86 at commit
-    `81d70f5d9f3fdb39a6290ed9c917ff0c6f27ca30`. Earlier v7.2.85/v7.2.84/v7.2.83/v7.2.82/v7.2.81
+54. **CPA v7.2.88 compatibility is source/compile evidence only.** The separate
+    `integration/cpalatestcontract` module pins current target v7.2.88 at commit
+    `93d74a890a44802f656d7f39a573916b2611896e`. Earlier v7.2.85/v7.2.84/v7.2.83/v7.2.82/v7.2.81
     profiles and their checksums are retained only as historical development
     evidence, not current release requirements.
-    The latest-compat lane compiles the Guard and integration packages, runs
+    The primary compatibility lane compiles the Guard and integration packages, runs
     the real Guard registration/role-routing probes, 18 official Host
     routing/status tests, 11 official Interactions route/handler tests, and
     three checksum-pinned overlays in ephemeral official-source copies. It does not start CPA, load a
     Guard `.so`, install through Store, or prove request reconstruction,
-    logging, Auth/Provider/Usage isolation, and upstream behavior on v7.2.86.
+    logging, Auth/Provider/Usage isolation, and upstream behavior on v7.2.88.
     No current runtime baseline is admitted until the owner runs the authorized
-    v7.2.86 server sandbox matrix against the exact candidate SO.
+    v7.2.88 server sandbox matrix against the exact candidate SO. Later upstream
+    CPA versions do not automatically change this pinned Host requirement.
 
 55. **The public-reference corpus cannot attribute attack origin.** Its 36
     sanitized cases cover visible mechanism families and abstract source
@@ -464,7 +465,7 @@
     v7.2.80, an `agent` request that the Guard self-routes is rejected by CPA's
     native-Interactions validator with HTTP 400 before the Guard executor runs;
     a uniform Guard 403 would require an upstream CPA change. The owner-operated
-    sandbox must recheck that behavior on v7.2.86 and
+    sandbox must recheck that behavior on v7.2.88 and
     separately verify model/agent, stream/non-stream, exact status
     shapes, first-byte behavior, and zero Auth/Provider/Usage/upstream effects.
 
@@ -475,7 +476,7 @@
     commit/tree must pass push CI before the private untagged candidate workflow
     is dispatched from `refs/heads/main`. That workflow binds the post-merge
     main commit/tree and hashes in `candidate-manifest.json`. Only after the
-    v7.2.86 Host record, independent audit, and candidate-bound external
+    v7.2.88 Host record, independent audit, and candidate-bound external
     evaluation-v11+ `CONSUMED / PASS` report bind that same candidate may an
     optional annotated `v0.15-dev.round6[.N]` draft prerelease be created. The
     annotated formal `v0.15` tag and verified draft remain a later, separate

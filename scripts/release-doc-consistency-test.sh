@@ -41,7 +41,11 @@ make_fixture() {
         'host_audit_attestation: round6-prerelease-attestation.json' \
         'formal_gate_attestation: formal-release-attestation.json' \
         'promotion_workflow: .github/workflows/release-promote.yml' \
-        'host_matrix: v7.2.86' \
+        'host_matrix: v7.2.88' \
+        'host_matrix_commit: 93d74a890a44802f656d7f39a573916b2611896e' \
+        'host_attestation_schema: 2' \
+        'host_evidence_fields: cpa_version,cpa_commit,cpa_host_sha256' \
+        'upstream_version_policy: no-automatic-follow' \
         'external_admission: required' \
         'minimum_independent_evaluation: evaluation-v11' \
         'independent_evaluation_required_status: CONSUMED/PASS' \
@@ -108,6 +112,42 @@ sed -i 's/version_alias_policy: reject-v0.15.0/version_alias_policy: allow-v0.15
   "$work/alias-policy/docs/RELEASE_POLICY.md"
 must_fail alias-policy "$work/alias-policy" \
   'docs/RELEASE_POLICY.md must contain exactly one policy line: version_alias_policy: reject-v0.15.0'
+
+policy_keys=(
+  host_matrix_commit
+  host_attestation_schema
+  host_evidence_fields
+  upstream_version_policy
+)
+policy_values=(
+  93d74a890a44802f656d7f39a573916b2611896e
+  2
+  cpa_version,cpa_commit,cpa_host_sha256
+  no-automatic-follow
+)
+policy_bad_values=(
+  0000000000000000000000000000000000000000
+  1
+  cpa_version,cpa_commit
+  automatic-follow
+)
+for index in "${!policy_keys[@]}"; do
+  key="${policy_keys[$index]}"
+  value="${policy_values[$index]}"
+  bad_value="${policy_bad_values[$index]}"
+
+  cp -a "$work/pass" "$work/${key}-missing"
+  sed -i "\|^${key}: ${value}$|d" \
+    "$work/${key}-missing/docs/RELEASE_POLICY.md"
+  must_fail "${key}-missing" "$work/${key}-missing" \
+    "docs/RELEASE_POLICY.md must contain exactly one policy key: $key"
+
+  cp -a "$work/pass" "$work/${key}-changed"
+  sed -i "s|^${key}: ${value}$|${key}: ${bad_value}|" \
+    "$work/${key}-changed/docs/RELEASE_POLICY.md"
+  must_fail "${key}-changed" "$work/${key}-changed" \
+    "docs/RELEASE_POLICY.md must contain exactly one policy line: ${key}: ${value}"
+done
 
 cp -a "$work/pass" "$work/duplicate-policy-key"
 printf '%s\n' 'version_alias_policy: allow-v0.15.0' \

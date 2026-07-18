@@ -12,6 +12,8 @@ candidate_run_id=29578024185
 so_sha256=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 store_zip_sha256=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 tag=v0.15-dev.round6.2
+cpa_version=v7.2.88
+cpa_commit=93d74a890a44802f656d7f39a573916b2611896e
 
 export EXPECTED_TAG="$tag"
 export EXPECTED_COMMIT="$commit"
@@ -29,9 +31,11 @@ write_valid_attestation() {
     --arg tree "$tree" \
     --argjson candidate_run_id "$candidate_run_id" \
     --arg so_sha256 "$so_sha256" \
-    --arg store_zip_sha256 "$store_zip_sha256" '
+    --arg store_zip_sha256 "$store_zip_sha256" \
+    --arg cpa_version "$cpa_version" \
+    --arg cpa_commit "$cpa_commit" '
     {
-      schema_version: 1,
+      schema_version: 2,
       status: "HOST_AUDIT_AND_EVALUATION_PASS / FORMAL_RELEASE_BLOCKED",
       version: "0.15",
       tag: $tag,
@@ -44,7 +48,9 @@ write_valid_attestation() {
         store_zip_sha256: $store_zip_sha256
       },
       evidence: {
-        cpa_v7_2_86_sha256: "8383838383838383838383838383838383838383838383838383838383838383",
+        cpa_version: $cpa_version,
+        cpa_commit: $cpa_commit,
+        cpa_host_sha256: "8383838383838383838383838383838383838383838383838383838383838383",
         independent_audit_sha256: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
         independent_evaluation_id: "evaluation-v11",
         independent_evaluation_status: "CONSUMED / PASS",
@@ -146,7 +152,7 @@ write_checksum "$work/invalid-json"
 run_must_fail invalid-json verify_case "$work/invalid-json"
 
 copy_case duplicate-key
-sed -i '0,/"schema_version": 1/s//"schema_version": 1, "schema_version": 1/' \
+sed -i '0,/"schema_version": 2/s//"schema_version": 2, "schema_version": 2/' \
   "$work/duplicate-key/round6-prerelease-attestation.json"
 write_checksum "$work/duplicate-key"
 run_must_fail duplicate-json-key verify_case "$work/duplicate-key"
@@ -172,13 +178,25 @@ run_must_fail malformed-evaluation-hash verify_case "$work/malformed-evaluation-
 mutate_case non-consumed-evaluation '.evidence.independent_evaluation_status = "PASS"'
 run_must_fail evaluation-must-be-consumed-pass verify_case "$work/non-consumed-evaluation"
 
-mutate_case missing-v7286 'del(.evidence.cpa_v7_2_86_sha256)'
-run_must_fail missing-cpa-v7286-host-evidence verify_case "$work/missing-v7286"
+mutate_case missing-cpa-version 'del(.evidence.cpa_version)'
+run_must_fail missing-cpa-version verify_case "$work/missing-cpa-version"
 
-mutate_case unexpected-host-version '.evidence.cpa_v7_2_82_sha256 = (.evidence.cpa_v7_2_86_sha256)'
-run_must_fail unexpected-host-version-cannot-replace-latest verify_case "$work/unexpected-host-version"
+mutate_case wrong-cpa-version '.evidence.cpa_version = "v7.2.87"'
+run_must_fail wrong-cpa-version verify_case "$work/wrong-cpa-version"
 
-mutate_case malformed-host-hash '.evidence.cpa_v7_2_86_sha256 = "8383"'
+mutate_case missing-cpa-commit 'del(.evidence.cpa_commit)'
+run_must_fail missing-cpa-commit verify_case "$work/missing-cpa-commit"
+
+mutate_case wrong-cpa-commit '.evidence.cpa_commit = "81d70f5d9f3fdb39a6290ed9c917ff0c6f27ca30"'
+run_must_fail wrong-cpa-commit verify_case "$work/wrong-cpa-commit"
+
+mutate_case missing-host-hash 'del(.evidence.cpa_host_sha256)'
+run_must_fail missing-cpa-host-evidence verify_case "$work/missing-host-hash"
+
+mutate_case legacy-version-encoded-host-field '.evidence.cpa_v7_2_86_sha256 = .evidence.cpa_host_sha256 | del(.evidence.cpa_host_sha256)'
+run_must_fail legacy-version-encoded-host-field verify_case "$work/legacy-version-encoded-host-field"
+
+mutate_case malformed-host-hash '.evidence.cpa_host_sha256 = "8383"'
 run_must_fail malformed-host-evidence-hash verify_case "$work/malformed-host-hash"
 
 mutate_case missing-audit 'del(.evidence.independent_audit_sha256)'

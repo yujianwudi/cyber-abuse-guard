@@ -5,8 +5,9 @@ Last updated: 2026-07-18 (Asia/Shanghai)
 ## Round 6 v0.15 current test status
 
 Exact project version is `0.15`; the only formal tag is `v0.15`, never
-`v0.15.0`. Active validation and the supported release target are limited to
-CPA v7.2.86 at `81d70f5d9f3fdb39a6290ed9c917ff0c6f27ca30`.
+`v0.15.0`. Active validation and the supported release target are fixed at
+CPA v7.2.88 at `93d74a890a44802f656d7f39a573916b2611896e`.
+Later upstream versions are not followed automatically.
 Legacy version-specific profiles and Make aliases have been removed.
 
 | Current Round 6 evidence | Result |
@@ -19,7 +20,7 @@ Legacy version-specific profiles and Make aliases have been removed.
 | Public `v0.15-rc.1` prerelease | Exists with no attached release assets; not the private clean candidate or formal release |
 | Classifier identity | `classifier-policy-v3` / `99e0ce7f59d2e687ebb3e79e1a71300afee8bb56f723cd8ba3f478c71a64cfd2` |
 | Private untagged clean candidate artifact / manifest | **NOT CREATED / PENDING** |
-| CPA v7.2.86 Host + Mock | **NOT RUN / PENDING** |
+| CPA v7.2.88 Host + Mock | **NOT RUN / PENDING** |
 | Four-layer Auth/Provider/Usage/Mock zero-call proof | **NOT RUN / PENDING** |
 | Independent source/artifact/Host audit | **NOT RUN / PENDING** |
 | Candidate-bound external evaluation-v11 or later | **NOT RUN / PENDING**; must be first-and-only `CONSUMED / PASS` |
@@ -33,7 +34,8 @@ baseline. The private candidate workflow has not been dispatched; when used, it
 must produce a private, untagged, clean exact-source Actions artifact whose
 `candidate-manifest.json`, `build-metadata.json`, SO, and Store ZIP bind that
 exact post-merge main commit/tree. Clean candidate bytes are unreleased. The
-v7.2.86 Host record and the independent audit must cite the same SO SHA-256.
+v7.2.88 Host record and the independent audit must cite the same SO SHA-256;
+schema v2 binds it with `cpa_version`, `cpa_commit`, and `cpa_host_sha256`.
 
 After Host/audit and candidate-level evaluation PASS, an optional annotated
 `v0.15-dev.round6[.N]` draft prerelease may preserve the evidence but remains

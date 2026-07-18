@@ -97,8 +97,8 @@ BLOCKED_PRERELEASE_INPUT_ORDER = (
     "candidate_run_id",
     "expected_so_sha256",
     "expected_store_zip_sha256",
-    "host_v7286_validation",
-    "host_v7286_evidence_sha256",
+    "host_validation",
+    "host_evidence_sha256",
     "independent_audit_validation",
     "independent_audit_sha256",
     "independent_evaluation_validation",
@@ -109,7 +109,7 @@ BLOCKED_PRERELEASE_INPUT_ORDER = (
 BLOCKED_PRERELEASE_INPUTS = set(BLOCKED_PRERELEASE_INPUT_ORDER)
 BLOCKED_PRERELEASE_IF_LINES = (
     "if: >-",
-    "inputs.host_v7286_validation == 'PASS' &&",
+    "inputs.host_validation == 'PASS' &&",
     "inputs.independent_audit_validation == 'PASS' &&",
     "inputs.independent_evaluation_validation == 'PASS' &&",
     "inputs.authorize_blocked_prerelease == true",
@@ -126,8 +126,8 @@ ADMISSION_INPUT_ENV = (
     "DISPATCH_SHA: ${{ github.sha }}",
     "WORKFLOW_REF: ${{ github.workflow_ref }}",
     "WORKFLOW_SHA: ${{ github.workflow_sha }}",
-    "HOST_V7286: ${{ inputs.host_v7286_validation }}",
-    "HOST_V7286_SHA256: ${{ inputs.host_v7286_evidence_sha256 }}",
+    "HOST_VALIDATION: ${{ inputs.host_validation }}",
+    "HOST_EVIDENCE_SHA256: ${{ inputs.host_evidence_sha256 }}",
     "INDEPENDENT_AUDIT: ${{ inputs.independent_audit_validation }}",
     "INDEPENDENT_AUDIT_SHA256: ${{ inputs.independent_audit_sha256 }}",
     "INDEPENDENT_EVALUATION: ${{ inputs.independent_evaluation_validation }}",
@@ -147,11 +147,11 @@ ADMISSION_INPUT_COMMANDS = (
     '[[ "$DISPATCH_SHA" == "$EXPECTED_COMMIT" ]]',
     '[[ "$WORKFLOW_SHA" == "$EXPECTED_COMMIT" ]]',
     '[[ "$WORKFLOW_REF" == "${GITHUB_REPOSITORY}/.github/workflows/attested-prerelease.yml@refs/tags/$TAG" ]]',
-    '[[ "$HOST_V7286" == PASS ]]',
+    '[[ "$HOST_VALIDATION" == PASS ]]',
     '[[ "$INDEPENDENT_AUDIT" == PASS ]]',
     '[[ "$INDEPENDENT_EVALUATION" == PASS ]]',
     '[[ "$AUTHORIZED" == true ]]',
-    '[[ "$HOST_V7286_SHA256" =~ ^[0-9a-f]{64}$ ]]',
+    '[[ "$HOST_EVIDENCE_SHA256" =~ ^[0-9a-f]{64}$ ]]',
     '[[ "$INDEPENDENT_AUDIT_SHA256" =~ ^[0-9a-f]{64}$ ]]',
     '[[ "$INDEPENDENT_EVALUATION_ID" =~ ^evaluation-v(1[1-9]|[2-9][0-9]|[1-9][0-9]{2,})$ ]]',
     '[[ "$INDEPENDENT_EVALUATION_SHA256" =~ ^[0-9a-f]{64}$ ]]',
@@ -337,7 +337,7 @@ BLOCKED_STEP_CONTRACTS = {
         ),
         ("Run source and Round6 regression gates", ("name", "run"), None),
         (
-            "Verify current CPA v7.2.86 source compatibility",
+            "Verify pinned CPA v7.2.88 source compatibility",
             ("name", "env", "run"),
             None,
         ),
@@ -525,7 +525,7 @@ ROUND6_REPRODUCIBILITY_CHECKSUMS_CONTRACT = (
     '  for relative in "$so" "$so.sha256" "$store_zip" build-metadata.json checksums.txt \\',
 )
 BLOCKED_STEP_RUN_SHA256 = {
-    ("admission", 0): "d12d80e28d40730f53fe159497fbf2a2cb70928b9043daf2897dbc89679b0208",
+    ("admission", 0): "3c9f96e89952dd96c6fed357bde683cbc0302cc0e2de941547c504c3285de369",
     ("admission", 1): "7f1817ec7b567df4be63fafd9ee2b2347ac37e01982e41ee3338f64c79cae81a",
     ("admission", 2): "26030928c867d579089d1e69fcba37ff65433ca93697835abdda4f6365f2e4e5",
     ("verify", 1): "b38e1f3a74567d8390bde6390c75c7e96a3bd0d5bc13de0e6a7dbbcfeec0a2fe",
@@ -538,8 +538,8 @@ BLOCKED_STEP_RUN_SHA256 = {
     ("verify", 10): "d6bd0b9f43ef190a6545893891fe514928b3e354a438f357602e2d3a89565bd0",
     ("verify", 11): "72ba08821693dcb100be3d4dcfaac32d485191186d46fa22119ae7a7b60990b9",
     ("verify", 12): "25116143b78146e257b7eb89c5466266132755433249c07664c0cdbf01944c7d",
-    ("publish", 1): "f0b4e25161a56a18cbe2379e048d0151e537eb80d504673f20c8cd2adf4bfbb5",
-    ("publish", 3): "f3f24d41011374f779195eda6069b813a468cd7bd180a0ae8d72bd07906d4b68",
+    ("publish", 1): "fcf56edbe1e0c746c746d864dbe72e7ecc3c0c1571fed869e40432cd32ba1ba2",
+    ("publish", 3): "034ba9e6da11c1f31633a506a86a774aa1aeb5a911465dfaf563a14ffecf3fc7",
 }
 BLOCKED_STEP_RUN_STYLE = {
     ("admission", 0): "|",
@@ -571,8 +571,8 @@ BLOCKED_STEP_ENV = {
         ("DISPATCH_SHA", "${{ github.sha }}"),
         ("WORKFLOW_REF", "${{ github.workflow_ref }}"),
         ("WORKFLOW_SHA", "${{ github.workflow_sha }}"),
-        ("HOST_V7286", "${{ inputs.host_v7286_validation }}"),
-        ("HOST_V7286_SHA256", "${{ inputs.host_v7286_evidence_sha256 }}"),
+        ("HOST_VALIDATION", "${{ inputs.host_validation }}"),
+        ("HOST_EVIDENCE_SHA256", "${{ inputs.host_evidence_sha256 }}"),
         ("INDEPENDENT_AUDIT", "${{ inputs.independent_audit_validation }}"),
         ("INDEPENDENT_AUDIT_SHA256", "${{ inputs.independent_audit_sha256 }}"),
         ("INDEPENDENT_EVALUATION", "${{ inputs.independent_evaluation_validation }}"),
@@ -633,7 +633,7 @@ BLOCKED_STEP_ENV = {
         ("TAG", "${{ inputs.tag }}"),
         ("CI_RUN_ID", "${{ inputs.ci_run_id }}"),
         ("CANDIDATE_RUN_ID", "${{ inputs.candidate_run_id }}"),
-        ("HOST_V7286_SHA256", "${{ inputs.host_v7286_evidence_sha256 }}"),
+        ("HOST_EVIDENCE_SHA256", "${{ inputs.host_evidence_sha256 }}"),
         ("INDEPENDENT_AUDIT_SHA256", "${{ inputs.independent_audit_sha256 }}"),
         ("INDEPENDENT_EVALUATION_ID", "${{ inputs.independent_evaluation_id }}"),
         ("INDEPENDENT_EVALUATION_SHA256", "${{ inputs.independent_evaluation_sha256 }}"),
@@ -648,7 +648,7 @@ BLOCKED_STEP_ENV = {
         ("EXPECTED_STORE_ZIP_SHA256", "${{ inputs.expected_store_zip_sha256 }}"),
         ("CI_RUN_ID", "${{ inputs.ci_run_id }}"),
         ("CANDIDATE_RUN_ID", "${{ inputs.candidate_run_id }}"),
-        ("HOST_V7286_SHA256", "${{ inputs.host_v7286_evidence_sha256 }}"),
+        ("HOST_EVIDENCE_SHA256", "${{ inputs.host_evidence_sha256 }}"),
         ("INDEPENDENT_AUDIT_SHA256", "${{ inputs.independent_audit_sha256 }}"),
         ("INDEPENDENT_EVALUATION_ID", "${{ inputs.independent_evaluation_id }}"),
         ("INDEPENDENT_EVALUATION_SHA256", "${{ inputs.independent_evaluation_sha256 }}"),
@@ -702,7 +702,7 @@ CANDIDATE_STEP_CONTRACTS = {
         ),
         ("Install bounded candidate dependencies", ("name", "run"), None),
         (
-            "Recheck source, regressions, and latest CPA v7.2.86 contract",
+            "Recheck source, regressions, and pinned CPA v7.2.88 contract",
             ("name", "env", "run"),
             None,
         ),
@@ -800,6 +800,9 @@ CANDIDATE_ALLOWED_GITHUB_IDENTITY_EXPRESSIONS = {
     "jobs.admission.steps[0].env.WORKFLOW_SHA": "${{ github.workflow_sha }}",
     "jobs.build.steps[6].env.RELEASE_CANDIDATE_WORKFLOW_SHA": "${{ github.workflow_sha }}",
 }
+CI_ALLOWED_GITHUB_IDENTITY_EXPRESSIONS = {
+    "concurrency.group": "${{ github.workflow }}-${{ github.ref }}",
+}
 CANDIDATE_ARTIFACTS = (
     "dist/cyber-abuse-guard-v0.15.so",
     "dist/cyber-abuse-guard-v0.15.so.sha256",
@@ -847,7 +850,7 @@ FORMAL_RELEASE_ARTIFACTS = (
     "dist/formal-release-attestation.json.sha256",
 )
 FORMAL_RELEASE_STEP_RUN_SHA256 = {
-    ("admission", 0): "1ff19b0a9cafbff48f12c677f272601e61f9c900e6eb078a7675d2bb88df0292",
+    ("admission", 0): "dfaabe7534d8faa6d028cc7e4b153a5225c685bd18389948ac416bb484767700",
     ("build-and-verify", 2): "5bc38a90928a7309be0be55b3834ebf28c2eee7c2fd290ef19bf6d3a8dd3857d",
     ("build-and-verify", 3): "3177c58474d2bd9ee7246a79c02d77fc4afac7b26e13f3193cd456f9cadbb2dd",
     ("build-and-verify", 4): "e2194c0fb1cc2681adff35d6c0a12e10540e17bb7495597ac1f3ccb992bbc53f",
@@ -877,30 +880,40 @@ FROZEN_EVALUATION_STATUS_COMMAND = (
 )
 ROUND6_DOC_FIXTURE_WRAPPER_SCRIPT = "scripts/round6-doc-consistency-fixture-test.sh"
 ROUND6_DOC_FIXTURE_WRAPPER_SCRIPT_SHA256 = (
-    "e5539b51891c37eeb1115d1e7d8cc4635754c6b1658c56c36f610ed31b0e9773"
+    "6c64140ccf1e3f66b67d5baa2cc2f94a79b40e908180954e7eac1e73a3ce3765"
 )
 ROUND6_DOC_FIXTURE_DEPENDENCY_SHA256 = {
-    "scripts/release-doc-consistency-test.sh": "df19d850bc3185b4a299c9770e9bd93515d8702ad0076ff0a65d11e1efc6b487",
-    "scripts/release-doc-consistency.sh": "8530ef85bbdb37d22fdfd8afcd548a0e4772d26524aaed9c19c88eb763dd31f1",
+    "scripts/release-doc-consistency-test.sh": "63b2af3e45f71ad7a59b35bc40d117eabf9f150e89624b43abe6926efe6061ab",
+    "scripts/release-doc-consistency.sh": "8f775d3fa8faff5a639489a2776fdd335cb26b4b7a840fc2d907ce367bb4789c",
 }
 ROUND6_PRIVACY_FIXTURE_SCRIPT = "scripts/release-evidence-privacy-test.sh"
 ROUND6_PRIVACY_FIXTURE_SCRIPT_SHA256 = (
     "6306a733095173425ad735bea5d986de21ae2b3f4e6f053dee970d7436f9f762"
 )
 CPA_COMPAT_SCRIPT = "scripts/cpa-latest-compat.sh"
+CPA_MODULE_PATH = "github.com/router-for-me/CLIProxyAPI/v7"
+CPA_PINNED_VERSION = "v7.2.88"
+CPA_PINNED_MODULE_SUM = "h1:YfLBYPvkasjqFLzdht+UrEgRLsU3HcM0WDMurNEjIDo="
+CPA_PINNED_GO_MOD_SUM = "h1:ytvZNWbCv7PrAyR80+RKsDJPODsdL6qxyFaXDBNZdqs="
+CPA_PINNED_MODULE_FILES = (
+    ("go.mod", "go.sum"),
+    ("integration/cpalatestcontract/go.mod", "integration/cpalatestcontract/go.sum"),
+    ("integration/pluginstorecontract/go.mod", "integration/pluginstorecontract/go.sum"),
+)
 CPA_COMPAT_SCRIPT_SHA256 = (
-    "4a86b16a36786957bde70b9b4885430f0409e62e16cf8224263e8f0162517650"
+    "a926338d7552235d3f122897000ec17e323a65547042819e9027b8edeae4a66e"
 )
 CPA_COMPAT_FINAL_OUTPUT_CONTRACT = """if [[ "$verify_remote" == 1 ]]; then
-  printf 'CPA latest source/compile compatibility PASS: profile=%s\\n' "${profiles[*]}"
+  printf 'CPA pinned source/compile compatibility PASS: profile=%s %s@%s\\n' \\
+    "${profiles[*]}" "$cpa_version" "$cpa_commit"
 else
-  printf 'CPA source/compile compatibility PASS: profile=%s remote_release_checks=SKIPPED\\n' "${profiles[*]}"
+  printf 'CPA source/compile compatibility PASS: profile=%s remote_tag_checks=SKIPPED\\n' "${profiles[*]}"
 fi"""
 EXTERNAL_ATTESTATION_SCRIPT_SHA256 = {
-    "verify-external-release-attestation.sh": "1c190d6aae326ea5bb141e700faf8c04e30286439ca5c2a3f10dc4a337ed508d",
-    "verify-external-release-attestation-test.sh": "d76fdc4601c19581ee457971c046857380dac6a32109332181412710739967f5",
+    "verify-external-release-attestation.sh": "b1bc697e6cf0a6fa91220e87db668a97c612f2b9abad9720ab85980732c32093",
+    "verify-external-release-attestation-test.sh": "613436740da74db8da25fae21397c9436fdc4427537cb5c8965fd688c04e4747",
 }
-GENERATE_RELEASE_EVIDENCE_SCRIPT_SHA256 = "22317f7596fadf7ea39a35b8df1ed5ac22c8f46608cbacf5ba2a25222cc92c1c"
+GENERATE_RELEASE_EVIDENCE_SCRIPT_SHA256 = "d51fe316a686c1b4dd629f6a7b63f4159b882095811fcdea3311255527bd5da1"
 
 
 class ContractError(RuntimeError):
@@ -2304,17 +2317,125 @@ def validate_round6_privacy_fixture_script(text: str, source: Path) -> None:
         )
 
 
+def validate_cpa_module_pins(root: Path) -> None:
+    expected_requirement = f"{CPA_MODULE_PATH} {CPA_PINNED_VERSION}"
+    expected_sums = (
+        f"{expected_requirement} {CPA_PINNED_MODULE_SUM}",
+        f"{expected_requirement}/go.mod {CPA_PINNED_GO_MOD_SUM}",
+    )
+    for mod_relative, sum_relative in CPA_PINNED_MODULE_FILES:
+        mod_path = root / mod_relative
+        sum_path = root / sum_relative
+        mod_text = read_regular_text(mod_path, root)
+        requirements: list[str] = []
+        for line in mod_text.splitlines():
+            candidate = line.strip()
+            if candidate.startswith("require "):
+                candidate = candidate.removeprefix("require ").strip()
+            if candidate.startswith(f"{CPA_MODULE_PATH} "):
+                requirements.append(candidate)
+        if tuple(requirements) != (expected_requirement,) or re.search(
+            rf"(?m)^\s*(?:replace|exclude)\s+{re.escape(CPA_MODULE_PATH)}(?:\s|$)",
+            mod_text,
+        ):
+            raise ContractError(
+                f"checked-in CPA module pin must remain exactly {expected_requirement}: {mod_relative}"
+            )
+        sum_text = read_regular_text(sum_path, root)
+        actual_sums = tuple(
+            line.strip()
+            for line in sum_text.splitlines()
+            if line.startswith(f"{CPA_MODULE_PATH} ")
+        )
+        if actual_sums != expected_sums:
+            raise ContractError(
+                f"checked-in CPA sums must remain pinned to {CPA_PINNED_VERSION}: {sum_relative}"
+            )
+
+
 def validate_cpa_compat_script(text: str, source: Path) -> None:
-    if text.count(CPA_COMPAT_FINAL_OUTPUT_CONTRACT) != 1 or text.count(
-        "CPA latest source/compile compatibility PASS"
-    ) != 1:
+    if any(
+        forbidden in text
+        for forbidden in (
+            "api.github.com",
+            "GITHUB_TOKEN",
+            "GH_TOKEN",
+            "${{ github.token }}",
+            "Authorization:",
+            "releases/latest",
+            "releases/tags",
+        )
+    ):
         raise ContractError(
-            f"CPA compatibility output must claim latest PASS only after remote verification: {source}"
+            f"fixed CPA compatibility must not depend on GitHub REST metadata or a repository token: {source}"
+        )
+    for required in (
+        "timeout --signal=KILL 60s git",
+        '-C "$git_identity_dir"',
+        "-c http.lowSpeedLimit=1 -c http.lowSpeedTime=60",
+        'ls-remote --refs "$cpa_origin_git_url" "refs/tags/$tag"',
+        "CPA lightweight tag identity mismatch",
+        "pinned module Origin and sums remain required",
+    ):
+        if required not in text:
+            raise ContractError(
+                f"fixed CPA compatibility must bind the exact lightweight tag through Git origin: {source}"
+            )
+    if (
+        text.count(CPA_COMPAT_FINAL_OUTPUT_CONTRACT) != 1
+        or "CPA latest source/compile compatibility PASS" in text
+    ):
+        raise ContractError(
+            f"fixed CPA compatibility output must not claim latest PASS: {source}"
         )
     if hashlib.sha256(text.encode("utf-8")).hexdigest() != CPA_COMPAT_SCRIPT_SHA256:
         raise ContractError(
             f"CPA compatibility script must match the exact reviewed remote-verification contract: {source}"
         )
+
+
+def validate_ci_workflow(text: str, source: Path) -> None:
+    validate_workflow_safety(text, source)
+    document = parse_workflow_yaml(text, source)
+    validate_sensitive_workflow_expressions(
+        document,
+        source,
+        allowed_token_paths=set(),
+        allowed_identity_expressions=CI_ALLOWED_GITHUB_IDENTITY_EXPRESSIONS,
+    )
+    root = yaml_mapping(document, source, "root")
+    jobs = yaml_mapping(root.get("jobs"), source, "jobs")
+    quality = yaml_mapping(
+        jobs.get("quality-and-artifacts"), source, "jobs.quality-and-artifacts"
+    )
+    steps = yaml_sequence(
+        quality.get("steps"), source, "jobs.quality-and-artifacts.steps"
+    )
+    matches: list[tuple[int, Node, dict[str, Node]]] = []
+    for index, step_node in enumerate(steps):
+        step_path = f"jobs.quality-and-artifacts.steps[{index}]"
+        step = yaml_mapping(step_node, source, step_path)
+        if "name" in step and yaml_scalar(step["name"], source, f"{step_path}.name") == (
+            "CPA v7.2.88 pinned source/compile compatibility"
+        ):
+            matches.append((index, step_node, step))
+    if len(matches) != 1:
+        raise ContractError("CI must contain exactly one reviewed CPA v7.2.88 compatibility step")
+    index, cpa_step_node, cpa_step = matches[0]
+    cpa_path = f"jobs.quality-and-artifacts.steps[{index}]"
+    require_yaml_keys(cpa_step_node, ("name", "env", "run"), source, cpa_path)
+    if exact_string_mapping(cpa_step["env"], source, f"{cpa_path}.env") != (
+        ("CPA_COMPAT_VERIFY_REMOTE", "1"),
+    ):
+        raise ContractError("CI CPA step must keep exact remote CPA verification enabled")
+    require_yaml_scalar(
+        cpa_step["run"],
+        "bash ./scripts/cpa-latest-compat.sh",
+        source,
+        f"{cpa_path}.run",
+    )
+    if re.search(r"(?m)^\s+(?:GH_TOKEN|GITHUB_TOKEN):", text):
+        raise ContractError("CI may not expose a repository token to checked-out source")
 
 
 def shell_function_body(text: str, name: str, source: Path) -> str:
@@ -2726,7 +2847,7 @@ def validate_formal_release_workflow(text: str, source: Path) -> None:
         )
     step8 = yaml_mapping(build_steps[8], source, f"{build_path}.steps[8]")
     if exact_string_mapping(step8["env"], source, f"{build_path}.steps[8].env") != (
-        ("CPA_LATEST_VERIFY_REMOTE", "1"),
+        ("CPA_COMPAT_VERIFY_REMOTE", "1"),
     ):
         raise ContractError("formal release gates must keep remote CPA verification enabled")
     step10 = yaml_mapping(build_steps[10], source, f"{build_path}.steps[10]")
@@ -3135,7 +3256,7 @@ def validate_blocked_prerelease_structure(
         "on.workflow_dispatch.inputs",
     )
     choice_inputs = {
-        "host_v7286_validation",
+        "host_validation",
         "independent_audit_validation",
         "independent_evaluation_validation",
     }
@@ -3267,7 +3388,7 @@ def validate_blocked_prerelease_structure(
                 f"{job_path}.environment",
             )
             expected_publish_if = (
-                "inputs.host_v7286_validation == 'PASS' && "
+                "inputs.host_validation == 'PASS' && "
                 "inputs.independent_audit_validation == 'PASS' && "
                 "inputs.independent_evaluation_validation == 'PASS' && "
                 "inputs.authorize_blocked_prerelease == true"
@@ -4589,6 +4710,8 @@ def default_entrypoints(root: Path) -> list[Path]:
 
 def audit(root: Path, entrypoints: list[Path]) -> tuple[set[str], set[str]]:
     root = root.resolve()
+    if (root / CPA_COMPAT_SCRIPT).exists():
+        validate_cpa_module_pins(root)
     if (root / ".github/workflows/candidate.yml").exists():
         validate_consumed_boundary_files(root)
     makefile_text = read_regular_text(root / "Makefile", root)
@@ -4612,6 +4735,8 @@ def audit(root: Path, entrypoints: list[Path]) -> tuple[set[str], set[str]]:
             elif name == "release-promote.yml":
                 validate_release_promote_workflow(text, entrypoint)
                 continue
+            elif name == "ci.yml" and (root / CPA_COMPAT_SCRIPT).exists():
+                validate_ci_workflow(text, entrypoint)
             else:
                 validate_workflow_safety(text, entrypoint)
             command_text = "\n".join(yaml_run_blocks(text))
