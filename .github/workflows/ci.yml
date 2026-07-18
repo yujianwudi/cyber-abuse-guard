@@ -141,7 +141,7 @@ jobs:
             printf 'artifact_path=%s artifact_bytes=%s ' "$artifact" "$(stat -c %s "$artifact")"
             sha256sum "$artifact"
           done
-          echo 'integration_summary=CPA v7.2.86 latest source/compile contract completed; isolated Host validation pending'
+          echo 'integration_summary=local CPA v7.2.86 source/fail-open and build checks completed; latest-source remote verification and isolated Host validation pending'
           echo 'cpa_latest_identity=v7.2.86@81d70f5d9f3fdb39a6290ed9c917ff0c6f27ca30'
       - name: clean-tree-check
         run: make clean-tree-check
