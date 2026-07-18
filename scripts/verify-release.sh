@@ -188,6 +188,7 @@ CHANGELOG.md
 LICENSE
 README.md
 README_CN.md
+SECURITY.md
 THIRD_PARTY_NOTICES.md
 build-metadata.json
 config.example.yaml
@@ -198,6 +199,11 @@ docs/INSTALL_DOCKER.md
 docs/LIMITATIONS.md
 docs/NEXT_VERSION.md
 docs/RELEASE_POLICY.md
+docs/ROUND6_CONFIG_MIGRATION.md
+docs/ROUND6_DEVELOPMENT_HANDOFF.md
+docs/ROUND6_LIMITATIONS.md
+docs/ROUND6_RELEASE_GATE.md
+docs/ROUND6_STREAMING_SCANNER_DESIGN.md
 docs/RULES.md
 docs/THREAT_MODEL.md
 docs/reports/
@@ -264,6 +270,7 @@ source_derived_files=(
   LICENSE
   README.md
   README_CN.md
+  SECURITY.md
   THIRD_PARTY_NOTICES.md
   config.example.yaml
 )

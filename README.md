@@ -12,13 +12,15 @@
 English | [简体中文](README_CN.md)
 
 > [!WARNING]
-> Version `0.15` (formal tag `v0.15`) is a Round 6 development candidate only.
-> Its status is
-> **BLOCKED / PENDING HOST AND INDEPENDENT AUDIT**. It has not been merged into
-> `main`, no `v0.15` tag or GitHub Release has been created, and it must not be deployed to
-> production. This round accepts evidence only from Linux amd64 CI and the
-> authorized Linux sandbox. Windows and macOS build or test evidence is outside
-> scope.
+> Version `0.15` and its formal tag `v0.15` remain
+> **BLOCKED / PENDING HOST AND INDEPENDENT AUDIT**. The Round 6 implementation
+> was merged by [PR #9](https://github.com/yujianwudi/cyber-abuse-guard/pull/9),
+> and exact-main plus tag CI later passed. A public source-only
+> [`v0.15-rc.1`](https://github.com/yujianwudi/cyber-abuse-guard/releases/tag/v0.15-rc.1)
+> prerelease exists without attached release assets; it is not the private clean
+> candidate, a formal release, or production deployment authorization. This
+> round accepts evidence only from Linux amd64 CI and the authorized Linux
+> sandbox. Windows and macOS build or test evidence is outside scope.
 
 When CPA has loaded and registered the plugin, Router ordering reaches it, and
 the self-executor is ready, the Guard inspects supported model requests before
@@ -31,22 +33,20 @@ classifier.
 | Item | State |
 |---|---|
 | Project version / intended formal tag | `0.15` / exact tag `v0.15` (never `v0.15.0`) |
-| Development branch | `agent/round6-long-text-streaming` |
-| Round 5.2 base | `main@7a416df66a79218d73214084d4bf8a733268d894`, tree `63db7b7cb14a636f5ba9ff4453be4ebeef170b68` |
-| Passed pre-version-migration checkpoint | `21ceb57e6b6030e56d7820c9a67a8eecd068c669`, tree `e55437442f30bdb1b6b748b9611c6760172784cd`; push CI [29578024185](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29578024185) and PR CI [29578025961](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29578025961) passed the then-current CPA v7.2.83 latest-source lane only |
-| Final v0.15 candidate commit and tree | **PENDING**; must be the exact post-merge `main` commit/tree and match main push CI, `build-metadata.json`, and `candidate-manifest.json` |
+| Merged Round 6 implementation | [PR #9](https://github.com/yujianwudi/cyber-abuse-guard/pull/9); `main@6782dfaffd4da3f09604113c7d38675f331dc759`, tree `a8edbe2e6d19fa725fb962cdd6aaad5b416d4b85` |
+| Last fully verified pre-cleanup main baseline | `6782dfaffd4da3f09604113c7d38675f331dc759`, tree `a8edbe2e6d19fa725fb962cdd6aaad5b416d4b85`; main CI [29630844605](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29630844605) and tag CI [29630926354](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29630926354) passed |
 | Release decision | **BLOCKED / PENDING HOST AND INDEPENDENT AUDIT** |
 | Candidate bytes | Must be clean exact-source Linux amd64 bytes from the private untagged Actions candidate workflow; clean does not mean released |
-| Merge and release | `main` merge is pending and is required before candidate dispatch; no `v0.15` tag or Release |
+| Merge and release | Round 6 is merged; formal `v0.15` is absent and blocked. Public `v0.15-rc.1` is source-only, has no attached assets, and is not candidate evidence |
 | Validation platform | Linux amd64 only; emitted numeric GLIBC ABI versions must be `<= 2.34` |
 | Out of scope | Windows, macOS, musl/Alpine, local deployment, production validation |
-| CPA Host matrix | Current release target is CPA v7.2.86 only; its real Host + Mock-upstream run is **NOT RUN / PENDING** |
+| CPA Host matrix | Active validation and the supported release target are limited to CPA v7.2.86; owner-operated isolated Host + Mock-upstream evidence is **NOT RUN / PENDING** |
 | Production | Not accessed or modified; no production request, audit database, credential, HMAC key, account pool, or real Provider was used |
 | Scanner identity | `streaming-scanner-v1` |
 | Classifier policy | `classifier-policy-v3` / `99e0ce7f59d2e687ebb3e79e1a71300afee8bb56f723cd8ba3f478c71a64cfd2` |
 | Embedded YAML ruleset | `1.0.7` / `7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134` |
 | Audit schema | v3 |
-| Code review | Remote automated review findings have been addressed and locally verified; no independent approval is claimed |
+| Code review | Automated review is advisory; no independent approval is claimed |
 
 The historical v10 evaluation remains `CONSUMED / FAIL` and cannot be rerun or
 used for tuning. Engineering checks do not override that methodology result or
@@ -183,15 +183,15 @@ for implementation or conclusions.
 
 | Gate | Current state |
 |---|---|
-| Pre-version-migration source checkpoint `21ceb57` | Push and PR CI passed; useful engineering evidence only, not final v0.15 candidate evidence |
-| Final PR head and PR CI | **PENDING** after all version/release-chain changes |
-| Merge final PR to `main` | **PENDING**; prerequisite for candidate dispatch, not release approval |
-| Exact post-merge `main` push CI | **PENDING**; must bind the candidate commit/tree |
+| Round 6 implementation PR | [PR #9](https://github.com/yujianwudi/cyber-abuse-guard/pull/9) merged; its PR runner did not start because of the recorded GitHub billing limit, so it is not claimed as a PR-CI PASS |
+| Exact post-merge `main` push CI | [29630844605](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29630844605) **SUCCESS** for `6782dfa` / tree `a8edbe2` |
+| Source-only prerelease tag CI | [29630926354](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29630926354) **SUCCESS** for the same commit/tree |
 | Private untagged clean candidate Actions artifact | **NOT CREATED / PENDING**; must bind one final commit/tree and emit `candidate-manifest.json` |
 | CPA v7.2.86 Host + Mock upstream | **NOT RUN / PENDING** |
 | Independent source/artifact/Host audit | **NOT RUN / PENDING** |
 | Candidate-bound external evaluation-v11 or later | **NOT RUN / PENDING**; must be first-and-only `CONSUMED / PASS` for the exact candidate |
 | Annotated `v0.15-dev.round6[.N]` prerelease | Optional and blocked until Host, independent audit, and candidate-level evaluation pass; never a formal release |
+| Public source-only `v0.15-rc.1` prerelease | Exists with no attached assets; not the private candidate, Host evidence, or formal release |
 | Annotated `v0.15` formal tag and verified draft | Blocked |
 | Protected promotion of the unchanged draft | Blocked |
 
@@ -245,9 +245,9 @@ only by external Round 6/formal attestation assets that bind the final source,
 candidate workflow run, candidate bytes, Host records, independent audit, and
 release evaluation.
 
-Earlier v7.2.85/v7.2.84/v7.2.83/v7.2.82/v7.2.81 source/compile compatibility results are retained only
-as historical engineering context. They are not current v0.15 release or Host
-requirements.
+Active CPA validation supports only v7.2.86. Legacy version-specific test
+profiles and Make aliases have been removed; older observations remain only as
+non-executable historical records and are not current release or Host evidence.
 
 Historical evaluation-v10 remains `CONSUMED / FAIL`, cannot be rerun, and is
 not accepted as a formal-build input.

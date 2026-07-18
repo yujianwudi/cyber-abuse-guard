@@ -46,7 +46,7 @@ CPA_ROUTER_FIXTURE_SCENARIOS := guard-priority-higher fixture-priority-higher \
 
 .PHONY: all format-check round6-format-check git-diff-check round6-git-diff-check module-verify round6-module-verify test unit-test vet round6-vet race \
 	fuzz-smoke script-test corpus-regression development-public-jailbreak-corpus consumed-boundary-test holdout-test benchmark round6-benchmark build-linux-amd64 \
-	integration-compile integration-test cpa-v7286-host-blackbox cpa-v7285-host-blackbox cpa-v7284-host-blackbox cpa-v7283-host-blackbox cpa-v7275-host-blackbox cpa-v7272-host-blackbox cpa-router-fixture-blackbox cpa-host-fixture-contract cpa-latest-compat round4-regression round5-regression round6-regression round6-development-artifacts round6-reproducibility-test round6-script-test round6-cpa-store-contract management-proxy-413-test ruleset-manifest sbom vulncheck round6-vulncheck release-preflight \
+	integration-compile integration-test cpa-v7286-host-blackbox cpa-router-fixture-blackbox cpa-host-fixture-contract cpa-latest-compat round4-regression round5-regression round6-regression round6-development-artifacts round6-reproducibility-test round6-script-test round6-cpa-store-contract management-proxy-413-test ruleset-manifest sbom vulncheck round6-vulncheck release-preflight \
 	package-release package-source-release release release-evidence formal-release external-release-attestation frozen-evaluation-v10-tree release-doc-consistency release-doc-consistency-test verify-release verification-fault-test cpa-store-contract artifact-hash \
 	reproducibility-test clean-tree-check tools clean
 
@@ -527,21 +527,6 @@ cpa-v7286-host-blackbox: build-linux-amd64
 	CYBER_ABUSE_GUARD_REQUIRE_HOST_INTEGRATION=1 \
 	CGO_ENABLED=1 $(GO) test -tags=integration,$(TEST_TAGS) -v -count=1 \
 		-run='^TestCPAPluginHostBlocksBeforeUpstream$$' ./integration
-
-cpa-v7285-host-blackbox: cpa-v7286-host-blackbox
-	@echo 'cpa-v7285-host-blackbox is a historical compatibility alias; current Host pin is CPA v7.2.86'
-
-cpa-v7284-host-blackbox: cpa-v7286-host-blackbox
-	@echo 'cpa-v7284-host-blackbox is a historical compatibility alias; current Host pin is CPA v7.2.86'
-
-cpa-v7283-host-blackbox: cpa-v7286-host-blackbox
-	@echo 'cpa-v7283-host-blackbox is a historical compatibility alias; current Host pin is CPA v7.2.86'
-
-cpa-v7275-host-blackbox: cpa-v7286-host-blackbox
-	@echo 'cpa-v7275-host-blackbox is a historical compatibility alias; current Host pin is CPA v7.2.86'
-
-cpa-v7272-host-blackbox: cpa-v7286-host-blackbox
-	@echo 'cpa-v7272-host-blackbox is a historical compatibility alias; current Host pin is CPA v7.2.86'
 
 cpa-router-fixture-blackbox: build-linux-amd64
 	@listed="$$($(GO) test -tags=integration,$(TEST_TAGS) -list='^TestCPAPluginHostRouterFixtureMatrix$$' ./integration)" || exit $$?; \

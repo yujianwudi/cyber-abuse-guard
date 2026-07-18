@@ -837,8 +837,11 @@ openai-compatibility:
 	})
 
 	malformedJSON := []byte(fmt.Sprintf(`{"model":"%s","messages":[{"role":"user","content":"truncated"}`, modelName))
-	scanLimitedBody := []byte(fmt.Sprintf(`{"model":"%s","messages":[{"role":"user","content":%q}]}`,
+	legacyWindowBody := []byte(fmt.Sprintf(`{"model":"%s","messages":[{"role":"user","content":%q}]}`,
 		modelName, malicious+strings.Repeat(" A", 512)))
+	// Round 6 migrates max_scan_bytes into the bounded streaming text window;
+	// it is no longer a total-text truncation limit. Appending text beyond the
+	// legacy value must therefore not downgrade an already proven local block.
 	// ModelRouteRequest JSON base64-encodes Body. A raw request slightly over
 	// 6 MiB therefore crosses the native 8 MiB RPC copy budget without the
 	// plugin copying the attacker-controlled payload.
@@ -849,7 +852,6 @@ openai-compatibility:
 		body []byte
 	}{
 		{name: "malformed-json", body: malformedJSON},
-		{name: "text-scan-limit", body: scanLimitedBody},
 		{name: "rpc-body-limit", body: oversizedBody},
 	}
 
@@ -865,6 +867,19 @@ openai-compatibility:
 			assertUsageQueueIncrementedAndDrain(t, baseURL)
 		})
 	}
+	t.Run("balanced-legacy-max-scan-window-preserves-proven-block", func(t *testing.T) {
+		upstreamBefore := upstream.calls.Load()
+		authBefore := authProbe.calls.Load()
+		providerBefore := providerProbe.calls.Load()
+		response := assertClientBytesResponse(t, baseURL+"/v1/chat/completions", legacyWindowBody,
+			"application/json", http.StatusForbidden)
+		if !bytes.Contains(response.Body, []byte("Request blocked by the local cyber-abuse policy")) {
+			t.Fatalf("balanced proven-block 403 body lacks policy marker: %s", response.Body)
+		}
+		assertNoProviderSideEffects(t, upstream, authProbe, providerProbe,
+			upstreamBefore, authBefore, providerBefore)
+		assertUsageQueueQuiet(t, baseURL)
+	})
 
 	reconfigureGuardForHost(t, baseURL, dataDir, "strict", 256)
 	providerProbe = installStableProviderProbe(t, coreManager, "openai-compatible-mock")

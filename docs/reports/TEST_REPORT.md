@@ -1,24 +1,23 @@
 # Test Report — v0.15 Round 6 current gate plus frozen Round 5 evidence
 
-Last updated: 2026-07-17 (Asia/Shanghai)
+Last updated: 2026-07-18 (Asia/Shanghai)
 
 ## Round 6 v0.15 current test status
 
 Exact project version is `0.15`; the only formal tag is `v0.15`, never
-`v0.15.0`. The only current source/compile and real-Host release target is CPA
-v7.2.86 at `81d70f5d9f3fdb39a6290ed9c917ff0c6f27ca30`. Earlier
-v7.2.85/v7.2.84/v7.2.83/v7.2.82/v7.2.81 profiles are historical non-gating engineering evidence.
+`v0.15.0`. Active validation and the supported release target are limited to
+CPA v7.2.86 at `81d70f5d9f3fdb39a6290ed9c917ff0c6f27ca30`.
+Legacy version-specific profiles and Make aliases have been removed.
 
 | Current Round 6 evidence | Result |
 |---|---|
-| Pre-version checkpoint source | `21ceb57e6b6030e56d7820c9a67a8eecd068c669`, tree `e55437442f30bdb1b6b748b9611c6760172784cd` |
-| Push CI | [29578024185](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29578024185) **SUCCESS** |
-| PR CI | [29578025961](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29578025961) **SUCCESS** |
-| Checkpoint interpretation | **PASS for the then-current CPA v7.2.83 latest-source lane before version/release-chain migration; not v7.2.86 or final v0.15 evidence** |
+| Last fully verified pre-cleanup main baseline | `6782dfaffd4da3f09604113c7d38675f331dc759`, tree `a8edbe2e6d19fa725fb962cdd6aaad5b416d4b85` |
+| Round 6 implementation PR | [#9](https://github.com/yujianwudi/cyber-abuse-guard/pull/9) **MERGED**; head `d0b63c67e099d403be1a8ad0a3183c9474ac5b9a` |
+| PR CI | [29620335143](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29620335143) jobs did not start because of GitHub billing; **NOT A PASS** |
+| Exact post-merge main CI | [29630844605](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29630844605) **SUCCESS** |
+| Source-only prerelease tag CI | [29630926354](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29630926354) **SUCCESS** for the same commit/tree |
+| Public `v0.15-rc.1` prerelease | Exists with no attached release assets; not the private clean candidate or formal release |
 | Classifier identity | `classifier-policy-v3` / `99e0ce7f59d2e687ebb3e79e1a71300afee8bb56f723cd8ba3f478c71a64cfd2` |
-| Final PR head and PR CI | **PENDING** after all version/release-chain changes |
-| Merge final PR to `main` | **NOT RUN / PENDING**; candidate-generation prerequisite, not release approval |
-| Exact post-merge `main` push CI | **NOT RUN / PENDING**; must bind the candidate commit/tree |
 | Private untagged clean candidate artifact / manifest | **NOT CREATED / PENDING** |
 | CPA v7.2.86 Host + Mock | **NOT RUN / PENDING** |
 | Four-layer Auth/Provider/Usage/Mock zero-call proof | **NOT RUN / PENDING** |
@@ -27,12 +26,13 @@ v7.2.85/v7.2.84/v7.2.83/v7.2.82/v7.2.81 profiles are historical non-gating engin
 | `round6-prerelease-attestation.json` | **NOT CREATED / PENDING** |
 | `formal-release-attestation.json` and protected promotion | **NOT CREATED / NOT RUN / BLOCKED** |
 
-The final PR head must pass Linux CI after all 0.15 and release-chain changes,
-then merge to `main`. The exact resulting main commit/tree must pass push CI
-before the candidate workflow is dispatched from `refs/heads/main`. It must
-produce a private, untagged, clean exact-source Actions artifact whose
+The merged implementation baseline and its exact main/tag CI are engineering
+evidence only. The PR jobs that did not start are not retrospectively called a
+PASS. Any later source cleanup must pass its own CI before it can supersede this
+baseline. The private candidate workflow has not been dispatched; when used, it
+must produce a private, untagged, clean exact-source Actions artifact whose
 `candidate-manifest.json`, `build-metadata.json`, SO, and Store ZIP bind that
-post-merge main commit/tree. Clean candidate bytes are unreleased. The
+exact post-merge main commit/tree. Clean candidate bytes are unreleased. The
 v7.2.86 Host record and the independent audit must cite the same SO SHA-256.
 
 After Host/audit and candidate-level evaluation PASS, an optional annotated
@@ -316,7 +316,7 @@ path:
 
 ```text
 make cpa-router-fixture-blackbox
-make cpa-v7272-host-blackbox
+# removed historical command: make cpa-v7272-host-blackbox
 scripts/management-proxy-413-test.sh
 ```
 

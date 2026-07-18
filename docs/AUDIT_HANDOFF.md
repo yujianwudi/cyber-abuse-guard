@@ -1,28 +1,28 @@
 # 独立审计交接说明 — CPA Cyber Abuse Guard v0.15 Round 6 开发候选
 
-## 2026-07-17 Round 6 v0.15 当前交接门禁
+## 2026-07-18 Round 6 v0.15 当前交接门禁
 
-项目精确版本为 `0.15`，唯一正式标签名为 `v0.15`，绝不使用 `v0.15.0`。当前状态为
-**BLOCKED / PENDING HOST AND INDEPENDENT AUDIT**，尚未合并 `main`，也没有创建
-`v0.15` 标签或 GitHub Release。
+项目精确版本为 `0.15`，唯一正式标签名为 `v0.15`，绝不使用 `v0.15.0`。正式发行
+状态仍为 **BLOCKED / PENDING HOST AND INDEPENDENT AUDIT**。Round 6 实现已通过
+[PR #9](https://github.com/yujianwudi/cyber-abuse-guard/pull/9) 合并到 `main`；精确
+main CI [29630844605](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29630844605)
+与标签 CI [29630926354](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29630926354)
+随后通过。公开 `v0.15-rc.1` 预发行没有附加发行资产，不是私有干净候选或正式发行；
+正式 `v0.15` 标签仍不存在。
 
-当前 Round 6 source/compile 与真实 Host 发行目标仅为 CPA v7.2.86
-(`81d70f5d9f3fdb39a6290ed9c917ff0c6f27ca30`)。早期 v7.2.85/v7.2.84/v7.2.83/v7.2.82/v7.2.81
-profile 只保留为历史非门禁工程证据。
+当前验证与支持的发行目标仅限 CPA v7.2.86
+(`81d70f5d9f3fdb39a6290ed9c917ff0c6f27ca30`)。旧版本专用 profile 与 Make
+别名已经删除；明确标注的旧观察仅是历史非门禁工程记录。
 
-The checked-in isolated module now uses v7.2.86. Historical commit
-`21ceb57e6b6030e56d7820c9a67a8eecd068c669`, tree
-`e55437442f30bdb1b6b748b9611c6760172784cd`, passed push CI
-[29578024185](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29578024185)
-and PR CI for the then-current v7.2.83 latest-source lane
-[29578025961](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29578025961).
-This is a **passed pre-version-migration checkpoint**, not final v0.15 evidence.
-Final PR-head Linux CI, merge to `main`, exact post-merge main push CI, the
-private untagged clean-candidate artifact, the
-v7.2.86 real Host + Mock matrix, and independent review remain **PENDING / NOT
-RUN**. The v7.2.80 PASS records below
-are historical Round 5.2 source/compile evidence and are not relabeled as
-current Round 6 matrix or Host evidence.
+The last fully verified pre-cleanup baseline is
+`main@6782dfaffd4da3f09604113c7d38675f331dc759`, tree
+`a8edbe2e6d19fa725fb962cdd6aaad5b416d4b85`. PR #9's Actions jobs did not
+start because of the recorded GitHub billing limit, so no PR-CI PASS is claimed;
+the exact merged commit/tree was subsequently validated by the successful main
+and tag runs above. The private untagged clean-candidate artifact, owner-run
+v7.2.86 Host + Mock matrix, and independent review remain **PENDING / NOT RUN**.
+Older PASS records below are historical source/compile evidence and are not
+relabeled as the current CPA matrix or Host evidence.
 
 当前策略与构建身份：
 
@@ -303,7 +303,7 @@ WSL 中曾误执行以下三个本地目标：
 
 ```text
 make cpa-router-fixture-blackbox
-make cpa-v7272-host-blackbox
+# removed historical command: make cpa-v7272-host-blackbox
 scripts/management-proxy-413-test.sh
 ```
 
@@ -504,4 +504,5 @@ leo_verification: NOT RUN
 final_status: BLOCKED FOR HANDOFF
 ```
 
-逐项 30 项交接清单见 `docs/LEO_VERIFICATION_HANDOFF.md`。
+旧版 30 项交接清单已经从活跃源码树移除，仅保留在 Git 历史中；当前验证入口见
+`docs/ROUND6_RELEASE_GATE.md` 与 `docs/reports/CPA_INTEGRATION.md`。

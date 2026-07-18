@@ -42,15 +42,18 @@ contracts, a real shared-object Host harness, and a second Router/executor
 fixture are distinct evidence layers; implementing a harness is not the same as
 executing it. The current v0.15 candidate must be produced as a private,
 untagged, clean exact-source Linux amd64 Actions artifact and then tested against
-CPA v7.2.86 with Mock upstream. Historical Round 5
-evidence remains in `reports/TEST_REPORT.md` and
-`LEO_VERIFICATION_HANDOFF.md`; it is not relabeled as current Round 6 evidence.
+CPA v7.2.86 with Mock upstream. Historical Round 5 evidence remains in the
+explicitly marked sections of `reports/TEST_REPORT.md` and Git history; the
+legacy CPA-version-specific handoff files have been removed from the active
+source tree.
 
 This document describes a post-v10 v0.15 development handoff, not an approved
 release. The methodologically valid v10 evaluation failed its first and only
 formal run (28/320 benign false positives, 49/320 policy blocks, 33/320 exact),
-so the formal release is blocked. No `v0.15` tag, GitHub Release, or production
-deployment may be created. The evidence order is: final PR head and PR CI,
+so the formal release is blocked. No formal `v0.15` tag, formal Release, or
+production deployment may be created. The public source-only `v0.15-rc.1`
+prerelease has no attached assets and does not change that decision. The
+evidence order is: final PR head and PR CI,
 merge to `main`, exact post-merge main push CI, private untagged clean candidate
 dispatched from `refs/heads/main`, v7.2.86 Host evidence, independent
 audit, a candidate-bound external `evaluation-v11` or later first-and-only
