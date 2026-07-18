@@ -50,7 +50,7 @@ classifier.
 | CPA Host matrix | Active validation and the supported release target are pinned to CPA v7.2.88 (`93d74a890a44802f656d7f39a573916b2611896e`); owner-operated isolated Host + Mock-upstream evidence is **NOT RUN / PENDING** |
 | Production | Not accessed or modified; no production request, audit database, credential, HMAC key, account pool, or real Provider was used |
 | Scanner identity | `streaming-scanner-v1` |
-| Classifier policy | `classifier-policy-v3` / `99e0ce7f59d2e687ebb3e79e1a71300afee8bb56f723cd8ba3f478c71a64cfd2` |
+| Classifier policy | `classifier-policy-v3` / `1294c6fd587522829d07220d5a6f4214092eba6ce1837636da5b3e3d461ba2a3` |
 | Embedded YAML ruleset | `1.0.7` / `7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134` |
 | Audit schema | v3 |
 | Code review | Automated review is advisory; no independent approval is claimed |

@@ -260,7 +260,7 @@
 37. **Classifier-policy identity is source- and artifact-bound, but still not
     independent approval.** The current identity is `classifier-policy-v3` /
     SHA-256
-    `99e0ce7f59d2e687ebb3e79e1a71300afee8bb56f723cd8ba3f478c71a64cfd2`.
+    `1294c6fd587522829d07220d5a6f4214092eba6ce1837636da5b3e3d461ba2a3`.
     Build metadata and artifact verification carry it. The historical
     round5.2 value was `classifier-policy-v2` /
     `e9b87f7e2635495bdbceae469ef89e696b419f0a9a6fd129558a20bc4be947ec`,

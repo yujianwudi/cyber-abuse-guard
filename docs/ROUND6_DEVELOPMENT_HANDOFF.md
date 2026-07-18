@@ -79,7 +79,7 @@ performance number from them is promoted by this handoff.
 | Candidate artifact hashes | **PENDING - private untagged clean-candidate Actions run only** |
 | Scanner identity | streaming-scanner-v1 |
 | Classifier policy | classifier-policy-v3 |
-| Classifier policy SHA-256 | 99e0ce7f59d2e687ebb3e79e1a71300afee8bb56f723cd8ba3f478c71a64cfd2 |
+| Classifier policy SHA-256 | 1294c6fd587522829d07220d5a6f4214092eba6ce1837636da5b3e3d461ba2a3 |
 | YAML ruleset | 1.0.7 |
 | YAML ruleset SHA-256 | 7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134 |
 | Audit schema | v3 |
@@ -544,7 +544,7 @@ Candidate artifact: PRIVATE UNTAGGED CLEAN ACTIONS ARTIFACT / NOT CREATED / PEND
 Platform: Linux amd64 only
 Streaming scanner identity: streaming-scanner-v1
 Classifier policy: classifier-policy-v3
-Classifier policy SHA-256: 99e0ce7f59d2e687ebb3e79e1a71300afee8bb56f723cd8ba3f478c71a64cfd2
+Classifier policy SHA-256: 1294c6fd587522829d07220d5a6f4214092eba6ce1837636da5b3e3d461ba2a3
 CPA v7.2.88 Host result: NOT RUN / PENDING
 Long-text Linux size ladder result: PENDING FINAL PR / POST-MERGE MAIN LINUX CI
 Cross-window result: PENDING FINAL PR / POST-MERGE MAIN LINUX CI

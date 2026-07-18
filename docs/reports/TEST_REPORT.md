@@ -18,7 +18,7 @@ Legacy version-specific profiles and Make aliases have been removed.
 | Exact post-merge main CI | [29630844605](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29630844605) **SUCCESS** |
 | Source-only prerelease tag CI | [29630926354](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29630926354) **SUCCESS** for the same commit/tree |
 | Public `v0.15-rc.1` prerelease | Exists with no attached release assets; not the private clean candidate or formal release |
-| Classifier identity | `classifier-policy-v3` / `99e0ce7f59d2e687ebb3e79e1a71300afee8bb56f723cd8ba3f478c71a64cfd2` |
+| Classifier identity | `classifier-policy-v3` / `1294c6fd587522829d07220d5a6f4214092eba6ce1837636da5b3e3d461ba2a3` |
 | Private untagged clean candidate artifact / manifest | **NOT CREATED / PENDING** |
 | CPA v7.2.88 Host + Mock | **NOT RUN / PENDING** |
 | Four-layer Auth/Provider/Usage/Mock zero-call proof | **NOT RUN / PENDING** |
