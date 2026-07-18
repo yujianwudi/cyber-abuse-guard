@@ -329,9 +329,9 @@ These mechanisms remain stateless across independent API calls and do not
 attest to local instruction-file integrity.
 
 Ruleset `1.0.7` identifies the embedded YAML assets only. The complete
-code-level behavior is separately identified as `classifier-policy-v3`,
+code-level behavior is separately identified as `classifier-policy-v4`,
 SHA-256
-`1294c6fd587522829d07220d5a6f4214092eba6ce1837636da5b3e3d461ba2a3`.
+`2763f10e2565dce2ffcf700f5d6566e9fbac68f3fedd08fcce20bceff450b4c8`.
 Its tested source list binds the classifier, matcher, normalizer, role logic,
 wrapper assessment, behavior graph, semantic composition, bounded extractor,
 rule loader/schema, embedded YAML assets, and module dependency locks. The
@@ -388,10 +388,12 @@ Risk entries are in-memory rolling windows with time decay. A hit, request
 receipt, and repeat multiplier are added only when every admission condition is
 true: the identity is authenticated rather than anonymous; extractor and
 classifier coverage are complete; finding confidence is
-`FindingCompleteRequest`; the behavior graph contains `BaseBehavior`; the
-classifier directly returned `ActionBlock`; and the score is at or above the
-configured `hard_block` threshold. Missing or lower-confidence evidence cannot
-accumulate subject risk.
+`FindingCompleteRequest`; the winning finding origin is the closed,
+text-free `user_content` value; the behavior graph contains `BaseBehavior`;
+the classifier directly returned `ActionBlock`; and the score is at or above
+the configured `hard_block` threshold. System, assistant, tool, tool-payload,
+roleless, unknown, mixed-role, or lower-confidence findings retain their direct
+request disposition but cannot accumulate subject risk.
 
 Non-accumulating observations never allocate state or add a hit, receipt, or
 multiplier. A non-accumulating risky candidate at or above the audit threshold
@@ -692,8 +694,8 @@ SSE stream with terminal frames; returning successful chunks would force HTTP
 ## Build identity and release reproducibility
 
 Builds link immutable version, full commit SHA, ruleset version/hash,
-`classifier-policy-v3` /
-`1294c6fd587522829d07220d5a6f4214092eba6ce1837636da5b3e3d461ba2a3`,
+`classifier-policy-v4` /
+`2763f10e2565dce2ffcf700f5d6566e9fbac68f3fedd08fcce20bceff450b4c8`,
 streaming-scanner identity, and dirty state. Build metadata and the verifier bind
 these identities. Candidate mode requires a clean worktree, exact expected
 commit/tree, the commit timestamp, an absent formal `v0.15` tag, and forbids

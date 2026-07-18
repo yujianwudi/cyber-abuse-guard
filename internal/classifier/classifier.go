@@ -131,6 +131,17 @@ type Evidence struct {
 	Kind string `json:"kind"`
 }
 
+// FindingOrigin is a closed, privacy-safe attribution for the winning
+// classifier finding. It never contains role text, field names, request
+// fragments, or provider-specific identifiers.
+type FindingOrigin string
+
+const (
+	FindingOriginNone               FindingOrigin = ""
+	FindingOriginUserContent        FindingOrigin = "user_content"
+	FindingOriginNonUserOrUntrusted FindingOrigin = "non_user_or_untrusted"
+)
+
 // Result intentionally has no field capable of carrying prompt fragments.
 type Result struct {
 	PolicyVersion     string            `json:"policy_version"`
@@ -143,6 +154,7 @@ type Result struct {
 	Context           ContextFlags      `json:"context"`
 	Evidence          []Evidence        `json:"evidence,omitempty"`
 	Behavior          *BehaviorGraph    `json:"behavior,omitempty"`
+	FindingOrigin     FindingOrigin     `json:"finding_origin,omitempty"`
 	Coverage          Coverage          `json:"coverage,omitempty,omitzero"`
 	FindingConfidence FindingConfidence `json:"finding_confidence,omitempty"`
 	Truncated         bool              `json:"truncated,omitempty"`
@@ -396,9 +408,14 @@ func (c *Classifier) Classify(parts []string, mode Mode, thresholds Thresholds) 
 
 // ClassifyWithPolicy scores parts with explicit configurable context and
 // authorization behavior. Callers should start from DefaultPolicy and override
-// only fields exposed by their validated configuration.
+// only fields exposed by their validated configuration. This roleless entry
+// point is conservatively attributed as non-user/untrusted; role-aware callers
+// may upgrade only a proven user-content winner.
 func (c *Classifier) ClassifyWithPolicy(parts []string, mode Mode, thresholds Thresholds, policy Policy) Result {
-	return c.classifyWithPolicy(parts, mode, thresholds, policy, false)
+	return withFindingOrigin(
+		c.classifyWithPolicy(parts, mode, thresholds, policy, false),
+		FindingOriginNonUserOrUntrusted,
+	)
 }
 
 // classifyWithPolicy keeps role provenance out of the public API while

@@ -200,8 +200,8 @@ This identity covers the embedded YAML rule assets. The complete code-level
 policy is separately identified as:
 
 ```text
-classifier_policy_version: classifier-policy-v3
-classifier_policy_sha256: 1294c6fd587522829d07220d5a6f4214092eba6ce1837636da5b3e3d461ba2a3
+classifier_policy_version: classifier-policy-v4
+classifier_policy_sha256: 2763f10e2565dce2ffcf700f5d6566e9fbac68f3fedd08fcce20bceff450b4c8
 ```
 
 The policy digest test binds the deterministic classifier, matcher,
@@ -210,6 +210,10 @@ composition, bounded extractor, rule loader/schema, embedded YAML files, and
 module dependency locks. Classifier results and authenticated status expose the
 identity. Build metadata and the artifact verifier bind it, but a handoff must
 still record the exact full Git commit/tree and candidate workflow run.
+
+`Result.finding_origin` is a text-free closed value: `user_content` or
+`non_user_or_untrusted`; neutral/incomplete results omit it. It never contains
+provider field names, role text, prompt fragments, or tool arguments.
 
 Commit `21ceb57e6b6030e56d7820c9a67a8eecd068c669` passed push and PR CI
 with this policy identity as a pre-version-migration checkpoint. It is not the

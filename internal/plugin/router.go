@@ -350,6 +350,7 @@ func subjectAccumulationEligible(identity subject.Identity, result classifier.Re
 	return authenticatedSubjectIdentity(identity) &&
 		len(incompleteReasons) == 0 && result.Coverage.State == classifier.CoverageComplete &&
 		result.FindingConfidence == classifier.FindingCompleteRequest &&
+		result.FindingOrigin == classifier.FindingOriginUserContent &&
 		result.Behavior != nil && result.Behavior.BaseBehavior &&
 		result.Action == classifier.ActionBlock && result.Score >= hardBlock
 }
@@ -518,6 +519,7 @@ func incompleteClassificationResult(result classifier.Result, rulesVersion strin
 		Action:            classifier.ActionAllow,
 		Coverage:          result.Coverage,
 		FindingConfidence: classifier.FindingNone,
+		FindingOrigin:     classifier.FindingOriginNone,
 		Truncated:         true,
 	}
 }

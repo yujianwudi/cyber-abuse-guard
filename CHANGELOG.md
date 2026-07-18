@@ -38,10 +38,13 @@ future stable release still requires a newly authored independent unseen set.
   enabled subject evaluation, a final local block pending key, or a persisted
   audit event with `log_request_hash: true`.
 - Tighten subject-risk admission so only authenticated, completely inspected
-  base-behavior findings with `FindingCompleteRequest`, a direct classifier
-  `ActionBlock`, and `score >= hard_block` add rolling risk. Anonymous and
-  lower-confidence requests keep their direct per-request disposition but do
-  not allocate subject state or add hits, receipts, or repeat multipliers.
+  user-content base-behavior findings with `FindingCompleteRequest`, a direct
+  classifier `ActionBlock`, and `score >= hard_block` add rolling risk.
+  Anonymous, system, assistant, tool, tool-payload, roleless, unknown,
+  mixed-role, and lower-confidence requests keep their direct per-request
+  disposition but do not allocate subject state or add hits, receipts, or
+  repeat multipliers. Publish the resulting code-level contract as
+  `classifier-policy-v4` / `2763f10e2565dce2ffcf700f5d6566e9fbac68f3fedd08fcce20bceff450b4c8`.
 
 - Add a dedicated, manual `v0.15-rc.2` prerelease workflow for clean Linux
   amd64 server-sandbox assets. It binds an annotated RC tag to the exact main

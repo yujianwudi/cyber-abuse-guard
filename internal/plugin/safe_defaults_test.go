@@ -54,11 +54,12 @@ func TestRequestBodyHashIsLazyAcrossRouteOutcomes(t *testing.T) {
 			body: safeDefaultsBenignRequest,
 		},
 		{
-			name: "enabled subject evaluation",
+			name: "enabled authenticated subject observation",
 			configuration: func(*testing.T) string {
 				return "mode: balanced\naudit:\n  enabled: false\nsubject_control:\n  enabled: true\n"
 			},
 			body:       safeDefaultsBenignRequest,
+			headers:    http.Header{"Authorization": []string{"Bearer downstream-key"}},
 			wantHashes: 1,
 		},
 		{

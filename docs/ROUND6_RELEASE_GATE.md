@@ -7,8 +7,8 @@ The exact project version is `0.15`; the only formal tag is `v0.15`, never
 current execution evidence is Linux amd64-only. Windows, macOS, and musl/Alpine
 are outside this round.
 
-Classifier policy identity is `classifier-policy-v3` /
-`1294c6fd587522829d07220d5a6f4214092eba6ce1837636da5b3e3d461ba2a3`;
+Classifier policy identity is `classifier-policy-v4` /
+`2763f10e2565dce2ffcf700f5d6566e9fbac68f3fedd08fcce20bceff450b4c8`;
 scanner identity is `streaming-scanner-v1`.
 
 The release chain is deliberately ordered:

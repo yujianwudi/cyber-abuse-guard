@@ -533,6 +533,7 @@ func (s *ScanSession) Finish() Result {
 		result.Coverage = s.coverage
 		result.Truncated = true
 		result.FindingConfidence = FindingNone
+		result.FindingOrigin = FindingOriginNone
 	}
 	s.clearPrevious()
 	s.clearRoleState()
@@ -674,7 +675,7 @@ func (s *ScanSession) finishField(field *streamingField) {
 		return
 	}
 	if field.hasBest {
-		s.consider(field.best)
+		s.consider(field.best, findingOriginForSegment(extract.Segment{Role: field.role, Provenance: field.provenance}))
 	}
 
 	tail := tailBytes(field.buffer, s.overlap)
@@ -815,7 +816,7 @@ func (s *ScanSession) considerRoleSummary(current *streamingFieldSummary, curren
 			normalized := strings.ToLower(roleSafetyPunctuation.Replace(text))
 			if continuation := unscopedSafetyContinuation(current.role, normalized); continuation != "" {
 				if candidate, ok := batch.classify([]string{continuation}, false); ok {
-					s.consider(candidate)
+					s.consider(candidate, FindingOriginNonUserOrUntrusted)
 				}
 			}
 		}
@@ -844,7 +845,7 @@ func (s *ScanSession) considerRoleSummary(current *streamingFieldSummary, curren
 	metaReconstructed := false
 	if len(s.linkedMetaUsers) > 1 {
 		if candidate, ok := batch.classify(s.linkedMetaUsers, false); ok {
-			s.consider(candidate)
+			s.consider(candidate, FindingOriginUserContent)
 			metaReconstructed = true
 		}
 	}
@@ -854,12 +855,12 @@ func (s *ScanSession) considerRoleSummary(current *streamingFieldSummary, curren
 		// current user fields. Do not charge a duplicate adjacent-pair window.
 		if !metaReconstructed {
 			if candidate, ok := batch.classify([]string{s.previousUser, text}, false); ok {
-				s.consider(candidate)
+				s.consider(candidate, FindingOriginUserContent)
 			}
 		}
 		if s.coverage.State == CoverageComplete && followUpEligible([]rune(s.previousUser)) {
 			if candidate, ok := batch.classify([]string{s.previousUser + "\n" + text}, false); ok {
-				s.consider(candidate)
+				s.consider(candidate, FindingOriginUserContent)
 			}
 		}
 	}
@@ -872,7 +873,7 @@ func (s *ScanSession) considerRoleSummary(current *streamingFieldSummary, curren
 	}
 	if len(s.recentUsers) == 3 && threeTurnPlanWindowEligible(s.recentUsers) {
 		if candidate, ok := batch.classify([]string{strings.Join(s.recentUsers, "\n")}, false); ok {
-			s.consider(candidate)
+			s.consider(candidate, FindingOriginUserContent)
 		}
 	}
 
@@ -934,7 +935,7 @@ func (s *ScanSession) considerControlPair(batch *roleClassificationBatch, nonUse
 	}
 	candidate, ok := batch.classify([]string{nonUser, user}, false)
 	if ok && standaloneMetaControlResult(candidate) {
-		s.consider(candidate)
+		s.consider(candidate, FindingOriginNonUserOrUntrusted)
 	}
 }
 
@@ -960,7 +961,7 @@ func (s *ScanSession) considerMappedToolControl(batch *roleClassificationBatch, 
 		return
 	}
 	if candidate, ok := batch.classify([]string{strings.Join(s.mappedToolControls, "\n")}, true); ok {
-		s.consider(candidate)
+		s.consider(candidate, FindingOriginNonUserOrUntrusted)
 	}
 }
 
@@ -982,7 +983,7 @@ func (s *ScanSession) considerUntrustedPart(batch *roleClassificationBatch, text
 	if candidate.Action == ActionBlock {
 		s.untrustedExactBlocked = true
 	}
-	s.consider(candidate)
+	s.consider(candidate, FindingOriginNonUserOrUntrusted)
 }
 
 // considerUntrustedRiskFacts carries only bounded classifier signals across
@@ -1082,7 +1083,7 @@ func (s *ScanSession) flushIsolatedUserRun(batch *roleClassificationBatch) {
 			builder.WriteRune(value)
 		}
 		if candidate, ok := batch.classify([]string{builder.String()}, false); ok {
-			s.consider(candidate)
+			s.consider(candidate, FindingOriginUserContent)
 		}
 	}
 	clear(s.isolatedUserRun)
@@ -1484,6 +1485,8 @@ func (s *ScanSession) considerAdjacent(previous, current *streamingFieldSummary)
 	}
 	previousKnown := knownStreamingRoleSegment(extract.Segment{Role: previous.role, Provenance: previous.provenance})
 	currentKnown := knownStreamingRoleSegment(extract.Segment{Role: current.role, Provenance: current.provenance})
+	userContentPair := previous.role == extract.RoleUser && current.role == extract.RoleUser &&
+		previous.provenance == extract.ProvenanceContent && current.provenance == extract.ProvenanceContent
 	if previous.sampleComplete && current.sampleComplete &&
 		previous.role == extract.RoleUnknown && current.role == extract.RoleUnknown {
 		// The bounded all-parts fallback below considers the complete rolling
@@ -1496,9 +1499,7 @@ func (s *ScanSession) considerAdjacent(previous, current *streamingFieldSummary)
 		return
 	}
 	if previousKnown && currentKnown {
-		userPair := previous.role == extract.RoleUser && current.role == extract.RoleUser &&
-			previous.provenance == extract.ProvenanceContent && current.provenance == extract.ProvenanceContent
-		if !userPair {
+		if !userContentPair {
 			if current.role == extract.RoleUser && current.provenance == extract.ProvenanceContent &&
 				!previous.tailSafetyScoped && metaOverridePartsLinked(string(previous.tail), string(current.head)) {
 				s.considerControlPair(&roleClassificationBatch{session: s}, string(previous.tail), string(current.head))
@@ -1519,7 +1520,11 @@ func (s *ScanSession) considerAdjacent(previous, current *streamingFieldSummary)
 	if untrustedContentPair && result.Action == ActionBlock {
 		s.untrustedExactBlocked = true
 	}
-	s.consider(result)
+	origin := FindingOriginNonUserOrUntrusted
+	if userContentPair {
+		origin = FindingOriginUserContent
+	}
+	s.consider(result, origin)
 	if len(previous.sample) != 0 && len(current.sample) != 0 && followUpEligible([]rune(string(previous.sample))) {
 		if s.coverage.Windows >= s.limits.MaxChunks {
 			s.setCoverage(CoverageBudgetExhausted, CoverageReasonClassificationLimit)
@@ -1531,11 +1536,12 @@ func (s *ScanSession) considerAdjacent(previous, current *streamingFieldSummary)
 			s.setCoverage(CoverageUnavailable, CoverageReasonClassifierWindow)
 			return
 		}
-		s.consider(joined)
+		s.consider(joined, origin)
 	}
 }
 
-func (s *ScanSession) consider(candidate Result) {
+func (s *ScanSession) consider(candidate Result, origin FindingOrigin) {
+	candidate = withFindingOrigin(candidate, origin)
 	if !s.hasBest || roleResultBetter(candidate, s.best) {
 		s.best = candidate
 		s.hasBest = true

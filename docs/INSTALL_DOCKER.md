@@ -145,9 +145,9 @@ Inspect `$work/audit/build-metadata.json` and require:
 - `dirty` is `false`;
 - `commit` is a full 40-character release commit;
 - `ruleset_version` and `ruleset_sha256` match the standalone ruleset manifest;
-- `classifier_policy_version` equals `classifier-policy-v3` and
+- `classifier_policy_version` equals `classifier-policy-v4` and
   `classifier_policy_sha256` equals
-  `1294c6fd587522829d07220d5a6f4214092eba6ce1837636da5b3e3d461ba2a3`;
+  `2763f10e2565dce2ffcf700f5d6566e9fbac68f3fedd08fcce20bceff450b4c8`;
 - `$work/release-evidence-final.md` identifies the same commit, annotated tag,
   rules snapshot, source archive, command-log digest, and artifact hashes.
 - `$work/round6-prerelease-attestation.json` schema v2 binds the exact Host-tested
