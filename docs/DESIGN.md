@@ -361,6 +361,10 @@ Subject selection is ordered:
    HMACed in memory;
 2. an anonymous bucket.
 
+The anonymous identity is never admitted to rolling subject state. Anonymous
+requests still receive the same direct classifier/transport disposition, but
+cannot allocate a shared bucket or accumulate cross-request risk across users.
+
 CPA ABI v1 does not supply a distinct authenticated principal/key-policy ID or
 a trustworthy direct-peer address to ModelRouter. v0.15 therefore rejects
 `trusted_proxy.enabled: true`; forwarded headers alone are spoofable and are
@@ -380,11 +384,21 @@ The domain-separated request digest is computed lazily only for an enabled
 subject evaluation, a final block pending key, or a persisted audit event whose
 configuration includes `log_request_hash: true`.
 
-Risk entries are in-memory rolling windows with time decay. Risk is added only
-for results at or above the audit threshold. Repeat hits receive a bounded
-multiplier. Cooldown/manual-block state applies only to new risky requests;
-ordinary safe requests are not permanently denied. Manual blocks can be
-cleared through the authenticated management API.
+Risk entries are in-memory rolling windows with time decay. A hit, request
+receipt, and repeat multiplier are added only when every admission condition is
+true: the identity is authenticated rather than anonymous; extractor and
+classifier coverage are complete; finding confidence is
+`FindingCompleteRequest`; the behavior graph contains `BaseBehavior`; the
+classifier directly returned `ActionBlock`; and the score is at or above the
+configured `hard_block` threshold. Missing or lower-confidence evidence cannot
+accumulate subject risk.
+
+Non-accumulating observations never allocate state or add a hit, receipt, or
+multiplier. A non-accumulating risky candidate at or above the audit threshold
+may read an already active cooldown/manual-block disposition, while an ordinary
+score below the audit threshold remains safe even for a previously cooling or
+manually blocked subject. Expired inactive state is pruned during this lookup.
+Manual blocks can be cleared through the authenticated management API.
 
 Risk accounting is idempotent per subject and domain-separated request digest.
 The same logical request crossing Router and executor methods, retrying, racing

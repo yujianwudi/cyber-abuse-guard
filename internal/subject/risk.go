@@ -64,6 +64,15 @@ type Decision struct {
 	RepeatCount   int       `json:"repeat_count"`
 }
 
+// Observation separates a classifier result from permission to persist it in
+// rolling subject risk. Callers may set Accumulate=false to check an existing
+// cooldown or manual block without allocating a subject, adding a hit or
+// idempotency receipt, or advancing the repeat multiplier.
+type Observation struct {
+	RiskScore  int
+	Accumulate bool
+}
+
 // State is a secret-free management snapshot for one already-HMACed subject.
 type State struct {
 	SubjectHash   string    `json:"subject_hash"`
@@ -158,7 +167,7 @@ func (c *Controller) Reconfigure(cfg Config) error {
 // manually blocked; this prevents ordinary traffic from being permanently
 // denied after a false positive.
 func (c *Controller) Evaluate(subjectHash string, riskScore int) Decision {
-	return c.evaluate(subjectHash, "", riskScore)
+	return c.Observe(subjectHash, Observation{RiskScore: riskScore, Accumulate: true})
 }
 
 // EvaluateRequest records and evaluates one classifier score while making the
@@ -167,13 +176,26 @@ func (c *Controller) Evaluate(subjectHash string, riskScore int) Decision {
 // Duplicate callbacks return the current subject disposition without adding a
 // second hit or advancing the repeat multiplier.
 func (c *Controller) EvaluateRequest(subjectHash, requestHash string, riskScore int) Decision {
-	if !validDigest(requestHash, "sha256:") {
-		return Decision{Reason: ReasonInvalidHash}
-	}
-	return c.evaluate(subjectHash, requestHash, riskScore)
+	return c.ObserveRequest(subjectHash, requestHash, Observation{RiskScore: riskScore, Accumulate: true})
 }
 
-func (c *Controller) evaluate(subjectHash, requestHash string, riskScore int) Decision {
+// Observe evaluates an explicit subject-risk observation without an
+// idempotency receipt. Accumulate=false is a read-only disposition lookup.
+func (c *Controller) Observe(subjectHash string, observation Observation) Decision {
+	return c.observe(subjectHash, "", observation)
+}
+
+// ObserveRequest evaluates an explicit subject-risk observation. requestHash
+// is validated and retained only when Accumulate=true; an ineligible
+// observation cannot create a receipt that suppresses a later eligible event.
+func (c *Controller) ObserveRequest(subjectHash, requestHash string, observation Observation) Decision {
+	if observation.Accumulate && !validDigest(requestHash, "sha256:") {
+		return Decision{Reason: ReasonInvalidHash}
+	}
+	return c.observe(subjectHash, requestHash, observation)
+}
+
+func (c *Controller) observe(subjectHash, requestHash string, observation Observation) Decision {
 	if c == nil {
 		return Decision{SubjectHash: subjectHash, Reason: ReasonDisabled}
 	}
@@ -186,6 +208,9 @@ func (c *Controller) evaluate(subjectHash, requestHash string, riskScore int) De
 		return Decision{SubjectHash: subjectHash, Reason: ReasonDisabled}
 	}
 	now := c.cfg.Now().UTC()
+	if !observation.Accumulate {
+		return c.nonAccumulatingDecisionLocked(subjectHash, observation.RiskScore, now)
+	}
 	c.cleanupOldestLocked(now, maintenanceBatch)
 
 	current := c.entries[subjectHash]
@@ -211,7 +236,7 @@ func (c *Controller) evaluate(subjectHash, requestHash string, riskScore int) De
 			}
 		}
 	}
-	if riskScore < c.cfg.AuditThreshold {
+	if observation.RiskScore < c.cfg.AuditThreshold {
 		if current == nil {
 			return Decision{SubjectHash: subjectHash, Reason: ReasonSafe}
 		}
@@ -238,7 +263,7 @@ func (c *Controller) evaluate(subjectHash, requestHash string, riskScore int) De
 	if multiplier > c.cfg.MaxMultiplier {
 		multiplier = c.cfg.MaxMultiplier
 	}
-	added := float64(riskScore) * multiplier
+	added := float64(observation.RiskScore) * multiplier
 	if requestHash != "" && len(current.hits) >= maxHitsPerSubject {
 		// Keep every idempotency receipt that is still inside the risk window.
 		// If the bounded history is full, fail closed for a new risky hash rather
@@ -294,6 +319,40 @@ func (c *Controller) evaluate(subjectHash, requestHash string, riskScore int) De
 		ManualBlocked: current.manualBlocked,
 		RepeatCount:   repeatCount,
 	}
+}
+
+// nonAccumulatingDecisionLocked performs bounded expiry maintenance but never
+// allocates state or adds a hit, receipt, or multiplier. Scores below the audit
+// threshold retain the Controller's clean-request contract and remain safe
+// even when an existing cooldown or manual block is reported in the metadata.
+func (c *Controller) nonAccumulatingDecisionLocked(subjectHash string, riskScore int, now time.Time) Decision {
+	c.cleanupOldestLocked(now, maintenanceBatch)
+	current := c.entries[subjectHash]
+	if current == nil {
+		return Decision{SubjectHash: subjectHash, Reason: ReasonSafe}
+	}
+	c.prune(current, now)
+	if inactive(current, now) {
+		c.removeEntryLocked(subjectHash, current)
+		return Decision{SubjectHash: subjectHash, Reason: ReasonSafe}
+	}
+	decision := c.decision(subjectHash, current, now)
+	if riskScore < c.cfg.AuditThreshold {
+		decision.Reason = ReasonSafe
+		decision.Blocked = false
+		return decision
+	}
+	switch {
+	case current.manualBlocked:
+		decision.Blocked = true
+		decision.Reason = ReasonManualBlock
+	case now.Before(current.cooldownUntil):
+		decision.Blocked = true
+		decision.Reason = ReasonCooldown
+	default:
+		decision.Reason = ReasonSafe
+	}
+	return decision
 }
 
 // Snapshot returns a decayed snapshot and removes expired inactive state.

@@ -37,6 +37,11 @@ future stable release still requires a newly authored independent unseen set.
 - Defer the domain-separated full-body request hash until it is required by an
   enabled subject evaluation, a final local block pending key, or a persisted
   audit event with `log_request_hash: true`.
+- Tighten subject-risk admission so only authenticated, completely inspected
+  base-behavior findings with `FindingCompleteRequest`, a direct classifier
+  `ActionBlock`, and `score >= hard_block` add rolling risk. Anonymous and
+  lower-confidence requests keep their direct per-request disposition but do
+  not allocate subject state or add hits, receipts, or repeat multipliers.
 
 - Add a dedicated, manual `v0.15-rc.2` prerelease workflow for clean Linux
   amd64 server-sandbox assets. It binds an annotated RC tag to the exact main

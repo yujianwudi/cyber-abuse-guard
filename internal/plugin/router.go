@@ -16,6 +16,7 @@ import (
 	"github.com/yujianwudi/cyber-abuse-guard/internal/classifier"
 	"github.com/yujianwudi/cyber-abuse-guard/internal/config"
 	"github.com/yujianwudi/cyber-abuse-guard/internal/extract"
+	"github.com/yujianwudi/cyber-abuse-guard/internal/subject"
 )
 
 type modelRouteFailure struct {
@@ -258,13 +259,27 @@ func (p *Plugin) route(state *runtimeState, request pluginapi.ModelRouteRequest)
 	subjectReason := ""
 	if state.config.SubjectControl.Enabled && decision.EvaluateSubject {
 		if p.identifier != nil {
-			subjectHash = p.identifier.FromHeaders(request.Headers).Hash
+			identity := p.identifier.FromHeaders(request.Headers)
+			if authenticatedSubjectIdentity(identity) {
+				subjectHash = identity.Hash
+				observation := subject.Observation{
+					RiskScore: result.Score,
+					Accumulate: subjectAccumulationEligible(
+						identity,
+						result,
+						incompleteReasons,
+						state.config.Thresholds.HardBlock,
+					),
+				}
+				subjectDecision := state.subject.ObserveRequest(subjectHash, requestHash.get(p), observation)
+				if subjectDecision.AddedScore > 0 {
+					state.markSubjectPersistenceDirty()
+				}
+				subjectReason = string(subjectDecision.Reason)
+				outcome.SubjectBlocked = subjectDecision.Blocked
+				decision = inspectionDisposition(state.config.Mode, outcome, state.config.EffectiveOpaqueMediaPolicy())
+			}
 		}
-		subjectDecision := state.subject.EvaluateRequest(subjectHash, requestHash.get(p), result.Score)
-		state.markSubjectPersistenceDirty()
-		subjectReason = string(subjectDecision.Reason)
-		outcome.SubjectBlocked = subjectDecision.Blocked
-		decision = inspectionDisposition(state.config.Mode, outcome, state.config.EffectiveOpaqueMediaPolicy())
 	}
 	// Audit identity is independent from subject-risk accumulation. A disabled
 	// controller must not erase the privacy-safe subject field from an event the
@@ -317,6 +332,26 @@ func (p *Plugin) auditSubjectHash(state *runtimeState, request pluginapi.ModelRo
 		return ""
 	}
 	return p.identifier.FromHeaders(request.Headers).Hash
+}
+
+func authenticatedSubjectIdentity(identity subject.Identity) bool {
+	if identity.Hash == "" {
+		return false
+	}
+	switch identity.Source {
+	case subject.SourceAuthorization, subject.SourceAPIKey:
+		return true
+	default:
+		return false
+	}
+}
+
+func subjectAccumulationEligible(identity subject.Identity, result classifier.Result, incompleteReasons []extract.IncompleteReason, hardBlock int) bool {
+	return authenticatedSubjectIdentity(identity) &&
+		len(incompleteReasons) == 0 && result.Coverage.State == classifier.CoverageComplete &&
+		result.FindingConfidence == classifier.FindingCompleteRequest &&
+		result.Behavior != nil && result.Behavior.BaseBehavior &&
+		result.Action == classifier.ActionBlock && result.Score >= hardBlock
 }
 
 func opaqueMediaDisposition(cfg config.Config, present bool) (auditOnly, block bool) {
