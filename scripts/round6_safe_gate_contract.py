@@ -802,8 +802,10 @@ CANDIDATE_ARTIFACTS = (
 )
 CANDIDATE_SCRIPT_SHA256 = {
     "round6-candidate-artifacts.sh": "11a2a358c3154bd8665f6b5ae27d84c6f97fd33763f9cc602b38425c93bce659",
-    "release-candidate-contract-test.sh": "ea162de1edf82ba867510b2458541de386ce992e8f14b18228d6b7d7df48f975",
+    "release-candidate-contract-test.sh": "82879ce86da1a0424c1ba688d33635176411e2a646449e355dc705ba7d982a69",
 }
+RC_RELEASE_SCRIPT_SHA256 = "bf51d8773171c0fb17cad36c09faa5b65cf29a49374d41afe1e6a5ea40b1f5e0"
+RC_RELEASE_WORKFLOW_SHA256 = "4e56014c36d98b74c765a97f4131ac16b102cf00455d6d51634e85dbe01848ed"
 FORMAL_OPERATION_SCRIPTS = (
     "formal-release.sh",
     "generate-release-evidence.sh",
@@ -2347,6 +2349,25 @@ def validate_release_mode_contracts(root: Path) -> None:
                 "release_assert_candidate_build must stay clean, exact-mode, and pre-formal-tag only"
             )
 
+    rc_body = shell_function_body(common, "release_assert_rc_build", common_path)
+    for required in (
+        '[[ "$RELEASE_BUILD_KIND" == rc ]]',
+        '[[ "$RELEASE_DIRTY" == false ]]',
+        '[[ "$RELEASE_RC_TAG" == "v$RELEASE_ARTIFACT_VERSION" ]]',
+        'if git -C "$RELEASE_ROOT" show-ref --verify --quiet "refs/tags/$formal_tag"; then',
+        'release_die "RC builds are forbidden after the formal tag $formal_tag exists"',
+    ):
+        if required not in rc_body:
+            raise ContractError(
+                "release_assert_rc_build must stay clean, exact-tagged, and pre-formal-tag only"
+            )
+
+    rc_script_path = root / "scripts/round6-rc-artifacts.sh"
+    if rc_script_path.exists():
+        rc_script = read_regular_text(rc_script_path, root)
+        if hashlib.sha256(rc_script.encode("utf-8")).hexdigest() != RC_RELEASE_SCRIPT_SHA256:
+            raise ContractError("RC release artifact script differs from reviewed contract")
+
     for script_name in FORMAL_OPERATION_SCRIPTS:
         path = root / "scripts" / script_name
         text = read_regular_text(path, root)
@@ -2368,9 +2389,12 @@ def validate_release_mode_contracts(root: Path) -> None:
             raise ContractError(
                 f"formal operation {script_name} must assert tag then formal build before work"
             )
-        if any("RELEASE_CANDIDATE_BUILD" in command for command in commands):
+        if any(
+            "RELEASE_CANDIDATE_BUILD" in command or "RELEASE_RC_" in command
+            for command in commands
+        ):
             raise ContractError(
-                f"formal operation {script_name} may not enable candidate build mode"
+                f"formal operation {script_name} may not enable candidate or RC build mode"
             )
 
     evidence_path = root / "scripts/generate-release-evidence.sh"
@@ -3900,6 +3924,8 @@ def validate_blocked_prerelease_workflow(text: str, source: Path) -> None:
         allowed_token_paths=BLOCKED_ALLOWED_GITHUB_TOKEN_PATHS,
         allowed_identity_expressions=BLOCKED_ALLOWED_GITHUB_IDENTITY_EXPRESSIONS,
     )
+
+
     steps_by_job = validate_blocked_prerelease_structure(document, source)
     validate_pre_final_mutations(steps_by_job, source)
     if not re.search(
@@ -4110,6 +4136,40 @@ def validate_blocked_prerelease_workflow(text: str, source: Path) -> None:
         final_publish_step,
     ) or re.search(r"(?m)^\s+(?:if|continue-on-error|shell):", final_publish_step):
         raise ContractError("blocked prerelease must end with one unconditional publish step")
+def validate_rc_release_workflow(text: str, source: Path) -> None:
+    parse_workflow_yaml(text, source)
+    if hashlib.sha256(text.encode("utf-8")).hexdigest() != RC_RELEASE_WORKFLOW_SHA256:
+        raise ContractError("RC release workflow differs from the exact reviewed contract")
+    required = (
+        "RC release v0.15-rc.2 - Linux sandbox validation",
+        "Bind RC authorization to annotated exact-main tag before checkout",
+        "Bind RC admission to successful exact-main push CI",
+        "Checkout exact RC tag with restricted data excluded",
+        "Recheck restricted-data and workflow contracts",
+        "Recheck regressions and latest CPA v7.2.86 contracts",
+        "Run RC-versioned CPA Host integration",
+        "Build and reproduce exact RC release assets",
+        "Reverify transferred RC assets without repository source",
+        "Recheck immutable tag and main before publication",
+        "Create, byte-check, and publish v0.15-rc.2 prerelease",
+        "SANDBOX_ONLY / SERVER_VALIDATION_REQUIRED / NOT_FORMAL / NOT_ROUND6_CANDIDATE",
+        "cyber-abuse-guard_0.15-rc.2_linux_amd64.zip",
+        "rc-release-manifest.json.sha256",
+        "--draft",
+        "--prerelease",
+        "--latest=false",
+    )
+    for marker in required:
+        if marker not in text:
+            raise ContractError(f"RC release workflow is missing reviewed marker: {marker}")
+    if text.count("contents: write") != 1:
+        raise ContractError("RC release workflow must expose contents: write only in publish")
+    if re.search(r"(?im)runs-on:\s*(?:windows|macos)", text):
+        raise ContractError("RC release workflow must remain Linux only")
+    if "round6-prerelease-attestation.json" in text or "formal-release-attestation.json" in text:
+        raise ContractError("RC release workflow may not emit formal evidence assets")
+
+
 def validate_round6_reproducibility_script(text: str, source: Path) -> None:
     match = re.search(
         r"sparse-checkout\s+set\s+--no-cone(?P<body>.*?)\n\s*git\s+-C\s+[^\n]+\s+checkout",
@@ -4480,6 +4540,7 @@ def default_entrypoints(root: Path) -> list[Path]:
         ".github/workflows/blocked-prerelease.yml",
         ".github/workflows/round6-candidate.yml",
         ".github/workflows/release.yml",
+        ".github/workflows/release-rc.yml",
         ".github/workflows/release-promote.yml",
     ):
         optional = root / relative
@@ -4511,6 +4572,8 @@ def audit(root: Path, entrypoints: list[Path]) -> tuple[set[str], set[str]]:
             name = entrypoint.name.lower()
             if name == "round6-candidate.yml":
                 validate_candidate_workflow(text, entrypoint)
+            elif name == "release-rc.yml":
+                validate_rc_release_workflow(text, entrypoint)
             elif "prerelease" in name:
                 validate_blocked_prerelease_workflow(text, entrypoint)
             elif name == "release.yml":
@@ -4597,10 +4660,17 @@ def audit(root: Path, entrypoints: list[Path]) -> tuple[set[str], set[str]]:
                 if script_path.name == "build-linux-amd64.sh":
                     validate_round6_linux_build_script(script_text, script_path)
                 command_text = script_text
-                if script_path.name == "round6-candidate-artifacts.sh":
+                if script_path.name in {
+                    "round6-candidate-artifacts.sh",
+                    "round6-rc-artifacts.sh",
+                }:
                     command_text = command_text.replace(
                         "release_require_commands make ", "release_require_commands "
                     ).replace('make -C "$root" -j1', "make")
+                    if script_path.name == "round6-rc-artifacts.sh":
+                        command_text = command_text.replace(
+                            'make -C "$clone" -j1', "make"
+                        ).replace("\\\n", " ")
                 elif script_path.name == "verify-external-release-attestation-test.sh":
                     command_text = command_text.replace('make -C "$root"', "make")
                 elif script_path.name == "round6-reproducibility-test.sh":

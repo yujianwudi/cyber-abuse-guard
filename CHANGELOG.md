@@ -14,6 +14,15 @@ Windows and macOS are outside scope. The historical v10 result remains
 `CONSUMED / FAIL` and cannot be rerun or used for tuning. A future stable
 release still requires a newly authored independent unseen set.
 
+- Add a dedicated, manual `v0.15-rc.2` prerelease workflow for clean Linux
+  amd64 server-sandbox assets. It binds an annotated RC tag to the exact main
+  commit/tree and successful main push CI, embeds `0.15-rc.2` in the SO and CPA
+  Store ZIP identity, verifies CPA v7.2.86 contracts, and reproduces the bytes
+  in two clean sparse worktrees before publication.
+- Emit `rc-release-manifest.json` with exact source, workflow, CI, CPA, and
+  artifact hashes. The manifest is explicitly sandbox-only, not formal, and not
+  a Round 6 candidate or external Host/audit/evaluation attestation.
+
 ### Round 6 long-text streaming candidate
 
 - Record `21ceb57e6b6030e56d7820c9a67a8eecd068c669` (tree
