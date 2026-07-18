@@ -490,6 +490,7 @@ jobs:
           ' "$releases")"
           if [[ "$(jq -r 'length' <<<"$matches")" == 0 ]]; then
             gh release create "$TAG" \
+              --repo "$GITHUB_REPOSITORY" \
               --verify-tag \
               --target "$EXPECTED_COMMIT" \
               --title 'v0.15-rc.2 — Linux server sandbox validation required' \
@@ -518,8 +519,11 @@ jobs:
                 <(printf '%s\n' "$expected_assets"))"
               [[ -z "$unexpected_assets" ]]
             fi
-            gh release upload "$TAG" "${assets[@]}" --clobber
+            gh release upload "$TAG" "${assets[@]}" \
+              --repo "$GITHUB_REPOSITORY" \
+              --clobber
             gh release edit "$TAG" \
+              --repo "$GITHUB_REPOSITORY" \
               --title 'v0.15-rc.2 — Linux server sandbox validation required' \
               --notes-file "$notes" \
               --draft \
@@ -557,7 +561,11 @@ jobs:
           [[ "$(jq -c '[.assets[] | {id, name, size, digest}] | sort_by(.name)' <<<"$current")" == "$draft_fingerprint" ]]
           published_now=0
           if [[ "$(jq -r '.draft' <<<"$current")" == true ]]; then
-            gh release edit "$TAG" --draft=false --prerelease --latest=false
+            gh release edit "$TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --draft=false \
+              --prerelease \
+              --latest=false
             published_now=1
           fi
           if ! {
@@ -577,7 +585,11 @@ jobs:
           }; then
             if [[ "$published_now" == 1 ]]; then
               printf '%s\n' 'post-publication validation failed; restoring the RC release to draft' >&2
-              gh release edit "$TAG" --draft --prerelease --latest=false
+              gh release edit "$TAG" \
+                --repo "$GITHUB_REPOSITORY" \
+                --draft \
+                --prerelease \
+                --latest=false
               rollback="$(gh api \
                 --header 'Accept: application/vnd.github+json' \
                 --header 'X-GitHub-Api-Version: 2022-11-28' \
