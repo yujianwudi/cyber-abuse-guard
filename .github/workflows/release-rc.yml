@@ -555,19 +555,34 @@ jobs:
             --header 'X-GitHub-Api-Version: 2022-11-28' \
             "repos/${GITHUB_REPOSITORY}/releases/$(jq -r '.id' <<<"$release")")"
           [[ "$(jq -c '[.assets[] | {id, name, size, digest}] | sort_by(.name)' <<<"$current")" == "$draft_fingerprint" ]]
+          published_now=0
           if [[ "$(jq -r '.draft' <<<"$current")" == true ]]; then
             gh release edit "$TAG" --draft=false --prerelease --latest=false
+            published_now=1
           fi
-          assert_remote_identity
-          final="$(gh api \
-            --header 'Accept: application/vnd.github+json' \
-            --header 'X-GitHub-Api-Version: 2022-11-28' \
-            "repos/${GITHUB_REPOSITORY}/releases/$(jq -r '.id' <<<"$release")")"
-          [[ "$(jq -r '.draft' <<<"$final")" == false ]]
-          [[ "$(jq -r '.prerelease' <<<"$final")" == true ]]
-          [[ "$(jq -r '.tag_name' <<<"$final")" == "$TAG" ]]
-          [[ "$(jq -r '.name' <<<"$final")" == 'v0.15-rc.2 — Linux server sandbox validation required' ]]
-          jq -e '.assets | length == 10 and all(.state == "uploaded")' <<<"$final" >/dev/null
-          grep -Fq 'not the formal v0.15 release' <<<"$(jq -r '.body' <<<"$final")"
-          [[ "$(jq -r '.assets[].name' <<<"$final" | LC_ALL=C sort)" == "$expected_assets" ]]
-          [[ "$(jq -c '[.assets[] | {id, name, size, digest}] | sort_by(.name)' <<<"$final")" == "$draft_fingerprint" ]]
+          if ! {
+            assert_remote_identity
+            final="$(gh api \
+              --header 'Accept: application/vnd.github+json' \
+              --header 'X-GitHub-Api-Version: 2022-11-28' \
+              "repos/${GITHUB_REPOSITORY}/releases/$(jq -r '.id' <<<"$release")")"
+            [[ "$(jq -r '.draft' <<<"$final")" == false ]]
+            [[ "$(jq -r '.prerelease' <<<"$final")" == true ]]
+            [[ "$(jq -r '.tag_name' <<<"$final")" == "$TAG" ]]
+            [[ "$(jq -r '.name' <<<"$final")" == 'v0.15-rc.2 — Linux server sandbox validation required' ]]
+            jq -e '.assets | length == 10 and all(.state == "uploaded")' <<<"$final" >/dev/null
+            grep -Fq 'not the formal v0.15 release' <<<"$(jq -r '.body' <<<"$final")"
+            [[ "$(jq -r '.assets[].name' <<<"$final" | LC_ALL=C sort)" == "$expected_assets" ]]
+            [[ "$(jq -c '[.assets[] | {id, name, size, digest}] | sort_by(.name)' <<<"$final")" == "$draft_fingerprint" ]]
+          }; then
+            if [[ "$published_now" == 1 ]]; then
+              printf '%s\n' 'post-publication validation failed; restoring the RC release to draft' >&2
+              gh release edit "$TAG" --draft --prerelease --latest=false
+              rollback="$(gh api \
+                --header 'Accept: application/vnd.github+json' \
+                --header 'X-GitHub-Api-Version: 2022-11-28' \
+                "repos/${GITHUB_REPOSITORY}/releases/$(jq -r '.id' <<<"$release")")"
+              [[ "$(jq -r '.draft' <<<"$rollback")" == true ]]
+            fi
+            exit 1
+          fi
