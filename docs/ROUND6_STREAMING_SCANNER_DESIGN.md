@@ -115,7 +115,7 @@ The first Round 6 implementation does not enable the optional verified-hard-find
 | Mode | Incomplete request |
 |---|---|
 | off | allow |
-| observe | allow + observe event |
+| observe | allow + counter only; no persisted per-request event |
 | audit | allow + audit |
 | balanced | allow + audit |
 | strict | local block + audit |

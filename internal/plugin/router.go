@@ -115,11 +115,12 @@ func (p *Plugin) route(state *runtimeState, request pluginapi.ModelRouteRequest)
 		p.reportUnknownSourceFormat()
 		if state.config.Mode == config.ModeStrict && !multipartRequest(request.Headers) {
 			hash := requestHash.get(p)
+			subjectHash := p.auditSubjectHash(state, request)
 			p.counters.blocked.Add(1)
 			p.counters.incompleteInspections.Add(1)
 			p.counters.incompleteBlocked.Add(1)
 			p.counters.coverageIncomplete.Add(1)
-			p.recordUnknownSourceBlock(state, hash, request.Stream, time.Since(started))
+			p.recordUnknownSourceBlock(state, hash, subjectHash, request.Stream, time.Since(started))
 			p.pending.put(hash, "unknown_source_format")
 			return blockedRouteEnvelope("cyber_abuse_guard_unknown_source_format"), nil
 		}
@@ -268,10 +269,8 @@ func (p *Plugin) route(state *runtimeState, request pluginapi.ModelRouteRequest)
 	// Audit identity is independent from subject-risk accumulation. A disabled
 	// controller must not erase the privacy-safe subject field from an event the
 	// operator explicitly chose to persist.
-	if (decision.Block || decision.Audit) && state.audit != nil && state.config.Audit.Enabled &&
-		state.config.Mode != config.ModeObserve && state.config.Audit.LogSubjectHash &&
-		subjectHash == "" && p.identifier != nil {
-		subjectHash = p.identifier.FromHeaders(request.Headers).Hash
+	if (decision.Block || decision.Audit) && subjectHash == "" {
+		subjectHash = p.auditSubjectHash(state, request)
 	}
 
 	if len(incompleteReasons) != 0 {
@@ -309,6 +308,15 @@ func (p *Plugin) route(state *runtimeState, request pluginapi.ModelRouteRequest)
 		reason = "cyber_abuse_guard_hard_policy"
 	}
 	return blockedRouteEnvelope(reason), nil
+}
+
+func (p *Plugin) auditSubjectHash(state *runtimeState, request pluginapi.ModelRouteRequest) string {
+	if p == nil || p.identifier == nil || state == nil || state.audit == nil ||
+		!state.config.Audit.Enabled || state.config.Mode == config.ModeObserve ||
+		!state.config.Audit.LogSubjectHash {
+		return ""
+	}
+	return p.identifier.FromHeaders(request.Headers).Hash
 }
 
 func opaqueMediaDisposition(cfg config.Config, present bool) (auditOnly, block bool) {
@@ -518,7 +526,7 @@ func (p *Plugin) recordStreamingCounters(extracted extract.Result, result classi
 	}
 }
 
-func (p *Plugin) recordUnknownSourceBlock(state *runtimeState, requestHash string, stream bool, latency time.Duration) {
+func (p *Plugin) recordUnknownSourceBlock(state *runtimeState, requestHash, subjectHash string, stream bool, latency time.Duration) {
 	if state == nil || state.audit == nil || !state.config.Audit.Enabled {
 		return
 	}
@@ -539,6 +547,9 @@ func (p *Plugin) recordUnknownSourceBlock(state *runtimeState, requestHash strin
 	}
 	if state.config.Audit.LogRequestHash {
 		event.RequestHash = requestHash
+	}
+	if state.config.Audit.LogSubjectHash {
+		event.SubjectHash = subjectHash
 	}
 	p.recordAuditEvent(state, event)
 }
@@ -690,7 +701,7 @@ func (p *Plugin) recordDecision(state *runtimeState, request pluginapi.ModelRout
 // exposes detailed counters; this helper adds a privacy-safe, rate-limited host
 // log without including request-derived fields.
 func (p *Plugin) recordAuditEvent(state *runtimeState, event audit.Event) {
-	if state == nil || state.audit == nil || state.config.Mode == config.ModeObserve || state.audit.Record(event) {
+	if state == nil || state.audit == nil || state.audit.Record(event) {
 		return
 	}
 	now := time.Now().UnixNano()

@@ -42,6 +42,7 @@ func TestRequestBodyHashIsLazyAcrossRouteOutcomes(t *testing.T) {
 		name          string
 		configuration func(t *testing.T) string
 		body          string
+		headers       http.Header
 		wantHandled   bool
 		wantHashes    int
 	}{
@@ -70,6 +71,16 @@ func TestRequestBodyHashIsLazyAcrossRouteOutcomes(t *testing.T) {
 			wantHashes:  1,
 		},
 		{
+			name: "subject audit and pending share one hash",
+			configuration: func(t *testing.T) string {
+				return "mode: balanced\naudit:\n  enabled: true\n  data_dir: \"" + filepath.ToSlash(t.TempDir()) + "\"\n  log_request_hash: true\nsubject_control:\n  enabled: true\n"
+			},
+			body:        maliciousRequest,
+			headers:     http.Header{"Authorization": []string{"Bearer downstream-key"}},
+			wantHandled: true,
+			wantHashes:  1,
+		},
+		{
 			name: "persisted audit request hash",
 			configuration: func(t *testing.T) string {
 				return "mode: audit\naudit:\n  enabled: true\n  data_dir: \"" + filepath.ToSlash(t.TempDir()) + "\"\n  log_request_hash: true\nsubject_control:\n  enabled: false\n"
@@ -91,13 +102,66 @@ func TestRequestBodyHashIsLazyAcrossRouteOutcomes(t *testing.T) {
 			hashCalls := countRequestHashes(p)
 			register(t, p, testCase.configuration(t))
 
-			if route := callRoute(t, p, testCase.body); route.Handled != testCase.wantHandled {
+			var route pluginapi.ModelRouteResponse
+			if testCase.headers != nil {
+				route = callRouteWithHeaders(t, p, testCase.body, testCase.headers)
+			} else {
+				route = callRoute(t, p, testCase.body)
+			}
+			if route.Handled != testCase.wantHandled {
 				t.Fatalf("route handled=%t, want %t; route=%+v", route.Handled, testCase.wantHandled, route)
 			}
 			if *hashCalls != testCase.wantHashes {
 				t.Fatalf("request body hash calls=%d, want %d", *hashCalls, testCase.wantHashes)
 			}
 		})
+	}
+}
+
+func TestStrictUnknownSourceReusesHashAndPersistsAuditIdentity(t *testing.T) {
+	t.Setenv(subject.HMACKeyEnvironment, "0123456789abcdef0123456789abcdef")
+	p := New()
+	t.Cleanup(p.Shutdown)
+	hashCalls := countRequestHashes(p)
+	dataDir := filepath.ToSlash(t.TempDir())
+	register(t, p, "mode: strict\naudit:\n  enabled: true\n  data_dir: \""+dataDir+"\"\n  log_request_hash: true\n  log_subject_hash: true\nsubject_control:\n  enabled: false\n")
+
+	headers := http.Header{"Authorization": []string{"Bearer downstream-key"}}
+	expectedSubject := p.identifier.FromHeaders(headers).Hash
+	rawRequest, err := json.Marshal(pluginapi.ModelRouteRequest{
+		SourceFormat: "future-provider",
+		Headers:      headers,
+		Body:         []byte(safeDefaultsBenignRequest),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, code := p.Call(pluginabi.MethodModelRoute, rawRequest)
+	if code != 0 {
+		t.Fatalf("strict unknown model.route code=%d envelope=%s", code, raw)
+	}
+	var route pluginapi.ModelRouteResponse
+	decodeOKResult(t, raw, &route)
+	if !route.Handled {
+		t.Fatalf("strict unknown source was not locally blocked: %+v", route)
+	}
+	if *hashCalls != 1 {
+		t.Fatalf("strict unknown source request hash calls=%d, want 1", *hashCalls)
+	}
+
+	events := managementJSON(t, p, http.MethodGet, managementBasePath+"/events", nil)
+	items, ok := events["events"].([]any)
+	if !ok || len(items) != 1 {
+		t.Fatalf("strict unknown source events=%#v, want one", events)
+	}
+	event, ok := items[0].(map[string]any)
+	if !ok {
+		t.Fatalf("strict unknown source event=%#v, want object", items[0])
+	}
+	requestHash, _ := event["request_hash"].(string)
+	subjectHash, _ := event["subject_hash"].(string)
+	if !strings.HasPrefix(requestHash, "sha256:") || subjectHash != expectedSubject {
+		t.Fatalf("strict unknown source event request_hash=%q subject_hash=%q, want subject %q", requestHash, subjectHash, expectedSubject)
 	}
 }
 
