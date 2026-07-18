@@ -80,7 +80,7 @@ release_round6_safe_sparse_path() {
   local path="${1,,}"
   case "$path" in
     cmd/*evaluation*|cmd/*holdout*|cmd/*consumed*|cmd/*private*|cmd/*blind*|cmd/*retired*|\
-    docs/*EVALUATION_*|docs/*HOLDOUT_*|docs/*HOLDOUT_REPORT.md|\
+    docs/*evaluation_*|docs/*holdout_*|docs/*holdout_report.md|\
     docs/*consumed*|docs/*private*|docs/*blind*|docs/*retired*|\
     internal/classifier/*evaluation*|internal/classifier/*holdout*|\
     internal/classifier/*consumed*|internal/classifier/*private*|internal/classifier/*blind*|internal/classifier/*retired*|\
