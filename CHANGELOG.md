@@ -1,13 +1,15 @@
 # Changelog
 
-## 0.15 — 2026-07-17
+## 0.15 — 2026-07-18
 
 Release status: **BLOCKED / PENDING HOST AND INDEPENDENT AUDIT**. Exact project
 version is `0.15` and the only formal tag name is `v0.15` (never `v0.15.0`).
-Round 6 is an unmerged development candidate based on
-`main@7a416df66a79218d73214084d4bf8a733268d894`. No Round 6 tag or Release has
-been created, and production deployment or an `observe -> balanced` change is
-not authorized. The only validation platform in this round is Linux amd64;
+The Round 6 implementation was merged by PR #9 at
+`main@6782dfaffd4da3f09604113c7d38675f331dc759`, tree
+`a8edbe2e6d19fa725fb962cdd6aaad5b416d4b85`, and exact main/tag CI passed. A
+public source-only `v0.15-rc.1` prerelease exists without attached release
+assets; it is not the private clean candidate, a formal release, or deployment
+authorization. The only validation platform in this round is Linux amd64;
 Windows and macOS are outside scope. The historical v10 result remains
 `CONSUMED / FAIL` and cannot be rerun or used for tuning. A future stable
 release still requires a newly authored independent unseen set.
@@ -116,9 +118,24 @@ release still requires a newly authored independent unseen set.
 - Make CPA v7.2.86 the only current source/compile and real Linux Host +
   Mock-upstream release target; its Host matrix is **NOT RUN / PENDING**. Earlier
   v7.2.85/v7.2.84/v7.2.83/v7.2.82/v7.2.81 compatibility results remain historical non-gating engineering
-  evidence. The final PR must merge to `main` and pass exact-main push CI before
-  candidate dispatch. Do not create a development tag or Release before the
-  v7.2.86 Host gate, independent audit, and candidate-level evaluation pass.
+  evidence. The merged implementation baseline passed exact-main and tag CI;
+  any later source cleanup must pass its own exact-main CI before candidate
+  dispatch. The public source-only `v0.15-rc.1` prerelease is not admitted as
+  candidate evidence. Do not create the formal tag or asset-bearing Release
+  before the v7.2.86 Host gate, independent audit, and candidate-level
+  evaluation pass.
+- Remove the legacy `cpa-v7285-host-blackbox`, `cpa-v7284-host-blackbox`,
+  `cpa-v7283-host-blackbox`, `cpa-v7275-host-blackbox`, and
+  `cpa-v7272-host-blackbox` Make aliases. Active CPA tests now expose only the
+  v7.2.86 Host, source/fixture, latest-compatibility, Router, and Store paths.
+- Align the v7.2.86 Host black-box expectation with Round 6 streaming semantics:
+  legacy `max_scan_bytes` is a migrated text-window alias, not a total-text
+  truncation limit, so an already proven malicious request must still return a
+  local 403 with zero provider-side effects.
+- Make the formal audit bundle self-contained for README navigation by adding
+  `SECURITY.md` and the referenced Round 6 design, migration, limitation,
+  release-gate, and development-handoff documents to the strict package and
+  verification allowlists.
 - Require the final PR head to have no unresolved, non-outdated actionable
   review threads before merge. Automated review is advisory and does not
   constitute independent approval.

@@ -35,6 +35,7 @@ for required_file in \
   "$root/README.md" \
   "$root/README_CN.md" \
   "$root/LICENSE" \
+  "$root/SECURITY.md" \
   "$root/CHANGELOG.md" \
   "$root/THIRD_PARTY_NOTICES.md" \
   "$root/config.example.yaml" \
@@ -45,6 +46,11 @@ for required_file in \
   "$root/docs/LIMITATIONS.md" \
   "$root/docs/NEXT_VERSION.md" \
   "$root/docs/RELEASE_POLICY.md" \
+  "$root/docs/ROUND6_CONFIG_MIGRATION.md" \
+  "$root/docs/ROUND6_DEVELOPMENT_HANDOFF.md" \
+  "$root/docs/ROUND6_LIMITATIONS.md" \
+  "$root/docs/ROUND6_RELEASE_GATE.md" \
+  "$root/docs/ROUND6_STREAMING_SCANNER_DESIGN.md" \
   "$root/docs/RULES.md" \
   "$root/docs/reports/TEST_REPORT.md" \
   "$root/docs/reports/PERFORMANCE.md" \
@@ -69,11 +75,16 @@ find "$bundle_stage" -type d -exec chmod 0755 {} +
 install -m 0755 "$dist/$so" "$bundle_stage/plugins/linux/amd64/$so"
 install -m 0644 "$dist/$so.sha256" "$bundle_stage/plugins/linux/amd64/$so.sha256"
 install -m 0644 "$root/README.md" "$root/README_CN.md" "$root/LICENSE" \
+  "$root/SECURITY.md" \
   "$root/CHANGELOG.md" "$root/THIRD_PARTY_NOTICES.md" \
   "$root/config.example.yaml" "$bundle_stage/"
 install -m 0644 "$root/docs/AUDIT_HANDOFF.md" "$root/docs/DESIGN.md" "$root/docs/THREAT_MODEL.md" \
   "$root/docs/INSTALL_DOCKER.md" "$root/docs/LIMITATIONS.md" \
   "$root/docs/NEXT_VERSION.md" "$root/docs/RELEASE_POLICY.md" \
+  "$root/docs/ROUND6_CONFIG_MIGRATION.md" \
+  "$root/docs/ROUND6_DEVELOPMENT_HANDOFF.md" \
+  "$root/docs/ROUND6_LIMITATIONS.md" "$root/docs/ROUND6_RELEASE_GATE.md" \
+  "$root/docs/ROUND6_STREAMING_SCANNER_DESIGN.md" \
   "$root/docs/RULES.md" "$bundle_stage/docs/"
 install -m 0644 "$root/docs/reports/TEST_REPORT.md" \
   "$root/docs/reports/PERFORMANCE.md" "$root/docs/reports/CORPUS_REPORT.md" \

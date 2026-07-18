@@ -1,26 +1,26 @@
 # v0.15 Round 6 Development Evidence — current gate plus frozen Round 5 history
 
-Last updated: 2026-07-17 (Asia/Shanghai)
+Last updated: 2026-07-18 (Asia/Shanghai)
 
 ## Round 6 v0.15 current evidence status — not a release PASS
 
 Exact project version is `0.15`; the only formal tag is `v0.15`, never
-`v0.15.0`. The only current source/compile and real-Host release target is CPA
-v7.2.86 (`81d70f5d9f3fdb39a6290ed9c917ff0c6f27ca30`). Earlier
-v7.2.85/v7.2.84/v7.2.83/v7.2.82/v7.2.81 profiles are historical non-gating engineering evidence.
+`v0.15.0`. Active validation and the supported release target are limited to
+CPA v7.2.86 (`81d70f5d9f3fdb39a6290ed9c917ff0c6f27ca30`). Legacy
+version-specific profiles and Make aliases have been removed.
 
 ```text
 status: BLOCKED / PENDING HOST AND INDEPENDENT AUDIT
 project_version: 0.15
 formal_tag: v0.15
-pre_version_checkpoint_commit: 21ceb57e6b6030e56d7820c9a67a8eecd068c669
-pre_version_checkpoint_tree: e55437442f30bdb1b6b748b9611c6760172784cd
-pre_version_checkpoint_push_ci: 29578024185 / SUCCESS
-pre_version_checkpoint_pr_ci: 29578025961 / SUCCESS
-final_pr_head_and_pr_ci: PENDING
-merge_main: NOT RUN / PENDING / CANDIDATE-GENERATION PREREQUISITE
-post_merge_main_push_ci: NOT RUN / PENDING
-final_v0.15_commit_tree: PENDING EXACT POST-MERGE MAIN IDENTITY
+last_fully_verified_pre_cleanup_main_commit: 6782dfaffd4da3f09604113c7d38675f331dc759
+last_fully_verified_pre_cleanup_tree: a8edbe2e6d19fa725fb962cdd6aaad5b416d4b85
+round6_implementation_pr: 9 / MERGED / head d0b63c67e099d403be1a8ad0a3183c9474ac5b9a
+round6_pr_ci: 29620335143 / JOBS NOT STARTED DUE BILLING / NOT A PASS
+post_merge_main_push_ci: 29630844605 / SUCCESS
+public_source_only_prerelease_tag: v0.15-rc.1
+source_only_tag_ci: 29630926354 / SUCCESS
+attached_release_assets: none
 private_untagged_clean_candidate: NOT CREATED / PENDING
 candidate_manifest: NOT CREATED / PENDING
 cpa_v7.2.86_host_mock: NOT RUN / PENDING
@@ -29,19 +29,18 @@ independent_source_artifact_host_audit: NOT RUN / PENDING
 candidate_bound_evaluation_v11_plus: NOT RUN / PENDING / requires CONSUMED PASS
 round6_prerelease_attestation: NOT CREATED / PENDING
 historical_v10: CONSUMED / FAIL / IMMUTABLE / NOT A FORMAL INPUT
-formal_v0.15_tag_draft: NOT CREATED / BLOCKED
+formal_v0.15_tag_draft: ABSENT / BLOCKED
 formal_release_attestation: NOT CREATED / PENDING
 formal_v0.15_promotion: NOT RUN / BLOCKED
 ```
 
-The `21ceb57` push/PR checkpoint passed before the 0.15 version and
-release-chain migration. It is not final v0.15 candidate, Host, audit, tag, or
-Release evidence. The final PR head must pass PR CI, merge to `main`, and the
-exact resulting main commit/tree must pass push CI. The dedicated private,
-untagged candidate workflow must then be dispatched from `refs/heads/main`.
-That workflow
-must produce clean Linux amd64 bytes plus `candidate-manifest.json`; clean bytes
-remain unreleased.
+The merged Round 6 implementation baseline and its exact main/tag CI are
+engineering evidence, not final candidate, Host, audit, or formal-release
+evidence. The PR jobs that did not start are not retrospectively called a PASS.
+The public `v0.15-rc.1` prerelease has no attached release assets and does not
+replace the dedicated private, untagged candidate workflow. That workflow has
+not been dispatched and must produce clean Linux amd64 bytes plus
+`candidate-manifest.json`; clean bytes remain unreleased.
 
 The CPA v7.2.86 Host + Mock record and the independent audit must bind the same
 candidate workflow run, commit, tree, and SO SHA-256. Every local block must
@@ -525,7 +524,7 @@ identity.
 
 Three WSL commands were mistakenly executed outside the authorized evidence
 path: `make cpa-router-fixture-blackbox`,
-`make cpa-v7272-host-blackbox`, and
+the now-removed legacy target `cpa-v7272-host-blackbox`, and
 `scripts/management-proxy-413-test.sh`. They used loopback/Mock components only,
 contacted no production service or real provider, and cleanup left no fixture
 process running. Their status is:

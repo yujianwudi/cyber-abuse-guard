@@ -13,8 +13,8 @@ independent real-Host/artifact review remains `NOT RUN`.
 Evaluation v10 was not read or rerun. Its frozen aggregate result remains
 `CONSUMED / FAIL` and is unrelated to the privacy PASS rows below.
 
-The WSL commands `make cpa-router-fixture-blackbox`,
-`make cpa-v7272-host-blackbox`, and
+The WSL command `make cpa-router-fixture-blackbox`, the now-removed legacy
+target `cpa-v7272-host-blackbox`, and
 `scripts/management-proxy-413-test.sh` were mistakenly executed outside the
 authorized evidence path. They used random loopback ports and Mock components
 only, contacted no production service or real provider, and cleanup left no

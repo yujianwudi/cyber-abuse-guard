@@ -17,8 +17,8 @@ blind quality result. Methodologically valid evaluation v10 remains
 the frozen, first-and-only authoritative `FAIL`; that blind set is consumed and
 was not rerun.
 
-The WSL commands `make cpa-router-fixture-blackbox`,
-`make cpa-v7272-host-blackbox`, and
+The WSL command `make cpa-router-fixture-blackbox`, the now-removed legacy
+target `cpa-v7272-host-blackbox`, and
 `scripts/management-proxy-413-test.sh` were mistakenly executed outside the
 authorized evidence path. They used loopback/Mock components only and cleanup
 left no fixture process. Their results are excluded from this report:
