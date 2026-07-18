@@ -22,6 +22,9 @@ release_require_commands make git jq sha256sum awk cmp mktemp mv rm chmod mkdir
 release_init
 release_assert_tag
 release_assert_rc_build
+release_rc_tag_object="$(git -C "$root" rev-parse "$RELEASE_RC_TAG^{tag}")"
+[[ "$release_rc_tag_object" =~ ^[0-9a-f]{40}$ ]] || \
+  release_die "RC release requires the exact annotated source tag object"
 [[ "${GITHUB_REF:-}" == "refs/tags/$RELEASE_RC_TAG" ]] || \
   release_die "RC release assets require the exact annotated tag ref"
 [[ "${GITHUB_SHA:-}" == "$RELEASE_GIT_COMMIT" ]] || \
@@ -200,6 +203,9 @@ round6_sparse_clone() {
     release_die "RC reproducibility clone must contain only the exact RC tag"
   [[ "$(git -C "$destination" cat-file -t "$RELEASE_RC_TAG")" == tag ]] || \
     release_die "RC reproducibility clone requires the annotated RC tag object"
+  [[ "$(git -C "$destination" rev-parse "$RELEASE_RC_TAG^{tag}")" == \
+    "$release_rc_tag_object" ]] || \
+    release_die "RC reproducibility clone tag object differs from the admitted source tag"
   [[ "$(git -C "$destination" rev-parse "$RELEASE_RC_TAG^{commit}")" == \
     "$RELEASE_GIT_COMMIT" ]] || \
     release_die "RC reproducibility clone tag does not resolve to the expected commit"
