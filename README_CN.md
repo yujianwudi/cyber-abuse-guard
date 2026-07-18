@@ -11,6 +11,11 @@
 
 [English](README.md) | 简体中文
 
+`v0.15-rc.2` 带资产预发行在本源码提交中仍待发布；发布后仅供 Linux
+amd64 服务器沙盒验证。其 SO、CPA Store ZIP、元数据、SBOM、校验和与 RC manifest 均使用精确
+`0.15-rc.2` 身份；它不是私有 Round 6 candidate、正式 `v0.15` 证据或
+生产部署授权，真实 CPA Host 验证仍需在所有者服务器沙盒中完成。
+
 > [!WARNING]
 > 精确项目版本 `0.15` 与正式标签 `v0.15` 仍为
 > **BLOCKED / PENDING HOST AND INDEPENDENT AUDIT**。Round 6 实现已通过
@@ -167,6 +172,7 @@ build-tag 修改的前提下声称“完全零触及”，但没有使用受限 
 | 与候选绑定的外部 evaluation-v11 或更高 | **NOT RUN / PENDING**；必须是该精确候选首次且唯一的 `CONSUMED / PASS` |
 | 注解标签 `v0.15-dev.round6[.N]` 预发行 | 可选；Host、独立审计、候选级评估通过前阻断，且永远不是正式发行 |
 | 公开源码预发行 `v0.15-rc.1` | 已存在但没有附加资产；不是私有候选、Host 证据或正式发行 |
+| 带资产预发行 `v0.15-rc.2` | **待发布**；计划提供 Linux amd64 SO、CPA Store ZIP、校验和、SBOM 与 RC manifest，仅供所有者服务器沙盒验证；不是候选或正式证据 |
 | 注解标签 `v0.15` 与已验证 draft | 阻断 |
 | 受保护地发布未变化 draft | 阻断 |
 

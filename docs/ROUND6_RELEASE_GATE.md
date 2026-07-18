@@ -26,6 +26,13 @@ final PR head + PR CI
   -> protected promotion of that unchanged draft
 ```
 
+An isolated side lane may publish annotated `v0.15-rc.2` Linux amd64 assets for
+server sandbox validation after exact-main CI succeeds. That lane embeds the RC
+version in the SO, Store ZIP, and metadata, emits only an RC manifest, and is
+explicitly **not** the private Round 6 candidate or a formal-release
+attestation. It does not alter, satisfy, or bypass the ordered formal chain
+above. Real CPA Host validation remains pending in the owner's server sandbox.
+
 Clean candidate bytes are still **unreleased**. A successful candidate build,
 Host matrix, optional development prerelease, or ordinary CI run cannot convert
 the historical v10 `CONSUMED / FAIL` into a release PASS. Evaluation-v10 cannot

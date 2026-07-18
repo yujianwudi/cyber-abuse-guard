@@ -153,6 +153,7 @@ script-test:
 	bash -n ./scripts/go-safe-development-test.sh
 	bash -n ./scripts/cpa-latest-compat.sh
 	bash -n ./scripts/round6-candidate-artifacts.sh
+	bash -n ./scripts/round6-rc-artifacts.sh
 	./scripts/release-candidate-contract-test.sh
 	bash -n ./scripts/verify-external-release-attestation.sh
 	./scripts/verify-external-release-attestation-test.sh
@@ -170,6 +171,7 @@ round6-script-test:
 	bash -n ./scripts/go-safe-development-test.sh
 	bash -n ./scripts/cpa-latest-compat.sh
 	bash -n ./scripts/round6-candidate-artifacts.sh
+	bash -n ./scripts/round6-rc-artifacts.sh
 	./scripts/release-candidate-contract-test.sh
 	bash -n ./scripts/verify-external-release-attestation.sh
 	./scripts/verify-external-release-attestation-test.sh

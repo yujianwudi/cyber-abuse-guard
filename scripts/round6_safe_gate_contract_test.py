@@ -30,6 +30,7 @@ from round6_safe_gate_contract import (
     validate_formal_release_workflow,
     validate_frozen_evaluation_tree_script,
     validate_release_mode_contracts,
+    validate_rc_release_workflow,
     validate_release_promote_workflow,
     validate_reproducibility_wrapper_script,
     validate_round6_doc_fixture_wrapper_script,
@@ -1911,6 +1912,25 @@ command /usr/bin/git --no-pager tag v0.1.2-dev.round6
         self.assertNotEqual(workflow, self.blocked_workflow())
         with self.assertRaisesRegex(ContractError, "exact reviewed text"):
             validate_blocked_prerelease_workflow(workflow, Path("round6-prerelease.yml"))
+
+    def test_rc_release_workflow_matches_reviewed_contract(self):
+        workflow_path = Path(__file__).resolve().parent.parent / ".github/workflows/release-rc.yml"
+        workflow = workflow_path.read_text(encoding="utf-8")
+        validate_rc_release_workflow(workflow, workflow_path)
+
+    def test_rc_release_workflow_mutation_fails_closed(self):
+        workflow_path = Path(__file__).resolve().parent.parent / ".github/workflows/release-rc.yml"
+        original = workflow_path.read_text(encoding="utf-8")
+        mutations = (
+            original.replace("[[ \"$TAG\" == v0.15-rc.2 ]]", "[[ \"$TAG\" == v0.15-rc.* ]]", 1),
+            original.replace("--latest=false", "--latest", 1),
+            original.replace("contents: write", "contents: read", 1),
+            original.replace("make cpa-host-fixture-contract cpa-latest-compat", "true", 1),
+        )
+        for workflow in mutations:
+            self.assertNotEqual(workflow, original)
+            with self.assertRaisesRegex(ContractError, "exact reviewed contract"):
+                validate_rc_release_workflow(workflow, workflow_path)
 
 
 if __name__ == "__main__":

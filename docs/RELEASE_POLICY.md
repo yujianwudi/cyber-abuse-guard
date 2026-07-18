@@ -13,6 +13,9 @@ version_alias_policy: reject-v0.15.0
 platform: linux-amd64
 candidate_workflow: .github/workflows/round6-candidate.yml
 candidate_attestation: candidate-manifest.json
+rc_workflow: .github/workflows/release-rc.yml
+rc_artifact_version: 0.15-rc.2
+rc_status: sandbox-only-not-formal-not-round6-candidate
 host_audit_attestation: round6-prerelease-attestation.json
 formal_gate_attestation: formal-release-attestation.json
 promotion_workflow: .github/workflows/release-promote.yml
@@ -30,6 +33,14 @@ workflow may later attach an external attestation to an annotated development
 tag at the same commit. The formal `v0.15` workflow rebuilds and byte-compares
 the Host-tested SO and Store ZIP, creates a draft, and the separate promotion
 workflow publishes that unchanged draft only after another protected approval.
+
+The separate `v0.15-rc.2` workflow may publish clean, reproducible Linux amd64
+SO and CPA Store ZIP assets for owner-operated server sandbox validation. Its
+artifact identity is exactly `0.15-rc.2`, and its release manifest explicitly
+states `SANDBOX_ONLY / SERVER_VALIDATION_REQUIRED / NOT_FORMAL /
+NOT_ROUND6_CANDIDATE`. RC assets are never accepted as the private Round 6
+candidate, external Host/audit/evaluation evidence, or formal `v0.15` input.
+The RC path closes permanently once the formal `v0.15` tag exists.
 
 The consumed v10 evaluation remains historical FAIL evidence. It is never
 rerun, upgraded, or treated as a formal-build input. A release candidate needs

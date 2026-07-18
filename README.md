@@ -17,8 +17,12 @@ English | [简体中文](README_CN.md)
 > was merged by [PR #9](https://github.com/yujianwudi/cyber-abuse-guard/pull/9),
 > and exact-main plus tag CI later passed. A public source-only
 > [`v0.15-rc.1`](https://github.com/yujianwudi/cyber-abuse-guard/releases/tag/v0.15-rc.1)
-> prerelease exists without attached release assets; it is not the private clean
-> candidate, a formal release, or production deployment authorization. This
+> prerelease exists without attached release assets. The separate asset-bearing
+> `v0.15-rc.2` publication is pending in this source commit; when published, it
+> is Linux amd64-only and intended solely for owner-operated server sandbox
+> validation. Its binary, Store ZIP, metadata, SBOM,
+> checksums, and RC manifest are not the private clean candidate, a formal
+> release, or production deployment authorization. This
 > round accepts evidence only from Linux amd64 CI and the authorized Linux
 > sandbox. Windows and macOS build or test evidence is outside scope.
 
@@ -37,7 +41,7 @@ classifier.
 | Last fully verified pre-cleanup main baseline | `6782dfaffd4da3f09604113c7d38675f331dc759`, tree `a8edbe2e6d19fa725fb962cdd6aaad5b416d4b85`; main CI [29630844605](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29630844605) and tag CI [29630926354](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29630926354) passed |
 | Release decision | **BLOCKED / PENDING HOST AND INDEPENDENT AUDIT** |
 | Candidate bytes | Must be clean exact-source Linux amd64 bytes from the private untagged Actions candidate workflow; clean does not mean released |
-| Merge and release | Round 6 is merged; formal `v0.15` is absent and blocked. Public `v0.15-rc.1` is source-only, has no attached assets, and is not candidate evidence |
+| Merge and release | Round 6 is merged; formal `v0.15` is absent and blocked. Public `v0.15-rc.1` is source-only; asset-bearing `v0.15-rc.2` publication is pending through the dedicated Linux server-sandbox workflow and will not be candidate or formal evidence |
 | Validation platform | Linux amd64 only; emitted numeric GLIBC ABI versions must be `<= 2.34` |
 | Out of scope | Windows, macOS, musl/Alpine, local deployment, production validation |
 | CPA Host matrix | Active validation and the supported release target are limited to CPA v7.2.86; owner-operated isolated Host + Mock-upstream evidence is **NOT RUN / PENDING** |
@@ -192,6 +196,7 @@ for implementation or conclusions.
 | Candidate-bound external evaluation-v11 or later | **NOT RUN / PENDING**; must be first-and-only `CONSUMED / PASS` for the exact candidate |
 | Annotated `v0.15-dev.round6[.N]` prerelease | Optional and blocked until Host, independent audit, and candidate-level evaluation pass; never a formal release |
 | Public source-only `v0.15-rc.1` prerelease | Exists with no attached assets; not the private candidate, Host evidence, or formal release |
+| Asset-bearing `v0.15-rc.2` prerelease | **PENDING PUBLICATION**; planned Linux amd64 SO + CPA Store ZIP + checksums/SBOM/RC manifest for owner-operated server sandbox validation; not candidate or formal evidence |
 | Annotated `v0.15` formal tag and verified draft | Blocked |
 | Protected promotion of the unchanged draft | Blocked |
 

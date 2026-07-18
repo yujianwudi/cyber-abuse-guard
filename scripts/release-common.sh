@@ -138,10 +138,11 @@ release_init() {
   RELEASE_DIRTY_STATUS="$(git -C "$RELEASE_ROOT" status --porcelain --untracked-files=normal)"
   local dirty_build="${ALLOW_DIRTY_BUILD:-0}"
   local candidate_build="${RELEASE_CANDIDATE_BUILD:-0}"
-  case "$dirty_build:$candidate_build" in
-    0:0|0:1)
+  local rc_build="${RELEASE_RC_BUILD:-0}"
+  case "$dirty_build:$candidate_build:$rc_build" in
+    0:0:0|0:1:0|0:0:1)
       if [[ -n "$RELEASE_DIRTY_STATUS" ]]; then
-        release_error "clean formal and candidate builds require a clean Git worktree"
+        release_error "clean formal, candidate, and RC builds require a clean Git worktree"
         printf '%s\n' "$RELEASE_DIRTY_STATUS" >&2
         release_error "set ALLOW_DIRTY_BUILD=1 only for a non-release development build"
         exit 1
@@ -167,8 +168,8 @@ release_init() {
         fi
       fi
       RELEASE_DIRTY=false
-      RELEASE_ARTIFACT_VERSION="$RELEASE_VERSION"
       if [[ "$candidate_build" == 1 ]]; then
+        RELEASE_ARTIFACT_VERSION="$RELEASE_VERSION"
         [[ "${RELEASE_CANDIDATE_EXPECTED_COMMIT:-}" =~ ^[0-9a-f]{40}$ ]] || \
           release_die "candidate builds require RELEASE_CANDIDATE_EXPECTED_COMMIT"
         [[ "${RELEASE_CANDIDATE_EXPECTED_TREE:-}" =~ ^[0-9a-f]{40}$ ]] || \
@@ -178,22 +179,33 @@ release_init() {
         [[ "$RELEASE_CANDIDATE_EXPECTED_TREE" == "$RELEASE_GIT_TREE" ]] || \
           release_die "candidate expected tree does not match HEAD"
         RELEASE_BUILD_KIND=candidate
+      elif [[ "$rc_build" == 1 ]]; then
+        [[ "${RELEASE_RC_TAG:-}" =~ ^v${RELEASE_SOURCE_VERSION//./\\.}-rc\.[1-9][0-9]*$ ]] || \
+          release_die "RC builds require RELEASE_RC_TAG=v${RELEASE_SOURCE_VERSION}-rc.N with N >= 1 and no leading zero"
+        [[ "${RELEASE_RC_EXPECTED_COMMIT:-}" =~ ^[0-9a-f]{40}$ ]] || \
+          release_die "RC builds require RELEASE_RC_EXPECTED_COMMIT"
+        [[ "${RELEASE_RC_EXPECTED_TREE:-}" =~ ^[0-9a-f]{40}$ ]] || \
+          release_die "RC builds require RELEASE_RC_EXPECTED_TREE"
+        [[ "$RELEASE_RC_EXPECTED_COMMIT" == "$RELEASE_GIT_COMMIT" ]] || \
+          release_die "RC expected commit does not match HEAD"
+        [[ "$RELEASE_RC_EXPECTED_TREE" == "$RELEASE_GIT_TREE" ]] || \
+          release_die "RC expected tree does not match HEAD"
+        RELEASE_ARTIFACT_VERSION="${RELEASE_RC_TAG#v}"
+        RELEASE_BUILD_KIND=rc
       else
+        RELEASE_ARTIFACT_VERSION="$RELEASE_VERSION"
         RELEASE_BUILD_KIND=formal
       fi
       ;;
-    1:0)
+    1:0:0)
       RELEASE_DIRTY=true
       RELEASE_ARTIFACT_VERSION="${RELEASE_VERSION}-dirty"
       RELEASE_BUILD_KIND=development
       printf 'warning: ALLOW_DIRTY_BUILD=1 creates development-only artifacts marked %s\n' \
         "$RELEASE_ARTIFACT_VERSION" >&2
       ;;
-    1:1)
-      release_die "RELEASE_CANDIDATE_BUILD and ALLOW_DIRTY_BUILD are mutually exclusive"
-      ;;
     *)
-      release_die "ALLOW_DIRTY_BUILD and RELEASE_CANDIDATE_BUILD must each be 0 or 1"
+      release_die "ALLOW_DIRTY_BUILD, RELEASE_CANDIDATE_BUILD, and RELEASE_RC_BUILD must each be 0 or 1 and are mutually exclusive"
       ;;
   esac
 
@@ -210,7 +222,7 @@ release_init() {
     release_die "SOURCE_DATE_EPOCH must be at or after 1980-01-01"
   if [[ "$RELEASE_BUILD_KIND" != development && \
     "$RELEASE_SOURCE_DATE_EPOCH" != "$commit_source_date_epoch" ]]; then
-    release_die "clean candidate and formal builds require the exact commit timestamp"
+    release_die "clean candidate, RC, and formal builds require the exact commit timestamp"
   fi
 
   export RELEASE_ROOT RELEASE_SOURCE_VERSION RELEASE_RULESET_VERSION
@@ -221,6 +233,7 @@ release_init() {
 }
 
 release_assert_tag() {
+  local tag
   case "$RELEASE_BUILD_KIND" in
     development)
       printf 'development build: annotated release tag check skipped\n' >&2
@@ -231,20 +244,23 @@ release_assert_tag() {
       return 0
       ;;
     formal)
+      tag="v$RELEASE_SOURCE_VERSION"
+      ;;
+    rc)
+      tag="$RELEASE_RC_TAG"
       ;;
     *)
       release_die "unknown release build kind: ${RELEASE_BUILD_KIND:-<unset>}"
       ;;
   esac
-	local tag="v$RELEASE_SOURCE_VERSION"
-	if [[ "${GITHUB_ACTIONS:-false}" == true ]]; then
+  if [[ "${GITHUB_ACTIONS:-false}" == true ]]; then
 		[[ "${GITHUB_REF_TYPE:-}" == tag ]] || \
-			release_die "formal GitHub release must be triggered by a tag ref"
+			release_die "clean GitHub release must be triggered by a tag ref"
 		[[ "${GITHUB_REF_NAME:-}" == "$tag" ]] || \
-			release_die "GitHub trigger tag ${GITHUB_REF_NAME:-<unset>} does not match source tag $tag"
+			release_die "GitHub trigger tag ${GITHUB_REF_NAME:-<unset>} does not match release tag $tag"
 	fi
 	[[ "$(git -C "$RELEASE_ROOT" cat-file -t "refs/tags/$tag" 2>/dev/null || true)" == tag ]] || \
-    release_die "formal release requires annotated tag $tag at HEAD"
+    release_die "clean release requires annotated tag $tag at HEAD"
   [[ "$(git -C "$RELEASE_ROOT" rev-list -n 1 "$tag")" == "$RELEASE_GIT_COMMIT" ]] || \
     release_die "tag $tag does not point to HEAD $RELEASE_GIT_COMMIT"
 }
@@ -264,6 +280,21 @@ release_assert_candidate_build() {
   local formal_tag="v$RELEASE_SOURCE_VERSION"
   if git -C "$RELEASE_ROOT" show-ref --verify --quiet "refs/tags/$formal_tag"; then
     release_die "candidate builds are forbidden after any formal tag ref $formal_tag exists"
+  fi
+}
+
+release_assert_rc_build() {
+  [[ "$RELEASE_BUILD_KIND" == rc ]] || \
+    release_die "this operation requires a clean annotated-tag RC build"
+  [[ "$RELEASE_DIRTY" == false ]] || \
+    release_die "RC builds must use clean release bytes"
+  [[ "$RELEASE_ARTIFACT_VERSION" =~ ^${RELEASE_SOURCE_VERSION//./\\.}-rc\.[1-9][0-9]*$ ]] || \
+    release_die "RC artifact version does not match source version $RELEASE_SOURCE_VERSION"
+  [[ "$RELEASE_RC_TAG" == "v$RELEASE_ARTIFACT_VERSION" ]] || \
+    release_die "RC tag and artifact version do not match"
+  local formal_tag="v$RELEASE_SOURCE_VERSION"
+  if git -C "$RELEASE_ROOT" show-ref --verify --quiet "refs/tags/$formal_tag"; then
+    release_die "RC builds are forbidden after the formal tag $formal_tag exists"
   fi
 }
 
