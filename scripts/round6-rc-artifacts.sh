@@ -48,10 +48,10 @@ core_artifacts=(
   "$so.sha256"
   "$store_zip"
   build-metadata.json
-  checksums.txt
   ruleset-manifest.json
   ruleset.sha256
   sbom.cdx.json
+  checksums.txt
 )
 for artifact in "${core_artifacts[@]}"; do
   [[ -f "$dist/$artifact" && ! -L "$dist/$artifact" ]] || \
@@ -79,19 +79,53 @@ jq -e \
   "$dist/build-metadata.json" >/dev/null || \
   release_die "RC build metadata does not describe the clean exact Linux amd64 source"
 
+assert_rc_sbom_identity() {
+  local sbom_path="$1"
+  local component_version="v$RELEASE_ARTIFACT_VERSION"
+  local component_ref="pkg:golang/github.com/yujianwudi/cyber-abuse-guard@${component_version}?type=module"
+  local component_purl="${component_ref}&goos=linux&goarch=amd64"
+
+  jq -e \
+    --arg version "$component_version" \
+    --arg ref "$component_ref" \
+    --arg purl "$component_purl" \
+    '.metadata.component.name == "github.com/yujianwudi/cyber-abuse-guard" and
+     .metadata.component.version == $version and
+     .metadata.component["bom-ref"] == $ref and
+     .metadata.component.purl == $purl and
+     ([.dependencies[] | select(.ref == $ref)] | length) == 1' \
+    "$sbom_path" >/dev/null || \
+    release_die "RC SBOM does not bind the exact versioned main module identity: $sbom_path"
+}
+
+assert_rc_sbom_identity "$dist/sbom.cdx.json"
+
 work="$(mktemp -d)"
 clone_a="$work/source-a"
 clone_b="$work/source-b"
 cleanup() {
-  git -C "$root" worktree remove --force "$clone_a" >/dev/null 2>&1 || true
-  git -C "$root" worktree remove --force "$clone_b" >/dev/null 2>&1 || true
   rm -rf -- "$work"
 }
 trap cleanup EXIT
 
-round6_sparse_worktree() {
+round6_sparse_clone() {
   local destination="$1"
-  git -C "$root" worktree add --quiet --detach --no-checkout "$destination" "$RELEASE_GIT_COMMIT"
+  mkdir -m 0700 -- "$destination"
+  git -C "$destination" init --quiet
+  git -C "$destination" remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+  git -C "$destination" fetch --quiet --filter=blob:none --no-tags origin \
+    "+refs/tags/$RELEASE_RC_TAG:refs/tags/$RELEASE_RC_TAG"
+  [[ -d "$destination/.git" && ! -L "$destination/.git" ]] || \
+    release_die "RC reproducibility clone must use an independent Git directory"
+  [[ ! -e "$destination/.git/objects/info/alternates" ]] || \
+    release_die "RC reproducibility clone must not share a local object database"
+  [[ "$(git -C "$destination" tag --list)" == "$RELEASE_RC_TAG" ]] || \
+    release_die "RC reproducibility clone must contain only the exact RC tag"
+  [[ "$(git -C "$destination" cat-file -t "$RELEASE_RC_TAG")" == tag ]] || \
+    release_die "RC reproducibility clone requires the annotated RC tag object"
+  [[ "$(git -C "$destination" rev-parse "$RELEASE_RC_TAG^{commit}")" == \
+    "$RELEASE_GIT_COMMIT" ]] || \
+    release_die "RC reproducibility clone tag does not resolve to the expected commit"
   git -C "$destination" sparse-checkout set --no-cone \
     '/*' \
     '!/cmd/**/*[Ee][Vv][Aa][Ll][Uu][Aa][Tt][Ii][Oo][Nn]*' '!/cmd/**/*[Hh][Oo][Ll][Dd][Oo][Uu][Tt]*' '!/cmd/**/*[Cc][Oo][Nn][Ss][Uu][Mm][Ee][Dd]*' '!/cmd/**/*[Pp][Rr][Ii][Vv][Aa][Tt][Ee]*' '!/cmd/**/*[Bb][Ll][Ii][Nn][Dd]*' '!/cmd/**/*[Rr][Ee][Tt][Ii][Rr][Ee][Dd]*' \
@@ -100,11 +134,17 @@ round6_sparse_worktree() {
     '!/internal/classifier/**/*[Ee][Vv][Aa][Ll][Uu][Aa][Tt][Ii][Oo][Nn]*' '!/internal/classifier/**/*[Hh][Oo][Ll][Dd][Oo][Uu][Tt]*' \
     '!/internal/classifier/**/*[Cc][Oo][Nn][Ss][Uu][Mm][Ee][Dd]*' '!/internal/classifier/**/*[Pp][Rr][Ii][Vv][Aa][Tt][Ee]*' '!/internal/classifier/**/*[Bb][Ll][Ii][Nn][Dd]*' '!/internal/classifier/**/*[Rr][Ee][Tt][Ii][Rr][Ee][Dd]*' \
     '!/testdata/**/*[Ee][Vv][Aa][Ll][Uu][Aa][Tt][Ii][Oo][Nn]*' '!/testdata/**/*[Hh][Oo][Ll][Dd][Oo][Uu][Tt]*' '!/testdata/**/*[Cc][Oo][Nn][Ss][Uu][Mm][Ee][Dd]*' '!/testdata/**/*[Pp][Rr][Ii][Vv][Aa][Tt][Ee]*' '!/testdata/**/*[Bb][Ll][Ii][Nn][Dd]*' '!/testdata/**/*[Rr][Ee][Tt][Ii][Rr][Ee][Dd]*'
-  git -C "$destination" checkout --quiet "$RELEASE_GIT_COMMIT"
+  git -C "$destination" checkout --quiet --detach "$RELEASE_GIT_COMMIT"
+  [[ "$(git -C "$destination" rev-parse HEAD)" == "$RELEASE_GIT_COMMIT" ]] || \
+    release_die "RC reproducibility clone did not check out the expected commit"
+  [[ "$(git -C "$destination" rev-parse 'HEAD^{tree}')" == "$RELEASE_GIT_TREE" ]] || \
+    release_die "RC reproducibility clone did not check out the expected tree"
+  [[ -z "$(git -C "$destination" status --porcelain)" ]] || \
+    release_die "RC reproducibility clone is not clean after checkout"
 }
 
-round6_sparse_worktree "$clone_a"
-round6_sparse_worktree "$clone_b"
+round6_sparse_clone "$clone_a"
+round6_sparse_clone "$clone_b"
 go_path="$(command -v "${GO:-go}")"
 cyclonedx_path="$(command -v "${CYCLONEDX_GOMOD:-cyclonedx-gomod}")"
 
@@ -127,6 +167,7 @@ for name in a b; do
       round6-development-artifacts round6-cpa-store-contract artifact-hash
   [[ -z "$(git -C "$clone" status --porcelain)" ]] || \
     release_die "RC reproducibility source $name became dirty"
+  assert_rc_sbom_identity "$clone/dist/sbom.cdx.json"
 done
 
 for artifact in "${core_artifacts[@]}"; do

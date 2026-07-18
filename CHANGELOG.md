@@ -18,7 +18,9 @@ release still requires a newly authored independent unseen set.
   amd64 server-sandbox assets. It binds an annotated RC tag to the exact main
   commit/tree and successful main push CI, embeds `0.15-rc.2` in the SO and CPA
   Store ZIP identity, verifies CPA v7.2.86 contracts, and reproduces the bytes
-  in two clean sparse worktrees before publication.
+  in two independent canonical sparse partial clones before publication. The
+  clones fetch only the annotated RC tag so CycloneDX resolves the same exact
+  versioned main-module identity in the root and both reproductions.
 - Emit `rc-release-manifest.json` with exact source, workflow, CI, CPA, and
   artifact hashes. The manifest is explicitly sandbox-only, not formal, and not
   a Round 6 candidate or external Host/audit/evaluation attestation.
