@@ -142,7 +142,8 @@ See:
 - [Streaming scanner design](docs/ROUND6_STREAMING_SCANNER_DESIGN.md)
 - [Configuration migration](docs/ROUND6_CONFIG_MIGRATION.md)
 - [Known limitations](docs/ROUND6_LIMITATIONS.md)
-- [CI and blocked-prerelease gate](docs/ROUND6_RELEASE_GATE.md)
+- [CI, candidate, and release gates](docs/ROUND6_RELEASE_GATE.md)
+- [Documentation and workflow index](docs/README.md)
 - [Development handoff](docs/ROUND6_DEVELOPMENT_HANDOFF.md)
 
 ## Supported request surfaces

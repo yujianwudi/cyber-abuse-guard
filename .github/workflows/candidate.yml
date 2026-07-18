@@ -1,4 +1,4 @@
-name: Round6 clean candidate - NOT A RELEASE
+name: Candidate build - NOT A RELEASE
 
 on:
   workflow_dispatch:
@@ -58,7 +58,7 @@ jobs:
           [[ "$DISPATCH_REF" == "refs/heads/main" ]]
           [[ "$DISPATCH_SHA" == "$EXPECTED_COMMIT" ]]
           [[ "$WORKFLOW_SHA" == "$EXPECTED_COMMIT" ]]
-          [[ "$WORKFLOW_REF" == "${GITHUB_REPOSITORY}/.github/workflows/round6-candidate.yml@${DISPATCH_REF}" ]]
+          [[ "$WORKFLOW_REF" == "${GITHUB_REPOSITORY}/.github/workflows/candidate.yml@${DISPATCH_REF}" ]]
       - name: Bind candidate admission to successful exact-head push CI
         env:
           CI_RUN_ID: ${{ inputs.ci_run_id }}

@@ -85,7 +85,7 @@ earlier `21ceb57` checkpoint.
 
 ## Private untagged clean candidate
 
-`.github/workflows/round6-candidate.yml` is the only authorized candidate-byte
+`.github/workflows/candidate.yml` is the only authorized candidate-byte
 producer. A `workflow_dispatch` workflow is callable only after it exists on the
 default branch, so the final PR must already be merged. It is manual-only and
 runs on `ubuntu-24.04`. Admission requires:
@@ -190,7 +190,7 @@ v0.15-dev.round6
 v0.15-dev.round6.N
 ```
 
-`.github/workflows/round6-blocked-prerelease.yml` binds that tag to the exact
+`.github/workflows/attested-prerelease.yml` binds that tag to the exact
 candidate `main` commit/tree, successful main push CI run, successful clean-candidate run,
 candidate SO SHA-256, the v7.2.86 Host-record hash, and independent-audit hash.
 It rebuilds the same clean exact-source bytes, proves reproducibility, and

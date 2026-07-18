@@ -34,8 +34,10 @@ make_fixture() {
         'formal_tag: v0.15' \
         'version_alias_policy: reject-v0.15.0' \
         'platform: linux-amd64' \
-        'candidate_workflow: .github/workflows/round6-candidate.yml' \
+        'candidate_workflow: .github/workflows/candidate.yml' \
         'candidate_attestation: candidate-manifest.json' \
+        'attested_prerelease_workflow: .github/workflows/attested-prerelease.yml' \
+        'rc_workflow_archive: docs/archive/workflows/release-rc-v0.15-rc.2.yml' \
         'host_audit_attestation: round6-prerelease-attestation.json' \
         'formal_gate_attestation: formal-release-attestation.json' \
         'promotion_workflow: .github/workflows/release-promote.yml' \

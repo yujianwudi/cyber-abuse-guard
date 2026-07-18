@@ -52,7 +52,7 @@ write_valid_attestation() {
       },
       workflow: {
         repository: "yujianwudi/cyber-abuse-guard",
-        ref: ("yujianwudi/cyber-abuse-guard/.github/workflows/round6-blocked-prerelease.yml@refs/tags/" + $tag),
+        ref: ("yujianwudi/cyber-abuse-guard/.github/workflows/attested-prerelease.yml@refs/tags/" + $tag),
         sha: $commit,
         run_id: 29580000001,
         run_attempt: 1
@@ -214,7 +214,7 @@ run_must_fail candidate-store-zip-mismatch verify_case "$work/wrong-store-zip"
 mutate_case wrong-workflow-sha '.workflow.sha = "3333333333333333333333333333333333333333"'
 run_must_fail workflow-source-mismatch verify_case "$work/wrong-workflow-sha"
 
-mutate_case wrong-workflow-ref '.workflow.ref = "yujianwudi/cyber-abuse-guard/.github/workflows/round6-blocked-prerelease.yml@refs/heads/main"'
+mutate_case wrong-workflow-ref '.workflow.ref = "yujianwudi/cyber-abuse-guard/.github/workflows/attested-prerelease.yml@refs/heads/main"'
 run_must_fail non-tag-workflow-ref verify_case "$work/wrong-workflow-ref"
 
 mutate_case wrong-repository '.workflow.repository = "attacker/cyber-abuse-guard"'

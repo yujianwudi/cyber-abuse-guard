@@ -10,12 +10,15 @@ from pathlib import Path
 sys.dont_write_bytecode = True
 
 from round6_safe_gate_contract import (
+    ACTIVE_WORKFLOW_PATHS,
+    ARCHIVED_RC_WORKFLOW_PATH,
     BLOCKED_PRERELEASE_MARKER,
     CONSUMED_BOUNDARY_LINES,
     EXTERNAL_ATTESTATION_SCRIPT_SHA256,
     FORMAL_OPERATION_SCRIPTS,
     FORBIDDEN_TARGETS,
     ROUND6_SPARSE_PATTERNS,
+    WORKFLOW_DIRECTORY_AUXILIARY_PATHS,
     ContractError,
     audit,
     default_entrypoints,
@@ -30,7 +33,7 @@ from round6_safe_gate_contract import (
     validate_formal_release_workflow,
     validate_frozen_evaluation_tree_script,
     validate_release_mode_contracts,
-    validate_rc_release_workflow,
+    validate_archived_rc_workflow,
     validate_release_promote_workflow,
     validate_reproducibility_wrapper_script,
     validate_round6_doc_fixture_wrapper_script,
@@ -38,6 +41,7 @@ from round6_safe_gate_contract import (
     validate_round6_makefile_contract,
     validate_round6_privacy_fixture_script,
     validate_round6_reproducibility_script,
+    validate_workflow_layout,
 )
 
 
@@ -829,7 +833,7 @@ jobs:
                     validate_round6_makefile_contract(text, source)
 
     def candidate_workflow(self) -> str:
-        source = Path(__file__).parent.parent / ".github/workflows/round6-candidate.yml"
+        source = Path(__file__).parent.parent / ".github/workflows/candidate.yml"
         return source.read_text(encoding="utf-8")
 
     def formal_release_workflow(self) -> str:
@@ -840,9 +844,78 @@ jobs:
         source = Path(__file__).parent.parent / ".github/workflows/release-promote.yml"
         return source.read_text(encoding="utf-8")
 
+    def workflow_layout_fixture(self) -> Path:
+        source_root = Path(__file__).resolve().parent.parent
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        root = Path(temporary.name)
+        for relative in (
+            *ACTIVE_WORKFLOW_PATHS,
+            *WORKFLOW_DIRECTORY_AUXILIARY_PATHS,
+            ARCHIVED_RC_WORKFLOW_PATH,
+        ):
+            source = source_root / relative
+            target = root / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(source.read_bytes())
+        return root
+
+    def test_workflow_layout_has_exact_five_active_entrypoints_and_archived_rc(self):
+        root = Path(__file__).resolve().parent.parent
+        validate_workflow_layout(root)
+        entrypoints = default_entrypoints(root)
+        self.assertEqual(
+            tuple(path.relative_to(root).as_posix() for path in entrypoints),
+            ACTIVE_WORKFLOW_PATHS,
+        )
+        archive = (root / ARCHIVED_RC_WORKFLOW_PATH).resolve()
+        active_directory = (root / ".github/workflows").resolve()
+        self.assertFalse(archive.is_relative_to(active_directory))
+        self.assertNotIn(archive, {path.resolve() for path in entrypoints})
+        self.assertFalse((active_directory / "release-rc.yml").exists())
+
+    def test_workflow_layout_rejects_extra_entrypoint_and_archived_rc_mutation(self):
+        root = self.workflow_layout_fixture()
+        extra = root / ".github/workflows/unreviewed.yml"
+        extra.write_text("name: Unreviewed\n", encoding="utf-8")
+        with self.assertRaisesRegex(ContractError, "exactly the five reviewed entrypoints"):
+            validate_workflow_layout(root)
+        extra.unlink()
+
+        missing = root / ACTIVE_WORKFLOW_PATHS[1]
+        missing_bytes = missing.read_bytes()
+        missing.unlink()
+        with self.assertRaisesRegex(ContractError, "exactly the five reviewed entrypoints"):
+            validate_workflow_layout(root)
+        missing.write_bytes(missing_bytes)
+
+        archive = root / ARCHIVED_RC_WORKFLOW_PATH
+        archive.write_text(archive.read_text(encoding="utf-8") + "\n", encoding="utf-8")
+        with self.assertRaisesRegex(ContractError, "archived RC workflow differs"):
+            validate_workflow_layout(root)
+
+    def test_active_workflow_display_names_are_exact(self):
+        candidate = self.candidate_workflow().replace(
+            "name: Candidate build - NOT A RELEASE\n",
+            "name: Renamed candidate\n",
+            1,
+        )
+        with self.assertRaisesRegex(ContractError, "exact scalar"):
+            validate_candidate_workflow(candidate, Path("candidate.yml"))
+
+        attested = self.blocked_workflow().replace(
+            "name: Attested prerelease - HOST, AUDIT, AND EVALUATION REQUIRED\n",
+            "name: Renamed attested prerelease\n",
+            1,
+        )
+        with self.assertRaisesRegex(ContractError, "exact scalar"):
+            validate_blocked_prerelease_workflow(
+                attested, Path("attested-prerelease.yml")
+            )
+
     def test_candidate_workflow_full_contract_passes(self):
         validate_candidate_workflow(
-            self.candidate_workflow(), Path("round6-candidate.yml")
+            self.candidate_workflow(), Path("candidate.yml")
         )
 
     def test_candidate_workflow_must_remain_manual_and_read_only(self):
@@ -854,7 +927,7 @@ jobs:
         for workflow in mutations:
             self.assertNotEqual(workflow, original)
             with self.assertRaisesRegex(ContractError, "manual-only|read|exact scalar"):
-                validate_candidate_workflow(workflow, Path("round6-candidate.yml"))
+                validate_candidate_workflow(workflow, Path("candidate.yml"))
 
     def test_candidate_workflow_exact_commit_and_push_ci_binding_are_locked(self):
         original = self.candidate_workflow()
@@ -870,7 +943,7 @@ jobs:
                 workflow = original.replace(protected_line, "", 1)
                 self.assertNotEqual(workflow, original)
                 with self.assertRaisesRegex(ContractError, "exact reviewed text"):
-                    validate_candidate_workflow(workflow, Path("round6-candidate.yml"))
+                    validate_candidate_workflow(workflow, Path("candidate.yml"))
 
     def test_candidate_workflow_sparse_boundary_and_gate_are_locked(self):
         original = self.candidate_workflow()
@@ -885,7 +958,7 @@ jobs:
         for workflow in mutations:
             self.assertNotEqual(workflow, original)
             with self.assertRaisesRegex(ContractError, "sparse|safe-gate"):
-                validate_candidate_workflow(workflow, Path("round6-candidate.yml"))
+                validate_candidate_workflow(workflow, Path("candidate.yml"))
 
     def test_candidate_workflow_consumed_boundary_is_locked(self):
         original = self.candidate_workflow()
@@ -894,7 +967,7 @@ jobs:
         )
         self.assertNotEqual(workflow, original)
         with self.assertRaisesRegex(ContractError, "sparse"):
-            validate_candidate_workflow(workflow, Path("round6-candidate.yml"))
+            validate_candidate_workflow(workflow, Path("candidate.yml"))
 
     def test_candidate_builder_reproducibility_and_clean_names_are_locked(self):
         original = self.candidate_workflow()
@@ -918,7 +991,7 @@ jobs:
         for workflow in mutations:
             self.assertNotEqual(workflow, original)
             with self.assertRaisesRegex(ContractError, "exact reviewed text|artifact allowlist"):
-                validate_candidate_workflow(workflow, Path("round6-candidate.yml"))
+                validate_candidate_workflow(workflow, Path("candidate.yml"))
 
     def test_candidate_workflow_rejects_release_or_token_expansion(self):
         original = self.candidate_workflow()
@@ -946,7 +1019,7 @@ jobs:
                 ContractError,
                 "reviewed steps|github.token|repository token|exact reviewed text|tags or releases",
             ):
-                validate_candidate_workflow(workflow, Path("round6-candidate.yml"))
+                validate_candidate_workflow(workflow, Path("candidate.yml"))
 
     def test_candidate_scripts_match_reviewed_contract_and_are_ci_reachable(self):
         root = Path(__file__).parent.parent
@@ -1199,7 +1272,7 @@ jobs:
                     )
 
     def blocked_workflow(self, trigger: str = "workflow_dispatch", latest: str = "false") -> str:
-        source = Path(__file__).parent.parent / ".github/workflows/round6-blocked-prerelease.yml"
+        source = Path(__file__).parent.parent / ".github/workflows/attested-prerelease.yml"
         text = source.read_text(encoding="utf-8")
         if trigger != "workflow_dispatch":
             text = text.replace("  workflow_dispatch:\n", f"  {trigger}:\n", 1)
@@ -1210,7 +1283,7 @@ jobs:
     def test_blocked_prerelease_full_contract_passes(self):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
-        source = Path(temporary.name) / "round6-blocked-prerelease.yml"
+        source = Path(temporary.name) / "attested-prerelease.yml"
         validate_blocked_prerelease_workflow(self.blocked_workflow(), source)
 
     def test_blocked_prerelease_consumed_sparse_boundary_is_locked(self):
@@ -1321,8 +1394,8 @@ jobs:
     def test_blocked_prerelease_candidate_run_identity_is_locked(self):
         original = self.blocked_workflow()
         protected_lines = (
-            '             .name == "Round6 clean candidate - NOT A RELEASE" and\n',
-            '             .path == ".github/workflows/round6-candidate.yml" and\n',
+            '             .name == "Candidate build - NOT A RELEASE" and\n',
+            '             .path == ".github/workflows/candidate.yml" and\n',
             '             .event == "workflow_dispatch" and\n'
             '             .head_sha == $expected_commit and\n',
         )
@@ -1412,7 +1485,7 @@ jobs:
         cases = (
             ("DISPATCH_REF", "${{ github.ref }}", "refs/heads/main"),
             ("DISPATCH_SHA", "${{ github.sha }}", "0000000000000000000000000000000000000000"),
-            ("WORKFLOW_REF", "${{ github.workflow_ref }}", "owner/repo/.github/workflows/round6-blocked-prerelease.yml@refs/heads/main"),
+            ("WORKFLOW_REF", "${{ github.workflow_ref }}", "owner/repo/.github/workflows/attested-prerelease.yml@refs/heads/main"),
             ("WORKFLOW_SHA", "${{ github.workflow_sha }}", "0000000000000000000000000000000000000000"),
         )
         for name, expected, spoofed in cases:
@@ -1434,7 +1507,7 @@ jobs:
             '[[ "$DISPATCH_REF" == "refs/tags/$TAG" ]]',
             '[[ "$DISPATCH_SHA" == "$EXPECTED_COMMIT" ]]',
             '[[ "$WORKFLOW_SHA" == "$EXPECTED_COMMIT" ]]',
-            '[[ "$WORKFLOW_REF" == "${GITHUB_REPOSITORY}/.github/workflows/round6-blocked-prerelease.yml@refs/tags/$TAG" ]]',
+            '[[ "$WORKFLOW_REF" == "${GITHUB_REPOSITORY}/.github/workflows/attested-prerelease.yml@refs/tags/$TAG" ]]',
         )
         for command in commands:
             with self.subTest(command=command):
@@ -1922,13 +1995,13 @@ command /usr/bin/git --no-pager tag v0.1.2-dev.round6
         with self.assertRaisesRegex(ContractError, "exact reviewed text"):
             validate_blocked_prerelease_workflow(workflow, Path("round6-prerelease.yml"))
 
-    def test_rc_release_workflow_matches_reviewed_contract(self):
-        workflow_path = Path(__file__).resolve().parent.parent / ".github/workflows/release-rc.yml"
+    def test_archived_rc_workflow_matches_reviewed_contract(self):
+        workflow_path = Path(__file__).resolve().parent.parent / ARCHIVED_RC_WORKFLOW_PATH
         workflow = workflow_path.read_text(encoding="utf-8")
-        validate_rc_release_workflow(workflow, workflow_path)
+        validate_archived_rc_workflow(workflow, workflow_path)
 
-    def test_rc_release_workflow_mutation_fails_closed(self):
-        workflow_path = Path(__file__).resolve().parent.parent / ".github/workflows/release-rc.yml"
+    def test_archived_rc_workflow_mutation_fails_closed(self):
+        workflow_path = Path(__file__).resolve().parent.parent / ARCHIVED_RC_WORKFLOW_PATH
         original = workflow_path.read_text(encoding="utf-8")
         mutations = (
             original.replace("[[ \"$TAG\" == v0.15-rc.2 ]]", "[[ \"$TAG\" == v0.15-rc.* ]]", 1),
@@ -1939,7 +2012,7 @@ command /usr/bin/git --no-pager tag v0.1.2-dev.round6
         for workflow in mutations:
             self.assertNotEqual(workflow, original)
             with self.assertRaisesRegex(ContractError, "exact reviewed contract"):
-                validate_rc_release_workflow(workflow, workflow_path)
+                validate_archived_rc_workflow(workflow, workflow_path)
 
 
 if __name__ == "__main__":

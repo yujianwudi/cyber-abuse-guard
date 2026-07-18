@@ -36,6 +36,12 @@ future stable release still requires a newly authored independent unseen set.
   suppressing the local verification evidence.
 - Add a documentation index, archive the obsolete v0.1.2 next-version notes,
   and synchronize both README entry points with the published RC state.
+- Rename the active candidate and externally attested prerelease workflows to
+  stable purpose-based paths, and move the retired attempted `v0.15-rc.2`
+  workflow definition out of GitHub Actions into the documentation archive.
+  Its recorded runs failed and did not publish the public RC; that Release
+  remains the separately disclosed direct owner override. Publication inputs,
+  permissions, identity checks, and fail-closed release gates are unchanged.
 
 ### Round 6 long-text streaming candidate
 

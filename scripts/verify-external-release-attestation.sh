@@ -123,7 +123,7 @@ jq -e \
   ])) and
   .workflow.repository == "yujianwudi/cyber-abuse-guard" and
   .workflow.ref == (
-    "yujianwudi/cyber-abuse-guard/.github/workflows/round6-blocked-prerelease.yml@refs/tags/" + $tag
+    "yujianwudi/cyber-abuse-guard/.github/workflows/attested-prerelease.yml@refs/tags/" + $tag
   ) and
   .workflow.sha == $commit and
   (.workflow.run_id | safe_positive_integer) and

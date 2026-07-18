@@ -28,6 +28,21 @@ references remain stable.
 - [Release admission policy](RELEASE_POLICY.md)
 - [Round 6 CI, candidate, and release gate](ROUND6_RELEASE_GATE.md)
 
+Current GitHub Actions entry points are intentionally limited to:
+
+- `.github/workflows/ci.yml` for ordinary verification;
+- `.github/workflows/candidate.yml` for private unreleased candidate bytes;
+- `.github/workflows/attested-prerelease.yml` for the externally attested
+  development prerelease gate;
+- `.github/workflows/release.yml` and
+  `.github/workflows/release-promote.yml` for the formal draft and its
+  protected promotion.
+
+The retired attempted `v0.15-rc.2` workflow definition is archived under
+[`archive/workflows/`](archive/workflows/) and cannot be dispatched by GitHub
+Actions. Its recorded runs failed and did not produce the public RC, which was
+published separately through the disclosed direct owner override.
+
 ## Current v0.15 / Round 6 handoff
 
 - [Independent-audit handoff](AUDIT_HANDOFF.md)
@@ -67,6 +82,9 @@ Retired or historical Holdout reports:
 - [Holdout v3](reports/HOLDOUT_V3_REPORT.md)
 
 ## Archive
+
+- [Retired workflow evidence](archive/workflows/) - retained outside the
+  executable GitHub Actions directory.
 
 - [v0.1.2 next-version recommendations](archive/v0.1.2/NEXT_VERSION.md) —
   retained for historical context; it is not the current v0.15 roadmap.

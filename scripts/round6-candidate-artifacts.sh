@@ -19,7 +19,7 @@ release_require_commands make git jq sha256sum awk mktemp mv rm chmod
 [[ "${GITHUB_REF:-}" == refs/heads/main ]] || \
   release_die "Round6 clean candidates require the exact main ref"
 [[ "${GITHUB_WORKFLOW_REF:-}" == \
-  "${GITHUB_REPOSITORY}/.github/workflows/round6-candidate.yml@${GITHUB_REF}" ]] || \
+  "${GITHUB_REPOSITORY}/.github/workflows/candidate.yml@${GITHUB_REF}" ]] || \
   release_die "Round6 clean candidates require the pinned candidate workflow ref"
 
 release_init

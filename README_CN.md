@@ -126,7 +126,8 @@ Incomplete 请求不进入 subject risk。半截 prefix 不能在 `balanced` 下
 - [Streaming scanner 设计](docs/ROUND6_STREAMING_SCANNER_DESIGN.md)
 - [配置迁移](docs/ROUND6_CONFIG_MIGRATION.md)
 - [已知限制](docs/ROUND6_LIMITATIONS.md)
-- [CI 与阻断预发布门禁](docs/ROUND6_RELEASE_GATE.md)
+- [CI、候选构建与发行门禁](docs/ROUND6_RELEASE_GATE.md)
+- [文档与工作流索引](docs/README.md)
 - [开发交接](docs/ROUND6_DEVELOPMENT_HANDOFF.md)
 
 ## 支持的请求面

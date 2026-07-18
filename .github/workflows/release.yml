@@ -176,7 +176,7 @@ jobs:
               (.workflow | exact_keys(["repository", "ref", "sha", "run_id", "run_attempt"])) and
               .workflow.repository == $repository and
               .workflow.ref == ($repository +
-                "/.github/workflows/round6-blocked-prerelease.yml@refs/tags/" + $tag) and
+                "/.github/workflows/attested-prerelease.yml@refs/tags/" + $tag) and
               .workflow.sha == $commit and
               (.workflow.run_id | positive_integer) and
               (.workflow.run_attempt | positive_integer)
@@ -382,11 +382,11 @@ jobs:
           verify_run "$(jq -r '.ci_run_id' "$attestation")" \
             'CI' '.github/workflows/ci.yml' 'push'
           verify_run "$candidate_run_id" \
-            'Round6 clean candidate - NOT A RELEASE' \
-            '.github/workflows/round6-candidate.yml' 'workflow_dispatch'
+            'Candidate build - NOT A RELEASE' \
+            '.github/workflows/candidate.yml' 'workflow_dispatch'
           verify_run "$(jq -r '.workflow.run_id' "$attestation")" \
-            'Round6 prerelease - BLOCKED / PENDING HOST AND INDEPENDENT AUDIT' \
-            '.github/workflows/round6-blocked-prerelease.yml' 'workflow_dispatch'
+            'Attested prerelease - HOST, AUDIT, AND EVALUATION REQUIRED' \
+            '.github/workflows/attested-prerelease.yml' 'workflow_dispatch'
           blocked_run_id="$(jq -r '.workflow.run_id' "$attestation")"
 
           {

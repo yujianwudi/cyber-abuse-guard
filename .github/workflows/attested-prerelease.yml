@@ -1,4 +1,4 @@
-name: Round6 prerelease - BLOCKED / PENDING HOST AND INDEPENDENT AUDIT
+name: Attested prerelease - HOST, AUDIT, AND EVALUATION REQUIRED
 
 on:
   workflow_dispatch:
@@ -127,7 +127,7 @@ jobs:
           [[ "$DISPATCH_REF" == "refs/tags/$TAG" ]]
           [[ "$DISPATCH_SHA" == "$EXPECTED_COMMIT" ]]
           [[ "$WORKFLOW_SHA" == "$EXPECTED_COMMIT" ]]
-          [[ "$WORKFLOW_REF" == "${GITHUB_REPOSITORY}/.github/workflows/round6-blocked-prerelease.yml@refs/tags/$TAG" ]]
+          [[ "$WORKFLOW_REF" == "${GITHUB_REPOSITORY}/.github/workflows/attested-prerelease.yml@refs/tags/$TAG" ]]
           [[ "$HOST_V7286" == PASS ]]
           [[ "$INDEPENDENT_AUDIT" == PASS ]]
           [[ "$INDEPENDENT_EVALUATION" == PASS ]]
@@ -182,8 +182,8 @@ jobs:
             --arg repository "$GITHUB_REPOSITORY" \
             --arg expected_commit "$EXPECTED_COMMIT" \
             '(.id | tostring) == $run_id and
-             .name == "Round6 clean candidate - NOT A RELEASE" and
-             .path == ".github/workflows/round6-candidate.yml" and
+             .name == "Candidate build - NOT A RELEASE" and
+             .path == ".github/workflows/candidate.yml" and
              .event == "workflow_dispatch" and
              .head_sha == $expected_commit and
              .status == "completed" and
@@ -302,7 +302,7 @@ jobs:
               .status == "UNRELEASED / HOST AND INDEPENDENT AUDIT REQUIRED" and
               .version == "0.15" and .commit == $commit and .tree == $tree and
               .github.repository == env.GITHUB_REPOSITORY and
-              .github.workflow_ref == (env.GITHUB_REPOSITORY + "/.github/workflows/round6-candidate.yml@refs/heads/main") and
+              .github.workflow_ref == (env.GITHUB_REPOSITORY + "/.github/workflows/candidate.yml@refs/heads/main") and
               .github.workflow_sha == $commit and .github.event == "workflow_dispatch" and
               .github.ref == "refs/heads/main" and
               (.github.run_id | type == "number" and tostring == $run_id) and
