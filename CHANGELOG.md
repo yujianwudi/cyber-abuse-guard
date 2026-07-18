@@ -25,6 +25,9 @@ release still requires a newly authored independent unseen set.
 - Emit `rc-release-manifest.json` with exact source, workflow, CI, CPA, and
   artifact hashes. The manifest is explicitly sandbox-only, not formal, and not
   a Round 6 candidate or external Host/audit/evaluation attestation.
+- Bind every headless `gh release` create/upload/edit operation to the canonical
+  repository explicitly, so publication and rollback do not depend on a local
+  Git checkout after the build artifact has been verified.
 
 ### Round 6 long-text streaming candidate
 
