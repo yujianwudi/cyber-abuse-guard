@@ -81,10 +81,6 @@ jobs:
         run: make round6-module-verify
       - name: CPA-v7.2.86-host-source-and-fail-open-contract
         run: make cpa-host-fixture-contract
-      - name: CPA-v7.2.86-latest-source-compile-compatibility
-        env:
-          CPA_COMPAT_VERIFY_REMOTE: "1"
-        run: bash ./scripts/cpa-latest-compat.sh
       - name: round4-regression
         run: make round4-regression
       - name: round5-regression
@@ -163,6 +159,11 @@ jobs:
             dist/ruleset.sha256
             dist/sbom.cdx.json
           if-no-files-found: error
+      - name: CPA-v7.2.86-latest-source-compile-compatibility
+        env:
+          CPA_COMPAT_VERIFY_REMOTE: "1"
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bash ./scripts/cpa-latest-compat.sh
 
   reproducibility:
     needs: quality-and-artifacts

@@ -528,7 +528,7 @@ BLOCKED_STEP_RUN_SHA256 = {
     ("verify", 11): "72ba08821693dcb100be3d4dcfaac32d485191186d46fa22119ae7a7b60990b9",
     ("verify", 12): "25116143b78146e257b7eb89c5466266132755433249c07664c0cdbf01944c7d",
     ("publish", 1): "f0b4e25161a56a18cbe2379e048d0151e537eb80d504673f20c8cd2adf4bfbb5",
-    ("publish", 3): "f5d984d926b1ff4cb197863446457871abf2abfc662847024a1cbcf3a51984ff",
+    ("publish", 3): "f3f24d41011374f779195eda6069b813a468cd7bd180a0ae8d72bd07906d4b68",
 }
 BLOCKED_STEP_RUN_STYLE = {
     ("admission", 0): "|",
