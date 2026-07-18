@@ -136,6 +136,10 @@ release still requires a newly authored independent unseen set.
   `SECURITY.md` and the referenced Round 6 design, migration, limitation,
   release-gate, and development-handoff documents to the strict package and
   verification allowlists.
+- Fix clean-candidate sparse-checkout admission by matching the lower-cased
+  restricted document paths with lower-case patterns. Add a contract test for
+  mixed-case Evaluation/Holdout paths so candidate packaging cannot regress at
+  the first artifact-build step.
 - Require the final PR head to have no unresolved, non-outdated actionable
   review threads before merge. Automated review is advisory and does not
   constitute independent approval.

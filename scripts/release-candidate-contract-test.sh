@@ -13,7 +13,8 @@ cleanup() {
 }
 trap cleanup EXIT
 
-mkdir -p "$fixture/internal/buildinfo" "$fixture/internal/classifier" "$fixture/rules"
+mkdir -p "$fixture/internal/buildinfo" "$fixture/internal/classifier" "$fixture/rules" \
+  "$fixture/docs/reports" "$fixture/docs"
 printf '%s\n' \
   'package buildinfo' \
   'const StreamingScannerIdentity = "streaming-scanner-v1"' \
@@ -29,6 +30,9 @@ printf '%s\n' \
   >"$fixture/internal/classifier/policy_identity.go"
 printf '%s\n' 'version: "1.0.7"' 'rule_files: [rules.yaml]' >"$fixture/rules/manifest.yaml"
 printf '%s\n' 'version: "1.0.7"' 'rules: []' >"$fixture/rules/rules.yaml"
+printf '%s\n' '# Synthetic consumed evaluation marker' >"$fixture/docs/reports/EVALUATION_V10_REPORT.md"
+printf '%s\n' '# Synthetic holdout marker' >"$fixture/docs/reports/HOLDOUT_REPORT.md"
+printf '%s\n' '# Synthetic ordinary release document' >"$fixture/docs/ROUND6_RELEASE_GATE.md"
 
 git -C "$fixture" init -q
 git -C "$fixture" config user.name 'Round6 Candidate Contract'
@@ -123,6 +127,48 @@ candidate_cannot_run_formal_operation() {
   release_assert_formal_build
 }
 
+round6_sparse_path_contract() {
+  release_round6_safe_sparse_path "docs/reports/EVALUATION_V10_REPORT.md"
+  release_round6_safe_sparse_path "docs/reports/HOLDOUT_V3_REPORT.md"
+  release_round6_safe_sparse_path "docs/reports/HOLDOUT_REPORT.md"
+  release_round6_safe_sparse_path "cmd/private-evaluation/main.go"
+  release_round6_safe_sparse_path "internal/classifier/Consumed_Evaluation_test.go"
+  release_round6_safe_sparse_path "testdata/Retired-Holdout/manifest.json"
+  ! release_round6_safe_sparse_path "docs/reports/TEST_REPORT.md"
+  ! release_round6_safe_sparse_path "docs/ROUND6_RELEASE_GATE.md"
+  ! release_round6_safe_sparse_path "scripts/release-common.sh"
+}
+
+candidate_safe_sparse_checkout() {
+  cleanup_sparse() {
+    git -C "$fixture" sparse-checkout disable >/dev/null 2>&1 || true
+  }
+  trap cleanup_sparse EXIT
+  git -C "$fixture" sparse-checkout init --no-cone
+  git -C "$fixture" sparse-checkout set --no-cone \
+    '/*' \
+    '!/docs/reports/EVALUATION_V10_REPORT.md' \
+    '!/docs/reports/HOLDOUT_REPORT.md'
+  git -C "$fixture" checkout -q "$commit"
+  [[ ! -e "$fixture/docs/reports/EVALUATION_V10_REPORT.md" ]]
+  [[ ! -e "$fixture/docs/reports/HOLDOUT_REPORT.md" ]]
+  ROUND6_SAFE_SPARSE_BUILD=1 candidate_case
+}
+
+candidate_unsafe_sparse_checkout() {
+  cleanup_sparse() {
+    git -C "$fixture" sparse-checkout disable >/dev/null 2>&1 || true
+  }
+  trap cleanup_sparse EXIT
+  git -C "$fixture" sparse-checkout init --no-cone
+  git -C "$fixture" sparse-checkout set --no-cone \
+    '/*' \
+    '!/docs/ROUND6_RELEASE_GATE.md'
+  git -C "$fixture" checkout -q "$commit"
+  [[ ! -e "$fixture/docs/ROUND6_RELEASE_GATE.md" ]]
+  ROUND6_SAFE_SPARSE_BUILD=1 candidate_case
+}
+
 formal_without_tag() {
   RELEASE_ROOT="$fixture"
   ALLOW_DIRTY_BUILD=0
@@ -155,6 +201,9 @@ run_must_fail mismatched-candidate-tree candidate_wrong_tree
 run_must_fail dirty-candidate-conflict candidate_dirty_conflict
 run_must_fail candidate-source-date-override candidate_wrong_epoch
 run_must_fail candidate-cannot-run-formal-operation candidate_cannot_run_formal_operation
+run_must_pass round6-safe-sparse-path-case-folding round6_sparse_path_contract
+run_must_pass round6-safe-sparse-release-init candidate_safe_sparse_checkout
+run_must_fail round6-unsafe-sparse-release-init candidate_unsafe_sparse_checkout
 run_must_fail formal-build-without-tag formal_without_tag
 
 git -C "$fixture" tag v0.15
