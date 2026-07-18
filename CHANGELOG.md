@@ -16,10 +16,26 @@ deployment authorization. Windows and macOS are outside scope. The historical
 v10 result remains `CONSUMED / FAIL` and cannot be rerun or used for tuning. A
 future stable release still requires a newly authored independent unseen set.
 
+- Advance the active release and Host pin to CPA v7.2.88 at
+  `93d74a890a44802f656d7f39a573916b2611896e`, use the generic
+  `cpa-host-blackbox` entry point, and bind Host evidence through attestation
+  schema v2 fields `cpa_version`, `cpa_commit`, and `cpa_host_sha256`. Later
+  upstream CPA versions do not automatically retarget the supported Host or
+  formal release identity.
+- Bind the fixed CPA identity to the exact official lightweight Git tag, all
+  three checked-in module requirements, Go module Origin, and both checksums.
+  The compatibility lane no longer depends on rate-limited GitHub REST Release
+  metadata or exposes a repository token to checked-out source; remote Git
+  lookup is time-bounded and isolated from repository-local Git configuration.
+- Extend release-policy and CI contracts so schema-v2 Host evidence fields,
+  fixed CPA verification, and the absence of checked-out repository tokens are
+  covered by mutation tests rather than documentation alone.
+
 - Add a dedicated, manual `v0.15-rc.2` prerelease workflow for clean Linux
   amd64 server-sandbox assets. It binds an annotated RC tag to the exact main
   commit/tree and successful main push CI, embeds `0.15-rc.2` in the SO and CPA
-  Store ZIP identity, verifies CPA v7.2.86 contracts, and reproduces the bytes
+  Store ZIP identity, verifies the historically pinned CPA v7.2.86 contracts,
+  and reproduces the bytes
   in two independent canonical sparse partial clones before publication. The
   RC-only packaging path normalizes CycloneDX's generated main component to the
   exact annotated RC identity before rebuilding final checksums, so the root
@@ -36,6 +52,12 @@ future stable release still requires a newly authored independent unseen set.
   suppressing the local verification evidence.
 - Add a documentation index, archive the obsolete v0.1.2 next-version notes,
   and synchronize both README entry points with the published RC state.
+- Rename the active candidate and externally attested prerelease workflows to
+  stable purpose-based paths, and move the retired attempted `v0.15-rc.2`
+  workflow definition out of GitHub Actions into the documentation archive.
+  Its recorded runs failed and did not publish the public RC; that Release
+  remains the separately disclosed direct owner override. Publication inputs,
+  permissions, identity checks, and fail-closed release gates are unchanged.
 
 ### Round 6 long-text streaming candidate
 
@@ -91,7 +113,7 @@ future stable release still requires a newly authored independent unseen set.
   `streaming-scanner-v1`, effective-limit status, and fixed low-cardinality
   counters.
 - Publish classifier identity `classifier-policy-v3` /
-  `99e0ce7f59d2e687ebb3e79e1a71300afee8bb56f723cd8ba3f478c71a64cfd2`.
+  `1294c6fd587522829d07220d5a6f4214092eba6ce1837636da5b3e3d461ba2a3`.
 - Compact the transactional shadow plan by collapsing caller-controlled keys
   and semantic values to closed representatives, skipping metadata spans, and
   using short base-36 markers. Residual allocation remains bounded by structural
@@ -119,7 +141,7 @@ future stable release still requires a newly authored independent unseen set.
   carried by `round6-prerelease-attestation.json` and
   `formal-release-attestation.json`; reusable source documents do not hardcode
   future PASS hashes or Release state.
-- Require the CPA v7.2.86 Host + Mock record, the independent
+- Require the CPA v7.2.88 Host + Mock record, the independent
   audit, and a candidate-bound external `evaluation-v11` or later first-and-only
   `CONSUMED / PASS` report to cite the same candidate identity. If a durable development handoff
   is needed after those gates pass, an existing annotated
@@ -138,20 +160,20 @@ future stable release still requires a newly authored independent unseen set.
   views beyond the 128 KiB source / 64 KiB retained decoded budget are
   incomplete, and legacy `ExtractText` keeps materialized `Parts` segmentation
   semantics while production routing uses streaming APIs.
-- Make CPA v7.2.86 the only current source/compile and real Linux Host +
+- Make CPA v7.2.88 the only current source/compile and real Linux Host +
   Mock-upstream release target; its Host matrix is **NOT RUN / PENDING**. Earlier
   v7.2.85/v7.2.84/v7.2.83/v7.2.82/v7.2.81 compatibility results remain historical non-gating engineering
   evidence. The merged implementation baseline passed exact-main and tag CI;
   any later source cleanup must pass its own exact-main CI before candidate
   dispatch. The public source-only `v0.15-rc.1` prerelease is not admitted as
   candidate evidence. Do not create the formal tag or asset-bearing Release
-  before the v7.2.86 Host gate, independent audit, and candidate-level
+  before the v7.2.88 Host gate, independent audit, and candidate-level
   evaluation pass.
 - Remove the legacy `cpa-v7285-host-blackbox`, `cpa-v7284-host-blackbox`,
   `cpa-v7283-host-blackbox`, `cpa-v7275-host-blackbox`, and
   `cpa-v7272-host-blackbox` Make aliases. Active CPA tests now expose only the
-  v7.2.86 Host, source/fixture, latest-compatibility, Router, and Store paths.
-- Align the v7.2.86 Host black-box expectation with Round 6 streaming semantics:
+  v7.2.88 Host, source/fixture, pinned-compatibility, Router, and Store paths.
+- Align the v7.2.88 Host black-box expectation with Round 6 streaming semantics:
   legacy `max_scan_bytes` is a migrated text-window alias, not a total-text
   truncation limit, so an already proven malicious request must still return a
   local 403 with zero provider-side effects.

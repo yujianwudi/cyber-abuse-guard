@@ -10,8 +10,9 @@ main CI [29630844605](https://github.com/yujianwudi/cyber-abuse-guard/actions/ru
 随后通过。公开 `v0.15-rc.1` 预发行没有附加发行资产，不是私有干净候选或正式发行；
 正式 `v0.15` 标签仍不存在。
 
-当前验证与支持的发行目标仅限 CPA v7.2.86
-(`81d70f5d9f3fdb39a6290ed9c917ff0c6f27ca30`)。旧版本专用 profile 与 Make
+当前验证与支持的发行目标固定为 CPA v7.2.88
+(`93d74a890a44802f656d7f39a573916b2611896e`)；后续上游版本不会自动改变
+正式发布或 Host pin。旧版本专用 profile 与 Make
 别名已经删除；明确标注的旧观察仅是历史非门禁工程记录。
 
 The last fully verified pre-cleanup baseline is
@@ -20,7 +21,7 @@ The last fully verified pre-cleanup baseline is
 start because of the recorded GitHub billing limit, so no PR-CI PASS is claimed;
 the exact merged commit/tree was subsequently validated by the successful main
 and tag runs above. The private untagged clean-candidate artifact, owner-run
-v7.2.86 Host + Mock matrix, and independent review remain **PENDING / NOT RUN**.
+v7.2.88 Host + Mock matrix, and independent review remain **PENDING / NOT RUN**.
 Older PASS records below are historical source/compile evidence and are not
 relabeled as the current CPA matrix or Host evidence.
 
@@ -31,7 +32,7 @@ project_version: 0.15
 formal_tag: v0.15
 streaming_scanner: streaming-scanner-v1
 classifier_policy: classifier-policy-v3
-classifier_policy_sha256: 99e0ce7f59d2e687ebb3e79e1a71300afee8bb56f723cd8ba3f478c71a64cfd2
+classifier_policy_sha256: 1294c6fd587522829d07220d5a6f4214092eba6ce1837636da5b3e3d461ba2a3
 ruleset: 1.0.7 / 7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134
 historical_v10: CONSUMED / FAIL / MUST NOT RERUN / NOT A FORMAL INPUT
 ```
@@ -44,7 +45,8 @@ historical_v10: CONSUMED / FAIL / MUST NOT RERUN / NOT A FORMAL INPUT
 4. 从 `refs/heads/main` dispatch 候选 workflow，生成私有、无标签、干净精确源码的
    Linux amd64 Actions 候选产物及
    `candidate-manifest.json`；
-5. CPA v7.2.86 Host + Mock 记录绑定 candidate SO SHA-256，并证明
+5. CPA v7.2.88 Host + Mock 记录绑定 candidate SO SHA-256，并通过 schema v2
+   `cpa_version`、`cpa_commit`、`cpa_host_sha256` 绑定 Host 身份与证据哈希，同时证明
    Auth Selector、Provider、Usage、Mock Upstream
    四层零调用；
 6. 独立源码、产物、Host 审计；

@@ -1,4 +1,4 @@
-name: Round6 prerelease - BLOCKED / PENDING HOST AND INDEPENDENT AUDIT
+name: Attested prerelease - HOST, AUDIT, AND EVALUATION REQUIRED
 
 on:
   workflow_dispatch:
@@ -20,27 +20,27 @@ on:
         required: true
         type: string
       candidate_run_id:
-        description: Successful clean-candidate workflow run used by the latest CPA Host record
+        description: Successful clean-candidate workflow run used by the pinned CPA v7.2.88 Host record
         required: true
         type: string
       expected_so_sha256:
-        description: Exact candidate SO SHA-256 cited by the v7.2.86 Host record and independent audit
+        description: Exact candidate SO SHA-256 cited by the CPA v7.2.88 Host record and independent audit
         required: true
         type: string
       expected_store_zip_sha256:
         description: Exact candidate CPA Store ZIP SHA-256 cited by Host and independent audit records
         required: true
         type: string
-      host_v7286_validation:
-        description: Authorized isolated CPA v7.2.86 Host + Mock matrix result
+      host_validation:
+        description: Authorized isolated CPA v7.2.88 Host + Mock matrix result
         required: true
         type: choice
         default: BLOCKED
         options:
           - BLOCKED
           - PASS
-      host_v7286_evidence_sha256:
-        description: SHA-256 of the low-sensitivity v7.2.86 Host evidence
+      host_evidence_sha256:
+        description: SHA-256 of the low-sensitivity CPA Host evidence
         required: true
         type: string
       independent_audit_validation:
@@ -108,8 +108,8 @@ jobs:
           DISPATCH_SHA: ${{ github.sha }}
           WORKFLOW_REF: ${{ github.workflow_ref }}
           WORKFLOW_SHA: ${{ github.workflow_sha }}
-          HOST_V7286: ${{ inputs.host_v7286_validation }}
-          HOST_V7286_SHA256: ${{ inputs.host_v7286_evidence_sha256 }}
+          HOST_VALIDATION: ${{ inputs.host_validation }}
+          HOST_EVIDENCE_SHA256: ${{ inputs.host_evidence_sha256 }}
           INDEPENDENT_AUDIT: ${{ inputs.independent_audit_validation }}
           INDEPENDENT_AUDIT_SHA256: ${{ inputs.independent_audit_sha256 }}
           INDEPENDENT_EVALUATION: ${{ inputs.independent_evaluation_validation }}
@@ -127,12 +127,12 @@ jobs:
           [[ "$DISPATCH_REF" == "refs/tags/$TAG" ]]
           [[ "$DISPATCH_SHA" == "$EXPECTED_COMMIT" ]]
           [[ "$WORKFLOW_SHA" == "$EXPECTED_COMMIT" ]]
-          [[ "$WORKFLOW_REF" == "${GITHUB_REPOSITORY}/.github/workflows/round6-blocked-prerelease.yml@refs/tags/$TAG" ]]
-          [[ "$HOST_V7286" == PASS ]]
+          [[ "$WORKFLOW_REF" == "${GITHUB_REPOSITORY}/.github/workflows/attested-prerelease.yml@refs/tags/$TAG" ]]
+          [[ "$HOST_VALIDATION" == PASS ]]
           [[ "$INDEPENDENT_AUDIT" == PASS ]]
           [[ "$INDEPENDENT_EVALUATION" == PASS ]]
           [[ "$AUTHORIZED" == true ]]
-          [[ "$HOST_V7286_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$HOST_EVIDENCE_SHA256" =~ ^[0-9a-f]{64}$ ]]
           [[ "$INDEPENDENT_AUDIT_SHA256" =~ ^[0-9a-f]{64}$ ]]
           [[ "$INDEPENDENT_EVALUATION_ID" =~ ^evaluation-v(1[1-9]|[2-9][0-9]|[1-9][0-9]{2,})$ ]]
           [[ "$INDEPENDENT_EVALUATION_SHA256" =~ ^[0-9a-f]{64}$ ]]
@@ -182,8 +182,8 @@ jobs:
             --arg repository "$GITHUB_REPOSITORY" \
             --arg expected_commit "$EXPECTED_COMMIT" \
             '(.id | tostring) == $run_id and
-             .name == "Round6 clean candidate - NOT A RELEASE" and
-             .path == ".github/workflows/round6-candidate.yml" and
+             .name == "Candidate build - NOT A RELEASE" and
+             .path == ".github/workflows/candidate.yml" and
              .event == "workflow_dispatch" and
              .head_sha == $expected_commit and
              .status == "completed" and
@@ -302,7 +302,7 @@ jobs:
               .status == "UNRELEASED / HOST AND INDEPENDENT AUDIT REQUIRED" and
               .version == "0.15" and .commit == $commit and .tree == $tree and
               .github.repository == env.GITHUB_REPOSITORY and
-              .github.workflow_ref == (env.GITHUB_REPOSITORY + "/.github/workflows/round6-candidate.yml@refs/heads/main") and
+              .github.workflow_ref == (env.GITHUB_REPOSITORY + "/.github/workflows/candidate.yml@refs/heads/main") and
               .github.workflow_sha == $commit and .github.event == "workflow_dispatch" and
               .github.ref == "refs/heads/main" and
               (.github.run_id | type == "number" and tostring == $run_id) and
@@ -320,7 +320,7 @@ jobs:
         run: |
           make round6-format-check round6-git-diff-check round6-module-verify round6-regression round6-vet
           go test ./internal/classifier -run '^TestClassifierPolicyIdentity$' -count=1
-      - name: Verify current CPA v7.2.86 source compatibility
+      - name: Verify pinned CPA v7.2.88 source compatibility
         env:
           CPA_COMPAT_VERIFY_REMOTE: '1'
         run: make cpa-latest-compat
@@ -443,7 +443,7 @@ jobs:
     needs: verify
     environment: round6-independent-audit
     if: >-
-      inputs.host_v7286_validation == 'PASS' &&
+      inputs.host_validation == 'PASS' &&
       inputs.independent_audit_validation == 'PASS' &&
       inputs.independent_evaluation_validation == 'PASS' &&
       inputs.authorize_blocked_prerelease == true
@@ -467,7 +467,7 @@ jobs:
           TAG: ${{ inputs.tag }}
           CI_RUN_ID: ${{ inputs.ci_run_id }}
           CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
-          HOST_V7286_SHA256: ${{ inputs.host_v7286_evidence_sha256 }}
+          HOST_EVIDENCE_SHA256: ${{ inputs.host_evidence_sha256 }}
           INDEPENDENT_AUDIT_SHA256: ${{ inputs.independent_audit_sha256 }}
           INDEPENDENT_EVALUATION_ID: ${{ inputs.independent_evaluation_id }}
           INDEPENDENT_EVALUATION_SHA256: ${{ inputs.independent_evaluation_sha256 }}
@@ -526,7 +526,7 @@ jobs:
             --arg candidate_run_id "$CANDIDATE_RUN_ID" \
             --arg so_sha256 "$EXPECTED_SO_SHA256" \
             --arg store_zip_sha256 "$EXPECTED_STORE_ZIP_SHA256" \
-            --arg host_v7286_sha256 "$HOST_V7286_SHA256" \
+            --arg host_evidence_sha256 "$HOST_EVIDENCE_SHA256" \
             --arg independent_audit_sha256 "$INDEPENDENT_AUDIT_SHA256" \
             --arg independent_evaluation_id "$INDEPENDENT_EVALUATION_ID" \
             --arg independent_evaluation_sha256 "$INDEPENDENT_EVALUATION_SHA256" \
@@ -536,7 +536,7 @@ jobs:
             --arg run_id "$GITHUB_RUN_ID" \
             --arg run_attempt "$GITHUB_RUN_ATTEMPT" \
             '{
-              schema_version: 1,
+              schema_version: 2,
               status: "HOST_AUDIT_AND_EVALUATION_PASS / FORMAL_RELEASE_BLOCKED",
               version: "0.15",
               tag: $tag,
@@ -549,7 +549,9 @@ jobs:
                 store_zip_sha256: $store_zip_sha256
               },
               evidence: {
-                cpa_v7_2_86_sha256: $host_v7286_sha256,
+                cpa_version: "v7.2.88",
+                cpa_commit: "93d74a890a44802f656d7f39a573916b2611896e",
+                cpa_host_sha256: $host_evidence_sha256,
                 independent_audit_sha256: $independent_audit_sha256,
                 independent_evaluation_id: $independent_evaluation_id,
                 independent_evaluation_status: "CONSUMED / PASS",
@@ -591,7 +593,7 @@ jobs:
           EXPECTED_STORE_ZIP_SHA256: ${{ inputs.expected_store_zip_sha256 }}
           CI_RUN_ID: ${{ inputs.ci_run_id }}
           CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
-          HOST_V7286_SHA256: ${{ inputs.host_v7286_evidence_sha256 }}
+          HOST_EVIDENCE_SHA256: ${{ inputs.host_evidence_sha256 }}
           INDEPENDENT_AUDIT_SHA256: ${{ inputs.independent_audit_sha256 }}
           INDEPENDENT_EVALUATION_ID: ${{ inputs.independent_evaluation_id }}
           INDEPENDENT_EVALUATION_SHA256: ${{ inputs.independent_evaluation_sha256 }}
@@ -609,7 +611,8 @@ jobs:
             'BLOCKED / NOT A FORMAL RELEASE' \
             '' \
             'Development evidence only. This is not production admission or deployment authorization.' \
-            "CPA v7.2.86 Host evidence SHA-256: $HOST_V7286_SHA256" \
+            "CPA Host identity: v7.2.88 (93d74a890a44802f656d7f39a573916b2611896e)" \
+            "CPA Host evidence SHA-256: $HOST_EVIDENCE_SHA256" \
             "Independent audit SHA-256: $INDEPENDENT_AUDIT_SHA256" \
             "Independent consumed evaluation: $INDEPENDENT_EVALUATION_ID" \
             "Independent evaluation SHA-256: $INDEPENDENT_EVALUATION_SHA256" \

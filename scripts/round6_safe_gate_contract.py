@@ -77,7 +77,18 @@ SCRIPT_REFERENCE = re.compile(
 )
 SHELL_OPERATORS = {"&&", "||", ";", "|", "&"}
 SAFE_DYNAMIC_TOOL_VARIABLES = {"go_bin", "cyclonedx"}
-BLOCKED_PRERELEASE_MARKER = "BLOCKED / PENDING HOST AND INDEPENDENT AUDIT"
+ACTIVE_WORKFLOW_PATHS = (
+    ".github/workflows/ci.yml",
+    ".github/workflows/candidate.yml",
+    ".github/workflows/attested-prerelease.yml",
+    ".github/workflows/release.yml",
+    ".github/workflows/release-promote.yml",
+)
+WORKFLOW_DIRECTORY_AUXILIARY_PATHS = (".github/workflows/README.md",)
+ARCHIVED_RC_WORKFLOW_PATH = "docs/archive/workflows/release-rc-v0.15-rc.2.yml"
+BLOCKED_PRERELEASE_MARKER = (
+    "Attested prerelease - HOST, AUDIT, AND EVALUATION REQUIRED"
+)
 BLOCKED_PRERELEASE_INPUT_ORDER = (
     "tag",
     "expected_commit",
@@ -86,8 +97,8 @@ BLOCKED_PRERELEASE_INPUT_ORDER = (
     "candidate_run_id",
     "expected_so_sha256",
     "expected_store_zip_sha256",
-    "host_v7286_validation",
-    "host_v7286_evidence_sha256",
+    "host_validation",
+    "host_evidence_sha256",
     "independent_audit_validation",
     "independent_audit_sha256",
     "independent_evaluation_validation",
@@ -98,7 +109,7 @@ BLOCKED_PRERELEASE_INPUT_ORDER = (
 BLOCKED_PRERELEASE_INPUTS = set(BLOCKED_PRERELEASE_INPUT_ORDER)
 BLOCKED_PRERELEASE_IF_LINES = (
     "if: >-",
-    "inputs.host_v7286_validation == 'PASS' &&",
+    "inputs.host_validation == 'PASS' &&",
     "inputs.independent_audit_validation == 'PASS' &&",
     "inputs.independent_evaluation_validation == 'PASS' &&",
     "inputs.authorize_blocked_prerelease == true",
@@ -115,8 +126,8 @@ ADMISSION_INPUT_ENV = (
     "DISPATCH_SHA: ${{ github.sha }}",
     "WORKFLOW_REF: ${{ github.workflow_ref }}",
     "WORKFLOW_SHA: ${{ github.workflow_sha }}",
-    "HOST_V7286: ${{ inputs.host_v7286_validation }}",
-    "HOST_V7286_SHA256: ${{ inputs.host_v7286_evidence_sha256 }}",
+    "HOST_VALIDATION: ${{ inputs.host_validation }}",
+    "HOST_EVIDENCE_SHA256: ${{ inputs.host_evidence_sha256 }}",
     "INDEPENDENT_AUDIT: ${{ inputs.independent_audit_validation }}",
     "INDEPENDENT_AUDIT_SHA256: ${{ inputs.independent_audit_sha256 }}",
     "INDEPENDENT_EVALUATION: ${{ inputs.independent_evaluation_validation }}",
@@ -135,12 +146,12 @@ ADMISSION_INPUT_COMMANDS = (
     '[[ "$DISPATCH_REF" == "refs/tags/$TAG" ]]',
     '[[ "$DISPATCH_SHA" == "$EXPECTED_COMMIT" ]]',
     '[[ "$WORKFLOW_SHA" == "$EXPECTED_COMMIT" ]]',
-    '[[ "$WORKFLOW_REF" == "${GITHUB_REPOSITORY}/.github/workflows/round6-blocked-prerelease.yml@refs/tags/$TAG" ]]',
-    '[[ "$HOST_V7286" == PASS ]]',
+    '[[ "$WORKFLOW_REF" == "${GITHUB_REPOSITORY}/.github/workflows/attested-prerelease.yml@refs/tags/$TAG" ]]',
+    '[[ "$HOST_VALIDATION" == PASS ]]',
     '[[ "$INDEPENDENT_AUDIT" == PASS ]]',
     '[[ "$INDEPENDENT_EVALUATION" == PASS ]]',
     '[[ "$AUTHORIZED" == true ]]',
-    '[[ "$HOST_V7286_SHA256" =~ ^[0-9a-f]{64}$ ]]',
+    '[[ "$HOST_EVIDENCE_SHA256" =~ ^[0-9a-f]{64}$ ]]',
     '[[ "$INDEPENDENT_AUDIT_SHA256" =~ ^[0-9a-f]{64}$ ]]',
     '[[ "$INDEPENDENT_EVALUATION_ID" =~ ^evaluation-v(1[1-9]|[2-9][0-9]|[1-9][0-9]{2,})$ ]]',
     '[[ "$INDEPENDENT_EVALUATION_SHA256" =~ ^[0-9a-f]{64}$ ]]',
@@ -192,8 +203,8 @@ CANDIDATE_ADMISSION_COMMANDS = (
     '  --arg repository "$GITHUB_REPOSITORY" \\',
     '  --arg expected_commit "$EXPECTED_COMMIT" \\',
     "  '(.id | tostring) == $run_id and",
-    '   .name == "Round6 clean candidate - NOT A RELEASE" and',
-    '   .path == ".github/workflows/round6-candidate.yml" and',
+    '   .name == "Candidate build - NOT A RELEASE" and',
+    '   .path == ".github/workflows/candidate.yml" and',
     '   .event == "workflow_dispatch" and',
     '   .head_sha == $expected_commit and',
     '   .status == "completed" and',
@@ -326,7 +337,7 @@ BLOCKED_STEP_CONTRACTS = {
         ),
         ("Run source and Round6 regression gates", ("name", "run"), None),
         (
-            "Verify current CPA v7.2.86 source compatibility",
+            "Verify pinned CPA v7.2.88 source compatibility",
             ("name", "env", "run"),
             None,
         ),
@@ -514,21 +525,21 @@ ROUND6_REPRODUCIBILITY_CHECKSUMS_CONTRACT = (
     '  for relative in "$so" "$so.sha256" "$store_zip" build-metadata.json checksums.txt \\',
 )
 BLOCKED_STEP_RUN_SHA256 = {
-    ("admission", 0): "4830e3f84435dda74c87216010d4ca5021d7c75935a95997acf1e416e3ef47fe",
+    ("admission", 0): "3c9f96e89952dd96c6fed357bde683cbc0302cc0e2de941547c504c3285de369",
     ("admission", 1): "7f1817ec7b567df4be63fafd9ee2b2347ac37e01982e41ee3338f64c79cae81a",
-    ("admission", 2): "5a315540eb55c2663caeba1fa2f77a80df0f4d2fd6c786c656149d22f638c2f2",
+    ("admission", 2): "26030928c867d579089d1e69fcba37ff65433ca93697835abdda4f6365f2e4e5",
     ("verify", 1): "b38e1f3a74567d8390bde6390c75c7e96a3bd0d5bc13de0e6a7dbbcfeec0a2fe",
     ("verify", 2): "3427df1bdbbcd38976514b679706f45fe6331981e750168beffd9bfdd1efdea1",
     ("verify", 4): "378f0a3b53f59937e4646b34b7b69f16c839ffb03edf54331fea149479f9c8b9",
-    ("verify", 6): "f44c21af46cc092437d61120ad9f5d9c7984d3013d224ce3c189b32610ed82ba",
+    ("verify", 6): "86252b49e4b21673adafab187e650b9a051cb28dd78c5d7a91d4d52ad951586d",
     ("verify", 7): "feb84636bac16fb6245913190b0803f0644ee094423c531ad4e59c752e6bc9fd",
     ("verify", 8): "fa50af5a75fcdd76f7a5c0900c3f983b2ee285220229e1746c35671713cba7b7",
     ("verify", 9): "eabde1048cd0f10bfc3540f427c3674b3cf8d5fc0206bebc58e695a328dbb0cb",
     ("verify", 10): "d6bd0b9f43ef190a6545893891fe514928b3e354a438f357602e2d3a89565bd0",
     ("verify", 11): "72ba08821693dcb100be3d4dcfaac32d485191186d46fa22119ae7a7b60990b9",
     ("verify", 12): "25116143b78146e257b7eb89c5466266132755433249c07664c0cdbf01944c7d",
-    ("publish", 1): "f0b4e25161a56a18cbe2379e048d0151e537eb80d504673f20c8cd2adf4bfbb5",
-    ("publish", 3): "f3f24d41011374f779195eda6069b813a468cd7bd180a0ae8d72bd07906d4b68",
+    ("publish", 1): "fcf56edbe1e0c746c746d864dbe72e7ecc3c0c1571fed869e40432cd32ba1ba2",
+    ("publish", 3): "034ba9e6da11c1f31633a506a86a774aa1aeb5a911465dfaf563a14ffecf3fc7",
 }
 BLOCKED_STEP_RUN_STYLE = {
     ("admission", 0): "|",
@@ -560,8 +571,8 @@ BLOCKED_STEP_ENV = {
         ("DISPATCH_SHA", "${{ github.sha }}"),
         ("WORKFLOW_REF", "${{ github.workflow_ref }}"),
         ("WORKFLOW_SHA", "${{ github.workflow_sha }}"),
-        ("HOST_V7286", "${{ inputs.host_v7286_validation }}"),
-        ("HOST_V7286_SHA256", "${{ inputs.host_v7286_evidence_sha256 }}"),
+        ("HOST_VALIDATION", "${{ inputs.host_validation }}"),
+        ("HOST_EVIDENCE_SHA256", "${{ inputs.host_evidence_sha256 }}"),
         ("INDEPENDENT_AUDIT", "${{ inputs.independent_audit_validation }}"),
         ("INDEPENDENT_AUDIT_SHA256", "${{ inputs.independent_audit_sha256 }}"),
         ("INDEPENDENT_EVALUATION", "${{ inputs.independent_evaluation_validation }}"),
@@ -622,7 +633,7 @@ BLOCKED_STEP_ENV = {
         ("TAG", "${{ inputs.tag }}"),
         ("CI_RUN_ID", "${{ inputs.ci_run_id }}"),
         ("CANDIDATE_RUN_ID", "${{ inputs.candidate_run_id }}"),
-        ("HOST_V7286_SHA256", "${{ inputs.host_v7286_evidence_sha256 }}"),
+        ("HOST_EVIDENCE_SHA256", "${{ inputs.host_evidence_sha256 }}"),
         ("INDEPENDENT_AUDIT_SHA256", "${{ inputs.independent_audit_sha256 }}"),
         ("INDEPENDENT_EVALUATION_ID", "${{ inputs.independent_evaluation_id }}"),
         ("INDEPENDENT_EVALUATION_SHA256", "${{ inputs.independent_evaluation_sha256 }}"),
@@ -637,14 +648,14 @@ BLOCKED_STEP_ENV = {
         ("EXPECTED_STORE_ZIP_SHA256", "${{ inputs.expected_store_zip_sha256 }}"),
         ("CI_RUN_ID", "${{ inputs.ci_run_id }}"),
         ("CANDIDATE_RUN_ID", "${{ inputs.candidate_run_id }}"),
-        ("HOST_V7286_SHA256", "${{ inputs.host_v7286_evidence_sha256 }}"),
+        ("HOST_EVIDENCE_SHA256", "${{ inputs.host_evidence_sha256 }}"),
         ("INDEPENDENT_AUDIT_SHA256", "${{ inputs.independent_audit_sha256 }}"),
         ("INDEPENDENT_EVALUATION_ID", "${{ inputs.independent_evaluation_id }}"),
         ("INDEPENDENT_EVALUATION_SHA256", "${{ inputs.independent_evaluation_sha256 }}"),
     ),
 }
 
-CANDIDATE_WORKFLOW_NAME = "Round6 clean candidate - NOT A RELEASE"
+CANDIDATE_WORKFLOW_NAME = "Candidate build - NOT A RELEASE"
 CANDIDATE_INPUT_ORDER = (
     "expected_commit",
     "expected_tree",
@@ -691,7 +702,7 @@ CANDIDATE_STEP_CONTRACTS = {
         ),
         ("Install bounded candidate dependencies", ("name", "run"), None),
         (
-            "Recheck source, regressions, and latest CPA v7.2.86 contract",
+            "Recheck source, regressions, and pinned CPA v7.2.88 contract",
             ("name", "env", "run"),
             None,
         ),
@@ -718,7 +729,7 @@ CANDIDATE_STEP_CONTRACTS = {
     ),
 }
 CANDIDATE_STEP_RUN_SHA256 = {
-    ("admission", 0): "1010c71654565731433ae574c6ac875b36bcd7c164bbab8aed6fb9d56932108b",
+    ("admission", 0): "5213ecde1d5f26b4e9d8c31ab926eea06959c8dcb3d696551417dbf350bbbe7b",
     ("admission", 1): "7f1817ec7b567df4be63fafd9ee2b2347ac37e01982e41ee3338f64c79cae81a",
     ("build", 1): "b38e1f3a74567d8390bde6390c75c7e96a3bd0d5bc13de0e6a7dbbcfeec0a2fe",
     ("build", 2): "8966c407a8e05f9a88182c2130b24b907e58dd1d874d55fe4f86c9bfedef6457",
@@ -789,6 +800,9 @@ CANDIDATE_ALLOWED_GITHUB_IDENTITY_EXPRESSIONS = {
     "jobs.admission.steps[0].env.WORKFLOW_SHA": "${{ github.workflow_sha }}",
     "jobs.build.steps[6].env.RELEASE_CANDIDATE_WORKFLOW_SHA": "${{ github.workflow_sha }}",
 }
+CI_ALLOWED_GITHUB_IDENTITY_EXPRESSIONS = {
+    "concurrency.group": "${{ github.workflow }}-${{ github.ref }}",
+}
 CANDIDATE_ARTIFACTS = (
     "dist/cyber-abuse-guard-v0.15.so",
     "dist/cyber-abuse-guard-v0.15.so.sha256",
@@ -801,7 +815,7 @@ CANDIDATE_ARTIFACTS = (
     "dist/candidate-manifest.json",
 )
 CANDIDATE_SCRIPT_SHA256 = {
-    "round6-candidate-artifacts.sh": "11a2a358c3154bd8665f6b5ae27d84c6f97fd33763f9cc602b38425c93bce659",
+    "round6-candidate-artifacts.sh": "3f45700378adc9fe2f4d5194fa8466020f54b8e3b05f8df634f89e4341515676",
     "release-candidate-contract-test.sh": "82879ce86da1a0424c1ba688d33635176411e2a646449e355dc705ba7d982a69",
 }
 RC_RELEASE_SCRIPT_SHA256 = "30d349c1f6d7e78b3b66d78042b493e1e17f14a5bc89bad2abaf16958f7521fd"
@@ -836,11 +850,11 @@ FORMAL_RELEASE_ARTIFACTS = (
     "dist/formal-release-attestation.json.sha256",
 )
 FORMAL_RELEASE_STEP_RUN_SHA256 = {
-    ("admission", 0): "dd00f8c8f9a1a732ce9d923f203c83052c953556510bf1015cc2567a596a665b",
+    ("admission", 0): "dfaabe7534d8faa6d028cc7e4b153a5225c685bd18389948ac416bb484767700",
     ("build-and-verify", 2): "5bc38a90928a7309be0be55b3834ebf28c2eee7c2fd290ef19bf6d3a8dd3857d",
     ("build-and-verify", 3): "3177c58474d2bd9ee7246a79c02d77fc4afac7b26e13f3193cd456f9cadbb2dd",
     ("build-and-verify", 4): "e2194c0fb1cc2681adff35d6c0a12e10540e17bb7495597ac1f3ccb992bbc53f",
-    ("build-and-verify", 5): "16f59f25d193f0098efe4009bb21dbb52a387fb00b7581a6e800e65907efb51c",
+    ("build-and-verify", 5): "309ed57fdbbe52e7410bc297e108cc94e42beda8790584ab20fae58107b01b2b",
     ("build-and-verify", 7): "2ecb4e3db81c81773248547deb2121bd998a7c1aeae69036485603c1760c53e2",
     ("build-and-verify", 8): "2824c61aa8a13293fe96c4a6f7586466ca90eb0f527182265f9be7df66586ccf",
     ("build-and-verify", 9): "85ab9b21007e3d06b5c4720274e1fe5753a3634b5611185736e4fc83b738dc38",
@@ -866,30 +880,40 @@ FROZEN_EVALUATION_STATUS_COMMAND = (
 )
 ROUND6_DOC_FIXTURE_WRAPPER_SCRIPT = "scripts/round6-doc-consistency-fixture-test.sh"
 ROUND6_DOC_FIXTURE_WRAPPER_SCRIPT_SHA256 = (
-    "43a27e7616b3b9007de336818e27e78a9260406b86b5da55983fb99d4758b46d"
+    "6c64140ccf1e3f66b67d5baa2cc2f94a79b40e908180954e7eac1e73a3ce3765"
 )
 ROUND6_DOC_FIXTURE_DEPENDENCY_SHA256 = {
-    "scripts/release-doc-consistency-test.sh": "e1ee5204237668125a5da3b7c025f72f6c568ec0cad7a7c0bb581168e84c9fd8",
-    "scripts/release-doc-consistency.sh": "bb16e34ebec34f4fdb5329e6db9a773104fedeb236b28ce759b686eed0cce0f2",
+    "scripts/release-doc-consistency-test.sh": "63b2af3e45f71ad7a59b35bc40d117eabf9f150e89624b43abe6926efe6061ab",
+    "scripts/release-doc-consistency.sh": "8f775d3fa8faff5a639489a2776fdd335cb26b4b7a840fc2d907ce367bb4789c",
 }
 ROUND6_PRIVACY_FIXTURE_SCRIPT = "scripts/release-evidence-privacy-test.sh"
 ROUND6_PRIVACY_FIXTURE_SCRIPT_SHA256 = (
     "6306a733095173425ad735bea5d986de21ae2b3f4e6f053dee970d7436f9f762"
 )
 CPA_COMPAT_SCRIPT = "scripts/cpa-latest-compat.sh"
+CPA_MODULE_PATH = "github.com/router-for-me/CLIProxyAPI/v7"
+CPA_PINNED_VERSION = "v7.2.88"
+CPA_PINNED_MODULE_SUM = "h1:YfLBYPvkasjqFLzdht+UrEgRLsU3HcM0WDMurNEjIDo="
+CPA_PINNED_GO_MOD_SUM = "h1:ytvZNWbCv7PrAyR80+RKsDJPODsdL6qxyFaXDBNZdqs="
+CPA_PINNED_MODULE_FILES = (
+    ("go.mod", "go.sum"),
+    ("integration/cpalatestcontract/go.mod", "integration/cpalatestcontract/go.sum"),
+    ("integration/pluginstorecontract/go.mod", "integration/pluginstorecontract/go.sum"),
+)
 CPA_COMPAT_SCRIPT_SHA256 = (
-    "4a86b16a36786957bde70b9b4885430f0409e62e16cf8224263e8f0162517650"
+    "a926338d7552235d3f122897000ec17e323a65547042819e9027b8edeae4a66e"
 )
 CPA_COMPAT_FINAL_OUTPUT_CONTRACT = """if [[ "$verify_remote" == 1 ]]; then
-  printf 'CPA latest source/compile compatibility PASS: profile=%s\\n' "${profiles[*]}"
+  printf 'CPA pinned source/compile compatibility PASS: profile=%s %s@%s\\n' \\
+    "${profiles[*]}" "$cpa_version" "$cpa_commit"
 else
-  printf 'CPA source/compile compatibility PASS: profile=%s remote_release_checks=SKIPPED\\n' "${profiles[*]}"
+  printf 'CPA source/compile compatibility PASS: profile=%s remote_tag_checks=SKIPPED\\n' "${profiles[*]}"
 fi"""
 EXTERNAL_ATTESTATION_SCRIPT_SHA256 = {
-    "verify-external-release-attestation.sh": "17d79149b779b01f2e3e733d0deb529927bfe0c6d50b8125abd8b556fd95d476",
-    "verify-external-release-attestation-test.sh": "07683ce09cbdef7c15f8d6b31ff1308380ad21c920d8bc745c9b4599f4555aba",
+    "verify-external-release-attestation.sh": "b1bc697e6cf0a6fa91220e87db668a97c612f2b9abad9720ab85980732c32093",
+    "verify-external-release-attestation-test.sh": "613436740da74db8da25fae21397c9436fdc4427537cb5c8965fd688c04e4747",
 }
-GENERATE_RELEASE_EVIDENCE_SCRIPT_SHA256 = "22317f7596fadf7ea39a35b8df1ed5ac22c8f46608cbacf5ba2a25222cc92c1c"
+GENERATE_RELEASE_EVIDENCE_SCRIPT_SHA256 = "d51fe316a686c1b4dd629f6a7b63f4159b882095811fcdea3311255527bd5da1"
 
 
 class ContractError(RuntimeError):
@@ -2293,17 +2317,125 @@ def validate_round6_privacy_fixture_script(text: str, source: Path) -> None:
         )
 
 
+def validate_cpa_module_pins(root: Path) -> None:
+    expected_requirement = f"{CPA_MODULE_PATH} {CPA_PINNED_VERSION}"
+    expected_sums = (
+        f"{expected_requirement} {CPA_PINNED_MODULE_SUM}",
+        f"{expected_requirement}/go.mod {CPA_PINNED_GO_MOD_SUM}",
+    )
+    for mod_relative, sum_relative in CPA_PINNED_MODULE_FILES:
+        mod_path = root / mod_relative
+        sum_path = root / sum_relative
+        mod_text = read_regular_text(mod_path, root)
+        requirements: list[str] = []
+        for line in mod_text.splitlines():
+            candidate = line.strip()
+            if candidate.startswith("require "):
+                candidate = candidate.removeprefix("require ").strip()
+            if candidate.startswith(f"{CPA_MODULE_PATH} "):
+                requirements.append(candidate)
+        if tuple(requirements) != (expected_requirement,) or re.search(
+            rf"(?m)^\s*(?:replace|exclude)\s+{re.escape(CPA_MODULE_PATH)}(?:\s|$)",
+            mod_text,
+        ):
+            raise ContractError(
+                f"checked-in CPA module pin must remain exactly {expected_requirement}: {mod_relative}"
+            )
+        sum_text = read_regular_text(sum_path, root)
+        actual_sums = tuple(
+            line.strip()
+            for line in sum_text.splitlines()
+            if line.startswith(f"{CPA_MODULE_PATH} ")
+        )
+        if actual_sums != expected_sums:
+            raise ContractError(
+                f"checked-in CPA sums must remain pinned to {CPA_PINNED_VERSION}: {sum_relative}"
+            )
+
+
 def validate_cpa_compat_script(text: str, source: Path) -> None:
-    if text.count(CPA_COMPAT_FINAL_OUTPUT_CONTRACT) != 1 or text.count(
-        "CPA latest source/compile compatibility PASS"
-    ) != 1:
+    if any(
+        forbidden in text
+        for forbidden in (
+            "api.github.com",
+            "GITHUB_TOKEN",
+            "GH_TOKEN",
+            "${{ github.token }}",
+            "Authorization:",
+            "releases/latest",
+            "releases/tags",
+        )
+    ):
         raise ContractError(
-            f"CPA compatibility output must claim latest PASS only after remote verification: {source}"
+            f"fixed CPA compatibility must not depend on GitHub REST metadata or a repository token: {source}"
+        )
+    for required in (
+        "timeout --signal=KILL 60s git",
+        '-C "$git_identity_dir"',
+        "-c http.lowSpeedLimit=1 -c http.lowSpeedTime=60",
+        'ls-remote --refs "$cpa_origin_git_url" "refs/tags/$tag"',
+        "CPA lightweight tag identity mismatch",
+        "pinned module Origin and sums remain required",
+    ):
+        if required not in text:
+            raise ContractError(
+                f"fixed CPA compatibility must bind the exact lightweight tag through Git origin: {source}"
+            )
+    if (
+        text.count(CPA_COMPAT_FINAL_OUTPUT_CONTRACT) != 1
+        or "CPA latest source/compile compatibility PASS" in text
+    ):
+        raise ContractError(
+            f"fixed CPA compatibility output must not claim latest PASS: {source}"
         )
     if hashlib.sha256(text.encode("utf-8")).hexdigest() != CPA_COMPAT_SCRIPT_SHA256:
         raise ContractError(
             f"CPA compatibility script must match the exact reviewed remote-verification contract: {source}"
         )
+
+
+def validate_ci_workflow(text: str, source: Path) -> None:
+    validate_workflow_safety(text, source)
+    document = parse_workflow_yaml(text, source)
+    validate_sensitive_workflow_expressions(
+        document,
+        source,
+        allowed_token_paths=set(),
+        allowed_identity_expressions=CI_ALLOWED_GITHUB_IDENTITY_EXPRESSIONS,
+    )
+    root = yaml_mapping(document, source, "root")
+    jobs = yaml_mapping(root.get("jobs"), source, "jobs")
+    quality = yaml_mapping(
+        jobs.get("quality-and-artifacts"), source, "jobs.quality-and-artifacts"
+    )
+    steps = yaml_sequence(
+        quality.get("steps"), source, "jobs.quality-and-artifacts.steps"
+    )
+    matches: list[tuple[int, Node, dict[str, Node]]] = []
+    for index, step_node in enumerate(steps):
+        step_path = f"jobs.quality-and-artifacts.steps[{index}]"
+        step = yaml_mapping(step_node, source, step_path)
+        if "name" in step and yaml_scalar(step["name"], source, f"{step_path}.name") == (
+            "CPA v7.2.88 pinned source/compile compatibility"
+        ):
+            matches.append((index, step_node, step))
+    if len(matches) != 1:
+        raise ContractError("CI must contain exactly one reviewed CPA v7.2.88 compatibility step")
+    index, cpa_step_node, cpa_step = matches[0]
+    cpa_path = f"jobs.quality-and-artifacts.steps[{index}]"
+    require_yaml_keys(cpa_step_node, ("name", "env", "run"), source, cpa_path)
+    if exact_string_mapping(cpa_step["env"], source, f"{cpa_path}.env") != (
+        ("CPA_COMPAT_VERIFY_REMOTE", "1"),
+    ):
+        raise ContractError("CI CPA step must keep exact remote CPA verification enabled")
+    require_yaml_scalar(
+        cpa_step["run"],
+        "bash ./scripts/cpa-latest-compat.sh",
+        source,
+        f"{cpa_path}.run",
+    )
+    if re.search(r"(?m)^\s+(?:GH_TOKEN|GITHUB_TOKEN):", text):
+        raise ContractError("CI may not expose a repository token to checked-out source")
 
 
 def shell_function_body(text: str, name: str, source: Path) -> str:
@@ -2687,10 +2819,10 @@ def validate_formal_release_workflow(text: str, source: Path) -> None:
     for required in (
         './scripts/verify-external-release-attestation.sh "$attestation"',
         "'CI' '.github/workflows/ci.yml' 'push'",
-        "'Round6 clean candidate - NOT A RELEASE'",
-        "'.github/workflows/round6-candidate.yml' 'workflow_dispatch'",
-        "'Round6 prerelease - BLOCKED / PENDING HOST AND INDEPENDENT AUDIT'",
-        "'.github/workflows/round6-blocked-prerelease.yml' 'workflow_dispatch'",
+        "'Candidate build - NOT A RELEASE'",
+        "'.github/workflows/candidate.yml' 'workflow_dispatch'",
+        "'Attested prerelease - HOST, AUDIT, AND EVALUATION REQUIRED'",
+        "'.github/workflows/attested-prerelease.yml' 'workflow_dispatch'",
     ):
         if required not in attestation_run:
             raise ContractError(
@@ -2715,7 +2847,7 @@ def validate_formal_release_workflow(text: str, source: Path) -> None:
         )
     step8 = yaml_mapping(build_steps[8], source, f"{build_path}.steps[8]")
     if exact_string_mapping(step8["env"], source, f"{build_path}.steps[8].env") != (
-        ("CPA_LATEST_VERIFY_REMOTE", "1"),
+        ("CPA_COMPAT_VERIFY_REMOTE", "1"),
     ):
         raise ContractError("formal release gates must keep remote CPA verification enabled")
     step10 = yaml_mapping(build_steps[10], source, f"{build_path}.steps[10]")
@@ -3109,10 +3241,7 @@ def validate_blocked_prerelease_structure(
     document: MappingNode, source: Path
 ) -> dict[str, list[Node]]:
     root = require_yaml_keys(document, BLOCKED_TOP_LEVEL_KEYS, source, "workflow")
-    if BLOCKED_PRERELEASE_MARKER not in yaml_scalar(root["name"], source, "name"):
-        raise ContractError(
-            f"blocked prerelease workflow name must contain {BLOCKED_PRERELEASE_MARKER!r}: {source}"
-        )
+    require_yaml_scalar(root["name"], BLOCKED_PRERELEASE_MARKER, source, "name")
 
     if yaml_mapping_keys(root["on"], source, "on") != ("workflow_dispatch",):
         raise ContractError("blocked prerelease must remain manual-only workflow_dispatch")
@@ -3127,7 +3256,7 @@ def validate_blocked_prerelease_structure(
         "on.workflow_dispatch.inputs",
     )
     choice_inputs = {
-        "host_v7286_validation",
+        "host_validation",
         "independent_audit_validation",
         "independent_evaluation_validation",
     }
@@ -3259,7 +3388,7 @@ def validate_blocked_prerelease_structure(
                 f"{job_path}.environment",
             )
             expected_publish_if = (
-                "inputs.host_v7286_validation == 'PASS' && "
+                "inputs.host_validation == 'PASS' && "
                 "inputs.independent_audit_validation == 'PASS' && "
                 "inputs.independent_evaluation_validation == 'PASS' && "
                 "inputs.authorize_blocked_prerelease == true"
@@ -3929,10 +4058,10 @@ def validate_blocked_prerelease_workflow(text: str, source: Path) -> None:
     steps_by_job = validate_blocked_prerelease_structure(document, source)
     validate_pre_final_mutations(steps_by_job, source)
     if not re.search(
-        rf"(?m)^name:\s*.*{re.escape(BLOCKED_PRERELEASE_MARKER)}.*$", text
+        rf"(?m)^name:\s*{re.escape(BLOCKED_PRERELEASE_MARKER)}\s*$", text
     ):
         raise ContractError(
-            f"blocked prerelease workflow name must contain {BLOCKED_PRERELEASE_MARKER!r}: {source}"
+            f"attested prerelease workflow name must be exactly {BLOCKED_PRERELEASE_MARKER!r}: {source}"
         )
 
     on_block = mapping_block(text, "on", 0)
@@ -4136,10 +4265,10 @@ def validate_blocked_prerelease_workflow(text: str, source: Path) -> None:
         final_publish_step,
     ) or re.search(r"(?m)^\s+(?:if|continue-on-error|shell):", final_publish_step):
         raise ContractError("blocked prerelease must end with one unconditional publish step")
-def validate_rc_release_workflow(text: str, source: Path) -> None:
+def validate_archived_rc_workflow(text: str, source: Path) -> None:
     parse_workflow_yaml(text, source)
     if hashlib.sha256(text.encode("utf-8")).hexdigest() != RC_RELEASE_WORKFLOW_SHA256:
-        raise ContractError("RC release workflow differs from the exact reviewed contract")
+        raise ContractError("archived RC workflow differs from the exact reviewed contract")
     required = (
         "RC release v0.15-rc.2 - Linux sandbox validation",
         "Bind RC authorization to annotated exact-main tag before checkout",
@@ -4161,13 +4290,13 @@ def validate_rc_release_workflow(text: str, source: Path) -> None:
     )
     for marker in required:
         if marker not in text:
-            raise ContractError(f"RC release workflow is missing reviewed marker: {marker}")
+            raise ContractError(f"archived RC workflow is missing reviewed marker: {marker}")
     if text.count("contents: write") != 1:
-        raise ContractError("RC release workflow must expose contents: write only in publish")
+        raise ContractError("archived RC workflow must preserve contents: write only in publish")
     if re.search(r"(?im)runs-on:\s*(?:windows|macos)", text):
-        raise ContractError("RC release workflow must remain Linux only")
+        raise ContractError("archived RC workflow must remain Linux only")
     if "round6-prerelease-attestation.json" in text or "formal-release-attestation.json" in text:
-        raise ContractError("RC release workflow may not emit formal evidence assets")
+        raise ContractError("archived RC workflow may not emit formal evidence assets")
 
 
 def validate_round6_reproducibility_script(text: str, source: Path) -> None:
@@ -4534,30 +4663,56 @@ def audit_python_source(
     return targets, scripts
 
 
+def validate_workflow_layout(root: Path) -> None:
+    root = root.resolve()
+    workflow_dir = root / ".github/workflows"
+    try:
+        resolved_workflow_dir = workflow_dir.resolve(strict=True)
+    except FileNotFoundError as exc:
+        raise ContractError(f"active workflow directory is missing: {workflow_dir}") from exc
+    if workflow_dir.is_symlink() or not workflow_dir.is_dir():
+        raise ContractError(
+            f"active workflow directory must be a regular non-symlink directory: {workflow_dir}"
+        )
+    if resolved_workflow_dir != workflow_dir.absolute():
+        raise ContractError(
+            f"active workflow directory or one of its parents may not be a symlink: {workflow_dir}"
+        )
+
+    actual_paths: list[str] = []
+    for entry in workflow_dir.iterdir():
+        if entry.is_symlink() or not entry.is_file():
+            raise ContractError(
+                f"active workflow directory may contain only regular workflow files: {entry}"
+            )
+        actual_paths.append(entry.relative_to(root).as_posix())
+    expected_directory_paths = ACTIVE_WORKFLOW_PATHS + WORKFLOW_DIRECTORY_AUXILIARY_PATHS
+    if set(actual_paths) != set(expected_directory_paths) or len(actual_paths) != len(
+        expected_directory_paths
+    ):
+        raise ContractError(
+            "workflow directory must contain exactly the five reviewed entrypoints and its README: "
+            + ", ".join(expected_directory_paths)
+        )
+
+    archive_path = root / ARCHIVED_RC_WORKFLOW_PATH
+    archive_text = read_regular_text(archive_path, root)
+    validate_archived_rc_workflow(archive_text, archive_path)
+    if archive_path.resolve().is_relative_to(resolved_workflow_dir):
+        raise ContractError("archived RC workflow must remain outside the executable workflow directory")
+
+
 def default_entrypoints(root: Path) -> list[Path]:
-    entries = [root / ".github/workflows/ci.yml"]
-    for relative in (
-        ".github/workflows/blocked-prerelease.yml",
-        ".github/workflows/round6-candidate.yml",
-        ".github/workflows/release.yml",
-        ".github/workflows/release-rc.yml",
-        ".github/workflows/release-promote.yml",
-    ):
-        optional = root / relative
-        if optional.exists():
-            entries.append(optional)
-    for pattern in (
-        ".github/workflows/*round6*prerelease*.yml",
-        ".github/workflows/*round6*prerelease*.yaml",
-        "scripts/*round6*prerelease*.sh",
-    ):
-        entries.extend(root.glob(pattern))
-    return sorted(set(entries))
+    root = root.resolve()
+    validate_workflow_layout(root)
+    return [root / relative for relative in ACTIVE_WORKFLOW_PATHS]
 
 
 def audit(root: Path, entrypoints: list[Path]) -> tuple[set[str], set[str]]:
     root = root.resolve()
-    if (root / ".github/workflows/round6-candidate.yml").exists():
+    if (root / CPA_COMPAT_SCRIPT).exists():
+        validate_cpa_module_pins(root)
+    if (root / ".github/workflows/candidate.yml").exists():
         validate_consumed_boundary_files(root)
     makefile_text = read_regular_text(root / "Makefile", root)
     dependencies, recipes, dynamic_dependencies = parse_makefile(makefile_text)
@@ -4570,11 +4725,9 @@ def audit(root: Path, entrypoints: list[Path]) -> tuple[set[str], set[str]]:
         text = read_regular_text(entrypoint, root)
         if entrypoint.suffix.lower() in {".yml", ".yaml"}:
             name = entrypoint.name.lower()
-            if name == "round6-candidate.yml":
+            if name == "candidate.yml":
                 validate_candidate_workflow(text, entrypoint)
-            elif name == "release-rc.yml":
-                validate_rc_release_workflow(text, entrypoint)
-            elif "prerelease" in name:
+            elif name == "attested-prerelease.yml":
                 validate_blocked_prerelease_workflow(text, entrypoint)
             elif name == "release.yml":
                 validate_formal_release_workflow(text, entrypoint)
@@ -4582,6 +4735,8 @@ def audit(root: Path, entrypoints: list[Path]) -> tuple[set[str], set[str]]:
             elif name == "release-promote.yml":
                 validate_release_promote_workflow(text, entrypoint)
                 continue
+            elif name == "ci.yml" and (root / CPA_COMPAT_SCRIPT).exists():
+                validate_ci_workflow(text, entrypoint)
             else:
                 validate_workflow_safety(text, entrypoint)
             command_text = "\n".join(yaml_run_blocks(text))
@@ -4748,12 +4903,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(sys.argv[1:] if argv is None else argv)
     root = args.root.resolve()
-    entrypoints = (
-        [root / item for item in args.entrypoint]
-        if args.entrypoint
-        else default_entrypoints(root)
-    )
     try:
+        entrypoints = (
+            [root / item for item in args.entrypoint]
+            if args.entrypoint
+            else default_entrypoints(root)
+        )
         targets, scripts = audit(root, entrypoints)
     except (ContractError, UnicodeError, OSError) as exc:
         print(f"Round6 safe gate contract: FAIL: {exc}", file=sys.stderr)

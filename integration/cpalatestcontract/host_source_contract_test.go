@@ -24,25 +24,24 @@ const (
 	cpaCompatibilityModfileEnv = "CPA_COMPAT_MODFILE"
 	cpaCompatibilityCommitEnv  = "CPA_COMPAT_EXPECTED_COMMIT"
 	cpaPrimaryProfile          = "primary"
+	cpaOfficialOriginURL       = "https://github.com/router-for-me/CLIProxyAPI"
 )
 
 type cpaCompatibilityProfile struct {
-	Name       string
-	Version    string
-	Commit     string
-	ModuleSum  string
-	GoModSum   string
-	MustLatest bool
+	Name      string
+	Version   string
+	Commit    string
+	ModuleSum string
+	GoModSum  string
 }
 
 var cpaCompatibilityProfiles = map[string]cpaCompatibilityProfile{
 	cpaPrimaryProfile: {
-		Name:       cpaPrimaryProfile,
-		Version:    "v7.2.86",
-		Commit:     "81d70f5d9f3fdb39a6290ed9c917ff0c6f27ca30",
-		ModuleSum:  "h1:hngt58VNLMXtQ048U59kXOugcMt2Sw60M4gpmwnj1jA=",
-		GoModSum:   "h1:ytvZNWbCv7PrAyR80+RKsDJPODsdL6qxyFaXDBNZdqs=",
-		MustLatest: true,
+		Name:      cpaPrimaryProfile,
+		Version:   "v7.2.88",
+		Commit:    "93d74a890a44802f656d7f39a573916b2611896e",
+		ModuleSum: "h1:YfLBYPvkasjqFLzdht+UrEgRLsU3HcM0WDMurNEjIDo=",
+		GoModSum:  "h1:ytvZNWbCv7PrAyR80+RKsDJPODsdL6qxyFaXDBNZdqs=",
 	},
 }
 
@@ -76,8 +75,24 @@ type latestResolvedCPAModule struct {
 	Replace  *latestResolvedCPAModule
 }
 
-// Compile-time binding proves that the latest public plugin API, including the
-// additive UsageRecord.Generate field required by the current v7.2.86 contract is available.
+type latestDownloadedCPAModule struct {
+	Path     string
+	Version  string
+	Sum      string
+	GoModSum string
+	Error    string
+	Origin   *latestCPAModuleOrigin
+}
+
+type latestCPAModuleOrigin struct {
+	VCS  string
+	URL  string
+	Hash string
+	Ref  string
+}
+
+// Compile-time binding proves that the pinned public plugin API, including the
+// additive UsageRecord.Generate field required by the current v7.2.88 contract is available.
 // The Guard does not register UsagePlugin; this is an API compatibility probe.
 var _ = pluginapi.UsageRecord{Generate: true}
 
@@ -210,6 +225,34 @@ func prepareLatestCPAModule(t *testing.T) (string, []string, latestResolvedCPAMo
 	// Go add those checksum-verified entries only to the temporary mod/sum pair;
 	// the checked-in latest-contract module remains minimal and tidy-clean.
 	moduleArguments := []string{"-mod=mod", "-modfile=" + temporaryModule}
+	downloadJSON := runLatestGoJSONCommand(t, goBinary,
+		"mod", "download", "-json", cpaLatestModulePath+"@"+profile.Version,
+	)
+	var download latestDownloadedCPAModule
+	if errUnmarshal := json.Unmarshal([]byte(downloadJSON), &download); errUnmarshal != nil {
+		t.Fatalf("decode CPA module download metadata: %v", errUnmarshal)
+	}
+	if strings.TrimSpace(download.Error) != "" {
+		t.Fatalf("download CPA module metadata: %s", download.Error)
+	}
+	if download.Path != cpaLatestModulePath || download.Version != profile.Version {
+		t.Fatalf("downloaded CPA module = %s@%s, want %s@%s",
+			download.Path, download.Version, cpaLatestModulePath, profile.Version)
+	}
+	if download.Sum != profile.ModuleSum || download.GoModSum != profile.GoModSum {
+		t.Fatalf("downloaded CPA checksums = module %q go.mod %q, want module %q go.mod %q",
+			download.Sum, download.GoModSum, profile.ModuleSum, profile.GoModSum)
+	}
+	if download.Origin == nil {
+		t.Fatal("downloaded CPA module metadata omits Origin")
+	}
+	wantOriginRef := "refs/tags/" + profile.Version
+	if download.Origin.VCS != "git" || download.Origin.URL != cpaOfficialOriginURL ||
+		download.Origin.Hash != profile.Commit || download.Origin.Ref != wantOriginRef {
+		t.Fatalf("downloaded CPA Origin = vcs=%q url=%q hash=%q ref=%q, want git %q %q %q",
+			download.Origin.VCS, download.Origin.URL, download.Origin.Hash, download.Origin.Ref,
+			cpaOfficialOriginURL, profile.Commit, wantOriginRef)
+	}
 
 	moduleJSON := runLatestGoJSONCommand(t, goBinary,
 		"list", moduleArguments[0], moduleArguments[1], "-m", "-json", cpaLatestModulePath,
@@ -229,8 +272,8 @@ func prepareLatestCPAModule(t *testing.T) (string, []string, latestResolvedCPAMo
 		t.Fatalf("resolved latest CPA checksums = module %q go.mod %q, want module %q go.mod %q",
 			module.Sum, module.GoModSum, profile.ModuleSum, profile.GoModSum)
 	}
-	t.Logf("CPA compatibility source contract: profile=%s %s@%s commit=%s sum=%s go_mod_sum=%s latest_required=%t",
-		profile.Name, module.Path, module.Version, profile.Commit, module.Sum, module.GoModSum, profile.MustLatest)
+	t.Logf("CPA pinned compatibility source contract: profile=%s %s@%s commit=%s sum=%s go_mod_sum=%s",
+		profile.Name, module.Path, module.Version, profile.Commit, module.Sum, module.GoModSum)
 	return goBinary, moduleArguments, module
 }
 

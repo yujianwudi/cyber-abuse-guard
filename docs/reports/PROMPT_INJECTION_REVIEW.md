@@ -5,10 +5,10 @@
 > branch, commit, classifier identity, validation, and taxonomy statements must
 > not be inherited as v0.15 PASS evidence.
 
-## Round 6 CPA latest-compatibility addendum
+## Round 6 CPA pinned-compatibility addendum
 
 Exact project version is `0.15`; the only formal tag is `v0.15`, never
-`v0.15.0`. The current source/compile and real-Host release target is v7.2.86
+`v0.15.0`. The current source/compile and real-Host release target is v7.2.88
 only. Its native Host + Mock matrix remains **NOT RUN / PENDING**. Earlier
 v7.2.85/v7.2.84/v7.2.83/v7.2.82/v7.2.81 profiles are historical and non-gating. Commit
 `21ceb57e6b6030e56d7820c9a67a8eecd068c669` passed push
@@ -116,7 +116,7 @@ Ruleset `1.0.7` identifies only embedded YAML Cyber Abuse assets. It does not
 include the Go-level `META-OVERRIDE-001` overlay, extraction semantics,
 tool-schema mappings, or control-plane telemetry. Current v0.15 provenance must
 also bind `classifier-policy-v3` /
-`99e0ce7f59d2e687ebb3e79e1a71300afee8bb56f723cd8ba3f478c71a64cfd2`,
+`1294c6fd587522829d07220d5a6f4214092eba6ce1837636da5b3e3d461ba2a3`,
 the exact Git commit/tree, and the candidate workflow run.
 
 The final reverse audit also closed a large-request extraction gap relevant to
@@ -129,11 +129,11 @@ Nested business lookalikes and scalar fields remain inert. Native CPA
 inspection; this is source-level compatibility, not native Host evidence.
 
 Ordinary CI does not invoke the consumed evaluation-v10 boundary target or
-start CPA. The current v7.2.86 lane is source/compile compatibility evidence
+start CPA. The current v7.2.88 lane is source/compile compatibility evidence
 only. The final PR head must first pass PR CI, merge to `main`, and the exact
 resulting main commit/tree must pass push CI. The private untagged clean
 candidate is then dispatched from `refs/heads/main`; the owner-operated
-v7.2.86 Host validation and
+v7.2.88 Host validation and
 independent source/artifact/Host review plus a candidate-bound external
 `evaluation-v11` or later first-and-only `CONSUMED / PASS` attestation are
 separate and are not production authorization. Until exact evidence is recorded, status is:

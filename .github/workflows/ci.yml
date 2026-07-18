@@ -83,7 +83,7 @@ jobs:
         run: make round6-git-diff-check
       - name: module-verify
         run: make round6-module-verify
-      - name: CPA-v7.2.86-host-source-and-fail-open-contract
+      - name: CPA pinned Host source and fail-open contract
         run: make cpa-host-fixture-contract
       - name: round4-regression
         run: make round4-regression
@@ -145,8 +145,8 @@ jobs:
             printf 'artifact_path=%s artifact_bytes=%s ' "$artifact" "$(stat -c %s "$artifact")"
             sha256sum "$artifact"
           done
-          echo 'integration_summary=local CPA v7.2.86 source/fail-open and build checks completed; latest-source remote verification and isolated Host validation pending'
-          echo 'cpa_latest_identity=v7.2.86@81d70f5d9f3fdb39a6290ed9c917ff0c6f27ca30'
+          echo 'integration_summary=local pinned CPA v7.2.88 source/fail-open and build checks completed; isolated Host validation pending'
+          echo 'cpa_pinned_identity=v7.2.88@93d74a890a44802f656d7f39a573916b2611896e'
       - name: clean-tree-check
         run: make clean-tree-check
       - name: Upload development verification artifacts
@@ -163,10 +163,9 @@ jobs:
             dist/ruleset.sha256
             dist/sbom.cdx.json
           if-no-files-found: error
-      - name: CPA-v7.2.86-latest-source-compile-compatibility
+      - name: CPA v7.2.88 pinned source/compile compatibility
         env:
           CPA_COMPAT_VERIFY_REMOTE: "1"
-          GITHUB_TOKEN: ${{ github.token }}
         run: bash ./scripts/cpa-latest-compat.sh
 
   reproducibility:

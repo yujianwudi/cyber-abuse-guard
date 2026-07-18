@@ -11,6 +11,8 @@ if (($# != 1)); then
   release_die "usage: verify-external-release-attestation.sh ATTESTATION"
 fi
 checksum="${attestation}.sha256"
+pinned_cpa_version='v7.2.88'
+pinned_cpa_commit='93d74a890a44802f656d7f39a573916b2611896e'
 
 require_identity() {
   local name="$1"
@@ -80,7 +82,9 @@ jq -e \
   --arg tree "$EXPECTED_TREE" \
   --arg candidate_run_id "$CANDIDATE_RUN_ID" \
   --arg so_sha256 "$EXPECTED_SO_SHA256" \
-  --arg store_zip_sha256 "$EXPECTED_STORE_ZIP_SHA256" '
+  --arg store_zip_sha256 "$EXPECTED_STORE_ZIP_SHA256" \
+  --arg cpa_version "$pinned_cpa_version" \
+  --arg cpa_commit "$pinned_cpa_commit" '
   def exact_keys($expected):
     type == "object" and keys == ($expected | sort);
   def sha256:
@@ -95,7 +99,7 @@ jq -e \
     "schema_version", "status", "version", "tag", "commit", "tree",
     "ci_run_id", "candidate_run_id", "artifacts", "evidence", "workflow"
   ]) and
-  .schema_version == 1 and
+  .schema_version == 2 and
   .status == "HOST_AUDIT_AND_EVALUATION_PASS / FORMAL_RELEASE_BLOCKED" and
   .version == "0.15" and
   .tag == $tag and
@@ -107,13 +111,17 @@ jq -e \
   (.artifacts.so_sha256 | sha256 and . == $so_sha256) and
   (.artifacts.store_zip_sha256 | sha256 and . == $store_zip_sha256) and
   (.evidence | exact_keys([
-    "cpa_v7_2_86_sha256",
+    "cpa_version",
+    "cpa_commit",
+    "cpa_host_sha256",
     "independent_audit_sha256",
     "independent_evaluation_id",
     "independent_evaluation_status",
     "independent_evaluation_sha256"
   ])) and
-  (.evidence.cpa_v7_2_86_sha256 | sha256) and
+  .evidence.cpa_version == $cpa_version and
+  .evidence.cpa_commit == $cpa_commit and
+  (.evidence.cpa_host_sha256 | sha256) and
   (.evidence.independent_audit_sha256 | sha256) and
   (.evidence.independent_evaluation_id | independent_evaluation_v11_or_later) and
   .evidence.independent_evaluation_status == "CONSUMED / PASS" and
@@ -123,7 +131,7 @@ jq -e \
   ])) and
   .workflow.repository == "yujianwudi/cyber-abuse-guard" and
   .workflow.ref == (
-    "yujianwudi/cyber-abuse-guard/.github/workflows/round6-blocked-prerelease.yml@refs/tags/" + $tag
+    "yujianwudi/cyber-abuse-guard/.github/workflows/attested-prerelease.yml@refs/tags/" + $tag
   ) and
   .workflow.sha == $commit and
   (.workflow.run_id | safe_positive_integer) and
@@ -135,6 +143,6 @@ final_attestation_sha256="$(sha256sum "$attestation" | awk '{print $1}')"
 [[ "$final_attestation_sha256" == "$actual_attestation_sha256" ]] || \
   release_die "external release attestation changed during verification"
 
-printf 'external release attestation verified: tag=%s commit=%s evaluation=%s\n' \
-  "$EXPECTED_TAG" "$EXPECTED_COMMIT" \
+printf 'external release attestation verified: tag=%s commit=%s cpa=%s@%s evaluation=%s\n' \
+  "$EXPECTED_TAG" "$EXPECTED_COMMIT" "$pinned_cpa_version" "$pinned_cpa_commit" \
   "$(jq -r '.evidence.independent_evaluation_id' "$attestation")"

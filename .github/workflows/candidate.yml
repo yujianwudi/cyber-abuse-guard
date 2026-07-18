@@ -1,4 +1,4 @@
-name: Round6 clean candidate - NOT A RELEASE
+name: Candidate build - NOT A RELEASE
 
 on:
   workflow_dispatch:
@@ -58,7 +58,7 @@ jobs:
           [[ "$DISPATCH_REF" == "refs/heads/main" ]]
           [[ "$DISPATCH_SHA" == "$EXPECTED_COMMIT" ]]
           [[ "$WORKFLOW_SHA" == "$EXPECTED_COMMIT" ]]
-          [[ "$WORKFLOW_REF" == "${GITHUB_REPOSITORY}/.github/workflows/round6-candidate.yml@${DISPATCH_REF}" ]]
+          [[ "$WORKFLOW_REF" == "${GITHUB_REPOSITORY}/.github/workflows/candidate.yml@${DISPATCH_REF}" ]]
       - name: Bind candidate admission to successful exact-head push CI
         env:
           CI_RUN_ID: ${{ inputs.ci_run_id }}
@@ -154,7 +154,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/bin"
           GOBIN="$RUNNER_TEMP/bin" go install github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@${CYCLONEDX_GOMOD_VERSION}
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
-      - name: Recheck source, regressions, and latest CPA v7.2.86 contract
+      - name: Recheck source, regressions, and pinned CPA v7.2.88 contract
         env:
           CPA_COMPAT_VERIFY_REMOTE: '1'
         run: |

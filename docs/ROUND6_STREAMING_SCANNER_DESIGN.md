@@ -10,7 +10,7 @@ workflow and remain unreleased. See
 `round6-prerelease-attestation.json` and `formal-release-attestation.json`.
 
 Current classifier identity is `classifier-policy-v3` /
-`99e0ce7f59d2e687ebb3e79e1a71300afee8bb56f723cd8ba3f478c71a64cfd2`;
+`1294c6fd587522829d07220d5a6f4214092eba6ce1837636da5b3e3d461ba2a3`;
 scanner identity is `streaming-scanner-v1`.
 
 Commit `21ceb57e6b6030e56d7820c9a67a8eecd068c669` passed push and PR CI
@@ -155,12 +155,12 @@ Counters are fixed and low-cardinality. `text_bytes_scanned_total` may exceed th
 
 This design does not fetch remote media, call a model, select a provider,
 inspect production observe data, or execute third-party adversarial
-repositories. Host validation must use the official CPA v7.2.86 binary and the
+repositories. Host validation must use the official CPA v7.2.88 binary and the
 exact clean Linux amd64 candidate from the private
 untagged Actions artifact, a Mock upstream, no real auth pool, and no real
 provider. The final PR must pass PR CI, merge to `main`, and pass exact
 post-merge main push CI before that candidate is dispatched from
-`refs/heads/main`. The CPA v7.2.86 Host run and the independent
+`refs/heads/main`. The CPA v7.2.88 Host run and the independent
 source/artifact/Host audit are currently **NOT RUN / PENDING**. An optional
 annotated development prerelease
 may follow only after those gates and a candidate-bound external

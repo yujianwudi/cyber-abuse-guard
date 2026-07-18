@@ -153,7 +153,7 @@ jobs:
                 "schema_version", "status", "version", "tag", "commit", "tree",
                 "ci_run_id", "candidate_run_id", "artifacts", "evidence", "workflow"
               ]) and
-              .schema_version == 1 and
+              .schema_version == 2 and
               .status == "HOST_AUDIT_AND_EVALUATION_PASS / FORMAL_RELEASE_BLOCKED" and
               .version == "0.15" and .tag == $tag and
               .commit == $commit and .tree == $tree and
@@ -163,11 +163,14 @@ jobs:
               (.artifacts.so_sha256 | sha256) and
               (.artifacts.store_zip_sha256 | sha256) and
               (.evidence | exact_keys([
-                "cpa_v7_2_86_sha256", "independent_audit_sha256",
+                "cpa_version", "cpa_commit", "cpa_host_sha256",
+                "independent_audit_sha256",
                 "independent_evaluation_id", "independent_evaluation_status",
                 "independent_evaluation_sha256"
               ])) and
-              (.evidence.cpa_v7_2_86_sha256 | sha256) and
+              .evidence.cpa_version == "v7.2.88" and
+              .evidence.cpa_commit == "93d74a890a44802f656d7f39a573916b2611896e" and
+              (.evidence.cpa_host_sha256 | sha256) and
               (.evidence.independent_audit_sha256 | sha256) and
               (.evidence.independent_evaluation_id |
                 test("^evaluation-v(1[1-9]|[2-9][0-9]|[1-9][0-9]{2,})$")) and
@@ -176,7 +179,7 @@ jobs:
               (.workflow | exact_keys(["repository", "ref", "sha", "run_id", "run_attempt"])) and
               .workflow.repository == $repository and
               .workflow.ref == ($repository +
-                "/.github/workflows/round6-blocked-prerelease.yml@refs/tags/" + $tag) and
+                "/.github/workflows/attested-prerelease.yml@refs/tags/" + $tag) and
               .workflow.sha == $commit and
               (.workflow.run_id | positive_integer) and
               (.workflow.run_attempt | positive_integer)
@@ -382,11 +385,11 @@ jobs:
           verify_run "$(jq -r '.ci_run_id' "$attestation")" \
             'CI' '.github/workflows/ci.yml' 'push'
           verify_run "$candidate_run_id" \
-            'Round6 clean candidate - NOT A RELEASE' \
-            '.github/workflows/round6-candidate.yml' 'workflow_dispatch'
+            'Candidate build - NOT A RELEASE' \
+            '.github/workflows/candidate.yml' 'workflow_dispatch'
           verify_run "$(jq -r '.workflow.run_id' "$attestation")" \
-            'Round6 prerelease - BLOCKED / PENDING HOST AND INDEPENDENT AUDIT' \
-            '.github/workflows/round6-blocked-prerelease.yml' 'workflow_dispatch'
+            'Attested prerelease - HOST, AUDIT, AND EVALUATION REQUIRED' \
+            '.github/workflows/attested-prerelease.yml' 'workflow_dispatch'
           blocked_run_id="$(jq -r '.workflow.run_id' "$attestation")"
 
           {
@@ -428,7 +431,7 @@ jobs:
           done <"$draft_files"
       - name: Run all release gates and build artifacts
         env:
-          CPA_LATEST_VERIFY_REMOTE: '1'
+          CPA_COMPAT_VERIFY_REMOTE: '1'
         run: make formal-release
       - name: Recheck hashes and source cleanliness
         run: make artifact-hash clean-tree-check

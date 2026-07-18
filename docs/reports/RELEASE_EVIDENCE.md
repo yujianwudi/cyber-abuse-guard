@@ -5,8 +5,9 @@ Last updated: 2026-07-18 (Asia/Shanghai)
 ## Round 6 v0.15 current evidence status — not a release PASS
 
 Exact project version is `0.15`; the only formal tag is `v0.15`, never
-`v0.15.0`. Active validation and the supported release target are limited to
-CPA v7.2.86 (`81d70f5d9f3fdb39a6290ed9c917ff0c6f27ca30`). Legacy
+`v0.15.0`. Active validation and the supported release target are fixed at
+CPA v7.2.88 (`93d74a890a44802f656d7f39a573916b2611896e`). Later
+upstream versions are not followed automatically. Legacy
 version-specific profiles and Make aliases have been removed.
 
 ```text
@@ -23,7 +24,9 @@ source_only_tag_ci: 29630926354 / SUCCESS
 attached_release_assets: none
 private_untagged_clean_candidate: NOT CREATED / PENDING
 candidate_manifest: NOT CREATED / PENDING
-cpa_v7.2.86_host_mock: NOT RUN / PENDING
+cpa_host_target: v7.2.88 / 93d74a890a44802f656d7f39a573916b2611896e
+cpa_host_mock: NOT RUN / PENDING
+cpa_host_attestation_schema: 2 / cpa_version,cpa_commit,cpa_host_sha256
 four_layer_zero_call_evidence: NOT RUN / PENDING
 independent_source_artifact_host_audit: NOT RUN / PENDING
 candidate_bound_evaluation_v11_plus: NOT RUN / PENDING / requires CONSUMED PASS
@@ -42,7 +45,7 @@ replace the dedicated private, untagged candidate workflow. That workflow has
 not been dispatched and must produce clean Linux amd64 bytes plus
 `candidate-manifest.json`; clean bytes remain unreleased.
 
-The CPA v7.2.86 Host + Mock record and the independent audit must bind the same
+The CPA v7.2.88 Host + Mock record and the independent audit must bind the same
 candidate workflow run, commit, tree, and SO SHA-256. Every local block must
 show zero Auth Selector, Provider, usage, and Mock-upstream deltas. The exact
 candidate must also receive an external `evaluation-v11` or later first-and-only
@@ -54,7 +57,7 @@ and verified draft consume that same candidate-level attestation. Protected
 promotion may publish only the unchanged draft.
 
 Current policy identity is `classifier-policy-v3` /
-`99e0ce7f59d2e687ebb3e79e1a71300afee8bb56f723cd8ba3f478c71a64cfd2`;
+`1294c6fd587522829d07220d5a6f4214092eba6ce1837636da5b3e3d461ba2a3`;
 scanner identity is `streaming-scanner-v1`; ruleset identity remains `1.0.7` /
 `7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134`.
 

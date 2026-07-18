@@ -8,7 +8,7 @@ current execution evidence is Linux amd64-only. Windows, macOS, and musl/Alpine
 are outside this round.
 
 Classifier policy identity is `classifier-policy-v3` /
-`99e0ce7f59d2e687ebb3e79e1a71300afee8bb56f723cd8ba3f478c71a64cfd2`;
+`1294c6fd587522829d07220d5a6f4214092eba6ce1837636da5b3e3d461ba2a3`;
 scanner identity is `streaming-scanner-v1`.
 
 The release chain is deliberately ordered:
@@ -18,7 +18,7 @@ final PR head + PR CI
   -> merge to main
   -> exact post-merge main push CI
   -> private untagged clean-candidate Actions artifact
-  -> CPA v7.2.86 Host + Mock evidence
+  -> CPA v7.2.88 Host + Mock evidence
   -> independent source/artifact/Host audit
   -> candidate-bound external evaluation-v11+ CONSUMED / PASS
   -> optional annotated development prerelease
@@ -69,7 +69,7 @@ It verifies named suites for:
   256 KiB, 256 KiB + 1, 270 KiB, 512 KiB, 1 MiB, 4 MiB, and near the
   effective RPC limit;
 - management status, audit privacy, and legacy `max_scan_bytes` migration;
-- source/compile compatibility with the current CPA v7.2.86 release target.
+- source/compile compatibility with the fixed CPA v7.2.88 release target.
 
 The safety checker inspects the reachable Make/script graph. Ordinary Round 6
 entrypoints must not reach formal release, consumed evaluation, Holdout, or
@@ -85,7 +85,7 @@ earlier `21ceb57` checkpoint.
 
 ## Private untagged clean candidate
 
-`.github/workflows/round6-candidate.yml` is the only authorized candidate-byte
+`.github/workflows/candidate.yml` is the only authorized candidate-byte
 producer. A `workflow_dispatch` workflow is callable only after it exists on the
 default branch, so the final PR must already be merged. It is manual-only and
 runs on `ubuntu-24.04`. Admission requires:
@@ -133,7 +133,7 @@ Linux amd64 CPA Hosts with a Mock upstream and no real auth pool or Provider:
 
 | Target | Exact source identity | Current real Host state |
 |---|---|---|
-| CPA v7.2.86 | `81d70f5d9f3fdb39a6290ed9c917ff0c6f27ca30` | **NOT RUN / PENDING** |
+| CPA v7.2.88 | `93d74a890a44802f656d7f39a573916b2611896e` | **NOT RUN / PENDING** |
 
 Earlier v7.2.85/v7.2.84/v7.2.83/v7.2.82/v7.2.81 source/compile checks are historical engineering
 context only. They are not current v0.15 Host or release requirements.
@@ -181,7 +181,7 @@ The neutral machine-readable source policy is
 
 ## Optional annotated development prerelease
 
-An optional durable development handoff may be created only after the v7.2.86
+An optional durable development handoff may be created only after the v7.2.88
 Host record, the independent audit, and the candidate-bound external evaluation-v11+
 `CONSUMED / PASS` attestation pass. It uses an existing annotated tag:
 
@@ -190,15 +190,16 @@ v0.15-dev.round6
 v0.15-dev.round6.N
 ```
 
-`.github/workflows/round6-blocked-prerelease.yml` binds that tag to the exact
+`.github/workflows/attested-prerelease.yml` binds that tag to the exact
 candidate `main` commit/tree, successful main push CI run, successful clean-candidate run,
-candidate SO SHA-256, the v7.2.86 Host-record hash, and independent-audit hash.
+candidate SO SHA-256, the v7.2.88 Host-record hash, and independent-audit hash.
 It rebuilds the same clean exact-source bytes, proves reproducibility, and
 rechecks the SO hash before and after Actions artifact transfer.
 
-The prerelease attaches `round6-prerelease-attestation.json` and its SHA-256
-sidecar. That external record binds the candidate workflow, source identity,
-v7.2.86 Host evidence hash, independent-audit hash, candidate artifact hashes,
+The prerelease attaches schema-v2 `round6-prerelease-attestation.json` and its
+SHA-256 sidecar. That external record binds the candidate workflow, source
+identity, CPA Host identity and evidence through `cpa_version`, `cpa_commit`,
+and `cpa_host_sha256`, independent-audit hash, candidate artifact hashes,
 `independent_evaluation_id`, and `independent_evaluation_sha256`; the source tree
 does not predeclare its future values.
 

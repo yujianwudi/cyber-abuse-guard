@@ -19,7 +19,7 @@ first 256 KiB of the JSON body.
 
 The candidate is still blocked because the final post-migration v0.15 PR head
 and PR CI, merge to `main`, exact post-merge `main` Linux amd64 push CI, and a
-private clean-candidate artifact do not yet exist; CPA v7.2.86 has not been run
+private clean-candidate artifact do not yet exist; CPA v7.2.88 has not been run
 as a real Host with the
 official candidate `.so` and Mock upstream, and no independent
 source/artifact/Host audit or candidate-bound external evaluation-v11+
@@ -79,7 +79,7 @@ performance number from them is promoted by this handoff.
 | Candidate artifact hashes | **PENDING - private untagged clean-candidate Actions run only** |
 | Scanner identity | streaming-scanner-v1 |
 | Classifier policy | classifier-policy-v3 |
-| Classifier policy SHA-256 | 99e0ce7f59d2e687ebb3e79e1a71300afee8bb56f723cd8ba3f478c71a64cfd2 |
+| Classifier policy SHA-256 | 1294c6fd587522829d07220d5a6f4214092eba6ce1837636da5b3e3d461ba2a3 |
 | YAML ruleset | 1.0.7 |
 | YAML ruleset SHA-256 | 7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134 |
 | Audit schema | v3 |
@@ -304,7 +304,7 @@ isolated behind the consumed_evaluation build tag.
 
 | Target | Identity | Source/compile result | Real Host result |
 |---|---|---|---|
-| Current release target | CPA v7.2.86 / 81d70f5d9f3fdb39a6290ed9c917ff0c6f27ca30 | v7.2.86 final PR-head rerun PENDING; historical `21ceb57` passed only the v7.2.83 latest-source lane | **NOT RUN / PENDING** |
+| Current release target | CPA v7.2.88 / 93d74a890a44802f656d7f39a573916b2611896e | v7.2.88 final PR-head rerun PENDING; historical `21ceb57` passed only the v7.2.83 latest-source lane | **NOT RUN / PENDING** |
 
 Earlier v7.2.85/v7.2.84/v7.2.83/v7.2.82/v7.2.81 source/compile profiles are historical non-gating
 engineering evidence. They are not current v0.15 Host or release requirements.
@@ -312,7 +312,7 @@ engineering evidence. They are not current v0.15 Host or release requirements.
 The required Host evidence must use the private untagged clean-candidate Linux
 amd64 `.so`, an
 isolated CPA Host, a Mock upstream, no real auth pool, and no real Provider.
-The v7.2.86 Host evidence record and the independent audit must cite the same
+The v7.2.88 Host evidence record and the independent audit must cite the same
 candidate workflow run ID, commit, tree, and SO SHA-256. The candidate manifest
 binds those values before any tag exists. If an optional blocked development
 prerelease is later needed, its workflow must bind the same successful candidate
@@ -388,7 +388,7 @@ were v2.
 
 ## 12. Known limitations and residual risk
 
-- CPA v7.2.86 real Host behavior is unverified.
+- CPA v7.2.88 real Host behavior is unverified.
 - Linux race, fuzz duration, benchmark, allocation, RSS, and reproducibility
   evidence is not yet attached to the final source identity.
 - The Linux build script now audits complete `readelf --version-info` tags,
@@ -504,7 +504,7 @@ independent PASS and a new explicit user decision.
 | Candidate dispatch from `refs/heads/main` | **NOT RUN / PENDING** |
 | Private untagged clean-candidate Actions artifact | **NOT CREATED / PENDING** |
 | Candidate manifest and clean SO/Store ZIP hashes | **PENDING** |
-| CPA v7.2.86 official SO + Host + Mock matrix | **NOT RUN** |
+| CPA v7.2.88 official SO + Host + Mock matrix | **NOT RUN** |
 | Four-layer zero-call proof | **NOT RUN** |
 | SQLite v3 migration, privacy canary, quick-check, and rollback | **NOT RUN** |
 | Independent source/artifact/Host audit | **NOT RUN** |
@@ -531,7 +531,7 @@ draft, then protected promotion.
 Status: BLOCKED
 Project version: 0.15
 Formal tag: v0.15 (never v0.15.0)
-Reason: final v0.15 candidate, CPA v7.2.86 Host, independent audit, and candidate-bound evaluation-v11+ PASS are pending
+Reason: final v0.15 candidate, CPA v7.2.88 Host, independent audit, and candidate-bound evaluation-v11+ PASS are pending
 Base commit: 7a416df66a79218d73214084d4bf8a733268d894
 Base tree: 63db7b7cb14a636f5ba9ff4453be4ebeef170b68
 Pre-version checkpoint: 21ceb57e6b6030e56d7820c9a67a8eecd068c669 / push+PR CI PASS / not final v0.15 evidence
@@ -544,8 +544,8 @@ Candidate artifact: PRIVATE UNTAGGED CLEAN ACTIONS ARTIFACT / NOT CREATED / PEND
 Platform: Linux amd64 only
 Streaming scanner identity: streaming-scanner-v1
 Classifier policy: classifier-policy-v3
-Classifier policy SHA-256: 99e0ce7f59d2e687ebb3e79e1a71300afee8bb56f723cd8ba3f478c71a64cfd2
-CPA v7.2.86 Host result: NOT RUN / PENDING
+Classifier policy SHA-256: 1294c6fd587522829d07220d5a6f4214092eba6ce1837636da5b3e3d461ba2a3
+CPA v7.2.88 Host result: NOT RUN / PENDING
 Long-text Linux size ladder result: PENDING FINAL PR / POST-MERGE MAIN LINUX CI
 Cross-window result: PENDING FINAL PR / POST-MERGE MAIN LINUX CI
 Race/fuzz/benchmark/RSS result: PENDING FINAL PR / POST-MERGE MAIN LINUX CI

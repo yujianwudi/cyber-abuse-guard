@@ -1,26 +1,28 @@
-# CPA latest source/compile compatibility contract
+# CPA v7.2.88 pinned source/compile compatibility contract
 
-This isolated module is the source-contract half of the Round6 CPA latest-version
-gate. The fixed profile is:
+This isolated module is the source-contract half of the Round6 CPA compatibility
+gate. Its only profile is the reviewed CPA release pin:
 
 | Profile | CPA | Commit | Module sum |
 |---|---|---|---|
-| `primary` | `v7.2.86` | `81d70f5d9f3fdb39a6290ed9c917ff0c6f27ca30` | `h1:hngt58VNLMXtQ048U59kXOugcMt2Sw60M4gpmwnj1jA=` |
+| `primary` | `v7.2.88` | `93d74a890a44802f656d7f39a573916b2611896e` | `h1:YfLBYPvkasjqFLzdht+UrEgRLsU3HcM0WDMurNEjIDo=` |
 
 The profile pins go.mod sum
-`h1:ytvZNWbCv7PrAyR80+RKsDJPODsdL6qxyFaXDBNZdqs=`. Unknown profile names fail
-closed. The checked-in root and isolated modules both use the current latest
-CPA release.
+`h1:ytvZNWbCv7PrAyR80+RKsDJPODsdL6qxyFaXDBNZdqs=`. The checked-in isolated
+module uses this reviewed CPA release. Unknown profile names fail closed.
 
 The tests run 18 official Host routing/status and metadata-sanitization contracts and
 11 official Interactions route/handler contracts, then apply three
 checksum-pinned overlays only to ephemeral copies of the selected official CPA
 module. `scripts/cpa-latest-compat.sh` compiles the Guard and integration
-packages and runs the real Guard registration/route tests against the latest
-profile through temporary modfiles. With `CPA_COMPAT_VERIFY_REMOTE=1`, the script
-requires `v7.2.86` to remain GitHub's current `releases/latest` and verifies its
-Tag-to-Commit identity. `CPA_LATEST_VERIFY_REMOTE=1` remains a compatibility
-alias for the same remote check.
+packages against the checked-in v7.2.88 modules and runs the real Guard
+registration/route tests. Only the official upstream test graph and overlays
+use ephemeral modfiles. With `CPA_COMPAT_VERIFY_REMOTE=1`, it verifies the exact
+`v7.2.88` Tag-to-Commit identity through the official Git origin, the
+official Go module `Origin`, and both Go sums. It deliberately does not query
+GitHub REST Release metadata or `releases/latest`, and it needs no repository
+token; a PASS applies only to the reviewed pinned source and never claims
+moving-latest compatibility.
 
 `CPA_COMPAT_PROFILE=primary` is the only supported profile and is the default.
 
