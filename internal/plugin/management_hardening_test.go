@@ -48,7 +48,7 @@ func TestManagementUnblockAuthenticationAndBodyContract(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			p := New()
 			t.Cleanup(p.Shutdown)
-			register(t, p, "audit:\n  enabled: false\n")
+			register(t, p, "audit:\n  enabled: false\nsubject_control:\n  enabled: true\n")
 			state := p.runtime.Load()
 			for iteration := 0; iteration < 3; iteration++ {
 				state.subject.Evaluate(subjectHash, 100)

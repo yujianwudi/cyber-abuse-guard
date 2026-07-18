@@ -108,14 +108,15 @@ func TestOversizedNonRoutingRPCRemainsRejected(t *testing.T) {
 	}
 }
 
-func TestOversizedRouteWritesPrivacyMinimalAuditEvent(t *testing.T) {
+func TestOversizedRoutePersistsOnlyOutsideObserve(t *testing.T) {
 	for _, testCase := range []struct {
-		mode       string
-		wantAction string
+		mode          string
+		wantAction    string
+		expectedCount int
 	}{
-		{mode: "balanced", wantAction: "audit"},
-		{mode: "audit", wantAction: "audit"},
-		{mode: "observe", wantAction: "observe"},
+		{mode: "balanced", wantAction: "audit", expectedCount: 1},
+		{mode: "audit", wantAction: "audit", expectedCount: 1},
+		{mode: "observe", expectedCount: 0},
 	} {
 		t.Run(testCase.mode, func(t *testing.T) {
 			p := New()
@@ -127,8 +128,11 @@ func TestOversizedRouteWritesPrivacyMinimalAuditEvent(t *testing.T) {
 			}
 			events := managementJSON(t, p, http.MethodGet, managementBasePath+"/events", nil)
 			items, ok := events["events"].([]any)
-			if !ok || len(items) != 1 {
-				t.Fatalf("oversized audit events=%#v", events)
+			if !ok || len(items) != testCase.expectedCount {
+				t.Fatalf("oversized audit events=%#v, want count %d", events, testCase.expectedCount)
+			}
+			if testCase.expectedCount == 0 {
+				return
 			}
 			event := items[0].(map[string]any)
 			if event["action"] != testCase.wantAction || event["category"] != "rpc_body_limit" ||
@@ -139,8 +143,6 @@ func TestOversizedRouteWritesPrivacyMinimalAuditEvent(t *testing.T) {
 			wantDecision := "allow_due_to_incomplete_inspection"
 			if testCase.mode == "audit" {
 				wantDecision = "audit_incomplete_inspection"
-			} else if testCase.mode == "observe" {
-				wantDecision = "observe_incomplete_inspection"
 			}
 			if event["decision"] != wantDecision {
 				t.Fatalf("oversized event decision=%#v, want %q", event, wantDecision)

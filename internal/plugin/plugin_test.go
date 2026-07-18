@@ -324,7 +324,7 @@ func TestSubjectRiskIsAppliedOnceInRouterAndNeverInExecutor(t *testing.T) {
 	t.Setenv(subject.HMACKeyEnvironment, "0123456789abcdef0123456789abcdef")
 	p := New()
 	t.Cleanup(func() { p.Shutdown() })
-	register(t, p, "audit:\n  enabled: false\nsubject_control:\n  enabled: true\n")
+	register(t, p, "mode: balanced\naudit:\n  enabled: false\nsubject_control:\n  enabled: true\n")
 
 	headers := http.Header{"Authorization": []string{"Bearer downstream-key"}}
 	routeRequest := pluginapi.ModelRouteRequest{
@@ -358,7 +358,7 @@ func TestSubjectRiskIsAppliedOnceInRouterAndNeverInExecutor(t *testing.T) {
 	}
 }
 
-func TestObservePersistsOneEventAndManagementTestNeverPersists(t *testing.T) {
+func TestObserveDoesNotPersistRouteOrManagementTestEvents(t *testing.T) {
 	p := New()
 	t.Cleanup(func() { p.Shutdown() })
 	dataDir := filepath.ToSlash(t.TempDir())
@@ -374,13 +374,8 @@ func TestObservePersistsOneEventAndManagementTestNeverPersists(t *testing.T) {
 	}
 	events := managementJSON(t, p, http.MethodGet, managementBasePath+"/events", nil)
 	items, ok := events["events"].([]any)
-	if !ok || len(items) != 1 {
-		t.Fatalf("observe route plus management test events: %#v, want exactly one", events)
-	}
-	event, ok := items[0].(map[string]any)
-	if !ok || event["action"] != "observe" || event["decision"] != "observe_malicious_text" ||
-		event["coverage"] != "complete" || event["scanner"] != streamingScannerIdentity {
-		t.Fatalf("observe event=%#v", items[0])
+	if !ok || len(items) != 0 {
+		t.Fatalf("observe route plus management test events: %#v, want none", events)
 	}
 }
 
@@ -413,7 +408,7 @@ func TestTotalTextLimitUsesIncompleteInspectionModeContract(t *testing.T) {
 		wantHandled bool
 		wantEvent   bool
 	}{
-		{mode: "observe", wantHandled: false, wantEvent: true},
+		{mode: "observe", wantHandled: false, wantEvent: false},
 		{mode: "audit", wantHandled: false, wantEvent: true},
 		{mode: "balanced", wantHandled: false, wantEvent: true},
 		{mode: "strict", wantHandled: true, wantEvent: true},

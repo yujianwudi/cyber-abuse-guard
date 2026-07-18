@@ -93,12 +93,18 @@ Envelope 完整性和文本 coverage 分开记录：
 | `balanced` | 达到阈值时本地阻断 | 放行 + audit |
 | `strict` | 达到 strict 阈值时本地阻断 | 本地阻断 + audit |
 
+安全启动默认值为 `mode: observe` 和 `subject_control.enabled: false`。
+Observe 只更新有界 counters：不阻断、不累计主体风险、不持久化逐请求 SQLite
+event，也不会为审计关联而扫描完整请求 Body 计算哈希。
+
 Incomplete 请求不进入 subject risk。半截 prefix 不能在 `balanced` 下产生策略阻断。
 
 ## 默认有效上限
 
 | 控制项 | 默认值 / 边界 |
 |---|---|
+| 运行模式 | `observe` |
+| Subject control | 默认关闭，需显式启用 |
 | CPA 可见 RPC envelope | 8 MiB |
 | Classifier 保留窗口 | 旧别名默认 256 KiB；合法范围 16 KiB–1 MiB |
 | 模型可见文本累计量 | 8 MiB |

@@ -374,6 +374,12 @@ file is opened with `O_NOFOLLOW`; its type, permissions, size, and contents are
 validated through that same descriptor to prevent final-component symlink and
 path-swap races.
 
+Subject control is disabled by default and the Router does not enter the
+identifier/controller path unless `subject_control.enabled: true` is explicit.
+The domain-separated request digest is computed lazily only for an enabled
+subject evaluation, a final block pending key, or a persisted audit event whose
+configuration includes `log_request_hash: true`.
+
 Risk entries are in-memory rolling windows with time decay. Risk is added only
 for results at or above the audit threshold. Repeat hits receive a bounded
 multiplier. Cooldown/manual-block state applies only to new risky requests;

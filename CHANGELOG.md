@@ -30,6 +30,13 @@ future stable release still requires a newly authored independent unseen set.
 - Extend release-policy and CI contracts so schema-v2 Host evidence fields,
   fixed CPA verification, and the absence of checked-out repository tokens are
   covered by mutation tests rather than documentation alone.
+- Change safe startup behavior to `mode: observe` with subject control disabled.
+  Observe now updates counters without persisting per-request SQLite events,
+  including streaming/incomplete and oversized request paths. Explicit
+  `balanced` plus `subject_control.enabled: true` remains supported.
+- Defer the domain-separated full-body request hash until it is required by an
+  enabled subject evaluation, a final local block pending key, or a persisted
+  audit event with `log_request_hash: true`.
 
 - Add a dedicated, manual `v0.15-rc.2` prerelease workflow for clean Linux
   amd64 server-sandbox assets. It binds an annotated RC tag to the exact main
