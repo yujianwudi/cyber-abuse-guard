@@ -60,6 +60,7 @@ for required_file in \
   "$root/docs/reports/PHASE0_CPA_CONTRACT.md" \
   "$root/docs/reports/PROMPT_INJECTION_REVIEW.md" \
   "$root/docs/reports/PRIVACY.md" \
+  "$root/docs/reports/PUBLIC_JAILBREAK_REPOSITORY_REVIEW.md" \
   "$root/docs/reports/RELEASE_EVIDENCE.md" \
   "$root/scripts/check-production-health.sh" \
   "$root/scripts/generate-hmac-key.sh"; do
@@ -95,7 +96,9 @@ install -m 0644 "$root/docs/reports/TEST_REPORT.md" \
   "$root/docs/reports/CPA_INTEGRATION.md" \
   "$root/docs/reports/PHASE0_CPA_CONTRACT.md" \
   "$root/docs/reports/PROMPT_INJECTION_REVIEW.md" \
-  "$root/docs/reports/PRIVACY.md" "$root/docs/reports/RELEASE_EVIDENCE.md" \
+  "$root/docs/reports/PRIVACY.md" \
+  "$root/docs/reports/PUBLIC_JAILBREAK_REPOSITORY_REVIEW.md" \
+  "$root/docs/reports/RELEASE_EVIDENCE.md" \
   "$bundle_stage/docs/reports/"
 install -m 0755 "$root/scripts/check-production-health.sh" \
   "$root/scripts/generate-hmac-key.sh" "$bundle_stage/scripts/"

@@ -68,6 +68,7 @@ class Round6SafeGateContractTest(unittest.TestCase):
 {ignored}        run: |
           python3 -B scripts/round6_safe_gate_contract_test.py
           python3 -B scripts/round6_safe_gate_contract.py --root .
+          ./scripts/release-doc-consistency.sh
 """
 
     def run_step(self, command: str) -> str:
@@ -124,6 +125,9 @@ jobs:
         payloads = {
             "scripts/round6_safe_gate_contract.py": "# synthetic gate\n",
             "scripts/round6_safe_gate_contract_test.py": "# synthetic gate tests\n",
+            "scripts/release-doc-consistency.sh": Path(__file__).with_name(
+                "release-doc-consistency.sh"
+            ).read_text(encoding="utf-8"),
         }
         payloads.update(scripts or {})
         for relative, content in payloads.items():
@@ -1384,6 +1388,107 @@ jobs:
                         text = text.replace("release_assert_formal_build\n", "true\n", 1)
                     (fixture / "scripts" / name).write_text(text, encoding="utf-8")
                 with self.assertRaisesRegex(ContractError, "release_assert_formal_build"):
+                    validate_release_mode_contracts(fixture)
+
+    def test_formal_release_document_override_environment_rejection_is_locked(self):
+        root = Path(__file__).parent.parent
+        original = (root / "scripts/formal-release.sh").read_text(encoding="utf-8")
+        override_block = (
+            "for override in \\\n"
+            "  RELEASE_DOC_ROOT \\\n"
+            "  RELEASE_DOC_FIXTURE_MODE \\\n"
+            "  CURRENT_RELEASE_VERSION \\\n"
+            "  CURRENT_RULESET_SHA256 \\\n"
+            "  CURRENT_CLASSIFIER_POLICY_VERSION \\\n"
+            "  CURRENT_CLASSIFIER_POLICY_SHA256; do\n"
+            '  if [[ -n "${!override+x}" ]]; then\n'
+            '    release_die "formal release forbids release document override environment: '
+            '$override"\n'
+            "  fi\n"
+            "done\n"
+        )
+        document_gate = '"$root/scripts/release-doc-consistency.sh"\n'
+        mutations = (
+            original.replace("  RELEASE_DOC_ROOT \\\n", "", 1),
+            original.replace('${!override+x}', '${!override}', 1),
+            original.replace(
+                '    release_die "formal release forbids release document override environment: '
+                '$override"\n',
+                "    true\n",
+                1,
+            ),
+            original.replace(
+                override_block + document_gate,
+                document_gate + override_block,
+                1,
+            ),
+        )
+        names = (
+            "release-common.sh",
+        ) + FORMAL_OPERATION_SCRIPTS + tuple(EXTERNAL_ATTESTATION_SCRIPT_SHA256)
+        for mutation in mutations:
+            self.assertNotEqual(mutation, original)
+            with self.subTest(mutation=mutation):
+                temporary = tempfile.TemporaryDirectory()
+                self.addCleanup(temporary.cleanup)
+                fixture = Path(temporary.name)
+                (fixture / "scripts").mkdir()
+                for name in names:
+                    text = (root / "scripts" / name).read_text(encoding="utf-8")
+                    if name == "formal-release.sh":
+                        text = mutation
+                    (fixture / "scripts" / name).write_text(text, encoding="utf-8")
+                with self.assertRaisesRegex(ContractError, "document override environment"):
+                    validate_release_mode_contracts(fixture)
+
+    def test_public_jailbreak_audit_report_packaging_is_locked(self):
+        root = Path(__file__).parent.parent
+        package_original = (root / "scripts/package-release.sh").read_text(
+            encoding="utf-8"
+        )
+        verify_original = (root / "scripts/verify-release.sh").read_text(
+            encoding="utf-8"
+        )
+        source_marker = (
+            '  "$root/docs/reports/PUBLIC_JAILBREAK_REPOSITORY_REVIEW.md" \\\n'
+        )
+        first = package_original.index(source_marker)
+        second = package_original.index(source_marker, first + len(source_marker))
+        mutations = (
+            (
+                "package-release.sh",
+                package_original[:first]
+                + package_original[first + len(source_marker) :],
+            ),
+            (
+                "package-release.sh",
+                package_original[:second]
+                + package_original[second + len(source_marker) :],
+            ),
+            (
+                "verify-release.sh",
+                verify_original.replace(
+                    "docs/reports/PUBLIC_JAILBREAK_REPOSITORY_REVIEW.md\n",
+                    "",
+                    1,
+                ),
+            ),
+        )
+        names = (
+            "release-common.sh",
+        ) + FORMAL_OPERATION_SCRIPTS + tuple(EXTERNAL_ATTESTATION_SCRIPT_SHA256)
+        for changed_name, mutation in mutations:
+            with self.subTest(changed_name=changed_name):
+                temporary = tempfile.TemporaryDirectory()
+                self.addCleanup(temporary.cleanup)
+                fixture = Path(temporary.name)
+                (fixture / "scripts").mkdir()
+                for name in names:
+                    text = (root / "scripts" / name).read_text(encoding="utf-8")
+                    if name == changed_name:
+                        text = mutation
+                    (fixture / "scripts" / name).write_text(text, encoding="utf-8")
+                with self.assertRaisesRegex(ContractError, "public jailbreak audit report"):
                     validate_release_mode_contracts(fixture)
 
     def test_release_common_formal_assertion_rejects_candidate_mode(self):

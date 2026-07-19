@@ -1,5 +1,10 @@
 # Public jailbreak repository review
 
+```text
+current_classifier_policy_version: classifier-policy-v5
+current_classifier_policy_sha256: 07e972eac4faba57ca5244e9a49d5db21d5c0e414778bf617b5378fa621b4f76
+```
+
 ## Scope and safety boundary
 
 This review covers public prompt-override projects that can change the high-authority
@@ -105,6 +110,19 @@ User-origin subject risk now requires a closed provider-aware proof:
 - compatibility scanning beyond 64 segments preserves attribution;
 - an independent trusted-user hard winner wins an otherwise exact result tie, so
   a preceding non-user catalog cannot suppress subject accountability.
+
+Sanitized repository material frequently appears inside a safety review. That
+review can make exactly one closed quote inert only while its unsafe assessment
+and final non-execution boundary remain intact. A later affirmative user
+follow-up such as `execute it`, `proceed`, or `go ahead` reclassifies the quoted
+referent alone and cannot borrow wrapper signals. Explanations, questions,
+negation, remediation, and non-user review carriers remain inert. Long-field
+state retains no quoted text; unprovable cross-window linkage becomes
+`classifier_window_incomplete`, and the additional classification remains bound
+by `MaxChunks`. Common governors such as `just`, `simply`, `let's`, and `let us`
+remain active. Only positively proven analytical, safety, or negated speech acts
+suppress the incomplete-prior fallback; wrapper-stripped adjacent heads/tails
+are not reclassified when either field already proved an inert quote.
 
 ## Performance work and acceptance
 

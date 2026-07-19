@@ -1,5 +1,10 @@
 # CPA v7.2.88 Integration Report
 
+```text
+current_classifier_policy_version: classifier-policy-v5
+current_classifier_policy_sha256: 07e972eac4faba57ca5244e9a49d5db21d5c0e414778bf617b5378fa621b4f76
+```
+
 ## Active compatibility target
 
 Cyber Abuse Guard pins active validation and the supported release/Host target to
@@ -77,8 +82,8 @@ public_source_only_prerelease_tag: v0.15-rc.1
 attached_release_assets: none
 private_untagged_clean_candidate: not created
 formal_tag_v0.15: absent / blocked
-classifier_policy: classifier-policy-v3
-classifier_policy_sha256: 1294c6fd587522829d07220d5a6f4214092eba6ce1837636da5b3e3d461ba2a3
+historical_classifier_policy_version: classifier-policy-v3
+historical_classifier_policy_sha256: 1294c6fd587522829d07220d5a6f4214092eba6ce1837636da5b3e3d461ba2a3
 ```
 
 GitHub Actions validation for that exact commit passed:

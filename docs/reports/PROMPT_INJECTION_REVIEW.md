@@ -1,5 +1,10 @@
 # Defensive Review: public prompt-injection references and v0.15 Round 6 controls
 
+```text
+current_classifier_policy_version: classifier-policy-v5
+current_classifier_policy_sha256: 07e972eac4faba57ca5244e9a49d5db21d5c0e414778bf617b5378fa621b4f76
+```
+
 > The Round 6 addendum below is current design/handoff context. The older
 > single-repository review is retained afterward as historical evidence; its
 > branch, commit, classifier identity, validation, and taxonomy statements must
@@ -118,7 +123,7 @@ Ruleset `1.0.7` identifies only embedded YAML Cyber Abuse assets. It does not
 include the Go-level `META-OVERRIDE-001` overlay, extraction semantics,
 tool-schema mappings, or control-plane telemetry. Current v0.15 provenance must
 also bind `classifier-policy-v5` /
-`42d48af7a854b19d29c956a6f99b9027189ce4ae7b19a1d92a83955639d0916e`,
+`07e972eac4faba57ca5244e9a49d5db21d5c0e414778bf617b5378fa621b4f76`,
 the exact Git commit/tree, and the candidate workflow run.
 
 The final reverse audit also closed a large-request extraction gap relevant to
@@ -232,6 +237,26 @@ lab, fictional-target, and authorization claims do not reduce the overlay.
 Explicit defensive analysis, quoted-sample review, detection, and mitigation
 can reduce it only when the request also has an affirmative non-execution
 purpose.
+
+Quoted-review credit is transactional rather than a reusable signal discount.
+Only one closed quoted referent is independently classified. If the newest
+eligible RoleUser review is followed by an affirmative referential directive
+such as `execute it`, `proceed`, or `go ahead`, the quote alone is reclassified
+and produces the same result as direct input. Wrapper signals are not reused.
+Questions, explanations, negation, consequences, remediation, and reviews from
+assistant/system/tool or unknown provenance remain inert. Mixed-trust RoleUser
+pairs remain conservatively classified with `non_user_or_untrusted` origin and
+cannot accumulate subject risk. Streaming retains only privacy-safe results and
+bounded follow-up facts; lost cross-window proof is
+`classifier_window_incomplete`, and the extra referent classification is charged
+to `MaxChunks`.
+
+The reviewed grammar treats `just`, `simply`, `let's`, and `let us` as directive
+governors. It separately records proven inert explanations/questions/safety
+deliverables/negations. A complete but unrecognized phrase cannot suppress the
+bounded implementation-signal fallback after prior text has crossed a scanner
+window. Likewise, adjacent head/tail classification is skipped if either field
+already proved an inert quoted referent.
 
 Additional extraction and scope hardening in the same change:
 

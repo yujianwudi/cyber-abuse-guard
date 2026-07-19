@@ -1,5 +1,10 @@
 # CPA Cyber Abuse Guard v0.15 Design
 
+```text
+current_classifier_policy_version: classifier-policy-v5
+current_classifier_policy_sha256: 07e972eac4faba57ca5244e9a49d5db21d5c0e414778bf617b5378fa621b4f76
+```
+
 ## Scope and invariants
 
 Cyber Abuse Guard is an in-process CPA C-ABI v1 plugin for CLIProxyAPI. Exact
@@ -298,6 +303,47 @@ still blocked. Ambiguous/role-less envelopes retain a joint legacy decision and
 also classify every part and adjacent pair, with the same bounded fail-closed
 capacity marker.
 
+### Defensive quotation and referential reactivation
+
+A safety review may discount exactly one closed quoted Cyber Abuse referent only
+when the surrounding user text proves an unsafe assessment and an exact final
+non-execution boundary. The quote is classified independently from the wrapper.
+The wrapper never lends its context, signals, evidence, or behavior graph to the
+referent.
+
+The most recent eligible user review can be linked to one later user follow-up.
+An affirmative referential directive such as `execute it`, `proceed`, or
+`go ahead`, including bounded polite or conditional forms, reclassifies only the
+quoted referent. The final score, category, rule IDs, evidence, context, and
+behavior graph are therefore the same as a direct classification of that
+referent. Explanations, meaning/risk/consequence questions, negation, and
+remediation do not reactivate it. A review carried by assistant, system, tool,
+or unknown-role provenance cannot establish a user referent, and an older review
+is discarded when a newer eligible RoleUser review is observed. User
+attribution is separate: mixed-trust RoleUser pairs retain conservative direct
+classification with `FindingOriginNonUserOrUntrusted`, but cannot enter subject
+accumulation.
+
+The speech-act parser has three outcomes: active, proven inert, and
+unrecognized. Common directive governors such as `just`, `simply`, `let's`, and
+`let us` are active. A complete explanation, meaning/status/consequence
+question, safety deliverable, or explicit negation is proven inert. An
+unrecognized complete phrase does not receive inert credit: when exact prior
+text is already unavailable, the streaming path still evaluates its bounded
+implementation signals and degrades coverage if they can complete a block.
+
+Complete long reviews retain only the privacy-safe `Result` and bounded state,
+never the quote or prompt text. A long current follow-up likewise retains only a
+bounded affirmative-reference fact. If the review or follow-up crosses a
+classifier window and exact linkage cannot be proved, the session returns
+`CoverageUnavailable` with `classifier_window_incomplete`; it must not produce
+`CoverageComplete` plus allow. Direct referent classification is charged through
+the same `MaxChunks` accounting as every other role classification, so an
+insufficient budget returns `classification_chunk_limit` rather than bypassing
+the limit. Bounded adjacent head/tail classification is skipped when either
+field has already proved an inert quoted referent, because removing the other
+side of that wrapper would not be an exact semantic view.
+
 The result contains only category, score, action, evidence IDs, aggregate
 context flags, the ruleset version, the classifier-policy identity, and a privacy-safe
 `BehaviorGraph`. It never contains matched prompt fragments.
@@ -340,7 +386,7 @@ attest to local instruction-file integrity.
 Ruleset `1.0.7` identifies the embedded YAML assets only. The complete
 code-level behavior is separately identified as `classifier-policy-v5`,
 SHA-256
-`42d48af7a854b19d29c956a6f99b9027189ce4ae7b19a1d92a83955639d0916e`.
+`07e972eac4faba57ca5244e9a49d5db21d5c0e414778bf617b5378fa621b4f76`.
 Its tested source list binds the classifier, matcher, normalizer, role logic,
 wrapper assessment, behavior graph, semantic composition, bounded extractor,
 rule loader/schema, embedded YAML assets, and module dependency locks. The
@@ -725,7 +771,7 @@ SSE stream with terminal frames; returning successful chunks would force HTTP
 
 Builds link immutable version, full commit SHA, ruleset version/hash,
 `classifier-policy-v5` /
-`42d48af7a854b19d29c956a6f99b9027189ce4ae7b19a1d92a83955639d0916e`,
+`07e972eac4faba57ca5244e9a49d5db21d5c0e414778bf617b5378fa621b4f76`,
 streaming-scanner identity, and dirty state. Build metadata and the verifier bind
 these identities. Candidate mode requires a clean worktree, exact expected
 commit/tree, the commit timestamp, an absent formal `v0.15` tag, and forbids

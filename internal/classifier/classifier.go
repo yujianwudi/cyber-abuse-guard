@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/yujianwudi/cyber-abuse-guard/internal/rules"
 )
@@ -543,19 +544,21 @@ func (c *Classifier) classifyWithPolicyCaptured(parts []string, mode Mode, thres
 	bestMeta := metaOverrideAssessment{}
 	bestAdjacentReversal := Result{}
 	hasAdjacentReversal := false
+	bestReactivatedQuotedReferent := Result{}
+	hasReactivatedQuotedReferent := false
 	adjacentReversalCandidates := 0
 	adjacentReversalTerminal := false
 	inertQuotedSafetyReview := false
 	finishResult := func(result Result) Result {
-		if inertQuotedSafetyReview || !hasAdjacentReversal {
-			return result
+		best := result
+		if !inertQuotedSafetyReview && hasAdjacentReversal && roleResultBetter(bestAdjacentReversal, best) {
+			best = bestAdjacentReversal
 		}
-		candidate := bestAdjacentReversal
-		candidate.Truncated = candidate.Truncated || result.Truncated
-		if roleResultBetter(candidate, result) {
-			return candidate
+		if !inertQuotedSafetyReview && hasReactivatedQuotedReferent && roleResultBetter(bestReactivatedQuotedReferent, best) {
+			best = bestReactivatedQuotedReferent
 		}
-		return result
+		best.Truncated = best.Truncated || result.Truncated
+		return best
 	}
 	partCount := 0
 	currentPartIndex := -1
@@ -768,6 +771,20 @@ func (c *Classifier) classifyWithPolicyCaptured(parts []string, mode Mode, thres
 	var currentDirectives analyzedDirectives
 	directivesReady := false
 	currentText := string(currentRunes)
+	previousQuotedReferent := ""
+	previousInertQuotedSafetyReview := false
+	if partCount > 1 && !truncated {
+		previousQuotedReferent, previousInertQuotedSafetyReview =
+			c.inertQuotedSafetyReviewReferent(string(previousRunes))
+	}
+	quotedReviewImplementationFollowUp := previousInertQuotedSafetyReview &&
+		c.hasAffirmativeQuotedReviewFollowUp(currentText)
+	if quotedReviewImplementationFollowUp {
+		bestReactivatedQuotedReferent = c.classifyWithPolicy(
+			[]string{previousQuotedReferent}, mode, thresholds, policy, structuredToolPayload,
+		)
+		hasReactivatedQuotedReferent = true
+	}
 	inertQuotedSafetyReview = !truncated && c.isInertQuotedSafetyReview(currentText) &&
 		c.priorPartsAllowInertQuotedSafetyReview(parts, currentPartIndex, mode, thresholds, policy)
 	if capture != nil {
@@ -863,12 +880,7 @@ func (c *Classifier) classifyWithPolicyCaptured(parts []string, mode Mode, thres
 	}
 	candidates := make([]candidate, 0, 8)
 	var categoryHasCandidate [8]bool
-	previousInertQuotedSafetyReview := partCount > 1 && !truncated &&
-		c.isInertQuotedSafetyReview(string(previousRunes))
-	currentAffirmativeImplementation := currentSignals[c.implementationRequest] &&
-		c.hasAffirmativeImplementationRequest(currentText)
-	previousFollowUpEligible := partCount > 1 && ((!previousInertQuotedSafetyReview && followUpEligible(previousRunes)) ||
-		(previousInertQuotedSafetyReview && currentAffirmativeImplementation))
+	previousFollowUpEligible := partCount > 1 && !previousInertQuotedSafetyReview && followUpEligible(previousRunes)
 	previousHarmConflict := false
 	previousHarmConflictReady := false
 	for ruleIndex, rule := range c.rules {
@@ -2316,32 +2328,37 @@ func hasExplicitHarmConflict(text string) bool {
 // underlying category, but they do not create a current-turn cyber-abuse
 // candidate. Ambiguous quotations and any unquoted directive fail closed.
 func (c *Classifier) isInertQuotedSafetyReview(text string) bool {
+	_, ok := c.inertQuotedSafetyReviewReferent(text)
+	return ok
+}
+
+func (c *Classifier) inertQuotedSafetyReviewReferent(text string) (string, bool) {
 	if text == "" || !strings.Contains(text, "quoted ") || !strings.ContainsAny(text, "\"'`") {
-		return false
+		return "", false
 	}
 	if !strings.Contains(text, "quoted request") && !strings.Contains(text, "quoted prompt") {
-		return false
+		return "", false
 	}
 
 	spans, complete := metaOverrideQuotedSpans(text)
 	if !complete || len(spans) != 1 {
-		return false
+		return "", false
 	}
 	quoted := spans[0]
 	if quoted.start <= 0 || quoted.end <= quoted.start+2 || quoted.end >= len(text) {
-		return false
+		return "", false
 	}
 
 	prefix := strings.TrimSpace(text[:quoted.start])
 	suffix := strings.TrimSpace(text[quoted.end:])
 	if !inertQuotedSafetyReviewPrefix(prefix) {
-		return false
+		return "", false
 	}
 	clauses, overflow := metaOverrideDirectiveClausesBounded(suffix)
 	if overflow || len(clauses) != 2 ||
 		!inertQuotedSafetyAssessment(clauses[0].text) ||
 		!inertQuotedNonExecutionBoundary(clauses[1].text) {
-		return false
+		return "", false
 	}
 
 	// The rare structural path may spend one bounded matcher pass proving that
@@ -2356,14 +2373,43 @@ func (c *Classifier) isInertQuotedSafetyReview(text string) bool {
 		c.compactMatcher.matchCompactWithScratch(prefixRunes, prefixSignals, compactScratch)
 	}
 	if prefixSignals[c.implementationRequest] || c.hasMetaOverrideSignal(prefixSignals) || hasNegationReversalFraming(prefix) {
-		return false
+		return "", false
 	}
 	for _, rule := range c.rules {
 		if prefixSignals[rule.intent] || prefixSignals[rule.object] {
-			return false
+			return "", false
 		}
 	}
-	return true
+	referent, ok := quotedSafetyReviewSpanContent(text, quoted)
+	if !ok {
+		return "", false
+	}
+	return referent, true
+}
+
+func quotedSafetyReviewSpanContent(text string, span metaOverrideQuotedSpan) (string, bool) {
+	if span.start < 0 || span.end > len(text) || span.start >= span.end {
+		return "", false
+	}
+	quoted := text[span.start:span.end]
+	var content string
+	switch {
+	case strings.HasPrefix(quoted, "```") && strings.HasSuffix(quoted, "```") && len(quoted) > 6:
+		content = quoted[3 : len(quoted)-3]
+	case strings.HasPrefix(quoted, "<sample>") && strings.HasSuffix(quoted, "</sample>"):
+		content = quoted[len("<sample>") : len(quoted)-len("</sample>")]
+	case strings.HasPrefix(quoted, "[sample]") && strings.HasSuffix(quoted, "[/sample]"):
+		content = quoted[len("[sample]") : len(quoted)-len("[/sample]")]
+	default:
+		_, openingSize := utf8.DecodeRuneInString(quoted)
+		_, closingSize := utf8.DecodeLastRuneInString(quoted)
+		if openingSize <= 0 || closingSize <= 0 || openingSize+closingSize >= len(quoted) {
+			return "", false
+		}
+		content = quoted[openingSize : len(quoted)-closingSize]
+	}
+	content = strings.TrimSpace(content)
+	return content, content != ""
 }
 
 // isRawInertQuotedSafetyReview applies the exact structural proof to one raw
@@ -2371,13 +2417,21 @@ func (c *Classifier) isInertQuotedSafetyReview(text string) bool {
 // after a quote delimiter has already passed the cheap gate. The temporary
 // normalized copy is scrubbed before its backing buffer is pooled.
 func (c *Classifier) isRawInertQuotedSafetyReview(text string) bool {
+	_, ok := c.rawInertQuotedSafetyReviewReferent(text)
+	return ok
+}
+
+func (c *Classifier) rawInertQuotedSafetyReviewReferent(text string) (string, bool) {
 	if text == "" || !strings.ContainsAny(text, "\"'`") {
-		return false
+		return "", false
 	}
 	var scratch normalizationScratch
 	views := normalizePartsInto([]string{text}, nil, &scratch)
 	defer putNormalizedRuneBuffer(views.standardRunes, views.storageUsed)
-	return !views.truncated && c.isInertQuotedSafetyReview(string(views.standardRunes))
+	if views.truncated {
+		return "", false
+	}
+	return c.inertQuotedSafetyReviewReferent(string(views.standardRunes))
 }
 
 func (c *Classifier) hasAffirmativeImplementationRequest(text string) bool {
@@ -2387,14 +2441,888 @@ func (c *Classifier) hasAffirmativeImplementationRequest(text string) bool {
 	return containsUnnegatedRuleIntentPrepared(text, c.implementationStarts, c.implementationPatterns)
 }
 
-func (c *Classifier) hasRawAffirmativeImplementationRequest(text string) bool {
-	if text == "" {
+// hasAffirmativeQuotedReviewContinuation recognizes short, referential
+// execution turns whose abuse object exists only in the preceding inert quoted
+// review. It deliberately excludes bare pronouns and explanatory continuations
+// so "why is that harmful?" remains safe, while "execute it" cannot discard the
+// retained quoted category. A direct prohibition remains inert unless the same
+// turn explicitly reverses it.
+var quotedReviewSpecificContinuationIntents = []string{
+	"execute it", "execute that", "execute the above", "execute the request", "execute the quoted request",
+	"follow the quoted request",
+	"carry it out", "carry that out", "carry out the above", "carry out the request",
+	"apply it", "apply that", "apply the above", "apply the request",
+	"implement it", "implement that", "implement the above", "implement the request",
+	"do it", "do so", "do likewise", "do the same", "do that", "proceed with it", "proceed with that",
+	"continue with the quoted request", "continue with the above operation",
+	"run it", "run that", "deploy it", "deploy that", "build it", "build that",
+	"执行它", "执行该内容", "执行上述", "照做", "按上述执行", "继续执行", "实施它", "实施上述",
+	"应用它", "应用上述", "实现它", "实现上述", "运行它", "运行上述", "部署它", "部署上述",
+}
+
+var quotedReviewTerseContinuationIntents = []string{"proceed", "go ahead", "继续照做"}
+
+var quotedReviewSpecificContinuationPatterns = compileCompactRuleIntentPatterns(quotedReviewSpecificContinuationIntents)
+var quotedReviewTerseContinuationPatterns = compileCompactRuleIntentPatterns(quotedReviewTerseContinuationIntents)
+
+type quotedReviewContinuationDisposition uint8
+
+const (
+	quotedReviewContinuationNone quotedReviewContinuationDisposition = iota
+	quotedReviewContinuationInert
+	quotedReviewContinuationCancelled
+	quotedReviewContinuationActive
+)
+
+type quotedReviewContinuationDecision struct {
+	disposition quotedReviewContinuationDisposition
+	intent      string
+	alternative bool
+}
+
+func hasAffirmativeQuotedReviewContinuation(text string) bool {
+	return quotedReviewHasAffirmativeFollowUp(text, nil, compactRuleIntentPatterns{})
+}
+
+func (c *Classifier) hasAffirmativeQuotedReviewFollowUp(text string) bool {
+	if c == nil || strings.TrimSpace(text) == "" || c.isInertQuotedSafetyReview(text) {
 		return false
+	}
+	return quotedReviewHasAffirmativeFollowUp(text, c.implementationStarts, c.implementationPatterns)
+}
+
+// hasRawAffirmativeQuotedReviewFollowUp applies the unified referential
+// speech-act parser to one complete raw field. The second return value proves a
+// recognized inert use, while the third states whether normalization was
+// complete. Streaming callers may therefore distinguish a proven explanation
+// or prohibition from an unrecognized phrase that still needs conservative
+// signal-based follow-up handling.
+func (c *Classifier) hasRawAffirmativeQuotedReviewFollowUp(text string) (bool, bool, bool) {
+	if c == nil || strings.TrimSpace(text) == "" {
+		return false, false, true
 	}
 	var scratch normalizationScratch
 	views := normalizePartsInto([]string{text}, nil, &scratch)
 	defer putNormalizedRuneBuffer(views.standardRunes, views.storageUsed)
-	return !views.truncated && c.hasAffirmativeImplementationRequest(string(views.standardRunes))
+	if views.truncated {
+		return false, false, false
+	}
+	disposition := quotedReviewFollowUpDisposition(
+		string(views.standardRunes), c.implementationStarts, c.implementationPatterns,
+	)
+	return disposition == quotedReviewContinuationActive,
+		disposition == quotedReviewContinuationInert || disposition == quotedReviewContinuationCancelled,
+		true
+}
+
+func quotedReviewHasAffirmativeFollowUp(
+	text string,
+	explicitIntents []string,
+	explicitPatterns compactRuleIntentPatterns,
+) bool {
+	return quotedReviewFollowUpDisposition(text, explicitIntents, explicitPatterns) ==
+		quotedReviewContinuationActive
+}
+
+func quotedReviewFollowUpDisposition(
+	text string,
+	explicitIntents []string,
+	explicitPatterns compactRuleIntentPatterns,
+) quotedReviewContinuationDisposition {
+	if strings.TrimSpace(text) == "" {
+		return quotedReviewContinuationNone
+	}
+	allIntents := make([]string, 0,
+		len(quotedReviewSpecificContinuationIntents)+len(quotedReviewTerseContinuationIntents)+len(explicitIntents))
+	allIntents = append(allIntents, quotedReviewSpecificContinuationIntents...)
+	allIntents = append(allIntents, quotedReviewTerseContinuationIntents...)
+	allIntents = append(allIntents, explicitIntents...)
+	clauses := make([]string, 0, 4)
+	overflow := false
+	walkDirectiveClauses([]rune(text), func(clauseRunes []rune) bool {
+		if len(clauses) >= 32 {
+			overflow = true
+			return false
+		}
+		if clause := strings.TrimSpace(string(clauseRunes)); clause != "" {
+			clauses = append(clauses, clause)
+		}
+		return true
+	})
+	if overflow {
+		// The exact quoted-review path is optional safety credit. Fail active only
+		// when the oversized continuation contains a real active speech act;
+		// repeated analytical mentions and prohibitions remain inert.
+		if quotedReviewOverflowTextHasActive(text, explicitIntents, allIntents) {
+			return quotedReviewContinuationActive
+		}
+		return quotedReviewContinuationInert
+	}
+	sawInert := false
+	var cancellation quotedReviewContinuationDecision
+	hasCancellation := false
+	for index := len(clauses) - 1; index >= 0; index-- {
+		next := ""
+		if index+1 < len(clauses) {
+			next = clauses[index+1]
+		}
+		decision := quotedReviewClassifyContinuationClause(
+			clauses[index], next, explicitIntents, explicitPatterns, allIntents,
+		)
+		if decision.disposition == quotedReviewContinuationCancelled &&
+			!decision.alternative && index > 0 &&
+			quotedReviewStandaloneAlternativeClause(clauses[index-1]) {
+			decision.alternative = true
+		}
+		switch decision.disposition {
+		case quotedReviewContinuationActive:
+			if hasCancellation && !cancellation.alternative &&
+				quotedReviewContinuationIntentsEquivalent(decision.intent, cancellation.intent) {
+				continue
+			}
+			return quotedReviewContinuationActive
+		case quotedReviewContinuationCancelled:
+			if !hasCancellation {
+				cancellation = decision
+				hasCancellation = true
+			}
+		case quotedReviewContinuationInert:
+			sawInert = true
+		}
+	}
+	if hasCancellation {
+		return quotedReviewContinuationCancelled
+	}
+	if sawInert {
+		return quotedReviewContinuationInert
+	}
+	return quotedReviewContinuationNone
+}
+
+func quotedReviewClassifyContinuationClause(
+	clause, next string,
+	explicitIntents []string,
+	explicitPatterns compactRuleIntentPatterns,
+	allIntents []string,
+) quotedReviewContinuationDecision {
+	_ = explicitPatterns
+	occurrences, occurrenceOverflow := quotedReviewContinuationOccurrences(clause, explicitIntents)
+	if occurrenceOverflow {
+		if quotedReviewOverflowClauseHasActive(clause, next, explicitIntents, allIntents) {
+			return quotedReviewContinuationDecision{disposition: quotedReviewContinuationActive}
+		}
+		return quotedReviewContinuationDecision{disposition: quotedReviewContinuationInert}
+	}
+	if len(occurrences) == 0 {
+		return quotedReviewContinuationDecision{disposition: quotedReviewContinuationNone}
+	}
+	sawInert := false
+	var cancellation quotedReviewContinuationDecision
+	hasCancellation := false
+	for index := len(occurrences) - 1; index >= 0; index-- {
+		occurrence := occurrences[index]
+		decision := quotedReviewEvaluateContinuationOccurrence(
+			clause, next, occurrence, explicitIntents, allIntents,
+		)
+		switch decision.disposition {
+		case quotedReviewContinuationActive:
+			if hasCancellation && !cancellation.alternative &&
+				quotedReviewContinuationIntentsEquivalent(decision.intent, cancellation.intent) {
+				continue
+			}
+			return decision
+		case quotedReviewContinuationCancelled:
+			if !hasCancellation {
+				cancellation = decision
+				hasCancellation = true
+			}
+		case quotedReviewContinuationInert:
+			sawInert = true
+		}
+	}
+	if hasCancellation {
+		return cancellation
+	}
+	if sawInert {
+		return quotedReviewContinuationDecision{disposition: quotedReviewContinuationInert}
+	}
+	return quotedReviewContinuationDecision{disposition: quotedReviewContinuationNone}
+}
+
+func quotedReviewEvaluateContinuationOccurrence(
+	clause, next string,
+	occurrence quotedReviewContinuationOccurrence,
+	explicitIntents, allIntents []string,
+) quotedReviewContinuationDecision {
+	decision := quotedReviewContinuationDecision{intent: occurrence.intent}
+	segment, localIndex := quotedReviewContinuationOccurrenceSegment(clause, occurrence)
+	if localIndex < 0 || localIndex > len(segment) {
+		return decision
+	}
+	if quotedReviewContinuationIsAnalytical(segment, next, localIndex) ||
+		quotedReviewContinuationIsSafetyOnly(segment, explicitIntents) {
+		decision.disposition = quotedReviewContinuationInert
+		return decision
+	}
+	if !quotedReviewOccurrenceHasDirectiveHead(segment, localIndex, occurrence.intent) {
+		return decision
+	}
+	negativeAuthorization := quotedReviewNegativeAuthorizationHead(segment, localIndex)
+	directNegative := quotedReviewDirectNegativeHead(segment, localIndex)
+	if negativeAuthorization {
+		decision.disposition = quotedReviewContinuationCancelled
+		decision.alternative = quotedReviewOccurrenceUsesAlternative(clause, occurrence) ||
+			quotedReviewClauseStartsWithAlternative(segment)
+		return decision
+	}
+	if quotedReviewAffirmativeReversalHead(segment, localIndex) {
+		decision.disposition = quotedReviewContinuationActive
+		return decision
+	}
+	if directNegative {
+		decision.disposition = quotedReviewContinuationCancelled
+		decision.alternative = quotedReviewOccurrenceUsesAlternative(clause, occurrence) ||
+			quotedReviewClauseStartsWithAlternative(segment)
+		return decision
+	}
+	found, negated := ruleIntentOccurrenceNegation(clause, occurrence.index)
+	if found && !negated && coordinatedRuleIntentNegation(
+		clause, occurrence.index, occurrence.intent, allIntents,
+	) {
+		negated = true
+	}
+	if found && negated {
+		decision.disposition = quotedReviewContinuationCancelled
+		decision.alternative = quotedReviewOccurrenceUsesAlternative(clause, occurrence) ||
+			quotedReviewClauseStartsWithAlternative(segment)
+		return decision
+	}
+	decision.disposition = quotedReviewContinuationActive
+	return decision
+}
+
+func quotedReviewOverflowTextHasActive(text string, explicitIntents, allIntents []string) bool {
+	active := false
+	walkDirectiveClauses([]rune(text), func(clauseRunes []rune) bool {
+		clause := strings.TrimSpace(string(clauseRunes))
+		if clause == "" {
+			return true
+		}
+		if quotedReviewOverflowClauseHasActive(clause, "", explicitIntents, allIntents) {
+			active = true
+			return false
+		}
+		return true
+	})
+	return active
+}
+
+func quotedReviewOverflowClauseHasActive(
+	clause, next string,
+	explicitIntents, allIntents []string,
+) bool {
+	for _, intents := range [][]string{
+		quotedReviewSpecificContinuationIntents,
+		quotedReviewTerseContinuationIntents,
+		explicitIntents,
+	} {
+		for _, intent := range intents {
+			if intent == "" {
+				continue
+			}
+			for offset := 0; offset <= len(clause)-len(intent); {
+				relative := strings.Index(clause[offset:], intent)
+				if relative < 0 {
+					break
+				}
+				intentIndex := offset + relative
+				intentEnd := intentIndex + len(intent)
+				leftOK := !isASCIIStringLocal(intent) || intentIndex == 0 || !isASCIIWordByte(clause[intentIndex-1])
+				rightOK := !isASCIIStringLocal(intent) || intentEnd == len(clause) || !isASCIIWordByte(clause[intentEnd])
+				if leftOK && rightOK {
+					decision := quotedReviewEvaluateContinuationOccurrence(
+						clause,
+						next,
+						quotedReviewContinuationOccurrence{index: intentIndex, end: intentEnd, intent: intent},
+						explicitIntents,
+						allIntents,
+					)
+					if decision.disposition == quotedReviewContinuationActive {
+						return true
+					}
+				}
+				offset = intentIndex + 1
+			}
+		}
+	}
+	return false
+}
+
+func quotedReviewContinuationIntentsEquivalent(first, second string) bool {
+	firstFamily := quotedReviewContinuationIntentFamily(first)
+	secondFamily := quotedReviewContinuationIntentFamily(second)
+	if firstFamily == "referential" || secondFamily == "referential" {
+		return true
+	}
+	return firstFamily != "" && firstFamily == secondFamily
+}
+
+func quotedReviewContinuationIntentFamily(intent string) string {
+	intent = strings.TrimSpace(intent)
+	switch {
+	case hasAnyPrefix(intent, "execute", "run", "执行", "按上述执行", "运行"):
+		return "execute"
+	case hasAnyPrefix(intent, "carry"):
+		return "carry"
+	case hasAnyPrefix(intent, "apply", "应用"):
+		return "apply"
+	case hasAnyPrefix(intent, "implement", "实现", "实施"):
+		return "implement"
+	case hasAnyPrefix(intent, "deploy", "部署"):
+		return "deploy"
+	case hasAnyPrefix(intent, "build"):
+		return "build"
+	case hasAnyPrefix(intent, "proceed", "go ahead"):
+		return "proceed"
+	case hasAnyPrefix(intent, "do it", "do so", "do likewise", "do the same", "do that", "照做", "继续照做"):
+		return "referential"
+	default:
+		return intent
+	}
+}
+
+func quotedReviewOccurrenceUsesAlternative(clause string, occurrence quotedReviewContinuationOccurrence) bool {
+	if quotedReviewClauseStartsWithAlternative(clause) {
+		return true
+	}
+	latest := -1
+	alternative := false
+	for _, connector := range quotedReviewContinuationConnectors {
+		if index := strings.LastIndex(clause[:occurrence.index], connector); index >= latest {
+			latest = index
+			trimmed := strings.TrimSpace(connector)
+			alternative = trimmed == "or" || trimmed == "nor" || trimmed == "或" || trimmed == "或者"
+		}
+	}
+	if latest >= 0 && !alternative {
+		for _, connector := range []string{"或者", "否则", "要么", "或"} {
+			if strings.LastIndex(clause[:occurrence.index], connector) == latest {
+				alternative = true
+				break
+			}
+		}
+	}
+	return latest >= 0 && alternative
+}
+
+func quotedReviewClauseStartsWithAlternative(clause string) bool {
+	clause = strings.TrimLeft(strings.TrimSpace(clause), "-*#>,\t")
+	return hasAnyPrefix(clause,
+		"or else ", "alternatively ", "otherwise ", "if not ", "or ",
+		"或者", "否则", "要么", "或",
+	)
+}
+
+func quotedReviewStandaloneAlternativeClause(clause string) bool {
+	clause = strings.Trim(strings.TrimSpace(clause), "-*#>,:;\t")
+	return clause == "or" || clause == "alternatively" || clause == "otherwise" ||
+		clause == "or else" || clause == "if not" ||
+		clause == "或者" || clause == "否则" || clause == "要么" || clause == "或"
+}
+
+type quotedReviewContinuationOccurrence struct {
+	index  int
+	end    int
+	intent string
+}
+
+func quotedReviewContinuationOccurrences(
+	clause string,
+	explicitIntents []string,
+) ([]quotedReviewContinuationOccurrence, bool) {
+	const maxOccurrences = 32
+	groups := [][]string{
+		quotedReviewSpecificContinuationIntents,
+		quotedReviewTerseContinuationIntents,
+		explicitIntents,
+	}
+	occurrences := make([]quotedReviewContinuationOccurrence, 0, 4)
+	for _, intents := range groups {
+		for _, intent := range intents {
+			if intent == "" {
+				continue
+			}
+			for offset := 0; offset <= len(clause)-len(intent); {
+				relative := strings.Index(clause[offset:], intent)
+				if relative < 0 {
+					break
+				}
+				intentIndex := offset + relative
+				intentEnd := intentIndex + len(intent)
+				leftOK := !isASCIIStringLocal(intent) || intentIndex == 0 || !isASCIIWordByte(clause[intentIndex-1])
+				rightOK := !isASCIIStringLocal(intent) || intentEnd == len(clause) || !isASCIIWordByte(clause[intentEnd])
+				if leftOK && rightOK {
+					duplicate := false
+					for _, existing := range occurrences {
+						if existing.index == intentIndex && existing.end == intentEnd {
+							duplicate = true
+							break
+						}
+					}
+					if !duplicate {
+						if len(occurrences) >= maxOccurrences {
+							return occurrences, true
+						}
+						occurrences = append(occurrences, quotedReviewContinuationOccurrence{
+							index:  intentIndex,
+							end:    intentEnd,
+							intent: intent,
+						})
+					}
+				}
+				offset = intentIndex + 1
+			}
+		}
+	}
+	for index := 1; index < len(occurrences); index++ {
+		current := occurrences[index]
+		position := index
+		for position > 0 && (occurrences[position-1].index > current.index ||
+			occurrences[position-1].index == current.index && occurrences[position-1].end > current.end) {
+			occurrences[position] = occurrences[position-1]
+			position--
+		}
+		occurrences[position] = current
+	}
+	return occurrences, false
+}
+
+var quotedReviewContinuationConnectors = []string{
+	" and ", " or ", " nor ", " but ", " then ", " however ",
+	" 或者 ", "或者", " 否则 ", "否则", " 要么 ", "要么",
+	" 并且 ", " 以及 ", " 然后 ", " 但是 ", " 或者 ", "且", "并", "然后", "但是", "或",
+}
+
+func quotedReviewContinuationOccurrenceSegment(
+	clause string,
+	occurrence quotedReviewContinuationOccurrence,
+) (string, int) {
+	start := 0
+	end := len(clause)
+	for _, connector := range quotedReviewContinuationConnectors {
+		if index := strings.LastIndex(clause[:occurrence.index], connector); index >= 0 {
+			candidate := index + len(connector)
+			if candidate > start {
+				start = candidate
+			}
+		}
+		if occurrence.end <= len(clause) {
+			if relative := strings.Index(clause[occurrence.end:], connector); relative >= 0 {
+				candidate := occurrence.end + relative
+				if candidate < end {
+					end = candidate
+				}
+			}
+		}
+	}
+	segment := strings.TrimSpace(clause[start:end])
+	trimmedPrefix := strings.TrimSpace(clause[start:occurrence.index])
+	localIndex := len(trimmedPrefix)
+	if trimmedPrefix != "" {
+		localIndex++
+	}
+	if intentIndex := strings.Index(segment, occurrence.intent); intentIndex >= 0 {
+		localIndex = intentIndex
+	}
+	return segment, localIndex
+}
+
+func quotedReviewOccurrenceHasDirectiveHead(segment string, intentIndex int, intent string) bool {
+	if intentIndex < 0 || intentIndex > len(segment) {
+		return false
+	}
+	if quotedReviewStartsWithExactIntent(strings.TrimSpace(segment), intent) {
+		return true
+	}
+	trimmed := quotedReviewTrimDirectiveGovernors(segment)
+	if quotedReviewStartsWithExactIntent(trimmed, intent) {
+		return true
+	}
+	return quotedReviewConditionalDirective(segment, []string{intent})
+}
+
+func quotedReviewStartsWithExactIntent(clause, intent string) bool {
+	if !strings.HasPrefix(clause, intent) {
+		return false
+	}
+	return !isASCIIStringLocal(intent) || len(clause) == len(intent) || !isASCIIWordByte(clause[len(intent)])
+}
+
+func quotedReviewNegativeAuthorizationHead(segment string, intentIndex int) bool {
+	if intentIndex <= 0 || intentIndex > len(segment) {
+		return false
+	}
+	prefix := quotedReviewTrimNeutralDirectivePrefix(segment[:intentIndex])
+	return hasAnyPrefix(prefix,
+		"i do not authorize you to", "i don't authorize you to",
+		"we do not authorize you to", "we don't authorize you to",
+		"you are not authorized to", "you aren't authorized to",
+		"我不授权你", "我们不授权你", "你未获授权", "你没有被授权",
+	)
+}
+
+func quotedReviewAffirmativeReversalHead(segment string, intentIndex int) bool {
+	if intentIndex <= 0 || intentIndex > len(segment) {
+		return false
+	}
+	prefix := quotedReviewTrimNeutralDirectivePrefix(segment[:intentIndex])
+	return hasAnyPrefix(prefix,
+		"do not not", "don't not", "cannot not", "can't not",
+		"do not fail to", "don't fail to", "never fail to",
+		"do not refuse to", "don't refuse to", "never refuse to",
+		"do not forget to", "don't forget to", "never forget to",
+		"do not hesitate to", "don't hesitate to", "never hesitate to",
+		"不要不", "不得不", "不能不", "不要忘记", "不得忘记",
+	)
+}
+
+func quotedReviewDirectNegativeHead(segment string, intentIndex int) bool {
+	if intentIndex <= 0 || intentIndex > len(segment) {
+		return false
+	}
+	prefix := quotedReviewTrimNeutralDirectivePrefix(segment[:intentIndex])
+	return hasAnyPrefix(prefix,
+		"do not", "don't", "never", "must not", "should not", "cannot", "can't",
+		"will not", "won't", "would not", "wouldn't", "could not", "couldn't", "may not",
+		"let's not", "let us not",
+		"you should not", "you must not", "you may not", "you cannot", "you can't",
+		"we should not", "we must not", "we may not", "we cannot", "we can't",
+		"请你不要", "你不应该", "你不应", "你不得", "你不能", "你不可以",
+		"不要", "不得", "禁止", "严禁", "不能", "不应", "不可", "别",
+	)
+}
+
+func quotedReviewTrimNeutralDirectivePrefix(prefix string) string {
+	prefix = strings.TrimSpace(prefix)
+	for pass := 0; pass < 4; pass++ {
+		before := prefix
+		for _, neutral := range []string{
+			"please ", "kindly ", "now ", "then ", "actually ", "instead ",
+			"yes ", "sure ", "ok ", "okay ", "just ", "simply ",
+			"nevertheless ", "nonetheless ", "even so ", "that said ",
+			"all the same ", "regardless ", "in any case ",
+			"请你", "请", "现在", "然后", "好的", "好", "是的",
+		} {
+			if prefix == strings.TrimSpace(neutral) {
+				prefix = ""
+				break
+			}
+			if strings.HasPrefix(prefix, neutral) {
+				prefix = strings.TrimSpace(prefix[len(neutral):])
+				break
+			}
+		}
+		if prefix == before {
+			break
+		}
+	}
+	return prefix
+}
+
+func quotedReviewContinuationIntentIsActive(
+	clause string,
+	intents []string,
+	patterns compactRuleIntentPatterns,
+) bool {
+	if !quotedReviewContinuationHasDirectiveHead(clause, intents) {
+		return false
+	}
+	if metaOverrideHasDoubleNegatedInertDirective(clause) {
+		return true
+	}
+	return containsUnnegatedRuleIntentPrepared(
+		clause,
+		intents,
+		patterns,
+	)
+}
+
+func quotedReviewContinuationExplicitlyNegates(
+	clause string,
+	intents []string,
+	patterns compactRuleIntentPatterns,
+) bool {
+	if metaOverrideHasDoubleNegatedInertDirective(clause) {
+		return false
+	}
+	var scratch ruleIntentNegationScratch
+	scratch.reset(clause)
+	found, negates := clauseRuleIntentNegationPrepared(&scratch, intents, patterns)
+	return found && negates
+}
+
+func quotedReviewContinuationIsAnalytical(clause, next string, intentIndex int) bool {
+	if intentIndex < 0 || intentIndex > len(clause) {
+		return false
+	}
+	prefix := strings.TrimSpace(clause[:intentIndex])
+	for {
+		before := prefix
+		for _, polite := range []string{
+			"please ", "kindly ", "tell me ", "can you ", "could you ", "would you ", "will you ",
+			"请问", "请解释", "可以解释", "告诉我", "请",
+		} {
+			if strings.HasPrefix(prefix, polite) {
+				prefix = strings.TrimSpace(prefix[len(polite):])
+				break
+			}
+		}
+		if prefix == before {
+			break
+		}
+	}
+	if hasAnyPrefix(prefix,
+		"what would happen if", "what happens if", "what if",
+		"what does", "what do", "what did", "what is the meaning of",
+		"explain what would happen if", "explain what happens if",
+		"describe what would happen if", "describe what happens if",
+		"analyze what would happen if", "analyze what happens if",
+		"what are the consequences if", "what are the risks if",
+		"explain the consequences if", "explain the risks if",
+		"analyze the consequences if", "analyze the risks if",
+		"should i", "should we", "can i", "can we", "could i", "could we",
+		"may i", "may we", "would i", "would we", "whether i should", "whether we should",
+		"explain whether i should", "explain whether we should",
+		"analyze whether i should", "analyze whether we should",
+		"should you", "are you authorized to", "why not",
+		"did i", "did you", "did we", "did they", "have i", "have you", "have we", "have they",
+		"why did", "when did", "where did", "who asked", "who told",
+		"is it safe to", "is it unsafe to", "is it harmful to",
+		"why is it harmful to", "why is it unsafe to",
+		"would it be harmful to", "would it be unsafe to",
+		"是否应该", "我是否应该", "我应该", "我能", "我可以", "我们应该", "我们能", "我们可以",
+		"你是否应该", "你应该吗", "这样做是否安全", "这样做是否有害",
+	) {
+		return true
+	}
+	if quotedReviewConditionalDecisionQuestion(prefix) {
+		return true
+	}
+	if hasAnyPrefix(prefix,
+		"if i ", "if we ", "if someone ", "if they ", "when i ", "when we ",
+		"assuming i ", "assuming we ", "suppose i ", "suppose we ",
+		"如果我", "如果我们", "假如我", "假如我们", "倘若我", "倘若我们",
+	) && (containsAnyLiteral(clause[intentIndex:],
+		"what would happen", "what happens", "what are the consequences", "what are the risks",
+		"会发生什么", "有什么后果", "后果是什么", "风险是什么",
+	) || quotedReviewConsequenceQuestion(next)) {
+		return true
+	}
+	return containsAnyLiteral(clause,
+		"会发生什么", "有什么后果", "后果是什么", "风险是什么", "是否安全", "是否有害",
+		"是什么意思", "安全吗", "有害吗", "危险吗",
+	)
+}
+
+func quotedReviewConditionalDecisionQuestion(prefix string) bool {
+	prefix = strings.TrimSpace(prefix)
+	for _, condition := range []string{
+		"if approved", "if ready", "if authorized", "if checks pass",
+		"if you can", "if you are ready", "once approved", "when approved", "after approval",
+		"如果获批", "如果通过检查", "如果准备好了", "获批后", "通过检查后",
+	} {
+		if !strings.HasPrefix(prefix, condition) {
+			continue
+		}
+		rest := strings.TrimSpace(prefix[len(condition):])
+		if hasAnyPrefix(rest,
+			"should i", "should we", "can i", "can we", "could i", "could we",
+			"may i", "may we", "would it", "is it safe to", "is it harmful to",
+			"我应该", "我能", "我可以", "我们应该", "我们能", "我们可以", "是否应该",
+		) {
+			return true
+		}
+	}
+	return false
+}
+
+func quotedReviewConsequenceQuestion(clause string) bool {
+	clause = strings.TrimSpace(clause)
+	return hasAnyPrefix(clause,
+		"what would happen", "what happens", "what are the consequences", "what are the risks",
+		"会发生什么", "有什么后果", "后果是什么", "风险是什么",
+	)
+}
+
+func quotedReviewContinuationIsSafetyOnly(clause string, explicitIntents []string) bool {
+	safetyFraming := hasExplanatoryFraming(clause) || isSafetyDeliverableClause(clause) ||
+		hasAffirmativeSafetyPurpose(clause) || quotedReviewSafetyContinuation(clause)
+	if !safetyFraming || quotedReviewOperationalExplanationGovernor(clause) {
+		return false
+	}
+	return !explanatoryFramingTurnsOperational(clause, quotedReviewSpecificContinuationIntents) &&
+		!explanatoryFramingTurnsOperational(clause, quotedReviewTerseContinuationIntents) &&
+		!explanatoryFramingTurnsOperational(clause, explicitIntents)
+}
+
+func quotedReviewSafetyContinuation(clause string) bool {
+	return containsAnyLiteral(clause,
+		"safety explanation", "safety analysis", "safety review", "risk explanation", "risk analysis",
+		"harm explanation", "harm analysis", "defensive explanation", "defensive analysis",
+		"安全解释", "安全分析", "安全审查", "风险解释", "风险分析", "危害解释", "危害分析", "防御解释", "防御分析",
+	)
+}
+
+func quotedReviewOperationalExplanationGovernor(clause string) bool {
+	clause = quotedReviewTrimIntroductoryGovernors(clause)
+	return hasAnyPrefix(clause,
+		"explain step by step how to ", "explain how to ", "show me how to ", "tell me how to ", "describe how to ",
+		"walk me through how to ", "how do i ", "how can i ", "how would you ",
+		"解释如何", "说明如何", "告诉我如何", "演示如何",
+	)
+}
+
+func quotedReviewTrimIntroductoryGovernors(clause string) string {
+	clause = strings.TrimLeft(strings.TrimSpace(clause), "-*#>,，:： \t")
+	for pass := 0; pass < 6; pass++ {
+		before := clause
+		for _, prefix := range []string{
+			"please ", "kindly ", "now ", "then ", "actually ", "instead ",
+			"yes ", "sure ", "ok ", "okay ", "just ", "simply ", "really ",
+			"quickly ", "directly ", "immediately ", "still ", "anyway ",
+			"nevertheless ", "nonetheless ", "even so ", "that said ",
+			"all the same ", "regardless ", "in any case ",
+			"or else ", "alternatively ", "otherwise ", "if not ", "or ", "either ",
+			"can you ", "could you ", "would you ", "will you ",
+			"或者", "否则", "要么", "或",
+			"请问你能不能", "请问你能", "请问你可以", "请你", "请",
+			"现在", "然后", "好的", "好", "是的", "直接", "立即", "马上", "仍然", "你能", "你可以", "就",
+		} {
+			if strings.HasPrefix(clause, prefix) {
+				clause = strings.TrimLeft(strings.TrimSpace(clause[len(prefix):]), ",，:：- ")
+				break
+			}
+		}
+		if clause == before {
+			break
+		}
+	}
+	return clause
+}
+
+func quotedReviewContinuationHasDirectiveHead(clause string, intents []string) bool {
+	if len(intents) == 0 {
+		return false
+	}
+	candidates := []string{clause}
+	for _, connector := range []string{
+		" and ", " or ", " nor ", " but ", " then ", " however ",
+		" 并且 ", " 以及 ", " 然后 ", " 但是 ", " 或者 ", "且", "并", "然后", "但是", "或",
+	} {
+		if index := strings.LastIndex(clause, connector); index >= 0 {
+			candidates = append(candidates, clause[index+len(connector):])
+		}
+	}
+	for _, candidate := range candidates {
+		candidate = strings.TrimLeft(strings.TrimSpace(candidate), "-*#>,，:： \t")
+		if quotedReviewStartsWithIntent(candidate, intents) ||
+			quotedReviewConditionalDirective(candidate, intents) {
+			return true
+		}
+		candidate = quotedReviewTrimDirectiveGovernors(candidate)
+		if quotedReviewStartsWithIntent(candidate, intents) ||
+			quotedReviewConditionalDirective(candidate, intents) {
+			return true
+		}
+	}
+	return metaOverrideHasDoubleNegatedInertDirective(clause) &&
+		earliestRuleIntentIndex(clause, intents) >= 0
+}
+
+func quotedReviewTrimDirectiveGovernors(clause string) string {
+	clause = strings.TrimLeft(strings.TrimSpace(clause), "-*#>,，:： \t")
+	for pass := 0; pass < 6; pass++ {
+		before := clause
+		for _, prefix := range []string{
+			"or else ", "alternatively ", "otherwise ", "if not ", "or ", "either ",
+			"nevertheless ", "nonetheless ", "even so ", "that said ",
+			"all the same ", "regardless ", "in any case ",
+			"also ", "ultimately ", "finally ", "eventually ", "subsequently ", "afterwards ", "again ",
+			"或者", "否则", "要么", "或",
+			"也", "还是", "仍然", "最终", "随后", "接着", "再",
+			"i do not authorize you to ", "i don't authorize you to ",
+			"we do not authorize you to ", "we don't authorize you to ",
+			"you are not authorized to ", "you aren't authorized to ",
+			"do not fail to ", "don't fail to ", "never fail to ",
+			"do not refuse to ", "don't refuse to ", "never refuse to ",
+			"do not forget to ", "don't forget to ", "never forget to ",
+			"do not hesitate to ", "don't hesitate to ", "never hesitate to ",
+			"do not not ", "don't not ", "cannot not ", "can't not ",
+			"let's not ", "let us not ",
+			"you should not ", "you must not ", "you may not ", "you cannot ", "you can't ",
+			"we should not ", "we must not ", "we may not ", "we cannot ", "we can't ",
+			"do not ", "don't ", "never ", "must not ", "should not ", "cannot ", "can't ",
+			"will not ", "won't ", "would not ", "wouldn't ", "could not ", "couldn't ", "may not ",
+			"i authorize you to ", "we authorize you to ", "i permit you to ", "we permit you to ", "you are authorized to ",
+			"your task is to ", "be sure to ", "make sure you ", "make sure to ",
+			"you should ", "you must ", "you shall ", "you ought to ", "you may ", "you can ", "you need to ",
+			"we should ", "we must ", "we may ", "we can ", "we need to ",
+			"please ", "kindly ", "now ", "then ", "actually ", "instead ",
+			"yes ", "sure ", "ok ", "okay ", "just ", "simply ", "really ",
+			"quickly ", "directly ", "immediately ", "still ", "anyway ", "let's ", "let us ",
+			"can you ", "could you ", "would you ", "will you ",
+			"i need you to ", "i want you to ", "go ahead and ",
+			"explain step by step how to ", "explain how to ", "show me how to ", "tell me how to ", "describe how to ",
+			"walk me through how to ", "how do i ", "how can i ", "how would you ",
+			"我不授权你", "我们不授权你", "你未获授权", "你没有被授权",
+			"请你不要", "你不应该", "你不应", "你不得", "你不能", "你不可以",
+			"不要不", "不得不", "不能不", "不要", "不得", "禁止", "严禁", "不能", "不应", "不可", "别",
+			"我授权你", "我们授权你", "请问你能不能", "请问你能", "请问你可以", "请帮我", "麻烦你", "请你",
+			"你应该", "你必须", "你可以", "你能", "务必", "请",
+			"现在", "然后", "好的", "好", "是的", "直接", "立即", "马上", "仍然", "就",
+			"解释如何", "说明如何", "告诉我如何", "演示如何",
+		} {
+			if strings.HasPrefix(clause, prefix) {
+				clause = strings.TrimLeft(strings.TrimSpace(clause[len(prefix):]), ",，:：- ")
+				break
+			}
+		}
+		if clause == before {
+			break
+		}
+	}
+	return clause
+}
+
+func quotedReviewStartsWithIntent(clause string, intents []string) bool {
+	for _, intent := range intents {
+		if !strings.HasPrefix(clause, intent) {
+			continue
+		}
+		if !isASCIIStringLocal(intent) || len(clause) == len(intent) || !isASCIIWordByte(clause[len(intent)]) {
+			return true
+		}
+	}
+	return false
+}
+
+func quotedReviewConditionalDirective(clause string, intents []string) bool {
+	intentIndex := earliestRuleIntentIndex(clause, intents)
+	if intentIndex <= 0 {
+		return false
+	}
+	prefix := strings.TrimSpace(clause[:intentIndex])
+	prefix = strings.TrimRight(prefix, ",，:：")
+	for _, condition := range []string{
+		"if approved", "if ready", "if authorized", "if checks pass",
+		"if you can", "if you are ready", "once approved", "when approved", "after approval",
+		"如果获批", "如果通过检查", "如果准备好了", "获批后", "通过检查后",
+	} {
+		if prefix == condition || strings.HasPrefix(prefix, condition+" ") {
+			return true
+		}
+	}
+	return false
 }
 
 // priorPartsAllowInertQuotedSafetyReview prevents a safe-looking final review

@@ -1,5 +1,10 @@
 # Round 6 long-text streaming scanner design
 
+```text
+current_classifier_policy_version: classifier-policy-v5
+current_classifier_policy_sha256: 07e972eac4faba57ca5244e9a49d5db21d5c0e414778bf617b5378fa621b4f76
+```
+
 Status: **BLOCKED / PENDING HOST AND INDEPENDENT AUDIT**. This is exact project
 version `0.15`, intended formal tag `v0.15` (never `v0.15.0`), and a Linux
 amd64-only development candidate. Windows and macOS validation is outside this
@@ -10,7 +15,7 @@ workflow and remain unreleased. See
 `round6-prerelease-attestation.json` and `formal-release-attestation.json`.
 
 Current classifier identity is `classifier-policy-v5` /
-`42d48af7a854b19d29c956a6f99b9027189ce4ae7b19a1d92a83955639d0916e`;
+`07e972eac4faba57ca5244e9a49d5db21d5c0e414778bf617b5378fa621b4f76`;
 scanner identity is `streaming-scanner-v1`.
 
 Commit `21ceb57e6b6030e56d7820c9a67a8eecd068c669` passed push and PR CI
@@ -100,6 +105,26 @@ The compiled overlap must be smaller than the configured window and smaller than
 Cross-window classification never merges different roles or unrelated fields as if they were one prompt. Role-aware reconstructions use complete, bounded logical-field summaries. Long fields continue through window scanning but are not copied into cross-field state. Inside one long logical field, fixed-size ordinary-risk and persistent-control-plane signal facts record whether different windows contributed distinct actionable ingredients. Consecutive unknown-role, content-provenance fields retain only those bounded facts (never their text) after a long field makes exact untrusted-parts reconstruction unavailable. A later risk-bearing field, including one that repeats context-sensitive signals, makes an actionable merged potential `classifier_window_incomplete` unless an exact block was already proven inside that same unknown sequence. A known role, a non-content provenance, or a tool-payload boundary clears the conservative unknown-role state; an unknown boundary also clears role-aware user composition.
 
 Assistant/system quoted safety examples use a bounded provisional `Result`, not retained prompt text. A real closing quote discards that provisional result and exposes only the suffix to ordinary classification. If the logical field ends first, the provisional result is committed as ordinary content. Closing detection reads only newly consumed bytes, so an opener replayed in overlap cannot be mistaken for a close.
+
+User defensive-review state follows a separate bounded transaction. A complete
+review stores only the independently classified quoted `Result`, eligibility,
+and trust flags; it never stores the quote or surrounding prompt. A later user
+field may store only a privacy-safe affirmative referential-directive fact. If
+both exact proofs are available, the classifier reclassifies the quote alone and
+charges that call to `MaxChunks`. If either proof falls outside the retained
+window, the session emits `CoverageUnavailable` with
+`classifier_window_incomplete`; a chunk-budget failure remains
+`CoverageBudgetExhausted` with `classification_chunk_limit`. User-combination
+reset, unknown provenance boundaries, abort, finish, and a newer user review all
+clear or replace the transaction.
+
+Complete follow-up parsing records active, proven-inert, and unrecognized
+outcomes separately. Only proven analytical, safety, or negated speech acts may
+suppress the signal-based fallback for an incomplete prior field. Common
+directive governors (`just`, `simply`, `let's`, `let us`) remain active. The
+adjacent bounded-pair path also skips a pair when either summary contains a
+proved inert quoted referent; it must not classify a wrapper-stripped head or
+tail as if it were the complete field.
 
 ## Completeness and disposition
 

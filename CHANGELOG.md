@@ -1,5 +1,10 @@
 # Changelog
 
+```text
+current_classifier_policy_version: classifier-policy-v5
+current_classifier_policy_sha256: 07e972eac4faba57ca5244e9a49d5db21d5c0e414778bf617b5378fa621b4f76
+```
+
 ## 0.15 — 2026-07-18
 
 Release status: **BLOCKED / PENDING HOST AND INDEPENDENT AUDIT**. Exact project
@@ -30,6 +35,16 @@ future stable release still requires a newly authored independent unseen set.
 - Extend release-policy and CI contracts so schema-v2 Host evidence fields,
   fixed CPA verification, and the absence of checked-out repository tokens are
   covered by mutation tests rather than documentation alone.
+- Give every current release document exactly one machine-readable classifier
+  policy version/hash declaration. The release-document gate now rejects stale,
+  conflicting, or duplicate canonical identities even when the current value is
+  appended later, with dedicated mutation fixtures for each bypass shape. The
+  declaration must occupy the fixed visible prologue immediately below a
+  top-level H1 rather than being hidden inside HTML comments or frontmatter.
+  Formal release rejects document-root, fixture, and current-identity
+  environment overrides; ordinary CI, candidate, and
+  attested-prerelease gates validate the real source tree. The public jailbreak
+  review is now both identity-bound and included in the strict audit bundle.
 - Change safe startup behavior to `mode: observe` with subject control disabled.
   Observe now updates counters without persisting per-request SQLite events,
   including streaming/incomplete and oversized request paths. Explicit
@@ -72,13 +87,37 @@ future stable release still requires a newly authored independent unseen set.
   mixed-role, and lower-confidence requests keep their direct per-request
   disposition but do not allocate subject state or add hits, receipts, or
   repeat multipliers. Publish the resulting code-level contract as
-`classifier-policy-v5` / `42d48af7a854b19d29c956a6f99b9027189ce4ae7b19a1d92a83955639d0916e`.
+`classifier-policy-v5` / `07e972eac4faba57ca5244e9a49d5db21d5c0e414778bf617b5378fa621b4f76`.
 - Treat one closed, explicitly quoted Cyber Abuse request as inert only when
   the surrounding user text asks to explain why it is unsafe and ends with an
   exact non-execution boundary. Missing or multiple quotes, double negation,
   unquoted abuse, and `then`/`however`/`and now` operational continuations fail
   closed; a later explicit implementation follow-up reactivates the retained
   quoted category signals and blocks.
+- Reclassify only that unique quoted referent when the newest eligible user
+  review is followed by an affirmative referential directive such as
+  `execute it`, `proceed`, or `go ahead`, including bounded polite and
+  conditional forms. The reactivated result is the direct referent result; it
+  does not inherit the safety wrapper's signals or context. Questions,
+  explanations, negation, consequences, and remediation remain inert, and
+  assistant/system/tool reviews cannot seed a later user referent.
+- Recognize common directive governors including `just`, `simply`, `let's`, and
+  `let us`. The follow-up parser now distinguishes active, proven inert, and
+  unrecognized speech acts. Only a proven explanation, question, safety
+  deliverable, or negation suppresses the conservative streaming risk fallback;
+  an unrecognized phrase can no longer turn a cross-window prior risk into a
+  complete allow.
+- Preserve only privacy-safe quoted-review results and affirmative-follow-up
+  facts across long streaming fields. Referent reclassification consumes the
+  normal classification-chunk budget. When either side crosses a bounded
+  scanner window and the exact relationship cannot be proved, return
+  `CoverageUnavailable` / `classifier_window_incomplete` instead of a silent
+  complete allow; budget exhaustion remains separately reported as
+  `classification_chunk_limit`.
+- Exclude a bounded adjacent head/tail reclassification whenever either field
+  already proved a complete inert quoted referent. This prevents a long review's
+  truncated tail from losing one side of the safety wrapper, and avoids charging
+  an unnecessary classification window.
 - Add a separate, zero-value-untrusted user-attribution proof. Only an explicit
   recognized `role: user` content path or an allowlisted multipart prompt is
   trusted; unknown top-level fields, unknown message siblings, roleless/future

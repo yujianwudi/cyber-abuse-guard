@@ -1,5 +1,10 @@
 # Known Limitations — v0.15 Round 6 development candidate
 
+```text
+current_classifier_policy_version: classifier-policy-v5
+current_classifier_policy_sha256: 07e972eac4faba57ca5244e9a49d5db21d5c0e414778bf617b5378fa621b4f76
+```
+
 1. **No guarantee against account action.** The plugin reduces the number of
    clearly risky requests that reach upstream. It cannot guarantee that an
    account will never be warned, rate-limited, suspended, or deactivated.
@@ -54,8 +59,14 @@
    byte count because the body is not copied into Go.
    Inert quoted-review credit is likewise available only when the single quote,
    unsafe assessment, and final non-execution boundary are all visible in one
-   complete classification view. Truncation or cross-window proof loss receives
-   no quoted-review credit and follows the normal incomplete-inspection contract.
+   complete classification view. A later affirmative referential directive is
+   linked only to the newest eligible user review and reclassifies only that
+   quote; non-user reviews, questions, explanations, negation, consequences, and
+   remediation do not establish execution intent. Complete long reviews retain
+   only a privacy-safe result, never quoted text. Truncation or cross-window proof
+   loss receives no quoted-review credit and yields
+   `CoverageUnavailable` / `classifier_window_incomplete`; insufficient
+   reclassification budget yields `classification_chunk_limit`.
    The accepted lead-ins are exact enumerated English templates, not a general
    natural-language intent model. A multipart request receives the optional
    prior-history proof only for at most 8 prior parts totaling at most 32 KiB;
@@ -268,7 +279,7 @@
 37. **Classifier-policy identity is source- and artifact-bound, but still not
     independent approval.** The current identity is `classifier-policy-v5` /
     SHA-256
-`42d48af7a854b19d29c956a6f99b9027189ce4ae7b19a1d92a83955639d0916e`.
+`07e972eac4faba57ca5244e9a49d5db21d5c0e414778bf617b5378fa621b4f76`.
     Build metadata and artifact verification carry it. The historical
     round5.2 value was `classifier-policy-v2` /
     `e9b87f7e2635495bdbceae469ef89e696b419f0a9a6fd129558a20bc4be947ec`,

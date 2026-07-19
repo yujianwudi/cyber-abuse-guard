@@ -216,6 +216,7 @@ docs/reports/PERFORMANCE.md
 docs/reports/PHASE0_CPA_CONTRACT.md
 docs/reports/PROMPT_INJECTION_REVIEW.md
 docs/reports/PRIVACY.md
+docs/reports/PUBLIC_JAILBREAK_REPOSITORY_REVIEW.md
 docs/reports/RELEASE_EVIDENCE.md
 docs/reports/TEST_REPORT.md
 plugins/

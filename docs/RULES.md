@@ -1,5 +1,10 @@
 # Rule System — ruleset 1.0.7
 
+```text
+current_classifier_policy_version: classifier-policy-v5
+current_classifier_policy_sha256: 07e972eac4faba57ca5244e9a49d5db21d5c0e414778bf617b5378fa621b4f76
+```
+
 The default rule set is embedded into the shared object from `/rules`. Every
 rule has a unique stable ID, category, severity, weighted score, bilingual
 evidence groups, allow contexts, and an optional hard authorization floor.
@@ -223,8 +228,8 @@ This identity covers the embedded YAML rule assets. The complete code-level
 policy is separately identified as:
 
 ```text
-classifier_policy_version: classifier-policy-v5
-classifier_policy_sha256: 42d48af7a854b19d29c956a6f99b9027189ce4ae7b19a1d92a83955639d0916e
+current_release_classifier_policy_version: classifier-policy-v5
+current_release_classifier_policy_sha256: 07e972eac4faba57ca5244e9a49d5db21d5c0e414778bf617b5378fa621b4f76
 ```
 
 The policy digest test binds the deterministic classifier, matcher,

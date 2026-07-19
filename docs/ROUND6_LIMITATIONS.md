@@ -1,5 +1,10 @@
 # Round 6 known limitations and release blockers
 
+```text
+current_classifier_policy_version: classifier-policy-v5
+current_classifier_policy_sha256: 07e972eac4faba57ca5244e9a49d5db21d5c0e414778bf617b5378fa621b4f76
+```
+
 Status: **BLOCKED / PENDING HOST AND INDEPENDENT AUDIT**; a candidate-bound
 `evaluation-v11` or later first-and-only `CONSUMED / PASS` attestation is also
 pending.
@@ -12,7 +17,7 @@ production approval. Windows and macOS validation is outside this round. See
 `round6-prerelease-attestation.json` and `formal-release-attestation.json`.
 
 Current classifier identity is `classifier-policy-v5` /
-`42d48af7a854b19d29c956a6f99b9027189ce4ae7b19a1d92a83955639d0916e`.
+`07e972eac4faba57ca5244e9a49d5db21d5c0e414778bf617b5378fa621b4f76`.
 
 ## Release blockers
 
@@ -89,8 +94,16 @@ Current classifier identity is `classifier-policy-v5` /
   the existing incomplete-inspection policy.
 - A defensive quoted Cyber Abuse review is recognized only when its one closed
   quotation, unsafe assessment, and exact non-execution boundary are contained
-  in a complete classifier view. The scanner does not infer inert quotation
-  scope across a lost/truncated window boundary.
+  in a complete classifier view. A later affirmative referential directive can
+  bind only the newest eligible user review; the quote is reclassified without
+  borrowing wrapper context. The scanner retains only a privacy-safe result and
+  bounded follow-up facts, never the quote, and does not infer inert or active
+  quotation scope across a lost/truncated window boundary. Such proof loss is
+  `classifier_window_incomplete`; referent reclassification also consumes the
+  ordinary `MaxChunks` budget. The recognized speech-act grammar is bounded;
+  only a positively proven analytical, safety, or negated form receives inert
+  credit. An unrecognized form retains the conservative signal fallback rather
+  than being treated as a complete safe negative.
 - The compact shadow/index path no longer copies arbitrary long keys or semantic
   values, but structural metadata and decoder allocations still grow with
   bounded JSON token/node and logical-field counts. Linux allocation and RSS

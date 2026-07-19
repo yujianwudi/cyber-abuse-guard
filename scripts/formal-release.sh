@@ -9,8 +9,18 @@ release_init
 release_assert_tag
 release_assert_formal_build
 make -C "$root" external-release-attestation
-CURRENT_RULESET_SHA256="$RELEASE_RULESET_SHA256" \
-  "$root/scripts/release-doc-consistency.sh"
+for override in \
+  RELEASE_DOC_ROOT \
+  RELEASE_DOC_FIXTURE_MODE \
+  CURRENT_RELEASE_VERSION \
+  CURRENT_RULESET_SHA256 \
+  CURRENT_CLASSIFIER_POLICY_VERSION \
+  CURRENT_CLASSIFIER_POLICY_SHA256; do
+  if [[ -n "${!override+x}" ]]; then
+    release_die "formal release forbids release document override environment: $override"
+  fi
+done
+"$root/scripts/release-doc-consistency.sh"
 
 dist="${DIST_DIR:-$root/dist}"
 mkdir -p "$dist"

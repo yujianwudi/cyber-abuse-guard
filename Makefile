@@ -166,6 +166,7 @@ script-test:
 	./scripts/generate-hmac-key-test.sh
 	bash ./scripts/release-evidence-privacy-test.sh
 	./scripts/release-doc-consistency-test.sh
+	./scripts/release-doc-consistency.sh
 
 round6-script-test:
 	bash -n ./scripts/go-safe-development-test.sh
@@ -188,6 +189,7 @@ round6-script-test:
 	./scripts/generate-hmac-key-test.sh
 	bash ./scripts/release-evidence-privacy-test.sh
 	bash ./scripts/round6-doc-consistency-fixture-test.sh
+	./scripts/release-doc-consistency.sh
 
 corpus-regression:
 	$(GO) test -tags=$(TEST_TAGS) ./internal/classifier \

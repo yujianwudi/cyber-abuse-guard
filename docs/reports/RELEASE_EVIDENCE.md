@@ -1,6 +1,11 @@
 # v0.15 Round 6 Development Evidence — current gate plus frozen Round 5 history
 
-Last updated: 2026-07-19 (Asia/Shanghai)
+```text
+current_classifier_policy_version: classifier-policy-v5
+current_classifier_policy_sha256: 07e972eac4faba57ca5244e9a49d5db21d5c0e414778bf617b5378fa621b4f76
+```
+
+Last updated: 2026-07-20 (Asia/Shanghai)
 
 ## Round 6 v0.15 current evidence status — not a release PASS
 
@@ -21,6 +26,9 @@ round6_pr_ci: 29620335143 / JOBS NOT STARTED DUE BILLING / NOT A PASS
 post_merge_main_push_ci: 29630844605 / SUCCESS
 public_source_only_prerelease_tag: v0.15-rc.1
 source_only_tag_ci: 29630926354 / SUCCESS
+current_hardening_pr: 18 / OPEN / final exact-head CI and review state are external evidence
+current_hardening_local_linux: QUOTED-REVIEW + LONG-STREAM + UNIT + RACE PASS / DEVELOPMENT ONLY
+current_release_contract_local: ROUND6-SCRIPT-TEST + REAL DOC GATE + MUTATION FIXTURE + 152 SAFE-CONTRACT TESTS PASS / DEVELOPMENT ONLY
 attached_release_assets: none
 private_untagged_clean_candidate: NOT CREATED / PENDING
 candidate_manifest: NOT CREATED / PENDING
@@ -57,9 +65,37 @@ and verified draft consume that same candidate-level attestation. Protected
 promotion may publish only the unchanged draft.
 
 Current policy identity is `classifier-policy-v5` /
-`42d48af7a854b19d29c956a6f99b9027189ce4ae7b19a1d92a83955639d0916e`;
+`07e972eac4faba57ca5244e9a49d5db21d5c0e414778bf617b5378fa621b4f76`;
 scanner identity is `streaming-scanner-v1`; ruleset identity remains `1.0.7` /
 `7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134`.
+
+The current PR #18 hardening delta closes a quoted-review continuation bypass
+without turning the safety wrapper into reusable malicious evidence. Only the
+unique quote from the newest eligible RoleUser review is reclassified, and
+its score, category, rule IDs, evidence, context, and behavior match direct
+classification of that referent. Questions, explanations, negation,
+consequences, remediation, and assistant/system/tool/unknown review carriers
+remain inert. Mixed-trust RoleUser pairs preserve conservative direct
+disposition with `non_user_or_untrusted` origin and remain ineligible for subject
+accumulation.
+
+Long-field handling retains only privacy-safe `Result` values and bounded
+affirmative-reference facts. If exact linkage falls outside the retained
+classifier windows, coverage becomes `CoverageUnavailable` /
+`classifier_window_incomplete`; the additional referent classification consumes
+the ordinary chunk budget and can produce `classification_chunk_limit`. Common
+directive governors now include `just`, `simply`, `let's`, and `let us`; only a
+positively proven analytical/safety/negated form suppresses the incomplete-prior
+signal fallback. Bounded adjacent reclassification is skipped when either field
+already proved an inert quoted referent.
+Targeted OpenAI Chat/Responses routes, the Linux long-text size ladder, full safe
+unit tests, classifier/plugin race checks, and `make round6-script-test` passed
+locally. Release contracts also reject formal document override environments
+and lock the public jailbreak review into required inputs, audit-bundle
+installation, and verification. These
+facts remain local development evidence until PR #18 exact-head CI and review
+complete; they are not candidate, Host, independent-audit, evaluation, tag, or
+Release approval.
 
 The final PR head must have no unresolved, non-outdated actionable review
 threads before merge. No automated-review result is treated as an independent
@@ -512,8 +548,8 @@ target: linux/amd64, glibc 2.34+
 go_toolchain_for_recorded_wsl_checks: go1.26.4 linux/amd64
 ruleset_version: 1.0.7
 ruleset_sha256: 7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134
-classifier_policy_version: classifier-policy-v2
-classifier_policy_sha256: dc9a174099cb2f621e5333a508d4645604f96f470a6d9ae12a1acfb363d29cf2
+historical_classifier_policy_version: classifier-policy-v2
+historical_classifier_policy_sha256: dc9a174099cb2f621e5333a508d4645604f96f470a6d9ae12a1acfb363d29cf2
 ```
 
 The final resolution-only follow-up commit changes only the `SELF` evidence

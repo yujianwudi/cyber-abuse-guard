@@ -215,6 +215,7 @@ CANDIDATE_ADMISSION_COMMANDS = (
 SAFE_GATE_COMMANDS = (
     "python3 -B scripts/round6_safe_gate_contract_test.py",
     "python3 -B scripts/round6_safe_gate_contract.py --root .",
+    "./scripts/release-doc-consistency.sh",
 )
 SAFE_WORKFLOW_ENV_LINES = {
     "GO_VERSION: '1.26.4'",
@@ -528,7 +529,7 @@ BLOCKED_STEP_RUN_SHA256 = {
     ("admission", 0): "3c9f96e89952dd96c6fed357bde683cbc0302cc0e2de941547c504c3285de369",
     ("admission", 1): "7f1817ec7b567df4be63fafd9ee2b2347ac37e01982e41ee3338f64c79cae81a",
     ("admission", 2): "26030928c867d579089d1e69fcba37ff65433ca93697835abdda4f6365f2e4e5",
-    ("verify", 1): "b38e1f3a74567d8390bde6390c75c7e96a3bd0d5bc13de0e6a7dbbcfeec0a2fe",
+    ("verify", 1): "739ebd378c0da4e32117344b43258da8bb85a61590c8966c47dce26274df75cc",
     ("verify", 2): "3427df1bdbbcd38976514b679706f45fe6331981e750168beffd9bfdd1efdea1",
     ("verify", 4): "378f0a3b53f59937e4646b34b7b69f16c839ffb03edf54331fea149479f9c8b9",
     ("verify", 6): "86252b49e4b21673adafab187e650b9a051cb28dd78c5d7a91d4d52ad951586d",
@@ -731,7 +732,7 @@ CANDIDATE_STEP_CONTRACTS = {
 CANDIDATE_STEP_RUN_SHA256 = {
     ("admission", 0): "5213ecde1d5f26b4e9d8c31ab926eea06959c8dcb3d696551417dbf350bbbe7b",
     ("admission", 1): "7f1817ec7b567df4be63fafd9ee2b2347ac37e01982e41ee3338f64c79cae81a",
-    ("build", 1): "b38e1f3a74567d8390bde6390c75c7e96a3bd0d5bc13de0e6a7dbbcfeec0a2fe",
+    ("build", 1): "739ebd378c0da4e32117344b43258da8bb85a61590c8966c47dce26274df75cc",
     ("build", 2): "8966c407a8e05f9a88182c2130b24b907e58dd1d874d55fe4f86c9bfedef6457",
     ("build", 4): "e94a8d7e6ec6ca9c30a512aa4f6bd8eb93dd3412b406ea2f64a7d2b91e75022f",
     ("build", 5): "43a1e2b51527edd141c9b4c53ac0c11775f0b8b9948054e5d2f329221a555e60",
@@ -828,6 +829,14 @@ FORMAL_OPERATION_SCRIPTS = (
     "release-preflight.sh",
     "verify-release.sh",
 )
+FORMAL_RELEASE_DOCUMENT_OVERRIDE_ENV = (
+    "RELEASE_DOC_ROOT",
+    "RELEASE_DOC_FIXTURE_MODE",
+    "CURRENT_RELEASE_VERSION",
+    "CURRENT_RULESET_SHA256",
+    "CURRENT_CLASSIFIER_POLICY_VERSION",
+    "CURRENT_CLASSIFIER_POLICY_SHA256",
+)
 FORMAL_RELEASE_ARTIFACTS = (
     "dist/cyber-abuse-guard-v0.15.so",
     "dist/cyber-abuse-guard-v0.15.so.sha256",
@@ -849,6 +858,7 @@ FORMAL_RELEASE_ARTIFACTS = (
     "dist/formal-release-attestation.json",
     "dist/formal-release-attestation.json.sha256",
 )
+FORMAL_AUDIT_REPORT_PATH = "docs/reports/PUBLIC_JAILBREAK_REPOSITORY_REVIEW.md"
 FORMAL_RELEASE_STEP_RUN_SHA256 = {
     ("admission", 0): "dfaabe7534d8faa6d028cc7e4b153a5225c685bd18389948ac416bb484767700",
     ("build-and-verify", 2): "5bc38a90928a7309be0be55b3834ebf28c2eee7c2fd290ef19bf6d3a8dd3857d",
@@ -880,11 +890,11 @@ FROZEN_EVALUATION_STATUS_COMMAND = (
 )
 ROUND6_DOC_FIXTURE_WRAPPER_SCRIPT = "scripts/round6-doc-consistency-fixture-test.sh"
 ROUND6_DOC_FIXTURE_WRAPPER_SCRIPT_SHA256 = (
-    "8c3956d90320d1f954437e0850bd903b01d758624187dc56438e7a1d0d01ebff"
+    "d5d46788638f844dc980f9f301fce4a856e449b7b417ed9778c8f9103b3934d4"
 )
 ROUND6_DOC_FIXTURE_DEPENDENCY_SHA256 = {
-    "scripts/release-doc-consistency-test.sh": "609487f223c0985ee9879cbce8c1b63dc09eebd2d71ce6298f383919e5eca176",
-    "scripts/release-doc-consistency.sh": "530b601712af9324003679bc358ff0c2e1eefb652cbb7b79b2fff7e90bb5ff1b",
+    "scripts/release-doc-consistency-test.sh": "d1061e862c189b36629d346f25519c680849dbef8b601acc7aaa26fe2ec70dcf",
+    "scripts/release-doc-consistency.sh": "db4ee0d5bcfa4969d4b38bdf4b059c8f07b3010b1cf6445cd25a682ed86b3506",
 }
 ROUND6_PRIVACY_FIXTURE_SCRIPT = "scripts/release-evidence-privacy-test.sh"
 ROUND6_PRIVACY_FIXTURE_SCRIPT_SHA256 = (
@@ -2536,6 +2546,83 @@ def validate_release_mode_contracts(root: Path) -> None:
             raise ContractError(
                 f"formal operation {script_name} may not enable candidate or RC build mode"
             )
+        if script_name == "formal-release.sh":
+            override_loop = (
+                "for override in "
+                + " ".join(FORMAL_RELEASE_DOCUMENT_OVERRIDE_ENV)
+                + "; do"
+            )
+            override_guard = 'if [[ -n "${!override+x}" ]]; then'
+            override_failure = (
+                'release_die "formal release forbids release document override '
+                'environment: $override"'
+            )
+            document_gate = '"$root/scripts/release-doc-consistency.sh"'
+            override_contract = (
+                override_loop,
+                override_guard,
+                override_failure,
+                "fi",
+                "done",
+                document_gate,
+            )
+            matches = [
+                index
+                for index in range(len(commands) - len(override_contract) + 1)
+                if commands[index : index + len(override_contract)] == override_contract
+            ]
+            if (
+                len(matches) != 1
+                or commands.count(override_loop) != 1
+                or commands.count(override_guard) != 1
+                or commands.count(override_failure) != 1
+                or commands.count(document_gate) != 1
+                or matches[0] <= positions[-1]
+            ):
+                raise ContractError(
+                    "formal release must reject every release document override environment "
+                    "before document verification"
+                )
+
+    package_path = root / "scripts/package-release.sh"
+    package_text = read_regular_text(package_path, root)
+    report_source = f'"$root/{FORMAL_AUDIT_REPORT_PATH}"'
+    required_start = package_text.find("for required_file in \\\n")
+    required_end = package_text.find("; do", required_start)
+    install_start = package_text.find(
+        'install -m 0644 "$root/docs/reports/TEST_REPORT.md" \\\n'
+    )
+    install_end = package_text.find(
+        '"$bundle_stage/docs/reports/"', install_start
+    )
+    if (
+        required_start < 0
+        or required_end < 0
+        or package_text[required_start:required_end].count(report_source) != 1
+        or install_start < 0
+        or install_end < 0
+        or package_text[install_start:install_end].count(report_source) != 1
+    ):
+        raise ContractError(
+            "formal audit bundle must require and package the public jailbreak audit report"
+        )
+
+    verify_path = root / "scripts/verify-release.sh"
+    verify_text = read_regular_text(verify_path, root)
+    listing_start_marker = 'expected_bundle_listing="$(cat <<EOF\n'
+    listing_start = verify_text.find(listing_start_marker)
+    listing_end = verify_text.find("\nEOF\n)", listing_start)
+    if (
+        listing_start < 0
+        or listing_end < 0
+        or verify_text[
+            listing_start + len(listing_start_marker) : listing_end
+        ].splitlines().count(FORMAL_AUDIT_REPORT_PATH)
+        != 1
+    ):
+        raise ContractError(
+            "formal audit bundle verifier must require the public jailbreak audit report"
+        )
 
     evidence_path = root / "scripts/generate-release-evidence.sh"
     evidence_text = read_regular_text(evidence_path, root)
@@ -4547,6 +4634,7 @@ def validate_round6_makefile_contract(text: str, source: Path) -> None:
         "./scripts/release-candidate-contract-test.sh",
         "bash -n ./scripts/verify-external-release-attestation.sh",
         "./scripts/verify-external-release-attestation-test.sh",
+        "./scripts/release-doc-consistency.sh",
     )
     for target in ("script-test", "round6-script-test"):
         target_commands = tuple(
@@ -4587,11 +4675,20 @@ def validate_round6_makefile_contract(text: str, source: Path) -> None:
                 f"round6-script-test must execute the exact reviewed privacy-safe mutation fixture: {command}"
             )
         positions.append(matches[0])
-    if positions != sorted(positions) or any(
+    real_doc_gate = "./scripts/release-doc-consistency.sh"
+    real_doc_gate_matches = [
+        index for index, actual in enumerate(round6_commands) if actual == real_doc_gate
+    ]
+    if (
+        positions != sorted(positions)
+        or len(real_doc_gate_matches) != 1
+        or real_doc_gate_matches[0] <= positions[-1]
+        or any(
         "release-doc-consistency-test.sh" in command for command in round6_commands
+        )
     ):
         raise ContractError(
-            "round6-script-test must preserve the privacy-safe mutation fixture boundary"
+            "round6-script-test must preserve the mutation fixture boundary and then verify the real document tree"
         )
 
 
@@ -4841,6 +4938,16 @@ def audit(root: Path, entrypoints: list[Path]) -> tuple[set[str], set[str]]:
                 validate_round6_doc_fixture_wrapper_script(script_text, script_path, root)
                 inspected_scripts.add(relative)
                 inspected_scripts.update(ROUND6_DOC_FIXTURE_DEPENDENCY_SHA256)
+                continue
+            if relative == "scripts/release-doc-consistency.sh":
+                script_path = root / relative
+                script_text = read_regular_text(script_path, root)
+                expected_hash = ROUND6_DOC_FIXTURE_DEPENDENCY_SHA256[relative]
+                if hashlib.sha256(script_text.encode("utf-8")).hexdigest() != expected_hash:
+                    raise ContractError(
+                        "real release document gate changed outside the reviewed contract"
+                    )
+                inspected_scripts.add(relative)
                 continue
             assert_safe_repo_path(Path(relative), root)
             if (

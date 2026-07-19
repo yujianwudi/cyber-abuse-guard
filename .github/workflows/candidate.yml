@@ -133,6 +133,7 @@ jobs:
         run: |
           python3 -B scripts/round6_safe_gate_contract_test.py
           python3 -B scripts/round6_safe_gate_contract.py --root .
+          ./scripts/release-doc-consistency.sh
       - name: Verify immutable source identity
         env:
           EXPECTED_COMMIT: ${{ inputs.expected_commit }}

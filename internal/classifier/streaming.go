@@ -163,41 +163,53 @@ func RequiredChunkStride(c *Classifier, windowBytes int) int {
 }
 
 type streamingField struct {
-	id               uint64
-	role             extract.Role
-	provenance       extract.SegmentProvenance
-	userAttribution  extract.UserAttribution
-	buffer           []byte
-	head             []byte
-	roleSummary      []byte
-	roleComplete     bool
-	compactCarry     []rune
-	pendingBoundary  bool
-	safetyContext    bool
-	safetyQuote      rune
-	safetyClosed     rune
-	adjacentTail     []byte
-	tailSafetyScoped bool
-	safetyBest       Result
-	hasSafetyBest    bool
-	newBytes         int
-	totalBytes       int64
-	best             Result
-	hasBest          bool
-	riskFacts        streamingFieldRiskFacts
-	safetyRiskFacts  streamingFieldRiskFacts
-	windowFacts      classificationSignalFacts
+	id                      uint64
+	role                    extract.Role
+	provenance              extract.SegmentProvenance
+	userAttribution         extract.UserAttribution
+	buffer                  []byte
+	head                    []byte
+	roleSummary             []byte
+	roleComplete            bool
+	compactCarry            []rune
+	pendingBoundary         bool
+	safetyContext           bool
+	safetyQuote             rune
+	safetyClosed            rune
+	adjacentTail            []byte
+	tailSafetyScoped        bool
+	safetyBest              Result
+	hasSafetyBest           bool
+	newBytes                int
+	totalBytes              int64
+	best                    Result
+	hasBest                 bool
+	riskFacts               streamingFieldRiskFacts
+	safetyRiskFacts         streamingFieldRiskFacts
+	windowFacts             classificationSignalFacts
+	quotedFollowUp          bool
+	quotedReviewCandidate   bool
+	quotedReviewDelimiter   string
+	quotedReviewSearchCarry []byte
+	quotedReviewClosed      bool
+	quotedReviewInvalid     bool
+	quotedReviewSuffix      []byte
 }
 
 type streamingFieldSummary struct {
-	role             extract.Role
-	provenance       extract.SegmentProvenance
-	userAttribution  extract.UserAttribution
-	head             []byte
-	tail             []byte
-	sample           []byte
-	sampleComplete   bool
-	tailSafetyScoped bool
+	role                   extract.Role
+	provenance             extract.SegmentProvenance
+	userAttribution        extract.UserAttribution
+	head                   []byte
+	tail                   []byte
+	sample                 []byte
+	sampleComplete         bool
+	tailSafetyScoped       bool
+	inertQuotedReferent    Result
+	hasInertQuotedReferent bool
+	quotedFollowUp         bool
+	quotedFollowUpInert    bool
+	quotedProofComplete    bool
 }
 
 // streamingFieldRiskFacts contains only bounded classifier signal bits and
@@ -403,29 +415,32 @@ type ScanSession struct {
 	best     Result
 	hasBest  bool
 
-	previousUser            string
-	hasPreviousUser         bool
-	previousUserTrusted     bool
-	recentUsers             []string
-	recentUsersTrusted      []bool
-	linkedMetaUsers         []string
-	linkedMetaUsersTrusted  []bool
-	mappedToolControls      []string
-	untrustedParts          []string
-	untrustedRiskFacts      streamingFieldRiskFacts
-	hasUntrustedRisk        bool
-	untrustedRiskIncomplete bool
-	untrustedRiskDirty      bool
-	untrustedControlDirty   bool
-	untrustedExactBlocked   bool
-	lastMetaUser            string
-	pendingNonUserControl   string
-	lastUserControl         string
-	isolatedUserRun         []rune
-	isolatedUserRunTrusted  bool
-	previousUserRisk        streamingFieldRiskFacts
-	hasPreviousUserRisk     bool
-	previousUserComplete    bool
+	previousUser                  string
+	hasPreviousUser               bool
+	previousUserTrusted           bool
+	recentUsers                   []string
+	recentUsersTrusted            []bool
+	linkedMetaUsers               []string
+	linkedMetaUsersTrusted        []bool
+	mappedToolControls            []string
+	untrustedParts                []string
+	untrustedRiskFacts            streamingFieldRiskFacts
+	hasUntrustedRisk              bool
+	untrustedRiskIncomplete       bool
+	untrustedRiskDirty            bool
+	untrustedControlDirty         bool
+	untrustedExactBlocked         bool
+	lastMetaUser                  string
+	pendingNonUserControl         string
+	lastUserControl               string
+	isolatedUserRun               []rune
+	isolatedUserRunTrusted        bool
+	previousUserRisk              streamingFieldRiskFacts
+	hasPreviousUserRisk           bool
+	previousUserComplete          bool
+	previousQuotedReferent        Result
+	hasPreviousQuotedReferent     bool
+	previousQuotedReferentTrusted bool
 
 	aborted  bool
 	finished bool
@@ -709,6 +724,56 @@ func (s *ScanSession) finishField(field *streamingField) {
 	}
 	if summary.sampleComplete {
 		summary.sample = append([]byte(nil), field.roleSummary...)
+	} else if field.role == extract.RoleUser && field.provenance == extract.ProvenanceContent {
+		summary.quotedFollowUp = field.quotedFollowUp
+		needsFollowUpProof := s.hasPreviousQuotedReferent ||
+			s.hasPreviousUserRisk && !s.previousUserComplete
+		mayContainQuotedReview := streamingBytesContainQuote(field.buffer)
+		if field.totalBytes == int64(len(field.buffer)) &&
+			(needsFollowUpProof || mayContainQuotedReview) {
+			rawField := string(field.buffer)
+			if needsFollowUpProof {
+				summary.quotedFollowUp, summary.quotedFollowUpInert, summary.quotedProofComplete =
+					s.classifier.hasRawAffirmativeQuotedReviewFollowUp(rawField)
+				if !summary.quotedProofComplete {
+					s.setCoverage(CoverageUnavailable, CoverageReasonClassifierWindow)
+					return
+				}
+			}
+			if mayContainQuotedReview {
+				referent, ok := s.classifier.rawInertQuotedSafetyReviewReferent(rawField)
+				if ok {
+					batch := &roleClassificationBatch{session: s}
+					candidate, classified := batch.classify([]string{referent}, false)
+					if !classified {
+						return
+					}
+					summary.inertQuotedReferent = candidate
+					summary.hasInertQuotedReferent = true
+				}
+			}
+		}
+	}
+	if field.quotedReviewCandidate && !summary.hasInertQuotedReferent &&
+		field.totalBytes != int64(len(field.buffer)) &&
+		field.crossWindowQuotedReviewStructureProven() {
+		// The exact defensive-review prefix, one closing delimiter, and the final
+		// two safety clauses were proven incrementally, but the quoted referent no
+		// longer fits in the bounded raw-text window. A local unclosed-quote block
+		// is not an exact whole-field finding; surface explicit incompleteness so
+		// callers apply their configured fail-closed disposition.
+		s.setCoverage(CoverageUnavailable, CoverageReasonClassifierWindow)
+		return
+	}
+	if summary.hasInertQuotedReferent {
+		// The retained referent Result is sufficient for a later exact follow-up.
+		// Do not preserve any prompt or quotation bytes across the field boundary.
+		clear(summary.head)
+		summary.head = nil
+		clear(summary.tail)
+		summary.tail = nil
+		clear(summary.sample)
+		summary.sample = nil
 	}
 	s.considerAdjacent(s.previous, summary)
 	s.considerRoleSummary(summary, &field.riskFacts)
@@ -728,6 +793,162 @@ func (field *streamingField) captureRoleSummary(text []byte) {
 		return
 	}
 	field.roleSummary = append(field.roleSummary, text...)
+}
+
+func streamingBytesContainQuote(text []byte) bool {
+	for _, value := range text {
+		switch value {
+		case '\'', '"', '`':
+			return true
+		}
+	}
+	return false
+}
+
+func (c *Classifier) rawPotentialInertQuotedSafetyReview(text string) (string, int, bool) {
+	if c == nil || text == "" || !strings.ContainsAny(text, "\"'`") {
+		return "", 0, false
+	}
+	if !streamingContainsASCIIFold(text, "quoted request") &&
+		!streamingContainsASCIIFold(text, "quoted prompt") {
+		return "", 0, false
+	}
+	var scratch normalizationScratch
+	views := normalizePartsInto([]string{text}, nil, &scratch)
+	defer putNormalizedRuneBuffer(views.standardRunes, views.storageUsed)
+	if views.truncated {
+		return "", 0, false
+	}
+	normalized := string(views.standardRunes)
+	quoteIndex := -1
+	delimiter := ""
+	for _, candidate := range []string{"```", "'", "\"", "`"} {
+		if index := strings.Index(normalized, candidate); index >= 0 &&
+			(quoteIndex < 0 || index < quoteIndex || index == quoteIndex && len(candidate) > len(delimiter)) {
+			quoteIndex = index
+			delimiter = candidate
+		}
+	}
+	if quoteIndex <= 0 || !inertQuotedSafetyReviewPrefix(strings.TrimSpace(normalized[:quoteIndex])) {
+		return "", 0, false
+	}
+
+	rawQuoteIndex := strings.Index(text, delimiter)
+	if rawQuoteIndex < 0 || delimiter == "'" &&
+		!metaOverrideSingleQuoteOpens(text, rawQuoteIndex, len(delimiter)) {
+		return "", 0, false
+	}
+	return delimiter, rawQuoteIndex + len(delimiter), true
+}
+
+func streamingContainsASCIIFold(text, phrase string) bool {
+	if phrase == "" {
+		return true
+	}
+	firstLower := phrase[0]
+	firstUpper := firstLower
+	if firstLower >= 'a' && firstLower <= 'z' {
+		firstUpper = firstLower - ('a' - 'A')
+	}
+	for offset := 0; offset+len(phrase) <= len(text); {
+		lowerIndex := strings.IndexByte(text[offset:], firstLower)
+		upperIndex := strings.IndexByte(text[offset:], firstUpper)
+		index := lowerIndex
+		if index < 0 || upperIndex >= 0 && upperIndex < index {
+			index = upperIndex
+		}
+		if index < 0 {
+			return false
+		}
+		start := offset + index
+		if start+len(phrase) <= len(text) && strings.EqualFold(text[start:start+len(phrase)], phrase) {
+			return true
+		}
+		offset = start + 1
+	}
+	return false
+}
+
+const streamingQuotedReviewProofBytes = maxMetaOverrideSplitAssociationBytes
+
+func (field *streamingField) trackQuotedReviewBytes(text []byte) {
+	if field == nil || !field.quotedReviewCandidate || field.quotedReviewInvalid || len(text) == 0 {
+		return
+	}
+	if field.quotedReviewClosed {
+		field.appendQuotedReviewSuffix(text)
+		return
+	}
+
+	combined := make([]byte, 0, len(field.quotedReviewSearchCarry)+len(text))
+	combined = append(combined, field.quotedReviewSearchCarry...)
+	combined = append(combined, text...)
+	clear(field.quotedReviewSearchCarry)
+	field.quotedReviewSearchCarry = field.quotedReviewSearchCarry[:0]
+	closeIndex := metaOverrideFindClosingDelimiter(string(combined), 0, field.quotedReviewDelimiter)
+	if closeIndex >= 0 && field.quotedReviewDelimiter == "'" && closeIndex+1 == len(combined) {
+		// A single quote at a window boundary is ambiguous until the following
+		// byte proves that it is a delimiter rather than an apostrophe.
+		closeIndex = -1
+	}
+	if closeIndex >= 0 {
+		field.quotedReviewClosed = true
+		field.appendQuotedReviewSuffix(combined[closeIndex+len(field.quotedReviewDelimiter):])
+		clear(combined)
+		return
+	}
+
+	carryBytes := len(field.quotedReviewDelimiter) + 8
+	if carryBytes > len(combined) {
+		carryBytes = len(combined)
+	}
+	if carryBytes > 0 {
+		start := len(combined) - carryBytes
+		field.quotedReviewSearchCarry = append(field.quotedReviewSearchCarry, combined[start:]...)
+		if trailingBackslashRun(field.quotedReviewSearchCarry) >= carryBytes {
+			field.quotedReviewInvalid = true
+		}
+	}
+	clear(combined)
+}
+
+func (field *streamingField) appendQuotedReviewSuffix(text []byte) {
+	if field == nil || field.quotedReviewInvalid || len(text) == 0 {
+		return
+	}
+	if streamingBytesContainQuote(text) ||
+		len(field.quotedReviewSuffix)+len(text) > streamingQuotedReviewProofBytes {
+		field.quotedReviewInvalid = true
+		clear(field.quotedReviewSuffix)
+		field.quotedReviewSuffix = field.quotedReviewSuffix[:0]
+		return
+	}
+	field.quotedReviewSuffix = append(field.quotedReviewSuffix, text...)
+}
+
+func trailingBackslashRun(text []byte) int {
+	run := 0
+	for index := len(text) - 1; index >= 0 && text[index] == '\\'; index-- {
+		run++
+	}
+	return run
+}
+
+func (field *streamingField) crossWindowQuotedReviewStructureProven() bool {
+	if field == nil || !field.quotedReviewCandidate || field.quotedReviewInvalid ||
+		!field.quotedReviewClosed || len(field.quotedReviewSuffix) == 0 {
+		return false
+	}
+	var scratch normalizationScratch
+	views := normalizeBytesInto(field.quotedReviewSuffix, nil, &scratch)
+	defer putNormalizedRuneBuffer(views.standardRunes, views.storageUsed)
+	if views.truncated {
+		return false
+	}
+	clauses, overflow := metaOverrideDirectiveClausesBounded(string(views.standardRunes))
+	return !overflow && len(clauses) == 2 &&
+		inertQuotedSafetyAssessment(clauses[0].text) &&
+		inertQuotedNonExecutionBoundary(clauses[1].text)
 }
 
 // considerRoleSummary incrementally preserves the bounded role-aware
@@ -766,11 +987,22 @@ func (s *ScanSession) considerRoleSummary(current *streamingFieldSummary, curren
 			s.mappedToolControls = s.mappedToolControls[:0]
 		}
 		if current.role == extract.RoleUser && current.provenance == extract.ProvenanceContent {
-			if !s.considerStreamingUserFollowUp(currentRisk, false) {
+			currentTrusted := current.userAttribution == extract.UserAttributionTrusted
+			if !s.considerPreviousQuotedReferentFollowUp(
+				current.quotedFollowUp, current.quotedProofComplete, currentTrusted,
+			) {
+				return
+			}
+			if !current.hasInertQuotedReferent &&
+				!s.considerStreamingUserFollowUp(
+					currentRisk, false, current.quotedFollowUp,
+					current.quotedFollowUpInert, current.quotedProofComplete,
+				) {
 				return
 			}
 			s.clearUserCompositionState()
 			s.rememberPreviousUserRisk(currentRisk, false)
+			s.rememberPreviousQuotedReferent(current)
 		} else {
 			s.pendingNonUserControl = ""
 		}
@@ -844,7 +1076,19 @@ func (s *ScanSession) considerRoleSummary(current *streamingFieldSummary, curren
 		}
 		return
 	}
-	if !s.considerStreamingUserFollowUp(currentRisk, true) {
+	quotedFollowUp := false
+	quotedFollowUpInert := false
+	quotedProofComplete := false
+	if s.hasPreviousQuotedReferent || s.hasPreviousUserRisk && !s.previousUserComplete {
+		quotedFollowUp, quotedFollowUpInert, quotedProofComplete =
+			s.classifier.hasRawAffirmativeQuotedReviewFollowUp(text)
+	}
+	if !s.considerPreviousQuotedReferentFollowUp(quotedFollowUp, quotedProofComplete, currentUserTrusted) {
+		return
+	}
+	if !s.considerStreamingUserFollowUp(
+		currentRisk, true, quotedFollowUp, quotedFollowUpInert, quotedProofComplete,
+	) {
 		return
 	}
 
@@ -888,8 +1132,7 @@ func (s *ScanSession) considerRoleSummary(current *streamingFieldSummary, curren
 			}
 		}
 		joinEligible := s.coverage.State == CoverageComplete && followUpEligible([]rune(s.previousUser))
-		if joinEligible && s.classifier.isRawInertQuotedSafetyReview(s.previousUser) &&
-			!s.classifier.hasRawAffirmativeImplementationRequest(text) {
+		if joinEligible && s.classifier.isRawInertQuotedSafetyReview(s.previousUser) {
 			joinEligible = false
 		}
 		if joinEligible {
@@ -919,6 +1162,7 @@ func (s *ScanSession) considerRoleSummary(current *streamingFieldSummary, curren
 	s.hasPreviousUser = true
 	s.previousUserTrusted = currentUserTrusted
 	s.rememberPreviousUserRisk(currentRisk, true)
+	s.rememberPreviousQuotedReferent(current)
 	s.updateIsolatedUserRun(batch, text, currentUserTrusted)
 }
 
@@ -1150,19 +1394,85 @@ func (s *ScanSession) clearUserCompositionState() {
 	s.lastMetaUser = ""
 	s.pendingNonUserControl = ""
 	s.lastUserControl = ""
+	s.clearPreviousQuotedReferent()
 }
 
-func (s *ScanSession) considerStreamingUserFollowUp(current *streamingFieldRiskFacts, currentComplete bool) bool {
+func (s *ScanSession) considerPreviousQuotedReferentFollowUp(
+	quotedFollowUp bool,
+	proofComplete bool,
+	currentTrusted bool,
+) bool {
+	if s == nil || !s.hasPreviousQuotedReferent || s.coverage.State != CoverageComplete {
+		return true
+	}
+	if !proofComplete {
+		if quotedFollowUp {
+			s.setCoverage(CoverageUnavailable, CoverageReasonClassifierWindow)
+			return false
+		}
+		return true
+	}
+	if quotedFollowUp {
+		s.consider(
+			s.previousQuotedReferent,
+			userCombinationFindingOrigin(s.previousQuotedReferentTrusted && currentTrusted),
+		)
+	}
+	return true
+}
+
+func (s *ScanSession) considerStreamingUserFollowUp(
+	current *streamingFieldRiskFacts,
+	currentComplete bool,
+	quotedFollowUp bool,
+	quotedFollowUpInert bool,
+	quotedProofComplete bool,
+) bool {
 	if s == nil || current == nil || !s.hasPreviousUserRisk ||
 		(s.previousUserComplete && currentComplete) || s.coverage.State != CoverageComplete {
 		return true
 	}
-	potential := s.classifier.streamingImplementationFollowUpPotential(s.previousUserRisk.facts, current.facts)
+	if quotedProofComplete {
+		// Exact referent classification plus the unified speech-act proof is
+		// authoritative. In particular, explanatory uses of "implement it" and
+		// negated referents must not fall back to a signal-only fail-closed result.
+		if s.hasPreviousQuotedReferent || quotedFollowUpInert {
+			return true
+		}
+	}
+	potential := streamingRiskAssessment{}
+	if quotedFollowUp {
+		potential = s.classifier.streamingRiskPotential(s.previousUserRisk.facts, s.policy)
+	} else {
+		potential = s.classifier.streamingImplementationFollowUpPotential(s.previousUserRisk.facts, current.facts)
+	}
 	if potential.blocks(s.mode, s.thresholds) && !s.previousUserRisk.windowBlocked && !current.windowBlocked {
 		s.setCoverage(CoverageUnavailable, CoverageReasonClassifierWindow)
 		return false
 	}
 	return true
+}
+
+func (s *ScanSession) rememberPreviousQuotedReferent(current *streamingFieldSummary) {
+	if s == nil {
+		return
+	}
+	s.clearPreviousQuotedReferent()
+	if current == nil || !current.hasInertQuotedReferent {
+		return
+	}
+	s.previousQuotedReferent = current.inertQuotedReferent
+	s.hasPreviousQuotedReferent = true
+	s.previousQuotedReferentTrusted = current.userAttribution == extract.UserAttributionTrusted
+}
+
+func (s *ScanSession) clearPreviousQuotedReferent() {
+	if s == nil {
+		return
+	}
+	s.previousQuotedReferent = Result{}
+	s.hasPreviousQuotedReferent = false
+	s.previousQuotedReferentTrusted = false
 }
 
 func (s *ScanSession) rememberPreviousUserRisk(current *streamingFieldRiskFacts, complete bool) {
@@ -1222,7 +1532,27 @@ func (s *ScanSession) classifyWindow(field *streamingField, text []byte) bool {
 	}
 	reconstructed := field.pendingBoundary
 	uniqueStart := streamingUniqueWindowStart(field, len(text))
-	decision := prepareStreamingRoleWindow(field, string(text), uniqueStart)
+	rawWindow := string(text)
+	if !reconstructed && field.role == extract.RoleUser &&
+		field.provenance == extract.ProvenanceContent {
+		if delimiter, openingEnd, ok := s.classifier.rawPotentialInertQuotedSafetyReview(rawWindow); ok {
+			field.quotedReviewCandidate = true
+			field.quotedReviewDelimiter = delimiter
+			field.trackQuotedReviewBytes(text[openingEnd:])
+		}
+	} else if field.quotedReviewCandidate {
+		field.trackQuotedReviewBytes(text[uniqueStart:])
+	}
+	decision := prepareStreamingRoleWindow(field, rawWindow, uniqueStart)
+	if field.role == extract.RoleUser && field.provenance == extract.ProvenanceContent &&
+		(s.hasPreviousQuotedReferent || s.hasPreviousUserRisk && !s.previousUserComplete) {
+		quotedFollowUp, _, proofComplete := s.classifier.hasRawAffirmativeQuotedReviewFollowUp(rawWindow)
+		if !proofComplete {
+			s.setCoverage(CoverageUnavailable, CoverageReasonClassifierWindow)
+			return false
+		}
+		field.quotedFollowUp = field.quotedFollowUp || quotedFollowUp
+	}
 	field.tailSafetyScoped = decision.tailSafetyScoped
 	clear(field.adjacentTail)
 	field.adjacentTail = append(field.adjacentTail[:0], tailBytes([]byte(decision.adjacentText), s.overlap)...)
@@ -1553,6 +1883,13 @@ func (s *ScanSession) considerAdjacent(previous, current *streamingFieldSummary)
 	})
 	userContentPair := previous.role == extract.RoleUser && current.role == extract.RoleUser &&
 		previous.provenance == extract.ProvenanceContent && current.provenance == extract.ProvenanceContent
+	if userContentPair && (previous.hasInertQuotedReferent || current.hasInertQuotedReferent) {
+		// A complete adjacent field already proved that its only risky text is a
+		// closed inert quotation. Reclassifying a bounded head or tail would discard
+		// one side of the safety wrapper and manufacture an active cross-field
+		// directive or waste classification budget.
+		return
+	}
 	if previous.sampleComplete && current.sampleComplete &&
 		previous.role == extract.RoleUnknown && current.role == extract.RoleUnknown {
 		// The bounded all-parts fallback below considers the complete rolling
@@ -1649,6 +1986,10 @@ func (s *ScanSession) setCoverage(state CoverageState, reason CoverageReason) {
 		s.active.buffer = s.active.buffer[:0]
 		clear(s.active.roleSummary)
 		s.active.roleSummary = nil
+		clear(s.active.quotedReviewSearchCarry)
+		s.active.quotedReviewSearchCarry = s.active.quotedReviewSearchCarry[:0]
+		clear(s.active.quotedReviewSuffix)
+		s.active.quotedReviewSuffix = s.active.quotedReviewSuffix[:0]
 		s.active.roleComplete = false
 		s.active.newBytes = 0
 	}
@@ -1663,6 +2004,8 @@ func (s *ScanSession) clearActive() {
 	clear(s.active.roleSummary)
 	clear(s.active.compactCarry)
 	clear(s.active.adjacentTail)
+	clear(s.active.quotedReviewSearchCarry)
+	clear(s.active.quotedReviewSuffix)
 	s.active.riskFacts.reset()
 	s.active.safetyRiskFacts.reset()
 	clear(s.active.windowFacts.signals)
@@ -1681,6 +2024,8 @@ func (s *ScanSession) clearPrevious() {
 	clear(s.previous.head)
 	clear(s.previous.tail)
 	clear(s.previous.sample)
+	s.previous.inertQuotedReferent = Result{}
+	s.previous.hasInertQuotedReferent = false
 	s.previous = nil
 }
 

@@ -1,5 +1,10 @@
 # Round 6 development handoff
 
+```text
+current_classifier_policy_version: classifier-policy-v5
+current_classifier_policy_sha256: 07e972eac4faba57ca5244e9a49d5db21d5c0e414778bf617b5378fa621b4f76
+```
+
 Status: **BLOCKED / PENDING HOST AND INDEPENDENT AUDIT**
 
 Target project version: exact `0.15`; intended formal tag: exact `v0.15`
@@ -79,7 +84,7 @@ performance number from them is promoted by this handoff.
 | Candidate artifact hashes | **PENDING - private untagged clean-candidate Actions run only** |
 | Scanner identity | streaming-scanner-v1 |
 | Classifier policy | classifier-policy-v5 |
-| Classifier policy SHA-256 | 42d48af7a854b19d29c956a6f99b9027189ce4ae7b19a1d92a83955639d0916e |
+| Classifier policy SHA-256 | 07e972eac4faba57ca5244e9a49d5db21d5c0e414778bf617b5378fa621b4f76 |
 | YAML ruleset | 1.0.7 |
 | YAML ruleset SHA-256 | 7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134 |
 | Audit schema | v3 |
@@ -544,7 +549,7 @@ Candidate artifact: PRIVATE UNTAGGED CLEAN ACTIONS ARTIFACT / NOT CREATED / PEND
 Platform: Linux amd64 only
 Streaming scanner identity: streaming-scanner-v1
 Classifier policy: classifier-policy-v5
-Classifier policy SHA-256: 42d48af7a854b19d29c956a6f99b9027189ce4ae7b19a1d92a83955639d0916e
+Classifier policy SHA-256: 07e972eac4faba57ca5244e9a49d5db21d5c0e414778bf617b5378fa621b4f76
 CPA v7.2.88 Host result: NOT RUN / PENDING
 Long-text Linux size ladder result: PENDING FINAL PR / POST-MERGE MAIN LINUX CI
 Cross-window result: PENDING FINAL PR / POST-MERGE MAIN LINUX CI

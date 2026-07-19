@@ -211,8 +211,7 @@ func (c *Classifier) ClassifySegmentsWithPolicy(segments []extract.Segment, mode
 			// only user-authored text and only when the prior turn is eligible for
 			// follow-up; system/assistant/tool examples can never contribute.
 			joinEligible := followUpEligible([]rune(previousUser))
-			if joinEligible && c.isRawInertQuotedSafetyReview(previousUser) &&
-				!c.hasRawAffirmativeImplementationRequest(segment.Text) {
+			if joinEligible && c.isRawInertQuotedSafetyReview(previousUser) {
 				joinEligible = false
 			}
 			if joinEligible {

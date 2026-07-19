@@ -6,8 +6,9 @@ gate="$root/scripts/release-doc-consistency.sh"
 ruleset_sha256="a9bbfb2ed76d55cca02f83390e3fe10532dc7cb3fb389c440b0b130a0b2d1642"
 old_ruleset_sha256="5354e9b56c5986ac09b2b231b2750f4a519b8e3a6bfcbd71da7747dd32481cf6"
 classifier_policy_version="classifier-policy-v5"
-classifier_policy_sha256="42d48af7a854b19d29c956a6f99b9027189ce4ae7b19a1d92a83955639d0916e"
-old_classifier_policy_sha256="fd7627f1ac9c4e08d1e073ecfb4b8afd395a10e713d5e98fddbfe6a380edb59d"
+classifier_policy_sha256="07e972eac4faba57ca5244e9a49d5db21d5c0e414778bf617b5378fa621b4f76"
+old_classifier_policy_version="classifier-policy-v4"
+old_classifier_policy_sha256="2763f10e2565dce2ffcf700f5d6566e9fbac68f3fedd08fcce20bceff450b4c8"
 work="$(mktemp -d)"
 trap 'rm -rf -- "$work"' EXIT
 
@@ -19,17 +20,51 @@ documents=(
   docs/DESIGN.md
   docs/LIMITATIONS.md
   docs/INSTALL_DOCKER.md
+  docs/README.md
   docs/RELEASE_POLICY.md
+  docs/ROUND6_CONFIG_MIGRATION.md
   docs/ROUND6_DEVELOPMENT_HANDOFF.md
   docs/ROUND6_LIMITATIONS.md
   docs/ROUND6_RELEASE_GATE.md
   docs/ROUND6_STREAMING_SCANNER_DESIGN.md
   docs/RULES.md
   docs/THREAT_MODEL.md
+  docs/reports/CPA_INTEGRATION.md
+  docs/reports/PERFORMANCE.md
+  docs/reports/PHASE0_CPA_CONTRACT.md
+  docs/reports/PRIVACY.md
+  docs/reports/PUBLIC_JAILBREAK_REPOSITORY_REVIEW.md
   docs/reports/PROMPT_INJECTION_REVIEW.md
   docs/reports/RELEASE_EVIDENCE.md
   docs/reports/TEST_REPORT.md
   docs/reports/CORPUS_REPORT.md
+)
+
+classifier_identity_documents=(
+  README.md
+  README_CN.md
+  CHANGELOG.md
+  docs/AUDIT_HANDOFF.md
+  docs/DESIGN.md
+  docs/INSTALL_DOCKER.md
+  docs/LIMITATIONS.md
+  docs/README.md
+  docs/RELEASE_POLICY.md
+  docs/ROUND6_CONFIG_MIGRATION.md
+  docs/ROUND6_DEVELOPMENT_HANDOFF.md
+  docs/ROUND6_LIMITATIONS.md
+  docs/ROUND6_RELEASE_GATE.md
+  docs/ROUND6_STREAMING_SCANNER_DESIGN.md
+  docs/RULES.md
+  docs/THREAT_MODEL.md
+  docs/reports/CPA_INTEGRATION.md
+  docs/reports/PERFORMANCE.md
+  docs/reports/PHASE0_CPA_CONTRACT.md
+  docs/reports/PRIVACY.md
+  docs/reports/PUBLIC_JAILBREAK_REPOSITORY_REVIEW.md
+  docs/reports/PROMPT_INJECTION_REVIEW.md
+  docs/reports/RELEASE_EVIDENCE.md
+  docs/reports/TEST_REPORT.md
 )
 
 make_fixture() {
@@ -40,6 +75,7 @@ make_fixture() {
     if [[ "$relative" == docs/RELEASE_POLICY.md ]]; then
       printf '%s\n' \
         '# Release policy' \
+        '' \
         'release_version: 0.15' \
         'formal_tag: v0.15' \
         'version_alias_policy: reject-v0.15.0' \
@@ -74,25 +110,15 @@ make_fixture() {
     printf '\nround6-prerelease-attestation.json\nformal-release-attestation.json\n' \
       >>"$fixture/$relative"
   done
-  for relative in \
-    README.md \
-    README_CN.md \
-    CHANGELOG.md \
-    docs/AUDIT_HANDOFF.md \
-    docs/DESIGN.md \
-    docs/INSTALL_DOCKER.md \
-    docs/LIMITATIONS.md \
-    docs/ROUND6_DEVELOPMENT_HANDOFF.md \
-    docs/ROUND6_LIMITATIONS.md \
-    docs/ROUND6_RELEASE_GATE.md \
-    docs/ROUND6_STREAMING_SCANNER_DESIGN.md \
-    docs/RULES.md \
-    docs/THREAT_MODEL.md \
-    docs/reports/PROMPT_INJECTION_REVIEW.md \
-    docs/reports/RELEASE_EVIDENCE.md \
-    docs/reports/TEST_REPORT.md; do
-    printf '\nclassifier_policy: %s\nclassifier_policy_sha256: %s\n' \
-      "$classifier_policy_version" "$classifier_policy_sha256" >>"$fixture/$relative"
+  for relative in "${classifier_identity_documents[@]}"; do
+    staged="$fixture/.classifier-prologue"
+    {
+      sed -n '1p' "$fixture/$relative"
+      printf '\n```text\ncurrent_classifier_policy_version: %s\ncurrent_classifier_policy_sha256: %s\n```\n' \
+        "$classifier_policy_version" "$classifier_policy_sha256"
+      sed -n '3,$p' "$fixture/$relative"
+    } >"$staged"
+    mv -f -- "$staged" "$fixture/$relative"
   done
   for relative in \
     docs/reports/RELEASE_EVIDENCE.md \
@@ -105,6 +131,7 @@ run_gate() {
   local fixture="$1"
   local environment=(
     "RELEASE_DOC_ROOT=$fixture"
+    "RELEASE_DOC_FIXTURE_MODE=1"
     "CURRENT_RELEASE_VERSION=0.15"
     "CURRENT_RULESET_SHA256=$ruleset_sha256"
     "CURRENT_CLASSIFIER_POLICY_VERSION=$classifier_policy_version"
@@ -128,6 +155,36 @@ must_fail() {
 
 make_fixture "$work/pass"
 run_gate "$work/pass"
+
+if CURRENT_CLASSIFIER_POLICY_VERSION="$old_classifier_policy_version" "$gate" \
+  >"$work/source-classifier-override.log" 2>&1; then
+  echo 'release document consistency source-tree classifier override unexpectedly passed' >&2
+  exit 1
+fi
+grep -Fq \
+  'source-tree release document verification forbids document-root and CURRENT_* overrides' \
+  "$work/source-classifier-override.log" || {
+  echo 'release document consistency source-tree classifier override emitted the wrong diagnostic' >&2
+  exit 1
+}
+printf 'release document consistency source-tree classifier override rejected as expected\n'
+
+if RELEASE_DOC_ROOT="$work/pass" \
+  CURRENT_RELEASE_VERSION=0.15 \
+  CURRENT_RULESET_SHA256="$ruleset_sha256" \
+  CURRENT_CLASSIFIER_POLICY_VERSION="$classifier_policy_version" \
+  CURRENT_CLASSIFIER_POLICY_SHA256="$classifier_policy_sha256" \
+  "$gate" >"$work/external-root-without-fixture-mode.log" 2>&1; then
+  echo 'release document consistency external root without fixture mode unexpectedly passed' >&2
+  exit 1
+fi
+grep -Fq \
+  'external release document roots are allowed only with RELEASE_DOC_FIXTURE_MODE=1' \
+  "$work/external-root-without-fixture-mode.log" || {
+  echo 'release document consistency external root without fixture mode emitted the wrong diagnostic' >&2
+  exit 1
+}
+printf 'release document consistency external root without fixture mode rejected as expected\n'
 
 cp -a "$work/pass" "$work/historical-hash"
 sed -i "/ruleset_sha256:/i ruleset_sha256: $old_ruleset_sha256" \
@@ -203,6 +260,115 @@ cp -a "$work/pass" "$work/old-classifier-hash"
 sed -i "s/$classifier_policy_sha256/$old_classifier_policy_sha256/" \
   "$work/old-classifier-hash/docs/reports/TEST_REPORT.md"
 must_fail old-classifier-hash "$work/old-classifier-hash" \
-  "docs/reports/TEST_REPORT.md must declare current classifier policy SHA-256 $classifier_policy_sha256"
+  'docs/reports/TEST_REPORT.md must place the exact visible classifier policy prologue on lines 2-6'
+
+cp -a "$work/pass" "$work/old-classifier-version"
+sed -i "s/$classifier_policy_version/$old_classifier_policy_version/" \
+  "$work/old-classifier-version/docs/reports/TEST_REPORT.md"
+must_fail old-classifier-version "$work/old-classifier-version" \
+  'docs/reports/TEST_REPORT.md must place the exact visible classifier policy prologue on lines 2-6'
+
+cp -a "$work/pass" "$work/conflicting-classifier-version"
+printf '%s\n' "current_classifier_policy_version: $old_classifier_policy_version" \
+  >>"$work/conflicting-classifier-version/docs/reports/TEST_REPORT.md"
+must_fail conflicting-classifier-version "$work/conflicting-classifier-version" \
+  'docs/reports/TEST_REPORT.md must contain exactly one canonical classifier policy version key: current_classifier_policy_version'
+
+cp -a "$work/pass" "$work/conflicting-classifier-hash"
+printf '%s\n' "current_classifier_policy_sha256: $old_classifier_policy_sha256" \
+  >>"$work/conflicting-classifier-hash/docs/reports/TEST_REPORT.md"
+must_fail conflicting-classifier-hash "$work/conflicting-classifier-hash" \
+  'docs/reports/TEST_REPORT.md must contain exactly one canonical classifier policy SHA-256 key: current_classifier_policy_sha256'
+
+cp -a "$work/pass" "$work/quoted-conflicting-classifier-version"
+printf '%s\n' "\"current_classifier_policy_version\": \"$old_classifier_policy_version\"" \
+  >>"$work/quoted-conflicting-classifier-version/docs/reports/TEST_REPORT.md"
+must_fail quoted-conflicting-classifier-version "$work/quoted-conflicting-classifier-version" \
+  'docs/reports/TEST_REPORT.md must contain exactly one canonical classifier policy version key: current_classifier_policy_version'
+
+cp -a "$work/pass" "$work/same-line-conflicting-classifier-version"
+printf '%s\n' \
+  "current_classifier_policy_version: $old_classifier_policy_version current_classifier_policy_version: $classifier_policy_version" \
+  >>"$work/same-line-conflicting-classifier-version/docs/reports/TEST_REPORT.md"
+must_fail same-line-conflicting-classifier-version "$work/same-line-conflicting-classifier-version" \
+  'docs/reports/TEST_REPORT.md must contain exactly one canonical classifier policy version key: current_classifier_policy_version'
+
+cp -a "$work/pass" "$work/duplicate-current-classifier-identity"
+printf '%s\n%s\n' \
+  "current_classifier_policy_version: $classifier_policy_version" \
+  "current_classifier_policy_sha256: $classifier_policy_sha256" \
+  >>"$work/duplicate-current-classifier-identity/docs/reports/TEST_REPORT.md"
+must_fail duplicate-current-classifier-identity "$work/duplicate-current-classifier-identity" \
+  'docs/reports/TEST_REPORT.md must contain exactly one canonical classifier policy version key: current_classifier_policy_version'
+
+cp -a "$work/pass" "$work/legacy-plus-current-classifier-identity"
+printf '%s\n%s\n' \
+  "classifier_policy: $old_classifier_policy_version" \
+  "classifier_policy_sha256: $old_classifier_policy_sha256" \
+  >>"$work/legacy-plus-current-classifier-identity/docs/reports/TEST_REPORT.md"
+must_fail legacy-plus-current-classifier-identity "$work/legacy-plus-current-classifier-identity" \
+  'docs/reports/TEST_REPORT.md must not contain unlabeled legacy classifier policy keys; use current_ or historical_ prefixes'
+
+cp -a "$work/pass" "$work/spaced-legacy-classifier-identity"
+printf '%s\n' "classifier_policy : $old_classifier_policy_version" \
+  >>"$work/spaced-legacy-classifier-identity/docs/reports/TEST_REPORT.md"
+must_fail spaced-legacy-classifier-identity "$work/spaced-legacy-classifier-identity" \
+  'docs/reports/TEST_REPORT.md must not contain unlabeled legacy classifier policy keys; use current_ or historical_ prefixes'
+
+quoted_legacy_index=0
+for quoted_key in \
+  '"classifier_policy"' \
+  "'classifier_policy'" \
+  '`classifier_policy`'; do
+  fixture_name="quoted-legacy-$quoted_legacy_index"
+  quoted_legacy_index=$((quoted_legacy_index + 1))
+  cp -a "$work/pass" "$work/$fixture_name"
+  printf '%s: %s\n' "$quoted_key" "$old_classifier_policy_version" \
+    >>"$work/$fixture_name/docs/reports/TEST_REPORT.md"
+  must_fail "$fixture_name" "$work/$fixture_name" \
+    'docs/reports/TEST_REPORT.md must not contain unlabeled legacy classifier policy keys; use current_ or historical_ prefixes'
+done
+
+cp -a "$work/pass" "$work/moved-classifier-prologue"
+sed -i '2,6d' "$work/moved-classifier-prologue/docs/reports/TEST_REPORT.md"
+printf '\n```text\ncurrent_classifier_policy_version: %s\ncurrent_classifier_policy_sha256: %s\n```\n' \
+  "$classifier_policy_version" "$classifier_policy_sha256" \
+  >>"$work/moved-classifier-prologue/docs/reports/TEST_REPORT.md"
+must_fail moved-classifier-prologue "$work/moved-classifier-prologue" \
+  'docs/reports/TEST_REPORT.md must place the exact visible classifier policy prologue on lines 2-6'
+
+cp -a "$work/pass" "$work/hidden-classifier-prologue"
+sed -i '3s/^```text$/<!--/; 6s/^```$/-->/' \
+  "$work/hidden-classifier-prologue/docs/reports/TEST_REPORT.md"
+must_fail hidden-classifier-prologue "$work/hidden-classifier-prologue" \
+  'docs/reports/TEST_REPORT.md must place the exact visible classifier policy prologue on lines 2-6'
+
+cp -a "$work/pass" "$work/html-wrapped-classifier-prologue"
+sed -i '1c<!--' "$work/html-wrapped-classifier-prologue/docs/reports/TEST_REPORT.md"
+sed -i '7i-->' "$work/html-wrapped-classifier-prologue/docs/reports/TEST_REPORT.md"
+must_fail html-wrapped-classifier-prologue "$work/html-wrapped-classifier-prologue" \
+  'docs/reports/TEST_REPORT.md must start with one visible top-level Markdown heading'
+
+cp -a "$work/pass" "$work/frontmatter-wrapped-classifier-prologue"
+sed -i '1c---' "$work/frontmatter-wrapped-classifier-prologue/docs/reports/TEST_REPORT.md"
+must_fail frontmatter-wrapped-classifier-prologue "$work/frontmatter-wrapped-classifier-prologue" \
+  'docs/reports/TEST_REPORT.md must start with one visible top-level Markdown heading'
+
+cp -a "$work/pass" "$work/reordered-classifier-prologue"
+awk 'NR == 4 { first = $0; next } NR == 5 { print; print first; next } { print }' \
+  "$work/reordered-classifier-prologue/docs/reports/TEST_REPORT.md" \
+  >"$work/reordered-classifier-prologue/docs/reports/TEST_REPORT.md.tmp"
+mv -f -- \
+  "$work/reordered-classifier-prologue/docs/reports/TEST_REPORT.md.tmp" \
+  "$work/reordered-classifier-prologue/docs/reports/TEST_REPORT.md"
+must_fail reordered-classifier-prologue "$work/reordered-classifier-prologue" \
+  'docs/reports/TEST_REPORT.md must place the exact visible classifier policy prologue on lines 2-6'
+
+cp -a "$work/pass" "$work/labeled-historical-classifier-identity"
+printf '%s\n%s\n' \
+  "historical_classifier_policy_version: $old_classifier_policy_version" \
+  "historical_classifier_policy_sha256: $old_classifier_policy_sha256" \
+  >>"$work/labeled-historical-classifier-identity/docs/reports/TEST_REPORT.md"
+run_gate "$work/labeled-historical-classifier-identity"
 
 printf 'all release document consistency fixtures passed\n'

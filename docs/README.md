@@ -1,5 +1,10 @@
 # Documentation index
 
+```text
+current_classifier_policy_version: classifier-policy-v5
+current_classifier_policy_sha256: 07e972eac4faba57ca5244e9a49d5db21d5c0e414778bf617b5378fa621b4f76
+```
+
 The root [English README](../README.md) and [Chinese README](../README_CN.md)
 are the shortest current-status entry points. The public
 [`v0.15-rc.2` prerelease](https://github.com/yujianwudi/cyber-abuse-guard/releases/tag/v0.15-rc.2)

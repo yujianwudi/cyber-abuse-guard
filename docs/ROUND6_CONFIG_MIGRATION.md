@@ -1,5 +1,10 @@
 # Round 6 configuration migration
 
+```text
+current_classifier_policy_version: classifier-policy-v5
+current_classifier_policy_sha256: 07e972eac4faba57ca5244e9a49d5db21d5c0e414778bf617b5378fa621b4f76
+```
+
 Status: **BLOCKED / PENDING HOST AND INDEPENDENT AUDIT**. Configuration
 migration is not deployment authorization. The only validation target in this
 round is Linux amd64; see

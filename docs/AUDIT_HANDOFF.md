@@ -1,5 +1,10 @@
 # 独立审计交接说明 — CPA Cyber Abuse Guard v0.15 Round 6 开发候选
 
+```text
+current_classifier_policy_version: classifier-policy-v5
+current_classifier_policy_sha256: 07e972eac4faba57ca5244e9a49d5db21d5c0e414778bf617b5378fa621b4f76
+```
+
 ## 2026-07-18 Round 6 v0.15 当前交接门禁
 
 项目精确版本为 `0.15`，唯一正式标签名为 `v0.15`，绝不使用 `v0.15.0`。正式发行
@@ -25,14 +30,50 @@ v7.2.88 Host + Mock matrix, and independent review remain **PENDING / NOT RUN**.
 Older PASS records below are historical source/compile evidence and are not
 relabeled as the current CPA matrix or Host evidence.
 
+## Current PR #18 hardening delta — 2026-07-20
+
+[PR #18](https://github.com/yujianwudi/cyber-abuse-guard/pull/18) is the
+external authority for the final exact head, CI, and review state. The current
+source delta closes a quoted-review continuation bypass by independently
+reclassifying only the unique quoted referent from the newest eligible RoleUser
+review. `Execute it`, `proceed`, `go ahead`, and bounded polite or
+conditional equivalents reactivate that referent; questions, explanations,
+negation, consequences, remediation, and assistant/system/tool/unknown review
+carriers remain inert. User attribution controls `FindingOrigin` and subject
+admission rather than direct disposition: a mixed-trust RoleUser pair remains
+conservatively classified but is `non_user_or_untrusted` and cannot accumulate
+subject risk. The result does not borrow safety-wrapper signals or context.
+
+Long streaming fields retain only a privacy-safe `Result` and bounded
+affirmative-follow-up facts, never the quote or prompt. Unprovable cross-window
+linkage yields `CoverageUnavailable` / `classifier_window_incomplete`; direct
+referent classification consumes `MaxChunks` and can yield
+`classification_chunk_limit`. Formal release also rejects all document-root,
+fixture, and current-identity environment overrides. The visible document
+prologue, real-tree CI gate, and public jailbreak review's required/install/
+verify audit-bundle path are mutation-tested.
+
+The reverse audit also closed two follow-up edge cases: `just`, `simply`,
+`let's`, and `let us` are now directive governors; and a complete but
+unrecognized speech act cannot suppress conservative signals from an incomplete
+prior field. Only a positively proven analytical/safety/negated form receives
+inert credit. Bounded adjacent reclassification is skipped when either field
+already proved an inert quoted referent.
+
+Local Linux development evidence currently passes targeted OpenAI Chat and
+Responses routes, the long-text size/position ladder, classifier and plugin
+race, full `make unit-test`, and `make round6-script-test`. The safe-gate suite
+contains 152 tests. These results are not a candidate artifact, CPA v7.2.88 Host
++ Mock record, independent audit, external evaluation, tag, or Release approval.
+
 当前策略与构建身份：
 
 ```text
 project_version: 0.15
 formal_tag: v0.15
 streaming_scanner: streaming-scanner-v1
-classifier_policy: classifier-policy-v5
-classifier_policy_sha256: 42d48af7a854b19d29c956a6f99b9027189ce4ae7b19a1d92a83955639d0916e
+recorded_current_classifier_policy_version: classifier-policy-v5
+recorded_current_classifier_policy_sha256: 07e972eac4faba57ca5244e9a49d5db21d5c0e414778bf617b5378fa621b4f76
 ruleset: 1.0.7 / 7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134
 historical_v10: CONSUMED / FAIL / MUST NOT RERUN / NOT A FORMAL INPUT
 ```
@@ -335,8 +376,8 @@ target: Linux amd64, glibc 2.34+, C ABI/RPC schema v1
 recorded_wsl_toolchain: go1.26.4 linux/amd64
 ruleset: 1.0.7
 ruleset_sha256: 7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134
-classifier_policy: classifier-policy-v2
-classifier_policy_sha256: dc9a174099cb2f621e5333a508d4645604f96f470a6d9ae12a1acfb363d29cf2
+historical_classifier_policy_version: classifier-policy-v2
+historical_classifier_policy_sha256: dc9a174099cb2f621e5333a508d4645604f96f470a6d9ae12a1acfb363d29cf2
 ```
 
 classifier-policy 哈希通过源码清单测试绑定分类器、Matcher、Normalizer、Role、Wrapper、
