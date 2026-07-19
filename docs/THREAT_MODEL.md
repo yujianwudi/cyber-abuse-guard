@@ -31,8 +31,8 @@ to `main`, exact post-merge main push CI, and candidate dispatch from
 Earlier v7.2.85/v7.2.84/v7.2.83/v7.2.82/v7.2.81 source/compile profiles are historical non-gating
 engineering evidence, not current v0.15 release requirements.
 
-The current classifier identity is `classifier-policy-v4` /
-`2763f10e2565dce2ffcf700f5d6566e9fbac68f3fedd08fcce20bceff450b4c8`.
+The current classifier identity is `classifier-policy-v5` /
+`fd7627f1ac9c4e08d1e073ecfb4b8afd395a10e713d5e98fddbfe6a380edb59d`.
 
 ## Principal threats and controls
 

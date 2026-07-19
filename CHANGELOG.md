@@ -35,8 +35,9 @@ future stable release still requires a newly authored independent unseen set.
   including streaming/incomplete and oversized request paths. Explicit
   `balanced` plus `subject_control.enabled: true` remains supported.
 - Defer the domain-separated full-body request hash until it is required by an
-  enabled subject evaluation, a final local block pending key, or a persisted
-  audit event with `log_request_hash: true`.
+  eligible accumulating subject hit, a final local block pending key, or a
+  persisted audit event with `log_request_hash: true`. Read-only subject
+  observations do not hash the request body.
 - Tighten subject-risk admission so only authenticated, completely inspected
   user-content base-behavior findings with `FindingCompleteRequest`, a direct
   classifier `ActionBlock`, and `score >= hard_block` add rolling risk.
@@ -44,7 +45,39 @@ future stable release still requires a newly authored independent unseen set.
   mixed-role, and lower-confidence requests keep their direct per-request
   disposition but do not allocate subject state or add hits, receipts, or
   repeat multipliers. Publish the resulting code-level contract as
-  `classifier-policy-v4` / `2763f10e2565dce2ffcf700f5d6566e9fbac68f3fedd08fcce20bceff450b4c8`.
+  `classifier-policy-v5` / `fd7627f1ac9c4e08d1e073ecfb4b8afd395a10e713d5e98fddbfe6a380edb59d`.
+- Add a separate, zero-value-untrusted user-attribution proof. Only an explicit
+  recognized `role: user` content path or an allowlisted multipart prompt is
+  trusted; unknown top-level fields, unknown message siblings, roleless/future
+  items, assistant/system/tool content, and tool payload/output remain
+  non-user-or-untrusted. A composite finding is user-originated only when every
+  contributing user-like field is trusted.
+- Bind that proof to the CPA `SourceProfile`: only a matching root history
+  container can establish a user role; Responses scalar `input` is supported,
+  while nested histories, cross-provider envelopes, unknown content types,
+  function responses, and roleless unknown items stay untrusted. Responses
+  reasoning replay treats `encrypted_content` as opaque only after the closed
+  `reasoning` item type is proven.
+- Recognize CPA v7.2.88 Codex Desktop `input[].type="additional_tools"` as a
+  closed Responses item. Namespace/function/custom descriptions remain
+  system-originated and untrusted, while a following exact user message keeps
+  trusted attribution. The official exact `role: "developer"` sibling and the
+  translator's roleless form are accepted; canonical aliases and every other
+  explicit role on a type-derived item fail closed.
+- Add repository-neutral regression coverage for authority wrappers, developer
+  and tool carriers, Chat/Responses tool descriptions, assistant/tool-call
+  history, all four control families across 17 non-user carriers, defensive
+  domain catalogs, 1.4-17.4 KiB size variants, 16 KiB boundaries, exact-tie user
+  winners, and clean same-identity follow-ups.
+- Skip authenticated subject HMAC derivation and controller locking for a
+  complete classifier `allow`: the subject contract already guarantees that a
+  below-audit clean request is safe even when prior cooldown/manual metadata
+  exists. Audit/block paths and accumulating trusted-user findings are unchanged.
+- Reduce clean-request scanner overhead without changing coverage: short JSON
+  strings no longer reserve a full 16 KiB decode buffer twice per field, and a
+  single-window field skips cross-window risk-potential synthesis when no
+  multi-window contribution can exist. Valid unescaped JSON strings now stream
+  directly from the request buffer without an intermediate decode buffer.
 
 - Add a dedicated, manual `v0.15-rc.2` prerelease workflow for clean Linux
   amd64 server-sandbox assets. It binds an annotated RC tag to the exact main

@@ -366,7 +366,12 @@ func TestProviderSafetyFieldsRequireHostSchemaPolicy(t *testing.T) {
   "generationConfig": {"candidateCount": 1},
   "options": {"providerSafetyBypass": true}
 }`)
-	result, err := ExtractRequest(body, round5ToolJSONHeaders(), Limits{})
+	result, err := ExtractProfiledRequest(
+		body,
+		round5ToolJSONHeaders(),
+		RequestProfile{Source: SourceProfileOpenAI},
+		Limits{},
+	)
 	if err != nil || !result.IsComplete() || !result.RoleAware {
 		t.Fatalf("provider configuration extraction result=%#v err=%v", result, err)
 	}

@@ -258,9 +258,9 @@
     reverse the frozen v10 failure.
 
 37. **Classifier-policy identity is source- and artifact-bound, but still not
-    independent approval.** The current identity is `classifier-policy-v4` /
+    independent approval.** The current identity is `classifier-policy-v5` /
     SHA-256
-    `2763f10e2565dce2ffcf700f5d6566e9fbac68f3fedd08fcce20bceff450b4c8`.
+    `fd7627f1ac9c4e08d1e073ecfb4b8afd395a10e713d5e98fddbfe6a380edb59d`.
     Build metadata and artifact verification carry it. The historical
     round5.2 value was `classifier-policy-v2` /
     `e9b87f7e2635495bdbceae469ef89e696b419f0a9a6fd129558a20bc4be947ec`,

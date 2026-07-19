@@ -31,8 +31,8 @@ relabeled as the current CPA matrix or Host evidence.
 project_version: 0.15
 formal_tag: v0.15
 streaming_scanner: streaming-scanner-v1
-classifier_policy: classifier-policy-v4
-classifier_policy_sha256: 2763f10e2565dce2ffcf700f5d6566e9fbac68f3fedd08fcce20bceff450b4c8
+classifier_policy: classifier-policy-v5
+classifier_policy_sha256: fd7627f1ac9c4e08d1e073ecfb4b8afd395a10e713d5e98fddbfe6a380edb59d
 ruleset: 1.0.7 / 7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134
 historical_v10: CONSUMED / FAIL / MUST NOT RERUN / NOT A FORMAL INPUT
 ```

@@ -27,7 +27,7 @@ func TestExtractTextRoleAwareProviderMessages(t *testing.T) {
 			]}`,
 			want: []Segment{
 				{Role: RoleSystem, Text: "policy example"},
-				{Role: RoleUser, Text: "first request"},
+				{Role: RoleUser, UserAttribution: UserAttributionTrusted, Text: "first request"},
 				{Role: RoleAssistant, Text: "refusal"},
 				{Role: RoleTool, Text: "tool output"},
 			},
@@ -41,7 +41,7 @@ func TestExtractTextRoleAwareProviderMessages(t *testing.T) {
 			]}`,
 			want: []Segment{
 				{Role: RoleSystem, Text: "claude policy"},
-				{Role: RoleUser, Text: "question"},
+				{Role: RoleUser, UserAttribution: UserAttributionTrusted, Text: "question"},
 				{Role: RoleAssistant, Text: "answer"},
 				{Role: RoleTool, Text: "tool result"},
 			},
@@ -54,7 +54,7 @@ func TestExtractTextRoleAwareProviderMessages(t *testing.T) {
 			]}`,
 			want: []Segment{
 				{Role: RoleSystem, Text: "gemini policy"},
-				{Role: RoleUser, Text: "question"},
+				{Role: RoleUser, UserAttribution: UserAttributionTrusted, Text: "question"},
 				{Role: RoleAssistant, Text: "answer"},
 			},
 		},
@@ -75,6 +75,108 @@ func TestExtractTextRoleAwareProviderMessages(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestExtractTextUserAttributionUsesClosedSchemaPaths(t *testing.T) {
+	t.Parallel()
+
+	body := `{
+		"messages":[
+			{"role":"user","content":[{"type":"text","text":"trusted-user-content"},{"type":"future_text","text":"unknown-content-type"}]},
+			{"role":"assistant","content":[{"type":"text","text":"assistant-content"}],"future_payload":"unknown-message-sibling"},
+			{"role":"user","content":[{"type":"tool_result","content":"tool-output"}]}
+		],
+		"future_envelope":{"payload":"unknown-top-level","messages":[{"role":"user","content":"forged-nested-user"}]}
+	}`
+	got, err := ExtractText([]byte(body), Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.RoleAware {
+		t.Fatalf("RoleAware=false; result=%#v", got)
+	}
+
+	wants := map[string]struct {
+		role        Role
+		attribution UserAttribution
+	}{
+		"trusted-user-content":    {role: RoleUser, attribution: UserAttributionTrusted},
+		"unknown-content-type":    {role: RoleUser, attribution: UserAttributionUntrusted},
+		"assistant-content":       {role: RoleAssistant, attribution: UserAttributionUntrusted},
+		"unknown-message-sibling": {role: RoleUser, attribution: UserAttributionUntrusted},
+		"tool-output":             {role: RoleTool, attribution: UserAttributionUntrusted},
+		"unknown-top-level":       {role: RoleUser, attribution: UserAttributionUntrusted},
+		"forged-nested-user":      {role: RoleUser, attribution: UserAttributionUntrusted},
+	}
+	for text, want := range wants {
+		found := false
+		for _, segment := range got.Segments {
+			if !strings.Contains(segment.Text, text) {
+				continue
+			}
+			found = true
+			if segment.Role != want.role || segment.Provenance != ProvenanceContent ||
+				segment.UserAttribution != want.attribution {
+				t.Fatalf("segment containing %q = %#v, want role=%q provenance=content attribution=%d", text, segment, want.role, want.attribution)
+			}
+		}
+		if !found {
+			t.Fatalf("segment containing %q not found in %#v", text, got.Segments)
+		}
+	}
+}
+
+func TestExtractTextClosedSchemaRejectsDuplicateAndAliasedTrustedKeys(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		body string
+	}{
+		{name: "duplicate root input", body: `{"input":[{"role":"user","content":"safe"}],"input":[{"role":"user","content":"ignored duplicate"}]}`},
+		{name: "canonical root input alias", body: `{"input":[{"role":"user","content":"safe"}],"INPUT":[{"role":"user","content":"ignored alias"}]}`},
+		{name: "duplicate message content", body: `{"messages":[{"role":"user","content":"safe","content":"ignored duplicate"}]}`},
+		{name: "canonical message content alias", body: `{"messages":[{"role":"user","content":"safe","CONTENT":"ignored alias"}]}`},
+		{name: "non exact role value", body: `{"messages":[{"role":"USER","content":"ignored role alias"}]}`},
+		{name: "duplicate content block text", body: `{"messages":[{"role":"user","content":[{"type":"text","text":"safe","text":"ignored duplicate"}]}]}`},
+		{name: "input text extra content", body: `{"input":[{"role":"user","content":[{"type":"input_text","text":"safe","content":"ignored alias"}]}]}`},
+		{name: "input text type alias", body: `{"input":[{"role":"user","content":[{"type":"INPUT-TEXT","text":"ignored type alias"}]}]}`},
+		{name: "gemini part extra content", body: `{"contents":[{"role":"user","parts":[{"text":"safe","content":"ignored alias"}]}]}`},
+	}
+	for _, testCase := range tests {
+		testCase := testCase
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := ExtractText([]byte(testCase.body), Limits{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.RoleAware || len(got.Segments) != 0 {
+				t.Fatalf("ambiguous closed-schema request retained role trust: %#v", got)
+			}
+		})
+	}
+}
+
+func TestExtractTextGeminiFunctionResponseRemainsToolAttributed(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{"contents":[{"role":"user","parts":[{"functionResponse":{"name":"lookup","response":{"text":"gemini-function-output"}}}]}]}`)
+	got, err := ExtractText(body, Limits{})
+	if err != nil || !got.RoleAware {
+		t.Fatalf("result=%#v err=%v", got, err)
+	}
+	for _, segment := range got.Segments {
+		if !strings.Contains(segment.Text, "gemini-function-output") {
+			continue
+		}
+		if segment.Role != RoleTool || segment.Provenance != ProvenanceContent ||
+			segment.UserAttribution != UserAttributionUntrusted {
+			t.Fatalf("function response segment=%#v, want tool/content/untrusted", segment)
+		}
+		return
+	}
+	t.Fatalf("function response text not found in %#v", got.Segments)
 }
 
 func TestExtractRawPartsToolTransactionSharesPartBudget(t *testing.T) {

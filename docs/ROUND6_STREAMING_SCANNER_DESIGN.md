@@ -9,8 +9,8 @@ workflow and remain unreleased. See
 [RELEASE_POLICY.md](RELEASE_POLICY.md). Future eligibility is externalized in
 `round6-prerelease-attestation.json` and `formal-release-attestation.json`.
 
-Current classifier identity is `classifier-policy-v4` /
-`2763f10e2565dce2ffcf700f5d6566e9fbac68f3fedd08fcce20bceff450b4c8`;
+Current classifier identity is `classifier-policy-v5` /
+`fd7627f1ac9c4e08d1e073ecfb4b8afd395a10e713d5e98fddbfe6a380edb59d`;
 scanner identity is `streaming-scanner-v1`.
 
 Commit `21ceb57e6b6030e56d7820c9a67a8eecd068c669` passed push and PR CI

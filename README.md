@@ -50,7 +50,7 @@ classifier.
 | CPA Host matrix | Active validation and the supported release target are pinned to CPA v7.2.88 (`93d74a890a44802f656d7f39a573916b2611896e`); owner-operated isolated Host + Mock-upstream evidence is **NOT RUN / PENDING** |
 | Production | Not accessed or modified; no production request, audit database, credential, HMAC key, account pool, or real Provider was used |
 | Scanner identity | `streaming-scanner-v1` |
-| Classifier policy | `classifier-policy-v4` / `2763f10e2565dce2ffcf700f5d6566e9fbac68f3fedd08fcce20bceff450b4c8` |
+| Classifier policy | `classifier-policy-v5` / `fd7627f1ac9c4e08d1e073ecfb4b8afd395a10e713d5e98fddbfe6a380edb59d` |
 | Embedded YAML ruleset | `1.0.7` / `7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134` |
 | Audit schema | v3 |
 | Code review | Automated review is advisory; no independent approval is claimed |
@@ -110,6 +110,20 @@ hash the full request body for audit correlation.
 
 Incomplete requests never update subject risk. A partial prefix cannot produce
 a policy block in `balanced`.
+Subject accumulation also requires an explicit trusted-user attribution proof;
+unknown/future fields and non-user or tool-originated text keep their direct
+request disposition but cannot poison rolling subject state.
+The proof is bound to the CPA `SourceFormat`: only a matching root provider
+history or Responses scalar `input` can establish user authorship. Nested or
+cross-provider histories, developer/system/tool content, unknown content types,
+function responses, and opaque Responses reasoning state remain untrusted.
+
+Repository-neutral regressions derived from four public prompt-override source
+pins cover high-authority `instructions`, Chat and Responses tool descriptions,
+CPA v7.2.88 Codex Desktop `additional_tools`, assistant/tool history, defensive
+domain catalogs, 1.4-17.4 KiB templates, and the 16 KiB boundary without adding
+repository-name signatures or complete third-party prompts. See the
+[public jailbreak repository review](docs/reports/PUBLIC_JAILBREAK_REPOSITORY_REVIEW.md).
 
 ## Effective default limits
 

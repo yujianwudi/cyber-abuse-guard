@@ -18,6 +18,8 @@ import (
 const (
 	cpaLatestModulePath        = "github.com/router-for-me/CLIProxyAPI/v7"
 	cpaLatestPluginHostPackage = cpaLatestModulePath + "/internal/pluginhost"
+	cpaLatestResponsesPackage  = cpaLatestModulePath + "/internal/translator/openai/openai/responses"
+	cpaLatestResponsesHandler  = cpaLatestModulePath + "/sdk/api/handlers/openai"
 	cpaLatestFixtureSHA256     = "113645c584a40ce6c8887d83ab9443e9c62f21201358bcb336c6e5eb1ebe6b1d"
 
 	cpaCompatibilityProfileEnv = "CPA_COMPAT_PROFILE"
@@ -123,6 +125,68 @@ func TestLatestCPAOfficialHostRoutingSourceContract(t *testing.T) {
 		"test", moduleArguments[0], moduleArguments[1], "-count=1", "-v",
 		"-run", "^("+strings.Join(exactNames, "|")+")$", cpaLatestPluginHostPackage,
 	)
+}
+
+func TestLatestCPAResponsesAdditionalToolsSourceContract(t *testing.T) {
+	goBinary, moduleArguments, module := prepareLatestCPAModule(t)
+	const translatorTest = "TestConvertOpenAIResponsesRequestToOpenAIChatCompletions_FlattensNamespaceCustomTools"
+
+	listed := runLatestGoCommand(t, goBinary,
+		"test", moduleArguments[0], moduleArguments[1], "-list", "^"+translatorTest+"$", cpaLatestResponsesPackage,
+	)
+	if !linePresent(listed, translatorTest) {
+		t.Fatalf("latest CPA Responses translator no longer lists required test %q", translatorTest)
+	}
+	runLatestGoCommand(t, goBinary,
+		"test", moduleArguments[0], moduleArguments[1], "-count=1", "-v",
+		"-run", "^"+translatorTest+"$", cpaLatestResponsesPackage,
+	)
+
+	handlerTests := []string{
+		"TestNormalizeResponsesWebsocketRequestReplacesCodexLocalCompactionTranscript",
+		"TestCodexLocalCompactionSummaryAdditionalToolsConstraints",
+	}
+	for _, upstreamTest := range handlerTests {
+		listed = runLatestGoCommand(t, goBinary,
+			"test", moduleArguments[0], moduleArguments[1], "-list", "^"+upstreamTest+"$", cpaLatestResponsesHandler,
+		)
+		if !linePresent(listed, upstreamTest) {
+			t.Fatalf("latest CPA Responses handler no longer lists required test %q", upstreamTest)
+		}
+	}
+	runLatestGoCommand(t, goBinary,
+		"test", moduleArguments[0], moduleArguments[1], "-count=1", "-v",
+		"-run", "^("+strings.Join(handlerTests, "|")+")$", cpaLatestResponsesHandler,
+	)
+
+	sourcePath := filepath.Join(module.Dir, "internal", "translator", "openai", "openai", "responses", "openai_openai-responses_request.go")
+	source, err := os.ReadFile(sourcePath)
+	if err != nil {
+		t.Fatalf("read latest CPA Responses translator source: %v", err)
+	}
+	for _, required := range [][]byte{
+		[]byte(`item.Get("type").String() == "additional_tools"`),
+		[]byte(`appendChatTools(item.Get("tools"))`),
+	} {
+		if !bytes.Contains(source, required) {
+			t.Fatalf("latest CPA Responses translator lost additional_tools contract marker %q", required)
+		}
+	}
+
+	handlerSourcePath := filepath.Join(module.Dir, "sdk", "api", "handlers", "openai", "openai_responses_websocket.go")
+	handlerSource, err := os.ReadFile(handlerSourcePath)
+	if err != nil {
+		t.Fatalf("read latest CPA Responses handler source: %v", err)
+	}
+	for _, required := range [][]byte{
+		[]byte(`if itemType == "additional_tools"`),
+		[]byte(`strings.TrimSpace(item.Get("role").String()) != "developer"`),
+		[]byte(`!tools.IsArray()`),
+	} {
+		if !bytes.Contains(handlerSource, required) {
+			t.Fatalf("latest CPA Responses handler lost Responses Lite additional_tools marker %q", required)
+		}
+	}
 }
 
 func TestLatestCPAHostFailOpenFixtureContract(t *testing.T) {

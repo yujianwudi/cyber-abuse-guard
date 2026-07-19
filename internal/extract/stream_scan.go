@@ -40,30 +40,40 @@ const (
 )
 
 type plannedText struct {
-	id              uint64
-	rawStart        int
-	rawEnd          int
-	owned           string
-	role            Role
-	provenance      SegmentProvenance
-	scalarCarrier   bool
-	messageOwner    uint64
-	roleEligible    bool
-	semanticOrdinal int
-	fallbackText    bool
+	id               uint64
+	rawStart         int
+	rawEnd           int
+	owned            string
+	role             Role
+	provenance       SegmentProvenance
+	userAttribution  UserAttribution
+	encryptedContent bool
+	skip             bool
+	scalarCarrier    bool
+	messageOwner     uint64
+	roleEligible     bool
+	semanticOrdinal  int
+	fallbackText     bool
+	exactKey         string
 }
 
 type planContext struct {
-	role          Role
-	provenance    SegmentProvenance
-	messageOwner  uint64
-	roleEligible  bool
-	historyArray  bool
-	messageObject bool
-	atRoot        bool
-	fallbackText  bool
-	unknownRoot   bool
-	metadata      bool
+	role                Role
+	provenance          SegmentProvenance
+	userAttribution     UserAttribution
+	historyTrusted      bool
+	directUserInput     bool
+	messageOwner        uint64
+	roleEligible        bool
+	roleContent         bool
+	historyArray        bool
+	messageObject       bool
+	directMessageMember bool
+	atRoot              bool
+	fallbackText        bool
+	unknownRoot         bool
+	metadata            bool
+	exactKey            string
 }
 
 type valueSummary struct {
@@ -75,6 +85,7 @@ type valueSummary struct {
 type shadowPlanner struct {
 	body        []byte
 	limits      Limits
+	source      SourceProfile
 	position    int
 	shadow      []byte
 	spans       []plannedText
@@ -147,7 +158,7 @@ func scanRequest(body []byte, headers http.Header, profile RequestProfile, limit
 	}
 	if len(contentTypes) == 0 || strings.TrimSpace(contentTypes[0]) == "" {
 		if obviousJSON(body) {
-			return scanRequestJSON(body, normalized, initial, initial == contextNone, sink)
+			return scanRequestJSON(body, normalized, initial, initial == contextNone, profile.Source, sink)
 		}
 		result.Envelope = EnvelopeIncomplete
 		result.TextCoverage = TextCoverageUnavailable
@@ -176,7 +187,7 @@ func scanRequest(body []byte, headers http.Header, profile RequestProfile, limit
 			sink.Abort()
 			return result, nil
 		}
-		return scanRequestJSON(body, normalized, initial, initial == contextNone, sink)
+		return scanRequestJSON(body, normalized, initial, initial == contextNone, profile.Source, sink)
 	case mediaType == "multipart/form-data":
 		if profile.Source != SourceProfileUnknown && obviousJSON(body) {
 			return scanTransformedMultipartJSON(body, profile, normalized, sink)
@@ -216,7 +227,7 @@ func parseRequestMediaType(value string) (string, map[string]string, error) {
 	return strings.ToLower(strings.TrimSpace(mediaType)), params, err
 }
 
-func scanRequestJSON(body []byte, limits Limits, initial contextKind, trustRoles bool, sink ChunkSink) (Result, error) {
+func scanRequestJSON(body []byte, limits Limits, initial contextKind, trustRoles bool, source SourceProfile, sink ChunkSink) (Result, error) {
 	result := newRequestResult(body, limits)
 	if !obviousJSON(body) || !utf8.Valid(body) || !json.Valid(body) {
 		result.Envelope = EnvelopeIncomplete
@@ -232,11 +243,17 @@ func scanRequestJSON(body []byte, limits Limits, initial contextKind, trustRoles
 	planner := shadowPlanner{
 		body:       body,
 		limits:     limits,
+		source:     source,
 		shadow:     make([]byte, 0, minInt(len(body), 64<<10)),
 		spans:      make([]plannedText, 0, minInt(limits.MaxTextParts, 64)),
 		trustRoles: trustRoles,
 	}
-	root := planContext{role: RoleUser, provenance: ProvenanceContent, atRoot: true}
+	root := planContext{
+		role:            RoleUser,
+		provenance:      ProvenanceContent,
+		userAttribution: UserAttributionUntrusted,
+		atRoot:          true,
+	}
 	if _, err := planner.parseValue(root, "", 0); err != nil {
 		if !errors.Is(err, errPlanBudget) {
 			result.Envelope = EnvelopeIncomplete
@@ -291,9 +308,11 @@ func scanRequestJSON(body []byte, limits Limits, initial contextKind, trustRoles
 	if !result.RoleAware {
 		for index := range selected {
 			selected[index].role = RoleUnknown
+			selected[index].userAttribution = UserAttributionUntrusted
 		}
 		for index := range owned {
 			owned[index].role = RoleUnknown
+			owned[index].userAttribution = UserAttributionUntrusted
 		}
 	}
 	result.LogicalTextParts = len(selected) + len(owned)
@@ -384,6 +403,10 @@ func (p *shadowPlanner) parseValue(ctx planContext, key string, depth int) (valu
 }
 
 func (p *shadowPlanner) parseObject(ctx planContext, depth int) (valueSummary, error) {
+	if ctx.directUserInput {
+		ctx.directUserInput = false
+		ctx.userAttribution = UserAttributionUntrusted
+	}
 	if depth > p.limits.MaxJSONDepth {
 		return valueSummary{}, p.exhaust(IncompleteJSONDepthLimit)
 	}
@@ -399,6 +422,16 @@ func (p *shadowPlanner) parseObject(ctx planContext, depth int) (valueSummary, e
 	roleValue := ""
 	roleSeen := false
 	roleAmbiguous := false
+	messageTypeValue := ""
+	messageTypeSeen := false
+	messageTypeAmbiguous := false
+	blockTypeValue := ""
+	blockTypeSeen := false
+	blockTypeAmbiguous := false
+	blockWrapperType := ""
+	blockWrapperAmbiguous := false
+	seenClosedKeys := make(map[string]struct{}, 8)
+	blockTextKeys := make([]string, 0, 2)
 	first := true
 	for {
 		p.skipWhitespace()
@@ -431,6 +464,15 @@ func (p *shadowPlanner) parseObject(ctx planContext, depth int) (valueSummary, e
 			keyValue = shadowUnknownKey
 		}
 		canonical := canonicalKey(keyValue)
+		if identity, exact, closed := closedSchemaObjectKey(p.source, ctx, keyValue, canonical); closed {
+			if !exact {
+				p.unsafeRole = true
+			}
+			if _, duplicate := seenClosedKeys[identity]; duplicate {
+				p.unsafeRole = true
+			}
+			seenClosedKeys[identity] = struct{}{}
+		}
 		p.shadow = strconv.AppendQuote(p.shadow, compactShadowKey(canonical))
 		p.skipWhitespace()
 		if p.position >= len(p.body) || p.body[p.position] != ':' {
@@ -438,7 +480,7 @@ func (p *shadowPlanner) parseObject(ctx planContext, depth int) (valueSummary, e
 		}
 		p.position++
 		p.shadow = append(p.shadow, ':')
-		child := derivePlanContext(ctx, canonical, depth == 1)
+		child := derivePlanContext(ctx, canonical, keyValue, depth == 1, p.source)
 		summary, err := p.parseValue(child, canonical, depth)
 		if err != nil {
 			return valueSummary{}, err
@@ -456,32 +498,172 @@ func (p *shadowPlanner) parseObject(ctx planContext, depth int) (valueSummary, e
 				roleValue = summary.text
 			}
 		}
-	}
-	if messageOwner != 0 {
-		hasRoleEligibleSpan := false
-		for index := spanStart; index < len(p.spans); index++ {
-			if p.spans[index].messageOwner == messageOwner && p.spans[index].roleEligible {
-				hasRoleEligibleSpan = true
-				break
+		if ctx.messageObject && canonical == "type" {
+			if messageTypeSeen {
+				messageTypeAmbiguous = true
+			}
+			messageTypeSeen = true
+			if !summary.isText {
+				messageTypeAmbiguous = true
+			} else {
+				messageTypeValue = summary.text
+				messageType := canonicalKey(messageTypeValue)
+				if p.source == SourceProfileOpenAIResponse && isReservedResponseItemType(messageType) &&
+					!isExactResponseItemType(messageTypeValue) {
+					p.unsafeRole = true
+				}
 			}
 		}
-		if !roleSeen && hasRoleEligibleSpan {
-			p.missingRole = true
+		if ctx.roleContent && canonical == "type" {
+			if blockTypeSeen {
+				blockTypeAmbiguous = true
+			}
+			blockTypeSeen = true
+			if !summary.isText {
+				blockTypeAmbiguous = true
+			} else {
+				blockTypeValue = summary.text
+			}
 		}
-		role, ok := normalizedMessageRole(roleValue)
-		if roleSeen && !ok {
+		if ctx.roleContent && isRoleContentCarrierCanonical(canonical) {
+			blockTextKeys = append(blockTextKeys, keyValue)
+		}
+		if ctx.roleContent && (canonical == "functioncall" || canonical == "functionresponse") {
+			if blockWrapperType != "" && blockWrapperType != canonical {
+				blockWrapperAmbiguous = true
+			}
+			blockWrapperType = canonical
+		}
+	}
+	if ctx.roleContent {
+		effectiveBlockType := ""
+		if blockTypeAmbiguous || blockWrapperAmbiguous {
+			effectiveBlockType = "unknown"
+		} else if blockTypeSeen {
+			effectiveBlockType = canonicalKey(blockTypeValue)
+			if isReservedRoleContentBlockType(effectiveBlockType) && !isExactRoleContentBlockType(blockTypeValue) {
+				p.unsafeRole = true
+			}
+		}
+		if blockWrapperType != "" && effectiveBlockType != "unknown" {
+			if effectiveBlockType != "" && effectiveBlockType != blockWrapperType {
+				effectiveBlockType = "unknown"
+			} else {
+				effectiveBlockType = blockWrapperType
+			}
+		}
+		switch effectiveBlockType {
+		case "tooluse", "functioncall", "customtoolcall":
+			for index := spanStart; index < len(p.spans); index++ {
+				if p.spans[index].messageOwner != ctx.messageOwner {
+					continue
+				}
+				p.spans[index].role = RoleAssistant
+				p.spans[index].provenance = ProvenanceToolPayload
+				p.spans[index].userAttribution = UserAttributionUntrusted
+				p.spans[index].roleEligible = false
+			}
+		case "toolresult", "functionresponse", "functioncalloutput", "customtoolcalloutput":
+			for index := spanStart; index < len(p.spans); index++ {
+				if p.spans[index].messageOwner != ctx.messageOwner {
+					continue
+				}
+				p.spans[index].role = RoleTool
+				p.spans[index].provenance = ProvenanceContent
+				p.spans[index].userAttribution = UserAttributionUntrusted
+				p.spans[index].roleEligible = false
+			}
+		case "", "text", "inputtext", "outputtext", "refusal":
+			// Known natural-language blocks retain the enclosing proven role.
+			for _, key := range blockTextKeys {
+				if !roleContentTextFieldAllowed(p.source, effectiveBlockType, key) {
+					p.unsafeRole = true
+				}
+			}
+		default:
+			for index := spanStart; index < len(p.spans); index++ {
+				if p.spans[index].messageOwner != ctx.messageOwner {
+					continue
+				}
+				p.spans[index].role = RoleUser
+				p.spans[index].provenance = ProvenanceContent
+				p.spans[index].userAttribution = UserAttributionUntrusted
+				p.spans[index].roleEligible = false
+			}
+		}
+	}
+	if messageOwner != 0 {
+		typeDerivedRole := RoleUnknown
+		typeDerivedProvenance := ProvenanceContent
+		typeDerivedKnown := false
+		typeDerivedRoleCompatible := false
+		if !messageTypeAmbiguous && messageTypeSeen && ctx.historyTrusted && p.source == SourceProfileOpenAIResponse {
+			if role, provenance, ok := rolelessResponseItemRole(messageTypeValue); ok {
+				typeDerivedRole = role
+				typeDerivedProvenance = provenance
+				typeDerivedKnown = true
+				typeDerivedRoleCompatible = !roleSeen ||
+					(messageTypeValue == "additional_tools" && roleValue == "developer")
+			}
+		}
+		if typeDerivedKnown && !typeDerivedRoleCompatible {
+			// Responses call/output/reasoning/additional-tools items have a
+			// closed type-derived role. CPA v7.2.88 Codex Responses Lite is the
+			// sole reviewed exception: additional_tools carries the exact sibling
+			// role "developer". Every other explicit role remains ambiguous and
+			// must never promote runtime/tool text to trusted user content.
 			p.unsafeRole = true
 			roleAmbiguous = true
 		}
-		if !roleSeen || roleAmbiguous {
-			role = RoleUser
+		hasMessageSpan := false
+		for index := spanStart; index < len(p.spans); index++ {
+			if p.spans[index].messageOwner == messageOwner {
+				hasMessageSpan = true
+				break
+			}
 		}
-		if ok && !roleAmbiguous {
+		if typeDerivedKnown && typeDerivedRoleCompatible {
+			messageType := canonicalKey(messageTypeValue)
+			for index := spanStart; index < len(p.spans); index++ {
+				if p.spans[index].messageOwner != messageOwner {
+					continue
+				}
+				if messageType == "reasoning" && p.spans[index].encryptedContent {
+					p.spans[index].skip = true
+					p.spans[index].roleEligible = false
+					p.spans[index].userAttribution = UserAttributionUntrusted
+					continue
+				}
+				p.spans[index].role = typeDerivedRole
+				p.spans[index].provenance = typeDerivedProvenance
+				p.spans[index].userAttribution = UserAttributionUntrusted
+				p.spans[index].roleEligible = false
+			}
 			p.roleAware = true
 		}
-		for index := spanStart; index < len(p.spans); index++ {
-			if p.spans[index].messageOwner == messageOwner && p.spans[index].roleEligible {
-				p.spans[index].role = role
+		if !roleSeen && hasMessageSpan && !typeDerivedKnown {
+			p.missingRole = true
+		}
+		if !typeDerivedKnown {
+			role, ok := normalizedMessageRole(p.source, roleValue)
+			if roleSeen && !ok {
+				p.unsafeRole = true
+				roleAmbiguous = true
+			}
+			if !roleSeen || roleAmbiguous {
+				role = RoleUser
+			}
+			if ok && !roleAmbiguous {
+				p.roleAware = true
+			}
+			for index := spanStart; index < len(p.spans); index++ {
+				if p.spans[index].messageOwner == messageOwner && p.spans[index].roleEligible {
+					p.spans[index].role = role
+					p.spans[index].userAttribution = UserAttributionUntrusted
+					if ctx.historyTrusted && role == RoleUser && p.spans[index].provenance == ProvenanceContent {
+						p.spans[index].userAttribution = UserAttributionTrusted
+					}
+				}
 			}
 		}
 	}
@@ -489,6 +671,10 @@ func (p *shadowPlanner) parseObject(ctx planContext, depth int) (valueSummary, e
 }
 
 func (p *shadowPlanner) parseArray(ctx planContext, depth int) (valueSummary, error) {
+	if ctx.directUserInput {
+		ctx.directUserInput = false
+		ctx.userAttribution = UserAttributionUntrusted
+	}
 	if depth > p.limits.MaxJSONDepth {
 		return valueSummary{}, p.exhaust(IncompleteJSONDepthLimit)
 	}
@@ -515,7 +701,7 @@ func (p *shadowPlanner) parseArray(ctx planContext, depth int) (valueSummary, er
 		first = false
 		child := ctx
 		child.atRoot = false
-		if ctx.historyArray && p.trustRoles {
+		if ctx.historyArray && ctx.historyTrusted && p.trustRoles {
 			child.historyArray = false
 			child.messageObject = true
 		}
@@ -526,11 +712,14 @@ func (p *shadowPlanner) parseArray(ctx planContext, depth int) (valueSummary, er
 	return valueSummary{}, nil
 }
 
-func derivePlanContext(parent planContext, key string, rootMember bool) planContext {
+func derivePlanContext(parent planContext, key, exactKey string, rootMember bool, source SourceProfile) planContext {
 	child := parent
 	child.atRoot = false
 	child.historyArray = false
 	child.messageObject = false
+	child.directMessageMember = parent.messageObject
+	child.directUserInput = false
+	child.exactKey = exactKey
 	if parent.metadata {
 		return child
 	}
@@ -542,37 +731,74 @@ func derivePlanContext(parent planContext, key string, rootMember bool) planCont
 		child.metadata = true
 		return child
 	}
-	if key == "messages" || key == "contents" || (rootMember && key == "input") {
+	if rootMember && trustedHistoryEnvelope(source, exactKey) {
 		child.historyArray = true
+		child.historyTrusted = true
 		child.messageOwner = 0
 		child.roleEligible = false
+		child.roleContent = false
+		child.userAttribution = UserAttributionUntrusted
+		if source == SourceProfileOpenAIResponse && exactKey == "input" {
+			child.directUserInput = true
+			child.userAttribution = UserAttributionTrusted
+		}
 		return child
 	}
-	if rootMember && (key == "system" || key == "instructions" || key == "systeminstruction") {
+	if rootMember && trustedSystemEnvelope(source, exactKey) {
 		child.role = RoleSystem
 		child.roleEligible = true
+		child.roleContent = false
+		child.userAttribution = UserAttributionUntrusted
 		return child
 	}
 	if rootMember && isProviderToolDefinitionContainerCanonical(key) {
 		child.role = RoleSystem
 		child.provenance = ProvenanceContent
 		child.roleEligible = true
+		child.roleContent = false
+		child.userAttribution = UserAttributionUntrusted
 		return child
 	}
 	if parent.messageOwner != 0 {
+		if parent.roleContent {
+			switch {
+			case isExactRoleContentTextField(exactKey):
+				child.roleEligible = true
+				child.roleContent = true
+			case isToolWrapperKeyCanonical(key) || isToolArgumentCanonical(key):
+				child.roleEligible = true
+				child.roleContent = false
+				child.provenance = ProvenanceToolPayload
+				child.userAttribution = UserAttributionUntrusted
+			case isMetadataKeyCanonical(key):
+				child.roleEligible = false
+				child.roleContent = false
+				child.fallbackText = false
+			default:
+				child.roleEligible = false
+				child.roleContent = false
+				child.role = RoleUser
+				child.userAttribution = UserAttributionUntrusted
+			}
+			return child
+		}
 		switch {
-		case key == "content" || key == "parts" || key == "refusal":
+		case exactMessageContentKey(source, exactKey):
 			child.roleEligible = true
+			child.roleContent = true
 		case isToolWrapperKeyCanonical(key) || isToolArgumentCanonical(key):
 			child.roleEligible = true
+			child.roleContent = false
 			child.provenance = ProvenanceToolPayload
+			child.userAttribution = UserAttributionUntrusted
 		case isMetadataKeyCanonical(key):
-			child.messageOwner = 0
 			child.roleEligible = false
+			child.roleContent = false
 		default:
-			child.messageOwner = 0
 			child.roleEligible = false
+			child.roleContent = false
 			child.role = RoleUser
+			child.userAttribution = UserAttributionUntrusted
 		}
 		return child
 	}
@@ -585,6 +811,149 @@ func derivePlanContext(parent planContext, key string, rootMember bool) planCont
 	return child
 }
 
+func trustedHistoryEnvelope(source SourceProfile, key string) bool {
+	switch source {
+	case SourceProfileOpenAI:
+		return key == "messages"
+	case SourceProfileOpenAIResponse:
+		return key == "input"
+	case SourceProfileClaude:
+		return key == "messages"
+	case SourceProfileGemini:
+		return key == "contents"
+	default:
+		return false
+	}
+}
+
+func trustedSystemEnvelope(source SourceProfile, key string) bool {
+	switch source {
+	case SourceProfileOpenAIResponse:
+		return key == "instructions"
+	case SourceProfileClaude:
+		return key == "system"
+	case SourceProfileGemini:
+		return key == "systemInstruction"
+	default:
+		return false
+	}
+}
+
+func isRoleContentTextKeyCanonical(key string) bool {
+	switch key {
+	case "content", "inputtext", "outputtext", "parts", "refusal", "text":
+		return true
+	default:
+		return false
+	}
+}
+
+func isRoleContentCarrierCanonical(key string) bool {
+	switch key {
+	case "content", "inputtext", "outputtext", "parts", "refusal", "text":
+		return true
+	default:
+		return false
+	}
+}
+
+func exactMessageContentKey(source SourceProfile, key string) bool {
+	switch source {
+	case SourceProfileOpenAI, SourceProfileOpenAIResponse, SourceProfileClaude:
+		return key == "content"
+	case SourceProfileGemini:
+		return key == "parts"
+	default:
+		return false
+	}
+}
+
+func isExactRoleContentTextField(key string) bool {
+	return key == "text" || key == "refusal"
+}
+
+func roleContentTextFieldAllowed(source SourceProfile, blockType, key string) bool {
+	switch blockType {
+	case "text", "inputtext", "outputtext":
+		return key == "text"
+	case "refusal":
+		return key == "refusal"
+	case "":
+		// Gemini parts are untyped {"text": ...} objects. Retain the same
+		// conservative compatibility for other known providers, but never accept
+		// content/parts/input_text aliases inside the block.
+		return key == "text"
+	default:
+		return false
+	}
+}
+
+func closedSchemaObjectKey(source SourceProfile, ctx planContext, rawKey, canonical string) (identity string, exact, closed bool) {
+	if ctx.atRoot {
+		for _, expected := range []string{
+			trustedHistoryKey(source), trustedSystemKey(source),
+		} {
+			if expected != "" && canonical == canonicalKey(expected) {
+				return canonical, rawKey == expected, true
+			}
+		}
+		return "", false, false
+	}
+	if ctx.messageObject {
+		switch canonical {
+		case "role", "type":
+			return canonical, rawKey == canonical, true
+		case "content", "parts", "refusal", "text", "inputtext", "outputtext":
+			expected := ""
+			if exactMessageContentKey(source, rawKey) {
+				expected = rawKey
+			}
+			return "message_text:" + canonical, expected != "", true
+		}
+	}
+	if ctx.roleContent {
+		switch canonical {
+		case "type":
+			return canonical, rawKey == "type", true
+		case "content", "parts", "refusal", "text":
+			return "block_text:" + canonical, rawKey == canonical, true
+		case "inputtext":
+			return "block_text:" + canonical, rawKey == "input_text", true
+		case "outputtext":
+			return "block_text:" + canonical, rawKey == "output_text", true
+		}
+	}
+	return "", false, false
+}
+
+func trustedHistoryKey(source SourceProfile) string {
+	switch source {
+	case SourceProfileOpenAI:
+		return "messages"
+	case SourceProfileOpenAIResponse:
+		return "input"
+	case SourceProfileClaude:
+		return "messages"
+	case SourceProfileGemini:
+		return "contents"
+	default:
+		return ""
+	}
+}
+
+func trustedSystemKey(source SourceProfile) string {
+	switch source {
+	case SourceProfileOpenAIResponse:
+		return "instructions"
+	case SourceProfileClaude:
+		return "system"
+	case SourceProfileGemini:
+		return "systemInstruction"
+	default:
+		return ""
+	}
+}
+
 func isKnownRootPlanKey(key string) bool {
 	return isTextKeyCanonical(key) || isTextContainerCanonical(key) ||
 		isProviderMetadataContainerCanonical(key) || isProviderToolDefinitionContainerCanonical(key) ||
@@ -592,30 +961,103 @@ func isKnownRootPlanKey(key string) bool {
 		isToolWrapperKeyCanonical(key) || isToolArgumentCanonical(key)
 }
 
-func normalizedMessageRole(value string) (Role, bool) {
-	switch strings.ToLower(strings.TrimSpace(value)) {
+func normalizedMessageRole(source SourceProfile, value string) (Role, bool) {
+	switch value {
 	case "user":
 		return RoleUser, true
 	case "system", "developer":
+		if source == SourceProfileGemini {
+			return RoleUser, false
+		}
 		return RoleSystem, true
-	case "assistant", "model":
+	case "assistant":
+		if source == SourceProfileGemini {
+			return RoleUser, false
+		}
+		return RoleAssistant, true
+	case "model":
+		if source != SourceProfileGemini {
+			return RoleUser, false
+		}
 		return RoleAssistant, true
 	case "tool", "function":
+		if source == SourceProfileGemini {
+			return RoleUser, false
+		}
 		return RoleTool, true
 	default:
 		return RoleUser, false
 	}
 }
 
+func rolelessResponseItemRole(value string) (Role, SegmentProvenance, bool) {
+	switch value {
+	case "additional_tools":
+		// CPA v7.2.88 accepts Codex Desktop tool definitions in an input item
+		// instead of the top-level tools field. The entire item is model-visible
+		// authority supplied by the client/runtime, never current user content.
+		return RoleSystem, ProvenanceContent, true
+	case "function_call", "custom_tool_call":
+		return RoleAssistant, ProvenanceToolPayload, true
+	case "function_call_output", "custom_tool_call_output":
+		return RoleTool, ProvenanceContent, true
+	case "reasoning":
+		return RoleAssistant, ProvenanceContent, true
+	default:
+		return RoleUnknown, ProvenanceContent, false
+	}
+}
+
+func isReservedResponseItemType(value string) bool {
+	switch value {
+	case "message", "additionaltools", "functioncall", "functioncalloutput", "customtoolcall", "customtoolcalloutput", "reasoning":
+		return true
+	default:
+		return false
+	}
+}
+
+func isExactResponseItemType(value string) bool {
+	switch value {
+	case "message", "additional_tools", "function_call", "function_call_output", "custom_tool_call", "custom_tool_call_output", "reasoning":
+		return true
+	default:
+		return false
+	}
+}
+
+func isReservedRoleContentBlockType(value string) bool {
+	switch value {
+	case "text", "inputtext", "outputtext", "refusal", "tooluse", "toolresult",
+		"functioncall", "functionresponse", "functioncalloutput", "customtoolcall", "customtoolcalloutput":
+		return true
+	default:
+		return false
+	}
+}
+
+func isExactRoleContentBlockType(value string) bool {
+	switch value {
+	case "text", "input_text", "output_text", "refusal", "tool_use", "tool_result",
+		"function_call", "function_response", "function_call_output", "custom_tool_call", "custom_tool_call_output":
+		return true
+	default:
+		return false
+	}
+}
+
 func (p *shadowPlanner) appendStringValue(ctx planContext, key string, start, end int) valueSummary {
 	raw := p.body[start:end]
+	if ctx.directUserInput {
+		p.roleAware = true
+	}
 	value, bounded := decodeShortJSONString(raw, maxShadowValueBytes)
 	if ctx.metadata {
 		p.shadow = append(p.shadow, '"', '"')
 		return valueSummary{}
 	}
 	if shouldPreserveSemanticString(key) {
-		p.shadow = strconv.AppendQuote(p.shadow, compactShadowSemanticValue(key, value, bounded))
+		p.shadow = strconv.AppendQuote(p.shadow, compactShadowSemanticValue(p.source, key, value, bounded))
 		return valueSummary{text: value, isText: true, bounded: bounded}
 	}
 	if bounded && strings.TrimSpace(value) == "" {
@@ -625,35 +1067,43 @@ func (p *shadowPlanner) appendStringValue(ctx planContext, key string, start, en
 	id := uint64(len(p.spans) + 1)
 	fallbackText := ctx.fallbackText && fallbackPlanTextKey(key)
 	scalarCarrier := isScalarMediaCarrierKeyCanonical(key)
+	encryptedContent := p.source == SourceProfileOpenAIResponse && ctx.messageOwner != 0 &&
+		ctx.directMessageMember && key == "encryptedcontent" && ctx.exactKey == "encrypted_content"
 	if representative, ok := opaqueScalarCarrierRepresentative(key, value, bounded, raw, id); ok {
 		p.shadow = strconv.AppendQuote(p.shadow, representative)
 		p.spans = append(p.spans, plannedText{
-			id:              id,
-			rawStart:        start,
-			rawEnd:          end,
-			role:            defaultRole(ctx.role),
-			provenance:      ctx.provenance,
-			scalarCarrier:   scalarCarrier,
-			messageOwner:    ctx.messageOwner,
-			roleEligible:    ctx.roleEligible,
-			semanticOrdinal: len(p.spans),
-			fallbackText:    fallbackText,
+			id:               id,
+			rawStart:         start,
+			rawEnd:           end,
+			role:             defaultRole(ctx.role),
+			provenance:       ctx.provenance,
+			userAttribution:  ctx.userAttribution,
+			encryptedContent: encryptedContent,
+			scalarCarrier:    scalarCarrier,
+			messageOwner:     ctx.messageOwner,
+			roleEligible:     ctx.roleEligible,
+			semanticOrdinal:  len(p.spans),
+			fallbackText:     fallbackText,
+			exactKey:         ctx.exactKey,
 		})
 		return valueSummary{text: representative, isText: true, bounded: bounded}
 	}
 	marker := spanMarker(id)
 	p.shadow = strconv.AppendQuote(p.shadow, marker)
 	p.spans = append(p.spans, plannedText{
-		id:              id,
-		rawStart:        start,
-		rawEnd:          end,
-		role:            defaultRole(ctx.role),
-		provenance:      ctx.provenance,
-		scalarCarrier:   scalarCarrier,
-		messageOwner:    ctx.messageOwner,
-		roleEligible:    ctx.roleEligible,
-		semanticOrdinal: len(p.spans),
-		fallbackText:    fallbackText,
+		id:               id,
+		rawStart:         start,
+		rawEnd:           end,
+		role:             defaultRole(ctx.role),
+		provenance:       ctx.provenance,
+		userAttribution:  ctx.userAttribution,
+		encryptedContent: encryptedContent,
+		scalarCarrier:    scalarCarrier,
+		messageOwner:     ctx.messageOwner,
+		roleEligible:     ctx.roleEligible,
+		semanticOrdinal:  len(p.spans),
+		fallbackText:     fallbackText,
+		exactKey:         ctx.exactKey,
 	})
 	return valueSummary{text: marker, isText: true, bounded: true}
 }
@@ -735,13 +1185,13 @@ func compactShadowKey(key string) string {
 // by media and approved tool-control transactions. Role attribution uses the
 // separately returned bounded valueSummary and never depends on this shadow
 // representative.
-func compactShadowSemanticValue(key, value string, bounded bool) string {
+func compactShadowSemanticValue(source SourceProfile, key, value string, bounded bool) string {
 	if !bounded {
 		return shadowUnknownValue
 	}
 	switch key {
 	case "role":
-		if role, ok := normalizedMessageRole(value); ok {
+		if role, ok := normalizedMessageRole(source, value); ok {
 			return string(role)
 		}
 	case "type":
@@ -916,6 +1366,10 @@ func (p *shadowPlanner) selected(parts []string) ([]plannedText, []plannedText) 
 	for _, part := range parts {
 		if id, ok := markerID(part); ok {
 			if span, exists := byID[id]; exists {
+				if span.skip {
+					seen[id] = struct{}{}
+					continue
+				}
 				selected = append(selected, span)
 				seen[id] = struct{}{}
 			}
@@ -923,17 +1377,24 @@ func (p *shadowPlanner) selected(parts []string) ([]plannedText, []plannedText) 
 		}
 		if id, ok := embeddedMarkerID(part); ok {
 			if span, exists := byID[id]; exists {
+				if span.skip {
+					seen[id] = struct{}{}
+					continue
+				}
 				selected = append(selected, span)
 				seen[id] = struct{}{}
 			}
 			continue
 		}
 		if strings.TrimSpace(part) != "" {
-			owned = append(owned, plannedText{owned: part, role: RoleUser, provenance: ProvenanceToolPayload})
+			owned = append(owned, plannedText{
+				owned: part, role: RoleUser, provenance: ProvenanceToolPayload,
+				userAttribution: UserAttributionUntrusted,
+			})
 		}
 	}
 	for _, span := range p.spans {
-		if !span.fallbackText {
+		if span.skip || !span.fallbackText {
 			continue
 		}
 		if _, exists := seen[span.id]; exists {
@@ -1048,12 +1509,13 @@ func (s *streamEmitter) emitSpan(raw []byte, span plannedText) error {
 			return errClassificationLimited
 		}
 		if err := s.sink.AddSegment(SegmentChunk{
-			Role:       defaultRole(span.role),
-			Provenance: span.provenance,
-			FieldID:    span.id,
-			Start:      first,
-			End:        final,
-			Text:       chunk,
+			Role:            defaultRole(span.role),
+			Provenance:      span.provenance,
+			UserAttribution: span.userAttribution,
+			FieldID:         span.id,
+			Start:           first,
+			End:             final,
+			Text:            chunk,
 		}); err != nil {
 			return err
 		}
@@ -1116,12 +1578,13 @@ func (s *streamEmitter) emitDecoded(value []byte, span plannedText) error {
 			return nil
 		}
 		if err := s.sink.AddSegment(SegmentChunk{
-			Role:       defaultRole(span.role),
-			Provenance: span.provenance,
-			FieldID:    span.id,
-			Start:      offset == 0,
-			End:        end == len(value),
-			Text:       chunk,
+			Role:            defaultRole(span.role),
+			Provenance:      span.provenance,
+			UserAttribution: span.userAttribution,
+			FieldID:         span.id,
+			Start:           offset == 0,
+			End:             end == len(value),
+			Text:            chunk,
 		}); err != nil {
 			return s.operational(err)
 		}
@@ -1730,8 +2193,39 @@ func decodeJSONStringChunks(raw []byte, chunkSize int, emit func([]byte, bool) e
 	if len(raw) < 2 || raw[0] != '"' || raw[len(raw)-1] != '"' {
 		return errors.New("invalid JSON string span")
 	}
+	if chunkSize <= 0 {
+		return errors.New("invalid JSON string chunk size")
+	}
 	content := raw[1 : len(raw)-1]
-	buffer := make([]byte, 0, chunkSize)
+	if bytes.IndexByte(content, '\\') < 0 {
+		if !utf8.Valid(content) {
+			return errors.New("invalid UTF-8 in JSON string")
+		}
+		if len(content) == 0 {
+			return emit(nil, true)
+		}
+		for offset := 0; offset < len(content); {
+			end := minInt(len(content), offset+chunkSize)
+			for end < len(content) && !utf8.RuneStart(content[end]) {
+				end--
+			}
+			if end == offset {
+				_, size := utf8.DecodeRune(content[offset:])
+				end = offset + size
+			}
+			chunk := content[offset:end:end]
+			if err := emit(chunk, end == len(content)); err != nil {
+				return err
+			}
+			offset = end
+		}
+		return nil
+	}
+	capacity := chunkSize
+	if len(content) < capacity {
+		capacity = len(content)
+	}
+	buffer := make([]byte, 0, capacity)
 	flush := func(final bool) error {
 		if len(buffer) == 0 && !final {
 			return nil

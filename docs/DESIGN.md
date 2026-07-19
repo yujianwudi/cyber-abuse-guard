@@ -329,9 +329,9 @@ These mechanisms remain stateless across independent API calls and do not
 attest to local instruction-file integrity.
 
 Ruleset `1.0.7` identifies the embedded YAML assets only. The complete
-code-level behavior is separately identified as `classifier-policy-v4`,
+code-level behavior is separately identified as `classifier-policy-v5`,
 SHA-256
-`2763f10e2565dce2ffcf700f5d6566e9fbac68f3fedd08fcce20bceff450b4c8`.
+`fd7627f1ac9c4e08d1e073ecfb4b8afd395a10e713d5e98fddbfe6a380edb59d`.
 Its tested source list binds the classifier, matcher, normalizer, role logic,
 wrapper assessment, behavior graph, semantic composition, bounded extractor,
 rule loader/schema, embedded YAML assets, and module dependency locks. The
@@ -380,9 +380,10 @@ path-swap races.
 
 Subject control is disabled by default and the Router does not enter the
 identifier/controller path unless `subject_control.enabled: true` is explicit.
-The domain-separated request digest is computed lazily only for an enabled
-subject evaluation, a final block pending key, or a persisted audit event whose
-configuration includes `log_request_hash: true`.
+The domain-separated request digest is computed lazily only for an eligible
+accumulating subject hit, a final block pending key, or a persisted audit event
+whose configuration includes `log_request_hash: true`. A read-only subject
+lookup never hashes the request body.
 
 Risk entries are in-memory rolling windows with time decay. A hit, request
 receipt, and repeat multiplier are added only when every admission condition is
@@ -394,6 +395,16 @@ the classifier directly returned `ActionBlock`; and the score is at or above
 the configured `hard_block` threshold. System, assistant, tool, tool-payload,
 roleless, unknown, mixed-role, or lower-confidence findings retain their direct
 request disposition but cannot accumulate subject risk.
+
+User authorship is a separate, zero-value-untrusted transient proof rather than
+an inference from `RoleUser`. The extractor marks it trusted only for recognized
+model-visible `content` / `parts` / `refusal` below one explicit valid
+`role: user`, or for a profile-allowlisted multipart prompt. Unknown top-level
+fields, unknown message siblings, roleless/future items, non-user roles, tool
+definitions, tool arguments, and tool output remain untrusted. Multi-field or
+multi-turn findings receive `user_content` only when every contributing
+user-like field carries the trusted proof; unrelated untrusted fields do not
+erase a separately winning trusted user finding.
 
 Non-accumulating observations never allocate state or add a hit, receipt, or
 multiplier. A non-accumulating risky candidate at or above the audit threshold
@@ -694,8 +705,8 @@ SSE stream with terminal frames; returning successful chunks would force HTTP
 ## Build identity and release reproducibility
 
 Builds link immutable version, full commit SHA, ruleset version/hash,
-`classifier-policy-v4` /
-`2763f10e2565dce2ffcf700f5d6566e9fbac68f3fedd08fcce20bceff450b4c8`,
+`classifier-policy-v5` /
+`fd7627f1ac9c4e08d1e073ecfb4b8afd395a10e713d5e98fddbfe6a380edb59d`,
 streaming-scanner identity, and dirty state. Build metadata and the verifier bind
 these identities. Candidate mode requires a clean worktree, exact expected
 commit/tree, the commit timestamp, an absent formal `v0.15` tag, and forbids

@@ -2,14 +2,17 @@
 
 This visible corpus contains only harmless canaries and abstract control-plane
 patterns. It is derived from public adversarial taxonomy, not copied prompts,
-and contains no live cyber payload, target, credential, external URL, model
-output, or deployable instruction set.
+and contains no live cyber payload, target, authentication secret, external
+URL, model output, or deployable instruction set.
 
 The corpus is permanently development-only. It must never be reused, reworded,
 or scored as a future holdout, blind evaluation, production-approval metric, or
 independent audit set. The paired cases verify that fixed meta-override evidence
 survives supported carriers and bounded text transforms while benign defensive,
 configuration, formatting, and workflow neighbors remain allowed.
+
+The exact coverage set contains 36 paired cases (18 allow and 18 audit), five
+protocols, 14 carriers, 19 transforms, and five effective source contexts.
 
 `source_context` is development provenance metadata, not a runtime attribution
 claim. Cases without it mean ordinary `request_body`; added fixtures also cover

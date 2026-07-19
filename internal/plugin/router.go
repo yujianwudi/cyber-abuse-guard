@@ -262,16 +262,19 @@ func (p *Plugin) route(state *runtimeState, request pluginapi.ModelRouteRequest)
 			identity := p.identifier.FromHeaders(request.Headers)
 			if authenticatedSubjectIdentity(identity) {
 				subjectHash = identity.Hash
-				observation := subject.Observation{
-					RiskScore: result.Score,
-					Accumulate: subjectAccumulationEligible(
-						identity,
-						result,
-						incompleteReasons,
-						state.config.Thresholds.HardBlock,
-					),
+				accumulate := subjectAccumulationEligible(
+					identity,
+					result,
+					incompleteReasons,
+					state.config.Thresholds.HardBlock,
+				)
+				observation := subject.Observation{RiskScore: result.Score, Accumulate: accumulate}
+				var subjectDecision subject.Decision
+				if accumulate {
+					subjectDecision = state.subject.ObserveRequest(subjectHash, requestHash.get(p), observation)
+				} else {
+					subjectDecision = state.subject.Observe(subjectHash, observation)
 				}
-				subjectDecision := state.subject.ObserveRequest(subjectHash, requestHash.get(p), observation)
 				if subjectDecision.AddedScore > 0 {
 					state.markSubjectPersistenceDirty()
 				}

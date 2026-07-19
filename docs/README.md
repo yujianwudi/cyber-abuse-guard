@@ -62,6 +62,7 @@ Project baselines and engineering evidence:
 - [Performance report](reports/PERFORMANCE.md)
 - [Privacy report](reports/PRIVACY.md)
 - [Prompt-injection defensive review](reports/PROMPT_INJECTION_REVIEW.md)
+- [Public jailbreak repository review](reports/PUBLIC_JAILBREAK_REPOSITORY_REVIEW.md)
 - [Release evidence](reports/RELEASE_EVIDENCE.md)
 - [Test report](reports/TEST_REPORT.md)
 

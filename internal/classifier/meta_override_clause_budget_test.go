@@ -92,9 +92,10 @@ func metaOverrideClauseFloodSegments(separator string) []extract.Segment {
 			prefix = metaOverrideClauseFloodPrefix() + " "
 		}
 		segments[index] = extract.Segment{
-			Role:       extract.RoleUser,
-			Provenance: extract.ProvenanceContent,
-			Text:       metaOverrideClauseFloodSegment(prefix, separator),
+			Role:            extract.RoleUser,
+			Provenance:      extract.ProvenanceContent,
+			UserAttribution: extract.UserAttributionTrusted,
+			Text:            metaOverrideClauseFloodSegment(prefix, separator),
 		}
 	}
 	return segments

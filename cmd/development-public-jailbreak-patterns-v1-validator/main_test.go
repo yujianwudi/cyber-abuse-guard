@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -31,6 +32,17 @@ func TestDevelopmentPublicJailbreakPatternsRejectsLiveMaterial(t *testing.T) {
 		[]byte(`{"forbidden_marker":"malware"}`),
 		[]byte(`{"forbidden_marker":"real victim"}`),
 		[]byte(`{"input":"203.0.113.10"}`),
+		[]byte(`{"repository_owner":"Jia-Ethan"}`),
+		[]byte(`{"repository_name":"codex-keysmith"}`),
+		[]byte(`{"repository_owner":"MDX-Tom"}`),
+		[]byte(`{"repository_name":"gpt-5.6-instruct"}`),
+		[]byte(`{"repository_owner":"yynxxxxx"}`),
+		[]byte(`{"repository_name":"Codex-X"}`),
+		[]byte(`{"repository_name":"Codex-5.5-codex-instruct-5.5"}`),
+		[]byte(`{"commit":"f699b9bd2cb59eb0d54e69139c68f7808d869b6d"}`),
+		[]byte(`{"commit":"5f469e43ef66f540cadb475039fd9ed469aef654"}`),
+		[]byte(`{"commit":"7d0e0064d54f860d4bf12b557fd9f8c489043a35"}`),
+		[]byte(`{"commit":"ed0b6dc37d1994e93788d92f7af63f58bf0b9e2d"}`),
 	} {
 		if err := validateCorpusSafety(value); err == nil {
 			t.Fatalf("unsafe development material was accepted: %s", value)
@@ -48,6 +60,56 @@ func TestDevelopmentPublicJailbreakPatternsRejectsLiveMaterial(t *testing.T) {
 	}
 	if err := validateCorpusSafety([]byte("decoded marker malware")); err == nil {
 		t.Fatal("decoded semantic material was accepted")
+	}
+
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("resolve repository root")
+	}
+	sourceRoot := filepath.Clean(filepath.Join(filepath.Dir(file), "..", ".."))
+	for _, test := range []struct {
+		name   string
+		file   string
+		marker string
+	}{
+		{name: "README", file: "README.md", marker: "Jia-Ethan"},
+		{name: "manifest", file: "manifest.json", marker: "f699b9bd2cb59eb0d54e69139c68f7808d869b6d"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			root := t.TempDir()
+			directory := filepath.Join(root, "testdata", developmentDatasetID)
+			if err := os.MkdirAll(directory, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			for _, name := range canonicalDevelopmentFiles {
+				data, err := os.ReadFile(filepath.Join(sourceRoot, "testdata", developmentDatasetID, name))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if name == test.file {
+					if name == "README.md" {
+						data = append(data, []byte("\n"+test.marker+"\n")...)
+					} else {
+						var descriptor manifest
+						if err := json.Unmarshal(data, &descriptor); err != nil {
+							t.Fatal(err)
+						}
+						descriptor.Notice += " " + test.marker
+						data, err = json.MarshalIndent(descriptor, "", "  ")
+						if err != nil {
+							t.Fatal(err)
+						}
+					}
+				}
+				if err := os.WriteFile(filepath.Join(directory, name), data, 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			_, err := validateDevelopmentCorpus(root)
+			if err == nil || !strings.Contains(strings.ToLower(err.Error()), strings.ToLower(test.marker)) {
+				t.Fatalf("unsafe %s material was not rejected by the corpus scan: %v", test.file, err)
+			}
+		})
 	}
 }
 

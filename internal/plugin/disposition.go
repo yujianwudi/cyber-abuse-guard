@@ -18,8 +18,9 @@ type inspectionOutcome struct {
 
 // inspectionDecision is the complete transport disposition for an inspected
 // request. Exactly one of Block, Audit, or Observe is normally set; all three
-// are false for a clean allow. EvaluateSubject is deliberately false whenever
-// inspection was incomplete so a prefix score can never enter subject state.
+// are false for a clean allow. EvaluateSubject is deliberately false for
+// incomplete inspection, a complete clean allow, and wrapper-only control
+// evidence, so neither a prefix nor non-risk traffic enters subject state.
 type inspectionDecision struct {
 	Block           bool
 	Audit           bool
@@ -72,9 +73,11 @@ func inspectionDisposition(mode config.Mode, outcome inspectionOutcome, opaquePo
 	}
 
 	decision := inspectionDecision{Code: "allow_clean"}
-	switch mode {
-	case config.ModeAudit, config.ModeBalanced, config.ModeStrict:
-		decision.EvaluateSubject = true
+	if outcome.Classification.Action != classifier.ActionAllow {
+		switch mode {
+		case config.ModeAudit, config.ModeBalanced, config.ModeStrict:
+			decision.EvaluateSubject = true
+		}
 	}
 	if behavior := outcome.Classification.Behavior; behavior != nil && behavior.Wrapper && !behavior.BaseBehavior {
 		// Wrapper-only control-plane evidence is observable, but it is not a

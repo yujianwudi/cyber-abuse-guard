@@ -2110,25 +2110,53 @@ type analyzedDirectives struct {
 // with rules times input size.
 func (c *Classifier) analyzeDirectives(text []rune) analyzedDirectives {
 	analysis := analyzedDirectives{clauses: make([]analyzedDirectiveClause, 0, 4)}
+	allSignals := make([]bool, 0, minIntLocal(4, maxAnalyzedDirectiveClauses)*c.signalCount)
+	clauseSignals := make([]bool, c.signalCount)
+	compactScratch := make([]bool, c.compactMatcher.maxPatternLength)
+	retainNextContext := false
+	strongBoundarySinceRetained := false
 	walkDirectiveClausesWithBoundary(text, func(clause []rune, boundaryBefore directiveBoundaryKind) bool {
+		clear(clauseSignals)
+		c.standardMatcher.match(clause, clauseSignals)
+		c.compactMatcher.matchCompactWithScratch(clause, clauseSignals, compactScratch)
+		hasSignal := false
+		for _, matched := range clauseSignals {
+			if matched {
+				hasSignal = true
+				break
+			}
+		}
+		// Signal-free catalog/filler clauses do not consume the bounded
+		// directive budget. Retain one immediate follower after a signal-bearing
+		// clause so pronoun-only continuations such as "do it" still participate
+		// in negation and semantic-link analysis.
+		if !hasSignal && !retainNextContext {
+			strongBoundarySinceRetained = strongBoundarySinceRetained || boundaryBefore == directiveBoundaryStrong
+			return true
+		}
 		if len(analysis.clauses) >= maxAnalyzedDirectiveClauses {
 			analysis.overflow = true
 			return false
 		}
-		analysis.clauses = append(analysis.clauses, analyzedDirectiveClause{runes: clause, boundaryBefore: boundaryBefore})
+		if strongBoundarySinceRetained && len(analysis.clauses) != 0 {
+			// Never compose semantics across discarded inert clauses merely because
+			// the compact representation made the retained clauses adjacent.
+			boundaryBefore = directiveBoundaryStrong
+		}
+		allSignals = append(allSignals, clauseSignals...)
+		analysis.clauses = append(analysis.clauses, analyzedDirectiveClause{
+			runes: clause, text: string(clause), boundaryBefore: boundaryBefore,
+		})
+		retainNextContext = hasSignal
+		strongBoundarySinceRetained = false
 		return true
 	})
 	if len(analysis.clauses) == 0 {
 		return analysis
 	}
-	allSignals := make([]bool, len(analysis.clauses)*c.signalCount)
-	compactScratch := make([]bool, c.compactMatcher.maxPatternLength)
 	for index := range analysis.clauses {
 		clause := &analysis.clauses[index]
-		clause.text = string(clause.runes)
 		clause.signals = allSignals[index*c.signalCount : (index+1)*c.signalCount]
-		c.standardMatcher.match(clause.runes, clause.signals)
-		c.compactMatcher.matchCompactWithScratch(clause.runes, clause.signals, compactScratch)
 	}
 	return analysis
 }

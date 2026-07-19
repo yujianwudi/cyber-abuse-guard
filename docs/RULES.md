@@ -200,8 +200,8 @@ This identity covers the embedded YAML rule assets. The complete code-level
 policy is separately identified as:
 
 ```text
-classifier_policy_version: classifier-policy-v4
-classifier_policy_sha256: 2763f10e2565dce2ffcf700f5d6566e9fbac68f3fedd08fcce20bceff450b4c8
+classifier_policy_version: classifier-policy-v5
+classifier_policy_sha256: fd7627f1ac9c4e08d1e073ecfb4b8afd395a10e713d5e98fddbfe6a380edb59d
 ```
 
 The policy digest test binds the deterministic classifier, matcher,
@@ -215,9 +215,19 @@ still record the exact full Git commit/tree and candidate workflow run.
 `non_user_or_untrusted`; neutral/incomplete results omit it. It never contains
 provider field names, role text, prompt fragments, or tool arguments.
 
-Commit `21ceb57e6b6030e56d7820c9a67a8eecd068c669` passed push and PR CI
-with this policy identity as a pre-version-migration checkpoint. It is not the
-final v0.15 candidate identity. Automated review is development feedback only.
+`user_content` requires a separate trusted-user attribution proof; `RoleUser`
+alone is insufficient. The proof is zero-value untrusted and is emitted only
+for an explicit valid user role in a SourceProfile-matched root history, an
+OpenAI Responses root scalar `input`, or a profile-allowlisted multipart prompt.
+Nested/cross-provider histories, unknown top-level/message fields, unknown
+content types, roleless/future items, assistant/system/tool content, function
+responses, and tool payload/output remain `non_user_or_untrusted`. Composite
+findings are user-originated only if all contributing user-like fields are
+trusted. A role-attribution failure clears every tentative trust bit.
+
+Commit `21ceb57e6b6030e56d7820c9a67a8eecd068c669` passed push and PR CI as
+an earlier classifier-policy-v3 checkpoint. It does not verify the current v5
+identity or the final v0.15 candidate. Automated review is development feedback only.
 The final PR head must have no unresolved, non-outdated actionable review
 threads before merge; no independent approval is claimed.
 

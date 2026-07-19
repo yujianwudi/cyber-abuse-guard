@@ -1,6 +1,6 @@
 # Test Report — v0.15 Round 6 current gate plus frozen Round 5 evidence
 
-Last updated: 2026-07-18 (Asia/Shanghai)
+Last updated: 2026-07-19 (Asia/Shanghai)
 
 ## Round 6 v0.15 current test status
 
@@ -18,7 +18,8 @@ Legacy version-specific profiles and Make aliases have been removed.
 | Exact post-merge main CI | [29630844605](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29630844605) **SUCCESS** |
 | Source-only prerelease tag CI | [29630926354](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29630926354) **SUCCESS** for the same commit/tree |
 | Public `v0.15-rc.1` prerelease | Exists with no attached release assets; not the private clean candidate or formal release |
-| Classifier identity | `classifier-policy-v3` / `1294c6fd587522829d07220d5a6f4214092eba6ce1837636da5b3e3d461ba2a3` |
+| Classifier identity | `classifier-policy-v5` / `fd7627f1ac9c4e08d1e073ecfb4b8afd395a10e713d5e98fddbfe6a380edb59d` |
+| Subject-admission and four-repository Linux self-check | **PASS / LOCAL DEVELOPMENT EVIDENCE**: safe allowlist, vet, targeted race, 36-case sanitized corpus, repository-neutral four-family carrier matrix, and pinned CPA v7.2.88 module/source/compile contracts; remote Git tag lookup was skipped and real Host remains pending |
 | Private untagged clean candidate artifact / manifest | **NOT CREATED / PENDING** |
 | CPA v7.2.88 Host + Mock | **NOT RUN / PENDING** |
 | Four-layer Auth/Provider/Usage/Mock zero-call proof | **NOT RUN / PENDING** |
@@ -30,7 +31,8 @@ Legacy version-specific profiles and Make aliases have been removed.
 The merged implementation baseline and its exact main/tag CI are engineering
 evidence only. The PR jobs that did not start are not retrospectively called a
 PASS. Any later source cleanup must pass its own CI before it can supersede this
-baseline. The private candidate workflow has not been dispatched; when used, it
+baseline. The current subject-admission self-check is not push/PR CI, native Host
+evidence, or release approval. The private candidate workflow has not been dispatched; when used, it
 must produce a private, untagged, clean exact-source Actions artifact whose
 `candidate-manifest.json`, `build-metadata.json`, SO, and Store ZIP bind that
 exact post-merge main commit/tree. Clean candidate bytes are unreleased. The

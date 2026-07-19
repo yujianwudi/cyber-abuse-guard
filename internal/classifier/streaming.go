@@ -166,6 +166,7 @@ type streamingField struct {
 	id               uint64
 	role             extract.Role
 	provenance       extract.SegmentProvenance
+	userAttribution  extract.UserAttribution
 	buffer           []byte
 	head             []byte
 	roleSummary      []byte
@@ -191,6 +192,7 @@ type streamingField struct {
 type streamingFieldSummary struct {
 	role             extract.Role
 	provenance       extract.SegmentProvenance
+	userAttribution  extract.UserAttribution
 	head             []byte
 	tail             []byte
 	sample           []byte
@@ -403,8 +405,11 @@ type ScanSession struct {
 
 	previousUser            string
 	hasPreviousUser         bool
+	previousUserTrusted     bool
 	recentUsers             []string
+	recentUsersTrusted      []bool
 	linkedMetaUsers         []string
+	linkedMetaUsersTrusted  []bool
 	mappedToolControls      []string
 	untrustedParts          []string
 	untrustedRiskFacts      streamingFieldRiskFacts
@@ -417,6 +422,7 @@ type ScanSession struct {
 	pendingNonUserControl   string
 	lastUserControl         string
 	isolatedUserRun         []rune
+	isolatedUserRunTrusted  bool
 	previousUserRisk        streamingFieldRiskFacts
 	hasPreviousUserRisk     bool
 	previousUserComplete    bool
@@ -460,12 +466,14 @@ func (s *ScanSession) AddSegment(chunk extract.SegmentChunk) error {
 			return ErrInvalidSegmentOrder
 		}
 		s.active = &streamingField{
-			id:           chunk.FieldID,
-			role:         chunk.Role,
-			provenance:   chunk.Provenance,
-			roleComplete: true,
+			id:              chunk.FieldID,
+			role:            chunk.Role,
+			provenance:      chunk.Provenance,
+			userAttribution: chunk.UserAttribution,
+			roleComplete:    true,
 		}
-	} else if s.active == nil || s.active.id != chunk.FieldID || s.active.role != chunk.Role || s.active.provenance != chunk.Provenance {
+	} else if s.active == nil || s.active.id != chunk.FieldID || s.active.role != chunk.Role ||
+		s.active.provenance != chunk.Provenance || s.active.userAttribution != chunk.UserAttribution {
 		return ErrInvalidSegmentOrder
 	}
 
@@ -663,19 +671,26 @@ func (s *ScanSession) finishField(field *streamingField) {
 	field.safetyQuote = 0
 	field.safetyClosed = 0
 	field.safetyRiskFacts.reset()
-	aggregatePotential := s.classifier.streamingRiskPotential(field.riskFacts.facts, s.policy)
-	ordinaryIncomplete := aggregatePotential.blocks(s.mode, s.thresholds) &&
-		field.riskFacts.riskContributions > 1 &&
-		!field.riskFacts.windowBlocked
-	controlPlaneIncomplete := aggregatePotential.meta.controlPlaneBlock &&
-		field.riskFacts.controlPlaneContributions > 1 &&
-		!field.riskFacts.windowBlocked
-	if ordinaryIncomplete || controlPlaneIncomplete {
-		s.setCoverage(CoverageUnavailable, CoverageReasonClassifierWindow)
-		return
+	ordinaryCandidate := field.riskFacts.riskContributions > 1 && !field.riskFacts.windowBlocked
+	controlPlaneCandidate := field.riskFacts.controlPlaneContributions > 1 && !field.riskFacts.windowBlocked
+	if ordinaryCandidate || controlPlaneCandidate {
+		aggregatePotential := s.classifier.streamingRiskPotential(field.riskFacts.facts, s.policy)
+		if ordinaryCandidate && aggregatePotential.blocks(s.mode, s.thresholds) ||
+			controlPlaneCandidate && aggregatePotential.meta.controlPlaneBlock {
+			s.setCoverage(CoverageUnavailable, CoverageReasonClassifierWindow)
+			return
+		}
 	}
 	if field.hasBest {
-		s.consider(field.best, findingOriginForSegment(extract.Segment{Role: field.role, Provenance: field.provenance}))
+		segment := extract.Segment{
+			Role: field.role, Provenance: field.provenance, UserAttribution: field.userAttribution,
+		}
+		origin := findingOriginForSegment(segment)
+		if knownStreamingRoleSegment(segment) {
+			s.consider(field.best, origin)
+		} else {
+			s.considerUntrusted(field.best, origin)
+		}
 	}
 
 	tail := tailBytes(field.buffer, s.overlap)
@@ -686,6 +701,7 @@ func (s *ScanSession) finishField(field *streamingField) {
 	summary := &streamingFieldSummary{
 		role:             field.role,
 		provenance:       field.provenance,
+		userAttribution:  field.userAttribution,
 		head:             append([]byte(nil), field.head...),
 		tail:             append([]byte(nil), tail...),
 		sampleComplete:   field.roleComplete && int64(len(field.roleSummary)) == field.totalBytes,
@@ -740,7 +756,9 @@ func (s *ScanSession) considerRoleSummary(current *streamingFieldSummary, curren
 			s.untrustedParts = s.untrustedParts[:0]
 			s.clearUntrustedRisk()
 		}
-		if !knownStreamingRoleSegment(extract.Segment{Role: current.role, Provenance: current.provenance}) {
+		if !knownStreamingRoleSegment(extract.Segment{
+			Role: current.role, Provenance: current.provenance, UserAttribution: current.userAttribution,
+		}) {
 			s.clearPreviousUserRisk()
 		}
 		if current.provenance == extract.ProvenanceToolPayload {
@@ -760,7 +778,10 @@ func (s *ScanSession) considerRoleSummary(current *streamingFieldSummary, curren
 	}
 
 	text := string(current.sample)
-	segment := extract.Segment{Role: current.role, Provenance: current.provenance, Text: text}
+	segment := extract.Segment{
+		Role: current.role, Provenance: current.provenance,
+		UserAttribution: current.userAttribution, Text: text,
+	}
 	if current.role == extract.RoleUnknown && current.provenance == extract.ProvenanceContent {
 		s.flushIsolatedUserRun(batch)
 		s.clearUserCompositionState()
@@ -803,6 +824,7 @@ func (s *ScanSession) considerRoleSummary(current *streamingFieldSummary, curren
 
 	classifySegment := shouldClassifyRoleSegment(segment)
 	userContent := current.role == extract.RoleUser && current.provenance == extract.ProvenanceContent
+	currentUserTrusted := current.userAttribution == extract.UserAttributionTrusted
 	if !userContent {
 		s.flushIsolatedUserRun(batch)
 		if classifySegment {
@@ -832,55 +854,67 @@ func (s *ScanSession) considerRoleSummary(current *streamingFieldSummary, curren
 
 	if len(s.linkedMetaUsers) == 0 || metaOverridePartsLinked(s.lastMetaUser, text) {
 		s.linkedMetaUsers = append(s.linkedMetaUsers, text)
+		s.linkedMetaUsersTrusted = append(s.linkedMetaUsersTrusted, currentUserTrusted)
 		if len(s.linkedMetaUsers) > maxRoleClassifierSegments {
 			copy(s.linkedMetaUsers, s.linkedMetaUsers[len(s.linkedMetaUsers)-maxRoleClassifierSegments:])
 			clear(s.linkedMetaUsers[maxRoleClassifierSegments:])
 			s.linkedMetaUsers = s.linkedMetaUsers[:maxRoleClassifierSegments]
+			copy(s.linkedMetaUsersTrusted, s.linkedMetaUsersTrusted[len(s.linkedMetaUsersTrusted)-maxRoleClassifierSegments:])
+			clear(s.linkedMetaUsersTrusted[maxRoleClassifierSegments:])
+			s.linkedMetaUsersTrusted = s.linkedMetaUsersTrusted[:maxRoleClassifierSegments]
 		}
 	} else {
 		clear(s.linkedMetaUsers)
 		s.linkedMetaUsers = append(s.linkedMetaUsers[:0], text)
+		clear(s.linkedMetaUsersTrusted)
+		s.linkedMetaUsersTrusted = append(s.linkedMetaUsersTrusted[:0], currentUserTrusted)
 	}
 	s.lastMetaUser = text
 	metaReconstructed := false
 	if len(s.linkedMetaUsers) > 1 {
 		if candidate, ok := batch.classify(s.linkedMetaUsers, false); ok {
-			s.consider(candidate, FindingOriginUserContent)
+			s.consider(candidate, userCombinationFindingOrigin(allTrusted(s.linkedMetaUsersTrusted)))
 			metaReconstructed = true
 		}
 	}
 
 	if s.hasPreviousUser {
+		origin := userCombinationFindingOrigin(s.previousUserTrusted && currentUserTrusted)
 		// A linked meta-chain classification already contains the previous and
 		// current user fields. Do not charge a duplicate adjacent-pair window.
 		if !metaReconstructed {
 			if candidate, ok := batch.classify([]string{s.previousUser, text}, false); ok {
-				s.consider(candidate, FindingOriginUserContent)
+				s.consider(candidate, origin)
 			}
 		}
 		if s.coverage.State == CoverageComplete && followUpEligible([]rune(s.previousUser)) {
 			if candidate, ok := batch.classify([]string{s.previousUser + "\n" + text}, false); ok {
-				s.consider(candidate, FindingOriginUserContent)
+				s.consider(candidate, origin)
 			}
 		}
 	}
 
 	s.recentUsers = append(s.recentUsers, text)
+	s.recentUsersTrusted = append(s.recentUsersTrusted, currentUserTrusted)
 	if len(s.recentUsers) > 3 {
 		copy(s.recentUsers, s.recentUsers[len(s.recentUsers)-3:])
 		clear(s.recentUsers[3:])
 		s.recentUsers = s.recentUsers[:3]
+		copy(s.recentUsersTrusted, s.recentUsersTrusted[len(s.recentUsersTrusted)-3:])
+		clear(s.recentUsersTrusted[3:])
+		s.recentUsersTrusted = s.recentUsersTrusted[:3]
 	}
 	if len(s.recentUsers) == 3 && threeTurnPlanWindowEligible(s.recentUsers) {
 		if candidate, ok := batch.classify([]string{strings.Join(s.recentUsers, "\n")}, false); ok {
-			s.consider(candidate, FindingOriginUserContent)
+			s.consider(candidate, userCombinationFindingOrigin(allTrusted(s.recentUsersTrusted)))
 		}
 	}
 
 	s.previousUser = text
 	s.hasPreviousUser = true
+	s.previousUserTrusted = currentUserTrusted
 	s.rememberPreviousUserRisk(currentRisk, true)
-	s.updateIsolatedUserRun(batch, text)
+	s.updateIsolatedUserRun(batch, text, currentUserTrusted)
 }
 
 func knownStreamingRoleSegment(segment extract.Segment) bool {
@@ -983,7 +1017,7 @@ func (s *ScanSession) considerUntrustedPart(batch *roleClassificationBatch, text
 	if candidate.Action == ActionBlock {
 		s.untrustedExactBlocked = true
 	}
-	s.consider(candidate, FindingOriginNonUserOrUntrusted)
+	s.considerUntrusted(candidate, FindingOriginNonUserOrUntrusted)
 }
 
 // considerUntrustedRiskFacts carries only bounded classifier signals across
@@ -1057,7 +1091,7 @@ func isMappedToolControlSemantic(text string) bool {
 	}
 }
 
-func (s *ScanSession) updateIsolatedUserRun(batch *roleClassificationBatch, text string) {
+func (s *ScanSession) updateIsolatedUserRun(batch *roleClassificationBatch, text string, trusted bool) {
 	r, ok := isolatedCompactRune(text)
 	if !ok {
 		s.flushIsolatedUserRun(batch)
@@ -1065,6 +1099,11 @@ func (s *ScanSession) updateIsolatedUserRun(batch *roleClassificationBatch, text
 	}
 	if len(s.isolatedUserRun) == maxIsolatedRuneRun {
 		s.flushIsolatedUserRun(batch)
+	}
+	if len(s.isolatedUserRun) == 0 {
+		s.isolatedUserRunTrusted = trusted
+	} else {
+		s.isolatedUserRunTrusted = s.isolatedUserRunTrusted && trusted
 	}
 	s.isolatedUserRun = append(s.isolatedUserRun, r)
 }
@@ -1083,20 +1122,26 @@ func (s *ScanSession) flushIsolatedUserRun(batch *roleClassificationBatch) {
 			builder.WriteRune(value)
 		}
 		if candidate, ok := batch.classify([]string{builder.String()}, false); ok {
-			s.consider(candidate, FindingOriginUserContent)
+			s.consider(candidate, userCombinationFindingOrigin(s.isolatedUserRunTrusted))
 		}
 	}
 	clear(s.isolatedUserRun)
 	s.isolatedUserRun = s.isolatedUserRun[:0]
+	s.isolatedUserRunTrusted = false
 }
 
 func (s *ScanSession) clearUserCompositionState() {
 	s.previousUser = ""
 	s.hasPreviousUser = false
+	s.previousUserTrusted = false
 	clear(s.recentUsers)
 	s.recentUsers = s.recentUsers[:0]
+	clear(s.recentUsersTrusted)
+	s.recentUsersTrusted = s.recentUsersTrusted[:0]
 	clear(s.linkedMetaUsers)
 	s.linkedMetaUsers = s.linkedMetaUsers[:0]
+	clear(s.linkedMetaUsersTrusted)
+	s.linkedMetaUsersTrusted = s.linkedMetaUsersTrusted[:0]
 	s.lastMetaUser = ""
 	s.pendingNonUserControl = ""
 	s.lastUserControl = ""
@@ -1145,8 +1190,11 @@ func (s *ScanSession) clearRoleState() {
 	s.clearPreviousUserRisk()
 	clear(s.isolatedUserRun)
 	s.isolatedUserRun = nil
+	s.isolatedUserRunTrusted = false
 	s.recentUsers = nil
+	s.recentUsersTrusted = nil
 	s.linkedMetaUsers = nil
+	s.linkedMetaUsersTrusted = nil
 	clear(s.mappedToolControls)
 	s.mappedToolControls = nil
 	clear(s.untrustedParts)
@@ -1184,7 +1232,10 @@ func (s *ScanSession) classifyWindow(field *streamingField, text []byte) bool {
 		if strings.TrimSpace(windowText) == "" {
 			return true
 		}
-		segment := extract.Segment{Role: field.role, Provenance: field.provenance, Text: windowText}
+		segment := extract.Segment{
+			Role: field.role, Provenance: field.provenance,
+			UserAttribution: field.userAttribution, Text: windowText,
+		}
 		if !shouldClassifyRoleSegment(segment) {
 			return true
 		}
@@ -1202,17 +1253,23 @@ func (s *ScanSession) classifyWindow(field *streamingField, text []byte) bool {
 			s.setCoverage(CoverageUnavailable, CoverageReasonClassifierWindow)
 			return false
 		}
+		rankedResult := result
+		if knownStreamingRoleSegment(segment) {
+			rankedResult = withRoleAwareFindingOrigin(
+				result, findingOriginForSegment(segment), s.mode, s.thresholds,
+			)
+		}
 		if provisional {
 			field.safetyRiskFacts.mergeWindow(s.classifier, field.windowFacts, result)
-			if !field.hasSafetyBest || roleResultBetter(result, field.safetyBest) {
-				field.safetyBest = result
+			if !field.hasSafetyBest || roleResultBetter(rankedResult, field.safetyBest) {
+				field.safetyBest = rankedResult
 				field.hasSafetyBest = true
 			}
 			return true
 		}
 		field.riskFacts.mergeWindow(s.classifier, field.windowFacts, result)
-		if !field.hasBest || roleResultBetter(result, field.best) {
-			field.best = result
+		if !field.hasBest || roleResultBetter(rankedResult, field.best) {
+			field.best = rankedResult
 			field.hasBest = true
 		}
 		return true
@@ -1483,8 +1540,12 @@ func (s *ScanSession) considerAdjacent(previous, current *streamingFieldSummary)
 	if (previous.role == extract.RoleUnknown || current.role == extract.RoleUnknown) && !untrustedContentPair {
 		return
 	}
-	previousKnown := knownStreamingRoleSegment(extract.Segment{Role: previous.role, Provenance: previous.provenance})
-	currentKnown := knownStreamingRoleSegment(extract.Segment{Role: current.role, Provenance: current.provenance})
+	previousKnown := knownStreamingRoleSegment(extract.Segment{
+		Role: previous.role, Provenance: previous.provenance, UserAttribution: previous.userAttribution,
+	})
+	currentKnown := knownStreamingRoleSegment(extract.Segment{
+		Role: current.role, Provenance: current.provenance, UserAttribution: current.userAttribution,
+	})
 	userContentPair := previous.role == extract.RoleUser && current.role == extract.RoleUser &&
 		previous.provenance == extract.ProvenanceContent && current.provenance == extract.ProvenanceContent
 	if previous.sampleComplete && current.sampleComplete &&
@@ -1517,14 +1578,23 @@ func (s *ScanSession) considerAdjacent(previous, current *streamingFieldSummary)
 		s.setCoverage(CoverageUnavailable, CoverageReasonClassifierWindow)
 		return
 	}
-	if untrustedContentPair && result.Action == ActionBlock {
-		s.untrustedExactBlocked = true
-	}
 	origin := FindingOriginNonUserOrUntrusted
-	if userContentPair {
+	if userContentPair && previous.userAttribution == extract.UserAttributionTrusted &&
+		current.userAttribution == extract.UserAttributionTrusted {
 		origin = FindingOriginUserContent
 	}
-	s.consider(result, origin)
+	rankedResult := result
+	if previousKnown && currentKnown {
+		rankedResult = withRoleAwareFindingOrigin(result, origin, s.mode, s.thresholds)
+	}
+	if untrustedContentPair && rankedResult.Action == ActionBlock {
+		s.untrustedExactBlocked = true
+	}
+	if previousKnown && currentKnown {
+		s.consider(rankedResult, origin)
+	} else {
+		s.considerUntrusted(rankedResult, origin)
+	}
 	if len(previous.sample) != 0 && len(current.sample) != 0 && followUpEligible([]rune(string(previous.sample))) {
 		if s.coverage.Windows >= s.limits.MaxChunks {
 			s.setCoverage(CoverageBudgetExhausted, CoverageReasonClassificationLimit)
@@ -1536,12 +1606,24 @@ func (s *ScanSession) considerAdjacent(previous, current *streamingFieldSummary)
 			s.setCoverage(CoverageUnavailable, CoverageReasonClassifierWindow)
 			return
 		}
-		s.consider(joined, origin)
+		if previousKnown && currentKnown {
+			s.consider(joined, origin)
+		} else {
+			s.considerUntrusted(joined, origin)
+		}
 	}
 }
 
 func (s *ScanSession) consider(candidate Result, origin FindingOrigin) {
-	candidate = withFindingOrigin(candidate, origin)
+	candidate = withRoleAwareFindingOrigin(candidate, origin, s.mode, s.thresholds)
+	s.considerRanked(candidate)
+}
+
+func (s *ScanSession) considerUntrusted(candidate Result, origin FindingOrigin) {
+	s.considerRanked(withFindingOrigin(candidate, origin))
+}
+
+func (s *ScanSession) considerRanked(candidate Result) {
 	if !s.hasBest || roleResultBetter(candidate, s.best) {
 		s.best = candidate
 		s.hasBest = true
@@ -1643,8 +1725,8 @@ func (c *Classifier) classifyStreamingSegmentsCompat(segments []extract.Segment,
 	}
 	for index, segment := range segments {
 		if err := session.AddSegment(extract.SegmentChunk{
-			Role: segment.Role, Provenance: segment.Provenance, FieldID: uint64(index + 1),
-			Start: true, End: true, Text: []byte(segment.Text),
+			Role: segment.Role, Provenance: segment.Provenance, UserAttribution: segment.UserAttribution,
+			FieldID: uint64(index + 1), Start: true, End: true, Text: []byte(segment.Text),
 		}); err != nil {
 			session.Abort()
 			break
