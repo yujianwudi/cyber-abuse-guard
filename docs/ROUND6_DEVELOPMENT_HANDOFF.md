@@ -53,7 +53,7 @@ authorized Linux CPA + Mock-upstream sandbox. It did not authorize:
 - reading production requests, audit rows, tokens, API keys, HMAC keys, account
   pools, or user data;
 - connecting a real Provider or billing upstream;
-- executing the three public adversarial repositories or replaying their raw
+- executing the four public adversarial repositories or replaying their raw
   payloads;
 - rerunning consumed evaluation or Holdout data.
 
@@ -436,7 +436,7 @@ blind, and retired material. Only the low-sensitivity external evaluation ID and
 report SHA-256 recorded in `round6-prerelease-attestation.json` may cross the
 release boundary. Historical evaluation-v10 is not a bundle input.
 
-The three public adversarial repositories were treated only as untrusted
+The four public adversarial repositories were treated only as untrusted
 defensive context. Their original payloads were not executed or replayed.
 
 No production Host was logged into or modified. No production observe

@@ -121,8 +121,8 @@ function responses, and opaque Responses reasoning state remain untrusted.
 Repository-neutral regressions derived from four public prompt-override source
 pins cover high-authority `instructions`, Chat and Responses tool descriptions,
 CPA v7.2.88 Codex Desktop `additional_tools`, assistant/tool history, defensive
-domain catalogs, 1.4-17.4 KiB templates, and the 16 KiB boundary without adding
-repository-name signatures or complete third-party prompts. See the
+domain catalogs, 1,397-17,166 decoded-byte templates, and the 16 KiB boundary
+without adding repository-name signatures or complete third-party prompts. See the
 [public jailbreak repository review](docs/reports/PUBLIC_JAILBREAK_REPOSITORY_REVIEW.md).
 
 ## Effective default limits
@@ -195,7 +195,7 @@ policy.
 - Media URLs are never fetched. No request-supplied code is executed.
 - The Round 6 work did not connect to a real Provider or account pool and did
   not read production requests or audit data.
-- The three public adversarial repositories were not executed and their raw
+- The four public adversarial repositories were not executed and their raw
   payloads were not replayed.
 - CPA can still fail open in Host conditions outside the plugin's control,
   including failed loading, Router fuse/error behavior, higher-priority

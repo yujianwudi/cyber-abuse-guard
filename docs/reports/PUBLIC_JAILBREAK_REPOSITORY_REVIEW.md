@@ -35,8 +35,9 @@ The common CPA-visible carriers are:
 6. function/custom call arguments and tool output;
 7. user text containing role-tag forgery, adjacent fragments, or encoded wrappers.
 
-The source material also contains candidate-rich 1.4-17.4 KiB templates. Several
-templates enumerate many cyber domains in one fixed instruction block. Classifying
+The source material also contains candidate-rich 1,397-17,166 decoded-byte
+templates. Several templates enumerate many cyber domains in one fixed instruction
+block. Classifying
 that catalog as the user's current credential, malware, phishing, exploitation, or
 evasion intent would block every benign request that carries the template and could
 poison subject risk.

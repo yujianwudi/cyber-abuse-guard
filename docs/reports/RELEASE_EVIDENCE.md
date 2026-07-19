@@ -171,8 +171,9 @@ verifies both GitHub `releases/latest` and the pinned Tag-to-Commit ref through
 authenticated REST metadata when a token is available.
 
 The sanitized public-reference refresh is fixed to
+`Jia-Ethan/codex-keysmith@f699b9bd2cb59eb0d54e69139c68f7808d869b6d`,
 `MDX-Tom/gpt-5.6-instruct@5f469e43ef66f540cadb475039fd9ed469aef654`,
-`yynxxxxx/Codex-X@659415f57c55b92f34600a2ae482475804b22760`, and
+`yynxxxxx/Codex-X@7d0e0064d54f860d4bf12b557fd9f8c489043a35`, and
 `yynxxxxx/Codex-5.5-codex-instruct-5.5@ed0b6dc37d1994e93788d92f7af63f58bf0b9e2d`.
 No third-party installer, mutator, test runner, or prompt payload was executed or
 copied. The 36-case corpus proves only visible sanitized mechanism regression;
