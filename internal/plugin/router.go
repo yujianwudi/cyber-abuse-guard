@@ -284,10 +284,12 @@ func (p *Plugin) route(state *runtimeState, request pluginapi.ModelRouteRequest)
 			}
 		}
 	}
+	persistDecision := shouldPersistInspectionDecision(state.config, outcome, decision)
 	// Audit identity is independent from subject-risk accumulation. A disabled
 	// controller must not erase the privacy-safe subject field from an event the
-	// operator explicitly chose to persist.
-	if (decision.Block || decision.Audit) && subjectHash == "" {
+	// operator explicitly chose to persist. Counter-only wrapper observations do
+	// not enter this path and therefore do not derive a subject correlation hash.
+	if persistDecision && subjectHash == "" {
 		subjectHash = p.auditSubjectHash(state, request)
 	}
 
@@ -306,7 +308,7 @@ func (p *Plugin) route(state *runtimeState, request pluginapi.ModelRouteRequest)
 		p.counters.allowed.Add(1)
 	}
 
-	if decision.Block || decision.Audit {
+	if persistDecision {
 		p.recordDecision(state, request, &requestHash, subjectHash, extracted.TextBytesScanned, result, decision, incompleteReasons, subjectReason, time.Since(started))
 	}
 	if !decision.Block {

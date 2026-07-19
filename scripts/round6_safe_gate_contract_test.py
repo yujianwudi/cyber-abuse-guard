@@ -843,7 +843,71 @@ jobs:
             "$(GO) test ./internal/classifier -run='^$$'",
         )
         self.assertNotEqual(text, original)
-        with self.assertRaisesRegex(ContractError, "execute the extract benchmark"):
+        with self.assertRaisesRegex(ContractError, "acceptance plus extract/full-route benchmarks"):
+            validate_round6_makefile_contract(text, source)
+
+    def test_round6_benchmark_missing_full_route_benchmark_fails(self):
+        source = Path(__file__).parent.parent / "Makefile"
+        original = source.read_text(encoding="utf-8")
+        for benchmark_name in (
+            "BenchmarkFourRepositoryModelRoute",
+            "BenchmarkFourRepositoryParallelCleanSubjectEnabled",
+            "BenchmarkBalancedAuditOnWrapperOnly17166ModelRoute",
+        ):
+            text = original.replace(benchmark_name, "BenchmarkMissingFullRoute", 1)
+            self.assertNotEqual(text, original)
+            with self.assertRaisesRegex(ContractError, "full-route benchmarks"):
+                validate_round6_makefile_contract(text, source)
+
+    def test_round6_benchmark_missing_full_route_execution_fails(self):
+        source = Path(__file__).parent.parent / "Makefile"
+        original = source.read_text(encoding="utf-8")
+        command = (
+            "\t$(GO) test -tags=$(TEST_TAGS) ./internal/plugin -run='^$$' \\\n"
+            "\t\t-bench='^(BenchmarkFourRepositoryModelRoute|BenchmarkFourRepositoryParallelCleanSubjectEnabled|BenchmarkBalancedAuditOnWrapperOnly17166ModelRoute)$$' \\\n"
+            "\t\t-benchmem -benchtime=3x -count=1\n"
+        )
+        text = original.replace(command, "", 1)
+        self.assertNotEqual(text, original)
+        with self.assertRaisesRegex(ContractError, "acceptance plus extract/full-route benchmarks"):
+            validate_round6_makefile_contract(text, source)
+
+    def test_round6_benchmark_missing_performance_acceptance_fails(self):
+        source = Path(__file__).parent.parent / "Makefile"
+        original = source.read_text(encoding="utf-8")
+        text = original.replace(
+            "TestFourRepositoryFullRoutePerformanceAcceptance",
+            "TestMissingFullRoutePerformanceAcceptance",
+            1,
+        )
+        self.assertNotEqual(text, original)
+        with self.assertRaisesRegex(ContractError, "acceptance plus extract/full-route benchmarks"):
+            validate_round6_makefile_contract(text, source)
+
+    def test_round6_wrapper_audit_fast_path_regression_missing_fails(self):
+        source = Path(__file__).parent.parent / "Makefile"
+        original = source.read_text(encoding="utf-8")
+        for test_name in (
+            "TestBalancedAuditOnWrapperOnlyCounterFastPath",
+            "TestWrapperAuditFastPathPreservesSecurityEvents",
+            "TestBalancedAuditOnTrustedUserWrapperPersists",
+            "TestBalancedAuditOnWrapperOnlyAllocationAcceptance",
+        ):
+            text = original.replace(test_name, "TestMissingWrapperAuditRegression", 1)
+            self.assertNotEqual(text, original)
+            with self.assertRaisesRegex(ContractError, "wrapper audit fast-path regression"):
+                validate_round6_makefile_contract(text, source)
+
+    def test_round6_wrapper_audit_fast_path_execution_missing_fails(self):
+        source = Path(__file__).parent.parent / "Makefile"
+        original = source.read_text(encoding="utf-8")
+        command = (
+            '\t$(GO) test -tags=$(TEST_TAGS) ./internal/plugin -count=1 -v '
+            '-run="^($$pattern)$$"\n'
+        )
+        text = original.replace(command, "", 1)
+        self.assertNotEqual(text, original)
+        with self.assertRaisesRegex(ContractError, "wrapper audit plugin pattern"):
             validate_round6_makefile_contract(text, source)
 
     def test_round6_module_verify_tidy_diff_is_integration_only(self):
@@ -1340,6 +1404,28 @@ jobs:
                 )
             (fixture / "scripts" / name).write_text(text, encoding="utf-8")
         with self.assertRaisesRegex(ContractError, "reject candidate"):
+            validate_release_mode_contracts(fixture)
+
+    def test_release_common_clears_inherited_git_repository_environment(self):
+        root = Path(__file__).parent.parent
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        fixture = Path(temporary.name)
+        (fixture / "scripts").mkdir()
+        names = (
+            "release-common.sh",
+        ) + FORMAL_OPERATION_SCRIPTS + tuple(EXTERNAL_ATTESTATION_SCRIPT_SHA256)
+        for name in names:
+            text = (root / "scripts" / name).read_text(encoding="utf-8")
+            if name == "release-common.sh":
+                text = text.replace(
+                    "unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR \\\n"
+                    "  GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_NAMESPACE\n",
+                    "",
+                    1,
+                )
+            (fixture / "scripts" / name).write_text(text, encoding="utf-8")
+        with self.assertRaisesRegex(ContractError, "repository-routing"):
             validate_release_mode_contracts(fixture)
 
     def test_external_attestation_verifier_and_contract_are_locked(self):

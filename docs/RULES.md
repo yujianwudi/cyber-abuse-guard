@@ -45,6 +45,11 @@ exfiltration. Negation/prohibition cues are scoped to nearby evidence in the
 same clause; an unrelated “do not” prefix cannot suppress a later operational
 request.
 
+Directive density does not create an implicit allow or block boundary. After
+64 exact retained clauses, the classifier continues a bounded rolling scan with
+an exact four-clause suffix plus per-rule and per-composition-provider summaries;
+it never composes the retained head directly with an omitted middle region.
+
 Standard OpenAI/Anthropic/Gemini roles are classified per segment, and adjacent
 user turns are paired for follow-up semantics. Assistant refusals and system
 safety policy are not combined as user intent. Role-less shapes use a bounded
@@ -97,6 +102,12 @@ The management plane may count a fixed low-cardinality
 `control_plane_event=meta_override` dimension. It remains orthogonal to the
 base Cyber Abuse taxonomy, contains no prompt text, repository name, dynamic
 field, target, or prompt hash, and does not change subject-risk semantics.
+Complete non-user/untrusted category-free wrapper-only audits use that counter
+together with the fixed `audited` counter instead of a per-request event by
+default. Operators can set `audit.persist_wrapper_only: true` when individual
+correlation events are required; this does not relax the full audit path for
+trusted-user wrapper findings, base findings, blocks, incomplete inspection, or
+opaque media.
 
 ## Bounded decoding before matching
 
@@ -201,7 +212,7 @@ policy is separately identified as:
 
 ```text
 classifier_policy_version: classifier-policy-v5
-classifier_policy_sha256: fd7627f1ac9c4e08d1e073ecfb4b8afd395a10e713d5e98fddbfe6a380edb59d
+classifier_policy_sha256: fed88bc2e9691eba2cf3d4ddf6d7ec984a3e8ded298f27d354a6e8c20c3293ea
 ```
 
 The policy digest test binds the deterministic classifier, matcher,

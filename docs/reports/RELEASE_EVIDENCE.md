@@ -1,6 +1,6 @@
 # v0.15 Round 6 Development Evidence — current gate plus frozen Round 5 history
 
-Last updated: 2026-07-18 (Asia/Shanghai)
+Last updated: 2026-07-19 (Asia/Shanghai)
 
 ## Round 6 v0.15 current evidence status — not a release PASS
 
@@ -56,8 +56,8 @@ records the evaluation ID and report SHA-256; the annotated formal `v0.15` tag
 and verified draft consume that same candidate-level attestation. Protected
 promotion may publish only the unchanged draft.
 
-Current policy identity is `classifier-policy-v3` /
-`1294c6fd587522829d07220d5a6f4214092eba6ce1837636da5b3e3d461ba2a3`;
+Current policy identity is `classifier-policy-v5` /
+`fed88bc2e9691eba2cf3d4ddf6d7ec984a3e8ded298f27d354a6e8c20c3293ea`;
 scanner identity is `streaming-scanner-v1`; ruleset identity remains `1.0.7` /
 `7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134`.
 

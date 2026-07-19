@@ -134,7 +134,7 @@ func TestRound5DirectiveBudgetCountsRiskRelevantClauses(t *testing.T) {
 		"Labels: credential theft detection; malware prevention; phishing prevention; defense evasion detection; " +
 		"unauthorized exploitation prevention; data exfiltration prevention; ransomware recovery. "
 	neutral := neutralCore + strings.Repeat("ordinary football scheduling note;", 512)
-	analysis := c.analyzeDirectives([]rune(neutral))
+	analysis := c.analyzeDirectives([]rune(neutral), DefaultPolicy())
 	if analysis.overflow || len(analysis.clauses) >= 32 {
 		t.Fatalf("signal-free filler exhausted directive budget: clauses=%d overflow=%t", len(analysis.clauses), analysis.overflow)
 	}

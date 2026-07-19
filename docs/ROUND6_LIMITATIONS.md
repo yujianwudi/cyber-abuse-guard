@@ -11,8 +11,8 @@ production approval. Windows and macOS validation is outside this round. See
 [RELEASE_POLICY.md](RELEASE_POLICY.md). External eligibility is recorded only in
 `round6-prerelease-attestation.json` and `formal-release-attestation.json`.
 
-Current classifier identity is `classifier-policy-v3` /
-`1294c6fd587522829d07220d5a6f4214092eba6ce1837636da5b3e3d461ba2a3`.
+Current classifier identity is `classifier-policy-v5` /
+`fed88bc2e9691eba2cf3d4ddf6d7ec984a3e8ded298f27d354a6e8c20c3293ea`.
 
 ## Release blockers
 

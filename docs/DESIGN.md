@@ -280,6 +280,15 @@ They can preserve a genuine request to avoid or prohibit abuse, but an unrelated
 prefix such as "do not add comments" cannot suppress a later implementation
 request, and a prior negated policy statement cannot poison a follow-up segment.
 
+High-density directive analysis retains at most 64 exact head clauses and an
+exact four-clause suffix, while every later clause still updates bounded
+per-rule, per-provider-pair composition, context-conflict, and semantic
+summaries. The head and suffix are never joined across omitted clauses. Compact
+intent patterns are compiled once, and one reusable clause-position proof is
+shared by negation and composition checks, preventing repeated clauses or
+unique signal-bearing catalogs from multiplying proof allocations by the rule
+count.
+
 For recognized role histories, each retained segment is classified on its own,
 so old explicit abuse cannot be hidden by appending benign turns. Adjacent user
 turns are additionally classified as a pair to preserve follow-up semantics
@@ -331,7 +340,7 @@ attest to local instruction-file integrity.
 Ruleset `1.0.7` identifies the embedded YAML assets only. The complete
 code-level behavior is separately identified as `classifier-policy-v5`,
 SHA-256
-`fd7627f1ac9c4e08d1e073ecfb4b8afd395a10e713d5e98fddbfe6a380edb59d`.
+`fed88bc2e9691eba2cf3d4ddf6d7ec984a3e8ded298f27d354a6e8c20c3293ea`.
 Its tested source list binds the classifier, matcher, normalizer, role logic,
 wrapper assessment, behavior graph, semantic composition, bounded extractor,
 rule loader/schema, embedded YAML assets, and module dependency locks. The
@@ -482,6 +491,16 @@ cleanup, and a configured maximum size. A database open/write failure degrades
 to in-memory counters and rate-limited host-error diagnostics; classification
 continues. Shutdown has a five-second runtime budget so a locked SQLite writer
 cannot indefinitely stall plugin reconfiguration or shutdown.
+
+A complete non-user/untrusted category-free wrapper-only
+`audit_suspicious_text` result with no opaque media is a counter-only
+observation by default. It increments the fixed
+`audited` and `control_plane_meta_override` counters without deriving request or
+subject hashes and without enqueuing a SQLite event. This narrow fast path never
+applies to trusted-user wrapper evidence, a Cyber Abuse base behavior, block,
+incomplete inspection, or opaque media. `audit.persist_wrapper_only: true`
+explicitly restores the legacy
+per-request event stream for wrapper-only observations.
 
 New database directories are created with mode 0700, but the plugin never
 changes permissions on an existing operator-owned directory. Database, WAL,
@@ -706,7 +725,7 @@ SSE stream with terminal frames; returning successful chunks would force HTTP
 
 Builds link immutable version, full commit SHA, ruleset version/hash,
 `classifier-policy-v5` /
-`fd7627f1ac9c4e08d1e073ecfb4b8afd395a10e713d5e98fddbfe6a380edb59d`,
+`fed88bc2e9691eba2cf3d4ddf6d7ec984a3e8ded298f27d354a6e8c20c3293ea`,
 streaming-scanner identity, and dirty state. Build metadata and the verifier bind
 these identities. Candidate mode requires a clean worktree, exact expected
 commit/tree, the commit timestamp, an absent formal `v0.15` tag, and forbids

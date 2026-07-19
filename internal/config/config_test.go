@@ -52,7 +52,7 @@ func TestDefaultMatchesSafeStartupContract(t *testing.T) {
 	if got.Audit != (Audit{
 		Enabled: true, DataDir: "", RetentionDays: 30, MaxDBMB: 256,
 		LogRequestHash: true, LogSubjectHash: true, LogRuleIDs: true,
-		LogCategory: true, LogOriginalText: false, BackupBeforeMigration: true,
+		LogCategory: true, PersistWrapperOnly: false, LogOriginalText: false, BackupBeforeMigration: true,
 		MaxMigrationBackups: 3,
 	}) {
 		t.Fatalf("audit defaults = %#v", got.Audit)
@@ -82,6 +82,7 @@ subject_control:
 audit:
   data_dir: ./plugin-data
   log_request_hash: false
+  persist_wrapper_only: true
 trusted_proxy:
   enabled: false
   header: X-Real-IP
@@ -110,7 +111,7 @@ classifier:
 	if got.SubjectControl.WindowMinutes != 120 || got.SubjectControl.CooldownScore != 150 {
 		t.Fatalf("nested defaults = %#v", got.SubjectControl)
 	}
-	if got.Audit.DataDir != "./plugin-data" || got.Audit.LogRequestHash || !got.Audit.LogSubjectHash {
+	if got.Audit.DataDir != "./plugin-data" || got.Audit.LogRequestHash || !got.Audit.LogSubjectHash || !got.Audit.PersistWrapperOnly {
 		t.Fatalf("audit override/default = %#v", got.Audit)
 	}
 	if !reflect.DeepEqual(got.TrustedProxy.CIDRs, []string{"10.0.0.0/8"}) {

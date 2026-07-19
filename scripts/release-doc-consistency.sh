@@ -17,6 +17,24 @@ current_ruleset_sha256="${CURRENT_RULESET_SHA256:-$(release_ruleset_hash)}"
 [[ "$current_ruleset_sha256" =~ ^[0-9a-f]{64}$ ]] || \
   fail "current ruleset SHA-256 is not a lowercase 64-character digest"
 
+current_classifier_policy_version="${CURRENT_CLASSIFIER_POLICY_VERSION:-}"
+if [[ -z "$current_classifier_policy_version" ]]; then
+  current_classifier_policy_version="$(sed -nE \
+    's/^const ClassifierPolicyVersion = "([^"]+)"/\1/p' \
+    "$root/internal/classifier/policy_identity.go" | sed -n '1p')"
+fi
+[[ "$current_classifier_policy_version" =~ ^classifier-policy-v[0-9]+$ ]] || \
+  fail "cannot determine the current classifier policy version"
+
+current_classifier_policy_sha256="${CURRENT_CLASSIFIER_POLICY_SHA256:-}"
+if [[ -z "$current_classifier_policy_sha256" ]]; then
+  current_classifier_policy_sha256="$(sed -nE \
+    's/^const ClassifierPolicySHA256 = "([0-9a-f]{64})"/\1/p' \
+    "$root/internal/classifier/policy_identity.go" | sed -n '1p')"
+fi
+[[ "$current_classifier_policy_sha256" =~ ^[0-9a-f]{64}$ ]] || \
+  fail "cannot determine the current classifier policy SHA-256"
+
 current_release_version="${CURRENT_RELEASE_VERSION:-}"
 if [[ -z "$current_release_version" ]]; then
   current_release_version="$(sed -nE \
@@ -31,9 +49,17 @@ documents=(
   README_CN.md
   CHANGELOG.md
   docs/AUDIT_HANDOFF.md
+  docs/DESIGN.md
   docs/LIMITATIONS.md
   docs/INSTALL_DOCKER.md
   docs/RELEASE_POLICY.md
+  docs/ROUND6_DEVELOPMENT_HANDOFF.md
+  docs/ROUND6_LIMITATIONS.md
+  docs/ROUND6_RELEASE_GATE.md
+  docs/ROUND6_STREAMING_SCANNER_DESIGN.md
+  docs/RULES.md
+  docs/THREAT_MODEL.md
+  docs/reports/PROMPT_INJECTION_REVIEW.md
   docs/reports/RELEASE_EVIDENCE.md
   docs/reports/TEST_REPORT.md
 )
@@ -41,6 +67,32 @@ documents=(
 for relative in "${documents[@]}"; do
   document="$doc_root/$relative"
   [[ -f "$document" ]] || fail "required current release document is missing: $relative"
+done
+
+classifier_identity_documents=(
+  README.md
+  README_CN.md
+  CHANGELOG.md
+  docs/AUDIT_HANDOFF.md
+  docs/DESIGN.md
+  docs/INSTALL_DOCKER.md
+  docs/LIMITATIONS.md
+  docs/ROUND6_DEVELOPMENT_HANDOFF.md
+  docs/ROUND6_LIMITATIONS.md
+  docs/ROUND6_RELEASE_GATE.md
+  docs/ROUND6_STREAMING_SCANNER_DESIGN.md
+  docs/RULES.md
+  docs/THREAT_MODEL.md
+  docs/reports/PROMPT_INJECTION_REVIEW.md
+  docs/reports/RELEASE_EVIDENCE.md
+  docs/reports/TEST_REPORT.md
+)
+for relative in "${classifier_identity_documents[@]}"; do
+  document="$doc_root/$relative"
+  grep -Fq "$current_classifier_policy_version" "$document" || \
+    fail "$relative must declare current classifier policy version $current_classifier_policy_version"
+  grep -Fq "$current_classifier_policy_sha256" "$document" || \
+    fail "$relative must declare current classifier policy SHA-256 $current_classifier_policy_sha256"
 done
 
 historical_corpus="$doc_root/docs/reports/CORPUS_REPORT.md"
@@ -114,5 +166,6 @@ for relative in "${current_reports[@]}"; do
     fail "$relative latest ruleset_sha256 $latest_declared_hash does not match current $current_ruleset_sha256"
 done
 
-printf 'release document consistency passed: version %s, ruleset %s\n' \
-  "$current_release_version" "$current_ruleset_sha256"
+printf 'release document consistency passed: version %s, ruleset %s, classifier %s/%s\n' \
+  "$current_release_version" "$current_ruleset_sha256" \
+  "$current_classifier_policy_version" "$current_classifier_policy_sha256"

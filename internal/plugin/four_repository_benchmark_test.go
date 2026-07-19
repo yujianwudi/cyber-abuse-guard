@@ -3,6 +3,7 @@ package plugin
 import (
 	"encoding/json"
 	"net/http"
+	"path/filepath"
 	"testing"
 
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginabi"
@@ -108,4 +109,116 @@ func BenchmarkFourRepositoryParallelCleanSubjectEnabled(b *testing.B) {
 			}
 		}
 	})
+}
+
+func TestFourRepositoryFullRoutePerformanceAcceptance(t *testing.T) {
+	if pluginRaceEnabled {
+		t.Skip("wall-clock and allocation acceptance is not meaningful under the race detector")
+	}
+	t.Setenv(subject.HMACKeyEnvironment, "0123456789abcdef0123456789abcdef")
+
+	shortBody, _ := fourRepoMarshalAndCheckBytes(t, fourRepoChatUser, fourRepoBenignUser, "")
+	wrapper := repositoryNeutralSizedText(t, 17166, fourRepoSurrogateProfiles[2].core)
+	wrapperBody, _ := fourRepoMarshalAndCheckBytes(
+		t, fourRepoAdditionalNamespace, wrapper, fourRepoBenignUser,
+	)
+	auditDir := filepath.ToSlash(t.TempDir())
+
+	tests := []struct {
+		name           string
+		configuration  string
+		format         string
+		body           []byte
+		headers        http.Header
+		parallel       bool
+		maxNSPerOp     int64
+		maxBytesPerOp  int64
+		maxAllocsPerOp int64
+	}{
+		{
+			name: "ordinary clean subject enabled",
+			configuration: "mode: balanced\naudit:\n  enabled: false\n" +
+				"subject_control:\n  enabled: true\n  max_subjects: 1024\n",
+			format: "openai", body: shortBody,
+			headers:    http.Header{"Authorization": []string{"Bearer performance-clean-subject"}},
+			maxNSPerOp: 2_000_000, maxBytesPerOp: 512 << 10, maxAllocsPerOp: 1000,
+		},
+		{
+			name: "wrapper audit counter fast path",
+			configuration: "mode: balanced\naudit:\n  enabled: true\n  data_dir: \"" + auditDir + "\"\n" +
+				"  log_request_hash: true\n  log_subject_hash: true\n" +
+				"subject_control:\n  enabled: true\n  max_subjects: 64\n",
+			format: "openai-response", body: wrapperBody,
+			headers:    http.Header{"Authorization": []string{"Bearer performance-wrapper-audit"}},
+			maxNSPerOp: 50_000_000, maxBytesPerOp: 1536 << 10, maxAllocsPerOp: 3000,
+		},
+		{
+			name: "parallel ordinary clean subject enabled",
+			configuration: "mode: balanced\naudit:\n  enabled: false\n" +
+				"subject_control:\n  enabled: true\n  max_subjects: 1024\n",
+			format: "openai", body: shortBody,
+			headers:    http.Header{"Authorization": []string{"Bearer performance-parallel-clean"}},
+			parallel:   true,
+			maxNSPerOp: 1_000_000, maxBytesPerOp: 512 << 10, maxAllocsPerOp: 1000,
+		},
+	}
+
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			result := testing.Benchmark(func(b *testing.B) {
+				p := New()
+				defer p.Shutdown()
+				register(b, p, testCase.configuration)
+				request, err := json.Marshal(pluginapi.ModelRouteRequest{
+					SourceFormat: testCase.format, RequestedModel: "four-repository-performance-acceptance",
+					Headers: testCase.headers, Body: testCase.body,
+				})
+				if err != nil {
+					b.Fatal(err)
+				}
+				raw, code := p.Call(pluginabi.MethodModelRoute, request)
+				if code != 0 {
+					b.Fatalf("warmup model.route code=%d envelope=%s", code, raw)
+				}
+				var route pluginapi.ModelRouteResponse
+				decodeOKResult(b, raw, &route)
+				if route.Handled {
+					b.Fatalf("benign acceptance fixture was handled: %+v", route)
+				}
+
+				b.ReportAllocs()
+				b.ResetTimer()
+				if testCase.parallel {
+					b.RunParallel(func(pb *testing.PB) {
+						for pb.Next() {
+							routeRaw, routeCode := p.Call(pluginabi.MethodModelRoute, request)
+							if routeCode != 0 || len(routeRaw) == 0 {
+								b.Errorf("parallel model.route code=%d envelope=%s", routeCode, routeRaw)
+								return
+							}
+						}
+					})
+					return
+				}
+				for index := 0; index < b.N; index++ {
+					routeRaw, routeCode := p.Call(pluginabi.MethodModelRoute, request)
+					if routeCode != 0 || len(routeRaw) == 0 {
+						b.Fatalf("model.route code=%d envelope=%s", routeCode, routeRaw)
+					}
+				}
+			})
+
+			t.Logf("route acceptance: %d ns/op, %d B/op, %d allocs/op",
+				result.NsPerOp(), result.AllocedBytesPerOp(), result.AllocsPerOp())
+			if got := result.NsPerOp(); got > testCase.maxNSPerOp {
+				t.Fatalf("route latency=%d ns/op, want <=%d", got, testCase.maxNSPerOp)
+			}
+			if got := result.AllocedBytesPerOp(); got > testCase.maxBytesPerOp {
+				t.Fatalf("route allocation=%d B/op, want <=%d", got, testCase.maxBytesPerOp)
+			}
+			if got := result.AllocsPerOp(); got > testCase.maxAllocsPerOp {
+				t.Fatalf("route allocations=%d/op, want <=%d", got, testCase.maxAllocsPerOp)
+			}
+		})
+	}
 }

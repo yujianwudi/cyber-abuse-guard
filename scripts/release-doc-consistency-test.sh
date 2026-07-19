@@ -5,6 +5,9 @@ root="$(cd "${BASH_SOURCE[0]%/*}/.." && pwd -P)"
 gate="$root/scripts/release-doc-consistency.sh"
 ruleset_sha256="a9bbfb2ed76d55cca02f83390e3fe10532dc7cb3fb389c440b0b130a0b2d1642"
 old_ruleset_sha256="5354e9b56c5986ac09b2b231b2750f4a519b8e3a6bfcbd71da7747dd32481cf6"
+classifier_policy_version="classifier-policy-v5"
+classifier_policy_sha256="fed88bc2e9691eba2cf3d4ddf6d7ec984a3e8ded298f27d354a6e8c20c3293ea"
+old_classifier_policy_sha256="fd7627f1ac9c4e08d1e073ecfb4b8afd395a10e713d5e98fddbfe6a380edb59d"
 work="$(mktemp -d)"
 trap 'rm -rf -- "$work"' EXIT
 
@@ -13,10 +16,17 @@ documents=(
   README_CN.md
   CHANGELOG.md
   docs/AUDIT_HANDOFF.md
+  docs/DESIGN.md
   docs/LIMITATIONS.md
   docs/INSTALL_DOCKER.md
   docs/RELEASE_POLICY.md
+  docs/ROUND6_DEVELOPMENT_HANDOFF.md
+  docs/ROUND6_LIMITATIONS.md
   docs/ROUND6_RELEASE_GATE.md
+  docs/ROUND6_STREAMING_SCANNER_DESIGN.md
+  docs/RULES.md
+  docs/THREAT_MODEL.md
+  docs/reports/PROMPT_INJECTION_REVIEW.md
   docs/reports/RELEASE_EVIDENCE.md
   docs/reports/TEST_REPORT.md
   docs/reports/CORPUS_REPORT.md
@@ -65,6 +75,26 @@ make_fixture() {
       >>"$fixture/$relative"
   done
   for relative in \
+    README.md \
+    README_CN.md \
+    CHANGELOG.md \
+    docs/AUDIT_HANDOFF.md \
+    docs/DESIGN.md \
+    docs/INSTALL_DOCKER.md \
+    docs/LIMITATIONS.md \
+    docs/ROUND6_DEVELOPMENT_HANDOFF.md \
+    docs/ROUND6_LIMITATIONS.md \
+    docs/ROUND6_RELEASE_GATE.md \
+    docs/ROUND6_STREAMING_SCANNER_DESIGN.md \
+    docs/RULES.md \
+    docs/THREAT_MODEL.md \
+    docs/reports/PROMPT_INJECTION_REVIEW.md \
+    docs/reports/RELEASE_EVIDENCE.md \
+    docs/reports/TEST_REPORT.md; do
+    printf '\nclassifier_policy: %s\nclassifier_policy_sha256: %s\n' \
+      "$classifier_policy_version" "$classifier_policy_sha256" >>"$fixture/$relative"
+  done
+  for relative in \
     docs/reports/RELEASE_EVIDENCE.md \
     docs/reports/TEST_REPORT.md; do
     printf '\nruleset_sha256: %s\n' "$ruleset_sha256" >>"$fixture/$relative"
@@ -77,6 +107,8 @@ run_gate() {
     "RELEASE_DOC_ROOT=$fixture"
     "CURRENT_RELEASE_VERSION=0.15"
     "CURRENT_RULESET_SHA256=$ruleset_sha256"
+    "CURRENT_CLASSIFIER_POLICY_VERSION=$classifier_policy_version"
+    "CURRENT_CLASSIFIER_POLICY_SHA256=$classifier_policy_sha256"
   )
   env "${environment[@]}" "$gate"
 }
@@ -166,5 +198,11 @@ sed -i "s/$ruleset_sha256/$old_ruleset_sha256/" \
   "$work/old-hash/docs/reports/TEST_REPORT.md"
 must_fail old-hash "$work/old-hash" \
   'docs/reports/TEST_REPORT.md latest ruleset_sha256'
+
+cp -a "$work/pass" "$work/old-classifier-hash"
+sed -i "s/$classifier_policy_sha256/$old_classifier_policy_sha256/" \
+  "$work/old-classifier-hash/docs/reports/TEST_REPORT.md"
+must_fail old-classifier-hash "$work/old-classifier-hash" \
+  "docs/reports/TEST_REPORT.md must declare current classifier policy SHA-256 $classifier_policy_sha256"
 
 printf 'all release document consistency fixtures passed\n'

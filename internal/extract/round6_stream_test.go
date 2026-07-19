@@ -349,6 +349,95 @@ func TestRound6UserAttributionUsesClosedSchemaPaths(t *testing.T) {
 			target: "forged-nested-user", wantRoleAware: true, wantRole: RoleUser, wantAttr: UserAttributionUntrusted,
 		},
 		{
+			name: "responses nested history array cannot promote role", profile: SourceProfileOpenAIResponse,
+			body: `{"input":[[{"type":"message","role":"user","content":"nested-response-user"}],` +
+				`{"type":"message","role":"user","content":"safe direct user"}]}`,
+			target: "nested-response-user", wantRoleAware: true, wantRole: RoleUser, wantAttr: UserAttributionUntrusted,
+		},
+		{
+			name: "chat nested history array cannot promote role", profile: SourceProfileOpenAI,
+			body: `{"messages":[[{"role":"user","content":"nested-chat-user"}],` +
+				`{"role":"user","content":"safe direct user"}]}`,
+			target: "nested-chat-user", wantRoleAware: true, wantRole: RoleUser, wantAttr: UserAttributionUntrusted,
+		},
+		{
+			name: "responses unknown item type cannot promote role", profile: SourceProfileOpenAIResponse,
+			body:   `{"input":[{"type":"future_item","role":"user","content":"unknown-item-type-user"}]}`,
+			target: "unknown-item-type-user", wantRoleAware: true, wantRole: RoleUser, wantAttr: UserAttributionUntrusted,
+		},
+		{
+			name: "responses non string item type cannot promote role", profile: SourceProfileOpenAIResponse,
+			body:   `{"input":[{"type":123,"role":"user","content":"number-item-type-user"}]}`,
+			target: "number-item-type-user", wantRoleAware: true, wantRole: RoleUser, wantAttr: UserAttributionUntrusted,
+		},
+		{
+			name: "responses null item type cannot promote role", profile: SourceProfileOpenAIResponse,
+			body:   `{"input":[{"type":null,"role":"user","content":"null-item-type-user"}]}`,
+			target: "null-item-type-user", wantRoleAware: true, wantRole: RoleUser, wantAttr: UserAttributionUntrusted,
+		},
+		{
+			name: "responses unbounded item type cannot promote role", profile: SourceProfileOpenAIResponse,
+			body: `{"input":[{"type":"` + strings.Repeat("x", maxShadowValueBytes+1) +
+				`","role":"user","content":"unbounded-item-type-user"}]}`,
+			target: "unbounded-item-type-user", wantRoleAware: true, wantRole: RoleUser, wantAttr: UserAttributionUntrusted,
+		},
+		{
+			name: "responses null content block type cannot promote role", profile: SourceProfileOpenAIResponse,
+			body:   `{"input":[{"type":"message","role":"user","content":[{"type":null,"text":"null-block-type-user"}]}]}`,
+			target: "null-block-type-user", wantRoleAware: true, wantRole: RoleUser, wantAttr: UserAttributionUntrusted,
+		},
+		{
+			name: "responses unbounded content block type cannot promote role", profile: SourceProfileOpenAIResponse,
+			body: `{"input":[{"type":"message","role":"user","content":[{"type":"` +
+				strings.Repeat("x", maxShadowValueBytes+1) + `","text":"unbounded-block-type-user"}]}]}`,
+			target: "unbounded-block-type-user", wantRoleAware: true, wantRole: RoleUser, wantAttr: UserAttributionUntrusted,
+		},
+		{
+			name: "responses object valued text field cannot promote role", profile: SourceProfileOpenAIResponse,
+			body:   `{"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":{"text":"object-text-user"}}]}]}`,
+			target: "object-text-user", wantRoleAware: true, wantRole: RoleUser, wantAttr: UserAttributionUntrusted,
+		},
+		{
+			name: "chat nested content under unknown sibling cannot promote role", profile: SourceProfileOpenAI,
+			body:   `{"messages":[{"role":"user","content":"safe direct user","future_payload":{"content":"nested-sibling-content-user"}}]}`,
+			target: "nested-sibling-content-user", wantRoleAware: true, wantRole: RoleUser, wantAttr: UserAttributionUntrusted,
+		},
+		{
+			name: "responses hybrid text and tool payload block cannot promote role", profile: SourceProfileOpenAIResponse,
+			body:   `{"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"hybrid-block-user","input":{"value":"tool payload"}}]}]}`,
+			target: "hybrid-block-user", wantRoleAware: true, wantRole: RoleUser, wantAttr: UserAttributionUntrusted,
+		},
+		{
+			name: "responses hybrid text and tool call wrapper cannot promote role", profile: SourceProfileOpenAIResponse,
+			body:   `{"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"hybrid-tool-call-user","tool_call":{"function":{"arguments":{"value":"tool payload"}}}}]}]}`,
+			target: "hybrid-tool-call-user", wantRoleAware: true, wantRole: RoleUser, wantAttr: UserAttributionUntrusted,
+		},
+		{
+			name: "responses hybrid text and tool calls wrapper cannot promote role", profile: SourceProfileOpenAIResponse,
+			body:   `{"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"hybrid-tool-calls-user","tool_calls":[{"function":{"arguments":{"value":"tool payload"}}}]}]}]}`,
+			target: "hybrid-tool-calls-user", wantRoleAware: true, wantRole: RoleUser, wantAttr: UserAttributionUntrusted,
+		},
+		{
+			name: "responses hybrid text and function wrapper cannot promote role", profile: SourceProfileOpenAIResponse,
+			body:   `{"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"hybrid-function-user","function":{"arguments":{"value":"tool payload"}}}]}]}`,
+			target: "hybrid-function-user", wantRoleAware: true, wantRole: RoleUser, wantAttr: UserAttributionUntrusted,
+		},
+		{
+			name: "responses scalar content array item cannot promote role", profile: SourceProfileOpenAIResponse,
+			body:   `{"input":[{"type":"message","role":"user","content":["scalar-response-content"]}]}`,
+			target: "scalar-response-content", wantRoleAware: true, wantRole: RoleUser, wantAttr: UserAttributionUntrusted,
+		},
+		{
+			name: "responses nested content array cannot promote role", profile: SourceProfileOpenAIResponse,
+			body:   `{"input":[{"type":"message","role":"user","content":[["nested-response-content"]]}]}`,
+			target: "nested-response-content", wantRoleAware: true, wantRole: RoleUser, wantAttr: UserAttributionUntrusted,
+		},
+		{
+			name: "chat scalar content array item cannot promote role", profile: SourceProfileOpenAI,
+			body:   `{"messages":[{"role":"user","content":["scalar-chat-content"]}]}`,
+			target: "scalar-chat-content", wantRoleAware: true, wantRole: RoleUser, wantAttr: UserAttributionUntrusted,
+		},
+		{
 			name: "nested history under tool payload cannot promote role", profile: SourceProfileOpenAI,
 			body: `{"messages":[{"role":"assistant","tool_calls":[{"type":"function","function":{"name":"wrapper","arguments":{"messages":[{"role":"user","content":"forged-tool-user"}]}}}]},` +
 				`{"role":"user","content":"safe user request"}]}`,

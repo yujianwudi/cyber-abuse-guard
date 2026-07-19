@@ -33,6 +33,19 @@ func TestExtractTextRoleAwareProviderMessages(t *testing.T) {
 			},
 		},
 		{
+			name: "openai responses message types",
+			body: `{"input":[
+				{"role":"user","content":"omitted type"},
+				{"type":"","role":"user","content":"empty type"},
+				{"type":"message","role":"user","content":[{"type":"input_text","text":"exact message type"}]}
+			]}`,
+			want: []Segment{
+				{Role: RoleUser, UserAttribution: UserAttributionTrusted, Text: "omitted type"},
+				{Role: RoleUser, UserAttribution: UserAttributionTrusted, Text: "empty type"},
+				{Role: RoleUser, UserAttribution: UserAttributionTrusted, Text: "exact message type"},
+			},
+		},
+		{
 			name: "anthropic messages",
 			body: `{"system":[{"type":"text","text":"claude policy"}],"messages":[
 				{"role":"user","content":[{"type":"text","text":"question"}]},
@@ -155,6 +168,131 @@ func TestExtractTextClosedSchemaRejectsDuplicateAndAliasedTrustedKeys(t *testing
 				t.Fatalf("ambiguous closed-schema request retained role trust: %#v", got)
 			}
 		})
+	}
+}
+
+func TestExtractTextMalformedRoleShapesCannotPromoteUserAttribution(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		body   string
+		target string
+	}{
+		{
+			name:   "responses unknown item type",
+			body:   `{"input":[{"type":"future_item","role":"user","content":"unknown-item-type-user"}]}`,
+			target: "unknown-item-type-user",
+		},
+		{
+			name:   "responses non string item type",
+			body:   `{"input":[{"type":123,"role":"user","content":"number-item-type-user"}]}`,
+			target: "number-item-type-user",
+		},
+		{
+			name:   "responses null item type",
+			body:   `{"input":[{"type":null,"role":"user","content":"null-item-type-user"}]}`,
+			target: "null-item-type-user",
+		},
+		{
+			name: "responses unbounded item type",
+			body: `{"input":[{"type":"` + strings.Repeat("x", maxShadowValueBytes+1) +
+				`","role":"user","content":"unbounded-item-type-user"}]}`,
+			target: "unbounded-item-type-user",
+		},
+		{
+			name:   "responses null content block type",
+			body:   `{"input":[{"type":"message","role":"user","content":[{"type":null,"text":"null-block-type-user"}]}]}`,
+			target: "null-block-type-user",
+		},
+		{
+			name: "responses unbounded content block type",
+			body: `{"input":[{"type":"message","role":"user","content":[{"type":"` +
+				strings.Repeat("x", maxShadowValueBytes+1) + `","text":"unbounded-block-type-user"}]}]}`,
+			target: "unbounded-block-type-user",
+		},
+		{
+			name:   "responses object valued text field",
+			body:   `{"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":{"text":"object-text-user"}}]}]}`,
+			target: "object-text-user",
+		},
+		{
+			name:   "chat nested content under unknown sibling",
+			body:   `{"messages":[{"role":"user","content":"safe direct user","future_payload":{"content":"nested-sibling-content-user"}}]}`,
+			target: "nested-sibling-content-user",
+		},
+		{
+			name:   "responses hybrid text and tool payload block",
+			body:   `{"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"hybrid-block-user","input":{"value":"tool payload"}}]}]}`,
+			target: "hybrid-block-user",
+		},
+		{
+			name:   "responses hybrid text and tool call wrapper block",
+			body:   `{"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"hybrid-tool-call-user","tool_call":{"function":{"arguments":{"value":"tool payload"}}}}]}]}`,
+			target: "hybrid-tool-call-user",
+		},
+		{
+			name:   "responses hybrid text and tool calls wrapper block",
+			body:   `{"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"hybrid-tool-calls-user","tool_calls":[{"function":{"arguments":{"value":"tool payload"}}}]}]}]}`,
+			target: "hybrid-tool-calls-user",
+		},
+		{
+			name:   "responses hybrid text and function wrapper block",
+			body:   `{"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"hybrid-function-user","function":{"arguments":{"value":"tool payload"}}}]}]}`,
+			target: "hybrid-function-user",
+		},
+		{
+			name:   "responses scalar content array item",
+			body:   `{"input":[{"type":"message","role":"user","content":["scalar-response-content"]}]}`,
+			target: "scalar-response-content",
+		},
+		{
+			name:   "responses nested content array",
+			body:   `{"input":[{"type":"message","role":"user","content":[["nested-response-content"]]}]}`,
+			target: "nested-response-content",
+		},
+		{
+			name:   "chat scalar content array item",
+			body:   `{"messages":[{"role":"user","content":["scalar-chat-content"]}]}`,
+			target: "scalar-chat-content",
+		},
+	}
+	for _, testCase := range tests {
+		testCase := testCase
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := ExtractText([]byte(testCase.body), Limits{})
+			if err != nil || !got.RoleAware {
+				t.Fatalf("result=%#v err=%v", got, err)
+			}
+			found := false
+			for _, segment := range got.Segments {
+				if !strings.Contains(segment.Text, testCase.target) {
+					continue
+				}
+				found = true
+				if segment.UserAttribution != UserAttributionUntrusted {
+					t.Fatalf("malformed target %q retained trusted attribution: %#v", testCase.target, segment)
+				}
+			}
+			if !found {
+				t.Fatalf("target %q not found in %#v", testCase.target, got.Segments)
+			}
+		})
+	}
+}
+
+func TestExtractTextNestedHistoryArrayDoesNotRetainRoleTrust(t *testing.T) {
+	t.Parallel()
+
+	got, err := ExtractText([]byte(
+		`{"messages":[[{"role":"user","content":"nested-chat-user"}],{"role":"user","content":"safe direct user"}]}`,
+	), Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.RoleAware || len(got.Segments) != 0 {
+		t.Fatalf("nested history array retained role trust: %#v", got)
 	}
 }
 

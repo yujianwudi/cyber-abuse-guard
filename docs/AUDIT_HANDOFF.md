@@ -32,7 +32,7 @@ project_version: 0.15
 formal_tag: v0.15
 streaming_scanner: streaming-scanner-v1
 classifier_policy: classifier-policy-v5
-classifier_policy_sha256: fd7627f1ac9c4e08d1e073ecfb4b8afd395a10e713d5e98fddbfe6a380edb59d
+classifier_policy_sha256: fed88bc2e9691eba2cf3d4ddf6d7ec984a3e8ded298f27d354a6e8c20c3293ea
 ruleset: 1.0.7 / 7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134
 historical_v10: CONSUMED / FAIL / MUST NOT RERUN / NOT A FORMAL INPUT
 ```

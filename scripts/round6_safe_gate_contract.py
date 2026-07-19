@@ -883,8 +883,8 @@ ROUND6_DOC_FIXTURE_WRAPPER_SCRIPT_SHA256 = (
     "6c64140ccf1e3f66b67d5baa2cc2f94a79b40e908180954e7eac1e73a3ce3765"
 )
 ROUND6_DOC_FIXTURE_DEPENDENCY_SHA256 = {
-    "scripts/release-doc-consistency-test.sh": "63b2af3e45f71ad7a59b35bc40d117eabf9f150e89624b43abe6926efe6061ab",
-    "scripts/release-doc-consistency.sh": "8f775d3fa8faff5a639489a2776fdd335cb26b4b7a840fc2d907ce367bb4789c",
+    "scripts/release-doc-consistency-test.sh": "8a2f9dbcd6d6da2af01afbebb1fda42a6b4483512ae3214a633fa730a6c30c13",
+    "scripts/release-doc-consistency.sh": "530b601712af9324003679bc358ff0c2e1eefb652cbb7b79b2fff7e90bb5ff1b",
 }
 ROUND6_PRIVACY_FIXTURE_SCRIPT = "scripts/release-evidence-privacy-test.sh"
 ROUND6_PRIVACY_FIXTURE_SCRIPT_SHA256 = (
@@ -2450,6 +2450,14 @@ def validate_release_mode_contracts(root: Path) -> None:
     if not common_path.exists():
         return
     common = read_regular_text(common_path, root)
+    required_git_environment_reset = (
+        "unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR \\\n"
+        "  GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_NAMESPACE"
+    )
+    if required_git_environment_reset not in common:
+        raise ContractError(
+            "release helpers must clear inherited Git repository-routing variables"
+        )
     for script_name, expected_hash in EXTERNAL_ATTESTATION_SCRIPT_SHA256.items():
         path = root / "scripts" / script_name
         text = read_regular_text(path, root)
@@ -4486,10 +4494,53 @@ def validate_round6_makefile_contract(text: str, source: Path) -> None:
     expected = (
         "@$(GO) test ./internal/extract -list='^BenchmarkRound6ScanLongJSON$$' | grep -Fxq 'BenchmarkRound6ScanLongJSON' || { echo 'required Round6 long-JSON benchmark is missing' >&2; exit 1; }",
         "$(GO) test ./internal/extract -run='^$$' -bench='^BenchmarkRound6ScanLongJSON$$' -benchmem -benchtime=1x -count=1",
+        "@$(GO) test -tags=$(TEST_TAGS) ./internal/plugin -list='^TestFourRepositoryFullRoutePerformanceAcceptance$$' | grep -Fxq 'TestFourRepositoryFullRoutePerformanceAcceptance' || { echo 'required Round6 full-route performance acceptance test is missing' >&2; exit 1; }",
+        "$(GO) test -tags=$(TEST_TAGS) ./internal/plugin -count=1 -v -run='^TestFourRepositoryFullRoutePerformanceAcceptance$$'",
+        "@listed=\"$$($(GO) test -tags=$(TEST_TAGS) ./internal/plugin -list='^(BenchmarkFourRepositoryModelRoute|BenchmarkFourRepositoryParallelCleanSubjectEnabled|BenchmarkBalancedAuditOnWrapperOnly17166ModelRoute)$$')\" || exit $$?; for benchmark_name in BenchmarkFourRepositoryModelRoute BenchmarkFourRepositoryParallelCleanSubjectEnabled BenchmarkBalancedAuditOnWrapperOnly17166ModelRoute; do printf '%s\\n' \"$$listed\" | grep -Fxq \"$$benchmark_name\" || { echo \"required Round6 full-route benchmark $$benchmark_name is missing\" >&2; exit 1; }; done",
+        "$(GO) test -tags=$(TEST_TAGS) ./internal/plugin -run='^$$' -bench='^(BenchmarkFourRepositoryModelRoute|BenchmarkFourRepositoryParallelCleanSubjectEnabled|BenchmarkBalancedAuditOnWrapperOnly17166ModelRoute)$$' -benchmem -benchtime=3x -count=1",
     )
     if commands != expected:
         raise ContractError(
-            f"round6-benchmark must fail closed and execute the extract benchmark: {source}"
+            f"round6-benchmark must fail closed and execute acceptance plus extract/full-route benchmarks: {source}"
+        )
+    round6_regression_commands = tuple(
+        " ".join(line.split())
+        for line in recipes.get("round6-regression", "").splitlines()
+        if line.strip()
+    )
+    plugin_gate_indexes = [
+        index
+        for index, command in enumerate(round6_regression_commands)
+        if "required round-six plugin regression" in command
+    ]
+    required_wrapper_audit_tests = (
+        "TestBalancedAuditOnWrapperOnlyCounterFastPath",
+        "TestWrapperAuditFastPathPreservesSecurityEvents",
+        "TestBalancedAuditOnTrustedUserWrapperPersists",
+        "TestBalancedAuditOnWrapperOnlyAllocationAcceptance",
+    )
+    if len(plugin_gate_indexes) != 1:
+        raise ContractError(
+            "round6-regression must retain one fail-closed plugin regression gate"
+        )
+    plugin_gate_index = plugin_gate_indexes[0]
+    plugin_gate = round6_regression_commands[plugin_gate_index]
+    if any(plugin_gate.split().count(test_name) != 1 for test_name in required_wrapper_audit_tests):
+        raise ContractError(
+            "round6-regression must fail closed on every wrapper audit fast-path regression"
+        )
+    expected_plugin_execution = (
+        '$(GO) test -tags=$(TEST_TAGS) ./internal/plugin -count=1 -v '
+        '-run="^($$pattern)$$"'
+    )
+    if (
+        plugin_gate.count("@required=(") != 1
+        or "required round-six management regression" in plugin_gate
+        or plugin_gate.count(expected_plugin_execution) != 1
+        or not plugin_gate.endswith(expected_plugin_execution)
+    ):
+        raise ContractError(
+            "round6-regression must execute the exact fail-closed wrapper audit plugin pattern"
         )
     required_script_commands = (
         "bash -n ./scripts/round6-candidate-artifacts.sh",

@@ -66,6 +66,7 @@ type planContext struct {
 	messageOwner        uint64
 	roleEligible        bool
 	roleContent         bool
+	roleTextValue       bool
 	historyArray        bool
 	messageObject       bool
 	directMessageMember bool
@@ -375,6 +376,17 @@ func (p *shadowPlanner) parseValue(ctx planContext, key string, depth int) (valu
 		ctx.fallbackText = true
 		ctx.unknownRoot = false
 	}
+	if ctx.roleTextValue && p.body[p.position] != '"' {
+		// A closed content-block text field proves the enclosing role only for a
+		// direct JSON string. Container and scalar mismatches remain inspectable,
+		// but descendants must not regain role eligibility through nested text or
+		// content keys.
+		ctx.roleTextValue = false
+		ctx.roleEligible = false
+		ctx.roleContent = false
+		ctx.role = RoleUser
+		ctx.userAttribution = UserAttributionUntrusted
+	}
 	switch p.body[p.position] {
 	case '{':
 		return p.parseObject(ctx, depth+1)
@@ -430,6 +442,7 @@ func (p *shadowPlanner) parseObject(ctx planContext, depth int) (valueSummary, e
 	blockTypeAmbiguous := false
 	blockWrapperType := ""
 	blockWrapperAmbiguous := false
+	blockHasToolPayloadKey := false
 	seenClosedKeys := make(map[string]struct{}, 8)
 	blockTextKeys := make([]string, 0, 2)
 	first := true
@@ -503,7 +516,7 @@ func (p *shadowPlanner) parseObject(ctx planContext, depth int) (valueSummary, e
 				messageTypeAmbiguous = true
 			}
 			messageTypeSeen = true
-			if !summary.isText {
+			if !summary.isText || !summary.bounded {
 				messageTypeAmbiguous = true
 			} else {
 				messageTypeValue = summary.text
@@ -519,7 +532,7 @@ func (p *shadowPlanner) parseObject(ctx planContext, depth int) (valueSummary, e
 				blockTypeAmbiguous = true
 			}
 			blockTypeSeen = true
-			if !summary.isText {
+			if !summary.isText || !summary.bounded {
 				blockTypeAmbiguous = true
 			} else {
 				blockTypeValue = summary.text
@@ -527,6 +540,10 @@ func (p *shadowPlanner) parseObject(ctx planContext, depth int) (valueSummary, e
 		}
 		if ctx.roleContent && isRoleContentCarrierCanonical(canonical) {
 			blockTextKeys = append(blockTextKeys, keyValue)
+		}
+		if ctx.roleContent && (isToolArgumentCanonical(canonical) || canonical == "input" ||
+			isToolWrapperKeyCanonical(canonical)) {
+			blockHasToolPayloadKey = true
 		}
 		if ctx.roleContent && (canonical == "functioncall" || canonical == "functionresponse") {
 			if blockWrapperType != "" && blockWrapperType != canonical {
@@ -551,6 +568,12 @@ func (p *shadowPlanner) parseObject(ctx planContext, depth int) (valueSummary, e
 			} else {
 				effectiveBlockType = blockWrapperType
 			}
+		}
+		if blockHasToolPayloadKey && (effectiveBlockType == "" || isRoleTextBlockType(effectiveBlockType)) {
+			// A natural-language block cannot simultaneously carry executable tool
+			// input while proving authenticated-user authorship. Keep every string
+			// visible, but demote the hybrid block to the untrusted path.
+			effectiveBlockType = "unknown"
 		}
 		switch effectiveBlockType {
 		case "tooluse", "functioncall", "customtoolcall":
@@ -646,6 +669,15 @@ func (p *shadowPlanner) parseObject(ctx planContext, depth int) (valueSummary, e
 		}
 		if !typeDerivedKnown {
 			role, ok := normalizedMessageRole(p.source, roleValue)
+			trustedUserRolePath := ctx.historyTrusted
+			if p.source == SourceProfileOpenAIResponse && messageTypeSeen {
+				// CPA v7.2.88 treats only an omitted/empty type or the exact
+				// "message" discriminator as a role-bearing Responses message.
+				// Unknown and non-string item types are still scanned, but their
+				// caller-controlled role must not prove authenticated-user origin.
+				trustedUserRolePath = !messageTypeAmbiguous &&
+					(messageTypeValue == "" || messageTypeValue == "message")
+			}
 			if roleSeen && !ok {
 				p.unsafeRole = true
 				roleAmbiguous = true
@@ -660,7 +692,7 @@ func (p *shadowPlanner) parseObject(ctx planContext, depth int) (valueSummary, e
 				if p.spans[index].messageOwner == messageOwner && p.spans[index].roleEligible {
 					p.spans[index].role = role
 					p.spans[index].userAttribution = UserAttributionUntrusted
-					if ctx.historyTrusted && role == RoleUser && p.spans[index].provenance == ProvenanceContent {
+					if trustedUserRolePath && role == RoleUser && p.spans[index].provenance == ProvenanceContent {
 						p.spans[index].userAttribution = UserAttributionTrusted
 					}
 				}
@@ -701,9 +733,25 @@ func (p *shadowPlanner) parseArray(ctx planContext, depth int) (valueSummary, er
 		first = false
 		child := ctx
 		child.atRoot = false
+		// messageObject proves only a direct element of the provider history
+		// array. Never carry that proof through a nested array.
+		child.historyArray = false
+		child.messageObject = false
+		child.roleTextValue = false
 		if ctx.historyArray && ctx.historyTrusted && p.trustRoles {
-			child.historyArray = false
 			child.messageObject = true
+		}
+		if ctx.roleContent {
+			child.directMessageMember = false
+			child.roleEligible = false
+			child.userAttribution = UserAttributionUntrusted
+			if !ctx.directMessageMember {
+				// Only the direct message content array may contain provider
+				// content-block objects. Scalars in that array, and every value
+				// below a nested array/text-field array, remain inspectable but
+				// cannot inherit the enclosing user role.
+				child.roleContent = false
+			}
 		}
 		if _, err := p.parseValue(child, "", depth); err != nil {
 			return valueSummary{}, err
@@ -717,6 +765,7 @@ func derivePlanContext(parent planContext, key, exactKey string, rootMember bool
 	child.atRoot = false
 	child.historyArray = false
 	child.messageObject = false
+	child.roleTextValue = false
 	child.directMessageMember = parent.messageObject
 	child.directUserInput = false
 	child.exactKey = exactKey
@@ -765,6 +814,7 @@ func derivePlanContext(parent planContext, key, exactKey string, rootMember bool
 			case isExactRoleContentTextField(exactKey):
 				child.roleEligible = true
 				child.roleContent = true
+				child.roleTextValue = true
 			case isToolWrapperKeyCanonical(key) || isToolArgumentCanonical(key):
 				child.roleEligible = true
 				child.roleContent = false
@@ -783,9 +833,16 @@ func derivePlanContext(parent planContext, key, exactKey string, rootMember bool
 			return child
 		}
 		switch {
-		case exactMessageContentKey(source, exactKey):
+		case parent.messageObject && exactMessageContentKey(source, exactKey):
 			child.roleEligible = true
 			child.roleContent = true
+		case parent.provenance == ProvenanceToolPayload && exactMessageContentKey(source, exactKey):
+			// Nested content labels inside a proven tool transaction may retain the
+			// enclosing assistant/tool role, but tool provenance keeps them
+			// categorically ineligible for authenticated-user attribution.
+			child.roleEligible = true
+			child.roleContent = false
+			child.userAttribution = UserAttributionUntrusted
 		case isToolWrapperKeyCanonical(key) || isToolArgumentCanonical(key):
 			child.roleEligible = true
 			child.roleContent = false

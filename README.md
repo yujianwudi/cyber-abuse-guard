@@ -50,7 +50,7 @@ classifier.
 | CPA Host matrix | Active validation and the supported release target are pinned to CPA v7.2.88 (`93d74a890a44802f656d7f39a573916b2611896e`); owner-operated isolated Host + Mock-upstream evidence is **NOT RUN / PENDING** |
 | Production | Not accessed or modified; no production request, audit database, credential, HMAC key, account pool, or real Provider was used |
 | Scanner identity | `streaming-scanner-v1` |
-| Classifier policy | `classifier-policy-v5` / `fd7627f1ac9c4e08d1e073ecfb4b8afd395a10e713d5e98fddbfe6a380edb59d` |
+| Classifier policy | `classifier-policy-v5` / `fed88bc2e9691eba2cf3d4ddf6d7ec984a3e8ded298f27d354a6e8c20c3293ea` |
 | Embedded YAML ruleset | `1.0.7` / `7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134` |
 | Audit schema | v3 |
 | Code review | Automated review is advisory; no independent approval is claimed |
@@ -117,6 +117,19 @@ The proof is bound to the CPA `SourceFormat`: only a matching root provider
 history or Responses scalar `input` can establish user authorship. Nested or
 cross-provider histories, developer/system/tool content, unknown content types,
 function responses, and opaque Responses reasoning state remain untrusted.
+Nested history/content arrays, scalar members of provider content arrays, and
+unknown or non-string Responses item `type` values are likewise scanned without
+receiving trusted-user attribution. The exact Responses `type` discriminator is
+transport metadata, not model-visible prompt text.
+
+With audit enabled, a complete category-free wrapper-only finding attributed
+to non-user or untrusted wrapper traffic stays visible through the bounded
+`audited` and
+`control_plane_meta_override` counters but does not create a per-request SQLite
+event or request/subject correlation hash by default. Set
+`audit.persist_wrapper_only: true` to restore those events. Cyber Abuse base
+findings, trusted-user wrapper findings, blocks, incomplete inspections, and
+opaque-media dispositions keep the full configured audit path.
 
 Repository-neutral regressions derived from four public prompt-override source
 pins cover high-authority `instructions`, Chat and Responses tool descriptions,

@@ -6,6 +6,14 @@ RELEASE_ROOT="$(cd "${BASH_SOURCE[0]%/*}/.." && pwd -P)"
 export LC_ALL=C
 export TZ=UTC
 
+# Every release helper addresses repositories explicitly with git -C. Clear
+# inherited repository-routing variables before any helper can create or
+# inspect a fixture: Git gives these variables precedence over -C, so carrying
+# a caller's worktree into a temporary-repository contract test can otherwise
+# mutate the real checkout.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR \
+  GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_NAMESPACE
+
 release_error() {
   printf 'release error: %s\n' "$*" >&2
 }

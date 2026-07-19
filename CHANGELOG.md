@@ -38,6 +38,33 @@ future stable release still requires a newly authored independent unseen set.
   eligible accumulating subject hit, a final local block pending key, or a
   persisted audit event with `log_request_hash: true`. Read-only subject
   observations do not hash the request body.
+- Keep complete non-user/untrusted category-free wrapper-only findings on
+  bounded `audited` and
+  `control_plane_meta_override` counters by default, avoiding per-request body
+  hashing and SQLite writes on benign wrapper traffic. Operators can restore
+  the legacy event stream with `audit.persist_wrapper_only: true`; base Cyber
+  Abuse findings, trusted-user wrapper findings, blocks, incomplete
+  inspections, and opaque media remain fully audited.
+- Continue directive analysis after the first 64 retained risk clauses instead
+  of treating overflow as either a complete allow or an unconditional active
+  finding. The classifier now keeps an exact bounded suffix plus rolling
+  per-rule, per-provider-pair composition, context-conflict, and semantic
+  summaries, so a late malicious clause cannot escape while repeated complete
+  prohibitions remain inert. Compact intent patterns and clause proof scratch
+  are reused to bound high-density negation work.
+- Prevent a low-score same-category candidate or an approved-workflow marker
+  from suppressing a contradictory different-provider composition. Exact and
+  overflow paths now apply the proven context contradiction before candidate
+  suppression, so a harmless head cannot launder an active composed tail.
+- Treat bounded modal lead-ins after an explanatory `and now` pivot as a strong
+  directive boundary when they lead to a compiled rule intent. This covers
+  unlisted English forms such as `it is necessary to`, mixed-language tails,
+  and overflow while retaining legitimate approved-migration explanations.
+- Tighten closed-schema user attribution for malformed provider arrays and
+  Responses item discriminators. Nested history/content arrays, scalar content
+  array members, and unknown or non-string Responses `type` values remain
+  inspectable but untrusted; the exact Responses `type` field is transport
+  metadata and no longer becomes legacy prompt text.
 - Tighten subject-risk admission so only authenticated, completely inspected
   user-content base-behavior findings with `FindingCompleteRequest`, a direct
   classifier `ActionBlock`, and `score >= hard_block` add rolling risk.
@@ -45,7 +72,7 @@ future stable release still requires a newly authored independent unseen set.
   mixed-role, and lower-confidence requests keep their direct per-request
   disposition but do not allocate subject state or add hits, receipts, or
   repeat multipliers. Publish the resulting code-level contract as
-  `classifier-policy-v5` / `fd7627f1ac9c4e08d1e073ecfb4b8afd395a10e713d5e98fddbfe6a380edb59d`.
+`classifier-policy-v5` / `fed88bc2e9691eba2cf3d4ddf6d7ec984a3e8ded298f27d354a6e8c20c3293ea`.
 - Add a separate, zero-value-untrusted user-attribution proof. Only an explicit
   recognized `role: user` content path or an allowlisted multipart prompt is
   trusted; unknown top-level fields, unknown message siblings, roleless/future
@@ -78,6 +105,19 @@ future stable release still requires a newly authored independent unseen set.
   single-window field skips cross-window risk-potential synthesis when no
   multi-window contribution can exist. Valid unescaped JSON strings now stream
   directly from the request buffer without an intermediate decode buffer.
+- Make the Linux `round6-benchmark` lane fail on full-route regressions instead
+  of reporting measurements only. It now enforces latency/allocation ceilings
+  for ordinary clean traffic, the 17 KiB wrapper-audit counter fast path, and
+  parallel clean subject-enabled traffic, and also executes the parallel
+  benchmark explicitly.
+- Clear inherited Git repository-routing variables in every shared release
+  helper before fixture or source operations. Contract validation freezes this
+  guard so temporary sparse/archive work cannot silently regain access to the
+  caller's checkout.
+- Require every current release-facing report to declare the source-derived
+  classifier policy version and SHA-256. Historical reports may retain their
+  recorded identities, but stale current identities now fail the documentation
+  consistency fixture.
 
 - Add a dedicated, manual `v0.15-rc.2` prerelease workflow for clean Linux
   amd64 server-sandbox assets. It binds an annotated RC tag to the exact main

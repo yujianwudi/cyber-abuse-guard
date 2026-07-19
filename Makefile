@@ -217,7 +217,7 @@ holdout-test:
 
 benchmark:
 	$(GO) test ./internal/classifier \
-		-run='^(TestClassifier(Adversarial)?PerformanceAcceptance|TestRound5MetaOverridePerformanceAcceptance|TestRound5AdjacentNegationCandidateFloodPerformanceAcceptance)$$' -count=1 -v
+		-run='^(TestClassifier(Adversarial)?PerformanceAcceptance|TestClassifierDirectiveAllocationAcceptance|TestDirectiveClauseOverflowPerformanceBoundary|TestRound5MetaOverridePerformanceAcceptance|TestRound5AdjacentNegationCandidateFloodPerformanceAcceptance)$$' -count=1 -v
 	$(GO) test ./internal/classifier -run='^$$' -bench=. -benchmem -count=3
 	$(GO) test ./internal/extract -run='^$$' \
 		-bench='^(BenchmarkExtractRequest(ReverseOrderedMedia|Multipart|ScalarCarrierPermutation).*|BenchmarkMultipartUnknownFileField(1MiB|8MiB))$$' \
@@ -230,6 +230,26 @@ round6-benchmark: benchmark
 		}
 	$(GO) test ./internal/extract -run='^$$' \
 		-bench='^BenchmarkRound6ScanLongJSON$$' -benchmem -benchtime=1x -count=1
+	@$(GO) test -tags=$(TEST_TAGS) ./internal/plugin \
+		-list='^TestFourRepositoryFullRoutePerformanceAcceptance$$' | \
+		grep -Fxq 'TestFourRepositoryFullRoutePerformanceAcceptance' || { \
+			echo 'required Round6 full-route performance acceptance test is missing' >&2; exit 1; \
+		}
+	$(GO) test -tags=$(TEST_TAGS) ./internal/plugin -count=1 -v \
+		-run='^TestFourRepositoryFullRoutePerformanceAcceptance$$'
+	@listed="$$($(GO) test -tags=$(TEST_TAGS) ./internal/plugin \
+		-list='^(BenchmarkFourRepositoryModelRoute|BenchmarkFourRepositoryParallelCleanSubjectEnabled|BenchmarkBalancedAuditOnWrapperOnly17166ModelRoute)$$')" || exit $$?; \
+	for benchmark_name in \
+		BenchmarkFourRepositoryModelRoute \
+		BenchmarkFourRepositoryParallelCleanSubjectEnabled \
+		BenchmarkBalancedAuditOnWrapperOnly17166ModelRoute; do \
+		printf '%s\n' "$$listed" | grep -Fxq "$$benchmark_name" || { \
+			echo "required Round6 full-route benchmark $$benchmark_name is missing" >&2; exit 1; \
+		}; \
+	done
+	$(GO) test -tags=$(TEST_TAGS) ./internal/plugin -run='^$$' \
+		-bench='^(BenchmarkFourRepositoryModelRoute|BenchmarkFourRepositoryParallelCleanSubjectEnabled|BenchmarkBalancedAuditOnWrapperOnly17166ModelRoute)$$' \
+		-benchmem -benchtime=3x -count=1
 
 round4-regression:
 	@listed="$$($(GO) test ./internal/extract ./internal/plugin -list='^(TestExtractRequestMediaObjectMemberOrderInvariant|TestExtractRequestMultipartUnknownFieldIsIncompleteAndPrivate|TestBalancedMultipartUnknownFieldAllowsWithoutClassification|TestStrictMultipartUnknownFieldBlocksWithoutClassification)$$')" || exit $$?; \
@@ -446,6 +466,10 @@ round6-regression:
 		TestInspectionDispositionIncompleteOverridesMaliciousPrefix \
 		TestInspectionDispositionCompleteMaliciousTextStillBlocksBalanced \
 		TestInspectionDispositionCompleteOpaqueMediaAuditDoesNotHideTextBlock \
+		TestBalancedAuditOnWrapperOnlyCounterFastPath \
+		TestWrapperAuditFastPathPreservesSecurityEvents \
+		TestBalancedAuditOnTrustedUserWrapperPersists \
+		TestBalancedAuditOnWrapperOnlyAllocationAcceptance \
 		TestRound6LongText270KiBRolePositionMatrixBlocks \
 		TestRound6LongTextOneMiBPositionMatrixBlocks \
 		TestRound6CrossWindowCredentialCanaryBlocks \

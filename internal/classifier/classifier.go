@@ -192,9 +192,15 @@ type compiledRule struct {
 	independentEvasion     int
 	independentScale       int
 	intentStarts           []string
+	intentPatterns         compactRuleIntentPatterns
 }
 
 type compiledContexts map[rules.ContextKind]int
+
+type ruleIntentStartBuckets struct {
+	ascii [26][]string
+	other map[rune][][]rune
+}
 
 var classifierCategoryOrder = []rules.Category{
 	rules.CategoryCredentialTheft,
@@ -220,6 +226,7 @@ type Classifier struct {
 	outcomeRequest        int
 	metaOverride          compiledMetaOverrideSignals
 	semanticProfiles      []compiledSemanticProfile
+	directiveIntentStarts ruleIntentStartBuckets
 }
 
 // New validates and precompiles a private matcher snapshot.
@@ -259,6 +266,7 @@ func New(set *rules.RuleSet) (*Classifier, error) {
 			authorizationProtected: source.AuthorizationProtected,
 			intentStarts:           normalizedTermValues(source.Intent),
 		}
+		compiled.intentPatterns = compileCompactRuleIntentPatterns(compiled.intentStarts)
 		groups := []struct {
 			source rules.Terms
 			target *int
@@ -301,6 +309,7 @@ func New(set *rules.RuleSet) (*Classifier, error) {
 		c.rules = append(c.rules, compiled)
 		c.categoryRules[compiled.category] = append(c.categoryRules[compiled.category], len(c.rules)-1)
 	}
+	c.directiveIntentStarts = compileRuleIntentStarts(c.rules)
 	contextOrder := []rules.ContextKind{
 		rules.ContextDefensive,
 		rules.ContextRemediation,
@@ -373,6 +382,7 @@ func New(set *rules.RuleSet) (*Classifier, error) {
 			categorySources = append(categorySources, set.Rules[ruleIndex])
 		}
 		compiled.intentStarts = uniqueSorted(compiled.intentStarts)
+		compiled.intentPatterns = compileCompactRuleIntentPatterns(compiled.intentStarts)
 		evidenceTerms := buildSemanticEvidenceTerms(profile, categorySources, implementationTerms, outcomeTerms)
 		compiled.evidence = make([]compiledSemanticEvidence, len(evidenceTerms))
 		for index, evidenceTerm := range evidenceTerms {
@@ -385,6 +395,12 @@ func New(set *rules.RuleSet) (*Classifier, error) {
 			}
 		}
 		linkLongerSemanticEvidence(&compiled, evidenceTerms)
+		intentDimensionMask := uint16(1)<<semanticHarm | uint16(1)<<semanticAction
+		for _, evidence := range compiled.evidence {
+			if evidence.dimensionMask&intentDimensionMask != 0 {
+				compiled.intentSignals = append(compiled.intentSignals, evidence.signalID)
+			}
+		}
 		for dimension, kind := range semanticDimensionKinds {
 			compiled.result[dimension] = Evidence{ID: compiled.id() + ":" + kind, Kind: kind}
 		}
@@ -394,6 +410,66 @@ func New(set *rules.RuleSet) (*Classifier, error) {
 	c.compactMatcher = compactBuilder.build()
 	c.signalCount = nextSignal
 	return c, nil
+}
+
+func compileRuleIntentStarts(compiledRules []compiledRule) ruleIntentStartBuckets {
+	var buckets ruleIntentStartBuckets
+	otherValues := make(map[rune][]string)
+	for _, rule := range compiledRules {
+		for _, intent := range rule.intentStarts {
+			intent = strings.TrimSpace(intent)
+			if intent == "" {
+				continue
+			}
+			if isASCIIStringLocal(intent) {
+				first := intent[0]
+				if first >= 'A' && first <= 'Z' {
+					first += 'a' - 'A'
+				}
+				if first >= 'a' && first <= 'z' {
+					bucket := first - 'a'
+					buckets.ascii[bucket] = append(buckets.ascii[bucket], intent)
+					continue
+				}
+			}
+			intentRunes := []rune(intent)
+			if len(intentRunes) == 0 {
+				continue
+			}
+			first := intentRunes[0]
+			if first >= 'A' && first <= 'Z' {
+				first += 'a' - 'A'
+			}
+			otherValues[first] = append(otherValues[first], intent)
+		}
+	}
+	for bucket := range buckets.ascii {
+		buckets.ascii[bucket] = uniqueSorted(buckets.ascii[bucket])
+		sort.Slice(buckets.ascii[bucket], func(left, right int) bool {
+			if len(buckets.ascii[bucket][left]) != len(buckets.ascii[bucket][right]) {
+				return len(buckets.ascii[bucket][left]) > len(buckets.ascii[bucket][right])
+			}
+			return buckets.ascii[bucket][left] < buckets.ascii[bucket][right]
+		})
+	}
+	if len(otherValues) != 0 {
+		buckets.other = make(map[rune][][]rune, len(otherValues))
+	}
+	for first, values := range otherValues {
+		values = uniqueSorted(values)
+		sort.Slice(values, func(left, right int) bool {
+			if len(values[left]) != len(values[right]) {
+				return len(values[left]) > len(values[right])
+			}
+			return values[left] < values[right]
+		})
+		compiled := make([][]rune, len(values))
+		for index, value := range values {
+			compiled[index] = []rune(value)
+		}
+		buckets.other[first] = compiled
+	}
+	return buckets
 }
 
 // Analyze scores parts under the balanced policy defaults.
@@ -720,11 +796,11 @@ func (c *Classifier) classifyWithPolicyCaptured(parts []string, mode Mode, thres
 				}
 			}
 			if needsIntentAnalysis {
-				currentDirectives = c.analyzeDirectives(currentRunes)
+				currentDirectives = c.analyzeDirectives(currentRunes, policy)
 				directivesReady = true
 			}
 			for ruleIndex, rule := range c.rules {
-				if currentSignals[rule.intent] && !currentDirectives.ruleIntentIsOnlyNegated(rule) {
+				if currentSignals[rule.intent] && !currentDirectives.ruleIntentIsOnlyNegated(ruleIndex, rule) {
 					capture.unnegatedRuleIntents[ruleIndex] = true
 				}
 			}
@@ -733,7 +809,7 @@ func (c *Classifier) classifyWithPolicyCaptured(parts []string, mode Mode, thres
 				capture.semanticAgencies[profileIndex] = dimensions.harm || dimensions.action || dimensions.outcome
 				if (dimensions.harm || dimensions.action) && containsRuleIntent(currentText, profile.intentStarts) {
 					capture.matchedSemanticIntents[profileIndex] = true
-					if len(currentText) > maxCompactIntentProofBytes || containsUnnegatedRuleIntent(currentText, profile.intentStarts) {
+					if len(currentText) > maxCompactIntentProofBytes || containsUnnegatedRuleIntentPrepared(currentText, profile.intentStarts, profile.intentPatterns) {
 						capture.unnegatedSemanticIntents[profileIndex] = true
 					}
 				}
@@ -791,10 +867,10 @@ func (c *Classifier) classifyWithPolicyCaptured(parts []string, mode Mode, thres
 		currentCore := current[rule.intent] && current[rule.object]
 		if currentCore {
 			if !directivesReady {
-				currentDirectives = c.analyzeDirectives(currentRunes)
+				currentDirectives = c.analyzeDirectives(currentRunes, policy)
 				directivesReady = true
 			}
-			currentCore = !c.ruleCoreIsOnlyNegated(currentDirectives, rule)
+			currentCore = !c.ruleCoreIsOnlyNegated(currentDirectives, ruleIndex, rule)
 			if currentCore && isLegitimateCategoryWorkflow(rule.category, currentText) {
 				currentCore = false
 			}
@@ -893,10 +969,10 @@ func (c *Classifier) classifyWithPolicyCaptured(parts []string, mode Mode, thres
 		contradictoryDirective := false
 		if context != (ContextFlags{}) {
 			if !directivesReady {
-				currentDirectives = c.analyzeDirectives(currentRunes)
+				currentDirectives = c.analyzeDirectives(currentRunes, policy)
 				directivesReady = true
 			}
-			contradictoryDirective = c.hasRuleContradictoryDirective(currentDirectives, rule, policy.Allow)
+			contradictoryDirective = c.hasRuleContradictoryDirective(currentDirectives, ruleIndex, ruleIndex, rule, policy.Allow)
 		}
 		if contradictoryDirective {
 			// Scoped authorization and named lab boundaries are affirmative scope
@@ -938,7 +1014,7 @@ func (c *Classifier) classifyWithPolicyCaptured(parts []string, mode Mode, thres
 				continue
 			}
 			if !directivesReady {
-				currentDirectives = c.analyzeDirectives(currentRunes)
+				currentDirectives = c.analyzeDirectives(currentRunes, policy)
 				directivesReady = true
 			}
 			if c.categoryMatchedIntentsAreOnlyNegated(category, currentSignals, currentDirectives) {
@@ -1021,7 +1097,7 @@ func (c *Classifier) classifyWithPolicyCaptured(parts []string, mode Mode, thres
 		}
 		if semanticPotential {
 			if !directivesReady {
-				currentDirectives = c.analyzeDirectives(currentRunes)
+				currentDirectives = c.analyzeDirectives(currentRunes, policy)
 				directivesReady = true
 			}
 			windows := semanticDirectiveWindows(currentDirectives)
@@ -1034,8 +1110,11 @@ func (c *Classifier) classifyWithPolicyCaptured(parts []string, mode Mode, thres
 					text:    strings.TrimSpace(previousText + "\n" + currentText),
 				})
 			}
-			for _, profile := range c.semanticProfiles {
+			for profileIndex, profile := range c.semanticProfiles {
 				bestSemantic := semanticAssessment{}
+				if profileIndex < len(currentDirectives.overflowSemantic) {
+					bestSemantic = currentDirectives.overflowSemantic[profileIndex]
+				}
 				for _, window := range windows {
 					assessment := c.assessSemanticWindow(profile, window, policy)
 					if assessment.score > bestSemantic.score {
@@ -1063,9 +1142,7 @@ func (c *Classifier) classifyWithPolicyCaptured(parts []string, mode Mode, thres
 	// without turning a loose bag of security words, separate clauses, or
 	// evidence from different categories into a core.
 	for _, category := range classifierCategoryOrder {
-		if categoryHasCandidate[categoryPriority(category)] {
-			continue
-		}
+		categoryAlreadyHasCandidate := categoryHasCandidate[categoryPriority(category)]
 		ruleIndexes := c.categoryRules[category]
 		if len(ruleIndexes) < 2 {
 			continue
@@ -1080,67 +1157,40 @@ func (c *Classifier) classifyWithPolicyCaptured(parts []string, mode Mode, thres
 		if !hasQualifiedIntent || !hasQualifiedObject {
 			continue
 		}
-		if isLegitimateCategoryWorkflow(category, currentText) {
-			continue
-		}
+		legitimateCategoryWorkflow := isLegitimateCategoryWorkflow(category, currentText)
 		if !directivesReady {
-			currentDirectives = c.analyzeDirectives(currentRunes)
+			currentDirectives = c.analyzeDirectives(currentRunes, policy)
 			directivesReady = true
 		}
 
-		intentProvider := -1
-		objectProvider := -1
-		operationalProvider := -1
-		targetProvider := -1
-		evasionProvider := -1
-		scaleProvider := -1
-		for _, clause := range currentDirectives.clauses {
-			clauseSignals := clause.signals
-			for _, intentIndex := range ruleIndexes {
-				intentRule := c.rules[intentIndex]
-				if !clauseSignals[intentRule.intent] || clauseNegatesRuleIntent(clause.text, intentRule.intentStarts) || !ruleHasMatchedQualifier(intentRule, clauseSignals) {
-					continue
-				}
-				for _, objectIndex := range ruleIndexes {
-					if objectIndex == intentIndex {
-						continue
-					}
-					objectRule := c.rules[objectIndex]
-					if !clauseSignals[objectRule.object] || !ruleHasMatchedQualifier(objectRule, clauseSignals) {
-						continue
-					}
-					operational := firstPairSignalProvider(clauseSignals, intentIndex, objectIndex, intentRule.independentOperational, objectRule.independentOperational)
-					target := firstPairSignalProvider(clauseSignals, intentIndex, objectIndex, intentRule.independentTarget, objectRule.independentTarget)
-					evasion := firstPairSignalProvider(clauseSignals, intentIndex, objectIndex, intentRule.independentEvasion, objectRule.independentEvasion)
-					scale := firstPairSignalProvider(clauseSignals, intentIndex, objectIndex, intentRule.independentScale, objectRule.independentScale)
-					riskQualifiers := 0
-					for _, provider := range []int{target, evasion, scale} {
-						if provider >= 0 {
-							riskQualifiers++
-						}
-					}
-					if operational < 0 || riskQualifiers < 2 {
-						continue
-					}
-					intentProvider = intentIndex
-					objectProvider = objectIndex
-					operationalProvider = operational
-					targetProvider = target
-					evasionProvider = evasion
-					scaleProvider = scale
-					break
-				}
-				if intentProvider >= 0 {
-					break
-				}
-			}
-			if intentProvider >= 0 {
-				break
+		composition := categoryCompositionMatch{}
+		considerComposition := func(match categoryCompositionMatch) {
+			if preferCategoryCompositionMatch(match, composition) {
+				composition = match
 			}
 		}
-		if intentProvider < 0 {
+		for _, clause := range currentDirectives.clauses {
+			if match, ok := c.matchCategoryCompositionClause(ruleIndexes, clause, policy); ok {
+				considerComposition(match)
+				if composition.localScore == 100 && composition.contradictory {
+					break
+				}
+			}
+		}
+		if currentDirectives.overflow {
+			priority := categoryPriority(category)
+			considerComposition(currentDirectives.overflowCategoryComposition[priority])
+			considerComposition(currentDirectives.overflowCategoryContradictoryComposition[priority])
+		}
+		if !composition.found {
 			continue
 		}
+		intentProvider := composition.intent
+		objectProvider := composition.object
+		operationalProvider := composition.operational
+		targetProvider := composition.target
+		evasionProvider := composition.evasion
+		scaleProvider := composition.scale
 
 		intentRule := c.rules[intentProvider]
 		objectRule := c.rules[objectProvider]
@@ -1188,7 +1238,25 @@ func (c *Classifier) classifyWithPolicyCaptured(parts []string, mode Mode, thres
 			operational:            c.rules[operationalProvider].operational,
 			intentStarts:           intentRule.intentStarts,
 		}
-		if context != (ContextFlags{}) && c.hasRuleContradictoryDirective(currentDirectives, composedRule, policy.Allow) {
+		overflowPairContradiction := currentDirectives.overflow && directiveProviderPairMatched(
+			currentDirectives.overflowPairContradictions, len(c.rules), intentProvider, objectProvider,
+		)
+		locallyBlockingComposition := actionFor(mode, composition.localScore, thresholds) == ActionBlock
+		compositionContradiction := composition.contradictory || overflowPairContradiction ||
+			c.hasRuleContradictoryDirective(currentDirectives, -1, intentProvider, composedRule, policy.Allow)
+		// A low-scoring ordinary candidate must not suppress a different-provider
+		// composition whose active clause contradicts the matched safety context.
+		// The local score still contains those context deductions; the final score
+		// below intentionally removes them only after the contradiction proof. If
+		// we return here first, a harmless same-category head can launder an active
+		// composed tail merely by setting categoryHasCandidate.
+		if categoryAlreadyHasCandidate && !locallyBlockingComposition && !compositionContradiction {
+			continue
+		}
+		if legitimateCategoryWorkflow && !locallyBlockingComposition && !compositionContradiction {
+			continue
+		}
+		if context != (ContextFlags{}) && compositionContradiction {
 			effectiveContext = ContextFlags{
 				CTFOrLab:   effectiveContext.CTFOrLab,
 				Authorized: effectiveContext.Authorized,
@@ -1401,7 +1469,7 @@ func (c *Classifier) adjacentNegationNeedsReconstruction(previousRunes []rune, p
 	if len(previous) == 0 || len(current) == 0 {
 		return compiledRule{}, false
 	}
-	analysis := c.analyzeDirectives(previousRunes)
+	analysis := c.analyzeDirectives(previousRunes, DefaultPolicy())
 	for _, rule := range c.rules {
 		if !previous[rule.intent] || !current[rule.object] {
 			continue
@@ -1412,7 +1480,7 @@ func (c *Classifier) adjacentNegationNeedsReconstruction(previousRunes []rune, p
 		laterActiveContinuation := false
 		for index := len(analysis.clauses) - 1; index >= 0; index-- {
 			clause := analysis.clauses[index]
-			if !clause.signals[rule.intent] {
+			if !clause.signals.matched(rule.intent) {
 				laterActiveContinuation = laterActiveContinuation || continuesPriorRiskDirective(clause.text)
 				continue
 			}
@@ -1526,11 +1594,287 @@ func ruleHasMatchedQualifier(rule compiledRule, signals []bool) bool {
 		signalMatched(signals, rule.independentScale)
 }
 
+func ruleHasMatchedDirectiveQualifier(rule compiledRule, signals directiveSignalSet) bool {
+	return signals.matched(rule.independentOperational) ||
+		signals.matched(rule.independentTarget) ||
+		signals.matched(rule.independentEvasion) ||
+		signals.matched(rule.independentScale)
+}
+
+func ruleHasMatchedAnalyzedDirectiveQualifier(rule compiledRule, sparse directiveSignalSet, dense []bool) bool {
+	if dense != nil {
+		return ruleHasMatchedQualifier(rule, dense)
+	}
+	return ruleHasMatchedDirectiveQualifier(rule, sparse)
+}
+
+func (c *Classifier) matchCategoryCompositionClause(
+	ruleIndexes []int,
+	clause analyzedDirectiveClause,
+	policy Policy,
+) (categoryCompositionMatch, bool) {
+	return c.matchCategoryCompositionClauseWithDense(ruleIndexes, clause, nil, policy)
+}
+
+func (c *Classifier) matchCategoryCompositionClauseWithDense(
+	ruleIndexes []int,
+	clause analyzedDirectiveClause,
+	denseSignals []bool,
+	policy Policy,
+) (categoryCompositionMatch, bool) {
+	return c.bestCategoryCompositionClauseMatch(ruleIndexes, clause, denseSignals, policy)
+}
+
+func (c *Classifier) bestCategoryCompositionClauseMatch(
+	ruleIndexes []int,
+	clause analyzedDirectiveClause,
+	denseSignals []bool,
+	policy Policy,
+) (categoryCompositionMatch, bool) {
+	clauseSignals := clause.signals
+	hasQualifiedIntent := false
+	hasQualifiedObject := false
+	hasOperational := false
+	hasTarget := false
+	hasEvasion := false
+	hasScale := false
+	for _, ruleIndex := range ruleIndexes {
+		rule := c.rules[ruleIndex]
+		hasQualifiedIntent = hasQualifiedIntent || (analyzedDirectiveSignalMatched(clauseSignals, denseSignals, rule.intent) && ruleHasMatchedAnalyzedDirectiveQualifier(rule, clauseSignals, denseSignals))
+		hasQualifiedObject = hasQualifiedObject || (analyzedDirectiveSignalMatched(clauseSignals, denseSignals, rule.object) && ruleHasMatchedAnalyzedDirectiveQualifier(rule, clauseSignals, denseSignals))
+		hasOperational = hasOperational || analyzedDirectiveSignalMatched(clauseSignals, denseSignals, rule.independentOperational)
+		hasTarget = hasTarget || analyzedDirectiveSignalMatched(clauseSignals, denseSignals, rule.independentTarget)
+		hasEvasion = hasEvasion || analyzedDirectiveSignalMatched(clauseSignals, denseSignals, rule.independentEvasion)
+		hasScale = hasScale || analyzedDirectiveSignalMatched(clauseSignals, denseSignals, rule.independentScale)
+	}
+	riskAxes := 0
+	for _, matched := range [...]bool{hasTarget, hasEvasion, hasScale} {
+		if matched {
+			riskAxes++
+		}
+	}
+	if !hasQualifiedIntent || !hasQualifiedObject || !hasOperational || riskAxes < 2 {
+		return categoryCompositionMatch{}, false
+	}
+	best := categoryCompositionMatch{}
+	for _, intentIndex := range ruleIndexes {
+		if clause.negatedRuleIntents.matched(intentIndex) {
+			continue
+		}
+		for _, objectIndex := range ruleIndexes {
+			match, ok := c.categoryCompositionPairMatch(intentIndex, objectIndex, clauseSignals, denseSignals)
+			if !ok {
+				continue
+			}
+			match.localScore = c.categoryCompositionLocalScore(match, clause, denseSignals, policy)
+			if c.categoryCompositionMatchContradictsContext(match, clause, denseSignals, policy.Allow) {
+				match.contradictory = true
+			}
+			if preferCategoryCompositionMatch(match, best) {
+				best = match
+			}
+			if best.localScore == 100 && best.contradictory {
+				return best, true
+			}
+		}
+	}
+	return best, best.found
+}
+
+func preferCategoryCompositionMatch(candidate, current categoryCompositionMatch) bool {
+	if !candidate.found {
+		return false
+	}
+	if !current.found || candidate.localScore != current.localScore {
+		return !current.found || candidate.localScore > current.localScore
+	}
+	return candidate.localScore >= HardThreshold && candidate.contradictory && !current.contradictory
+}
+
+func (c *Classifier) categoryCompositionPairMatch(
+	intentIndex int,
+	objectIndex int,
+	sparseSignals directiveSignalSet,
+	denseSignals []bool,
+) (categoryCompositionMatch, bool) {
+	if intentIndex == objectIndex {
+		return categoryCompositionMatch{}, false
+	}
+	intentRule := c.rules[intentIndex]
+	objectRule := c.rules[objectIndex]
+	if !analyzedDirectiveSignalMatched(sparseSignals, denseSignals, intentRule.intent) ||
+		!ruleHasMatchedAnalyzedDirectiveQualifier(intentRule, sparseSignals, denseSignals) ||
+		!analyzedDirectiveSignalMatched(sparseSignals, denseSignals, objectRule.object) ||
+		!ruleHasMatchedAnalyzedDirectiveQualifier(objectRule, sparseSignals, denseSignals) {
+		return categoryCompositionMatch{}, false
+	}
+	operational := firstPairAnalyzedDirectiveSignalProvider(sparseSignals, denseSignals, intentIndex, objectIndex, intentRule.independentOperational, objectRule.independentOperational)
+	target := firstPairAnalyzedDirectiveSignalProvider(sparseSignals, denseSignals, intentIndex, objectIndex, intentRule.independentTarget, objectRule.independentTarget)
+	evasion := firstPairAnalyzedDirectiveSignalProvider(sparseSignals, denseSignals, intentIndex, objectIndex, intentRule.independentEvasion, objectRule.independentEvasion)
+	scale := firstPairAnalyzedDirectiveSignalProvider(sparseSignals, denseSignals, intentIndex, objectIndex, intentRule.independentScale, objectRule.independentScale)
+	riskQualifiers := 0
+	for _, provider := range [...]int{target, evasion, scale} {
+		if provider >= 0 {
+			riskQualifiers++
+		}
+	}
+	if operational < 0 || riskQualifiers < 2 {
+		return categoryCompositionMatch{}, false
+	}
+	return categoryCompositionMatch{
+		found: true, intent: intentIndex, object: objectIndex,
+		operational: operational, target: target, evasion: evasion, scale: scale,
+	}, true
+}
+
+func (c *Classifier) categoryCompositionMatchContradictsContext(
+	match categoryCompositionMatch,
+	clause analyzedDirectiveClause,
+	denseSignals []bool,
+	allow ContextPolicy,
+) bool {
+	if !match.found {
+		return false
+	}
+	intentRule := c.rules[match.intent]
+	objectRule := c.rules[match.object]
+	composedRule := compiledRule{
+		category:     intentRule.category,
+		intent:       intentRule.intent,
+		object:       objectRule.object,
+		intentStarts: intentRule.intentStarts,
+	}
+	for _, operationalProvider := range [...]int{match.intent, match.object} {
+		composedRule.operational = c.rules[operationalProvider].operational
+		if c.activeDirectiveClauseContradictsContextWithDense(clause, denseSignals, composedRule, allow) {
+			return true
+		}
+	}
+	return false
+}
+
+func (c *Classifier) categoryCompositionLocalScore(
+	match categoryCompositionMatch,
+	clause analyzedDirectiveClause,
+	denseSignals []bool,
+	policy Policy,
+) int {
+	if !match.found {
+		return 0
+	}
+	intentRule := c.rules[match.intent]
+	if isLegitimateCategoryWorkflow(intentRule.category, clause.text) {
+		return 0
+	}
+	score := 45
+	qualifiers := 0
+	for _, qualifier := range [...]struct {
+		provider int
+		points   int
+	}{
+		{match.operational, 20},
+		{match.target, 18},
+		{match.evasion, 16},
+		{match.scale, 16},
+	} {
+		if qualifier.provider < 0 {
+			continue
+		}
+		score += qualifier.points
+		qualifiers++
+	}
+	if qualifiers >= 2 {
+		score += 5
+	}
+	context := c.matchDirectiveContextsWithPolicy(clause.signals, policy.Allow)
+	if denseSignals != nil {
+		context = c.matchContextsWithPolicy(denseSignals, policy.Allow)
+	}
+	if hasExplicitHarmConflict(clause.text) {
+		context.Authorized = false
+		context.CTFOrLab = false
+	}
+	objectRule := c.rules[match.object]
+	authorizationProtected := (intentRule.authorizationProtected || objectRule.authorizationProtected) &&
+		policy.HardBlockEvenIfAuthorized.protects(intentRule.category)
+	score = applyContextDeductions(clampScore(score), context, authorizationProtected)
+	genuineSafetyContext := context.Defensive || context.Remediation || context.StaticAnalysis || context.IncidentResponse || context.HighLevel
+	if authorizationProtected && !genuineSafetyContext && score < HardThreshold {
+		score = HardThreshold
+	}
+	return clampScore(score)
+}
+
+func (c *Classifier) updateCategoryDirectivePairContradictions(
+	category rules.Category,
+	ruleIndexes []int,
+	clause analyzedDirectiveClause,
+	denseSignals []bool,
+	allow ContextPolicy,
+	destination []uint64,
+) {
+	if isLegitimateCategoryWorkflow(category, clause.text) {
+		return
+	}
+	for _, intentIndex := range ruleIndexes {
+		intentRule := c.rules[intentIndex]
+		if !analyzedDirectiveSignalMatched(clause.signals, denseSignals, intentRule.intent) || clause.negatedRuleIntents.matched(intentIndex) {
+			continue
+		}
+		for _, objectIndex := range ruleIndexes {
+			if objectIndex == intentIndex {
+				continue
+			}
+			objectRule := c.rules[objectIndex]
+			if !analyzedDirectiveSignalMatched(clause.signals, denseSignals, objectRule.object) {
+				continue
+			}
+			composedRule := compiledRule{
+				category:     category,
+				intent:       intentRule.intent,
+				object:       objectRule.object,
+				intentStarts: intentRule.intentStarts,
+			}
+			for _, operationalProvider := range [...]int{intentIndex, objectIndex} {
+				composedRule.operational = c.rules[operationalProvider].operational
+				if c.activeDirectiveClauseContradictsContextWithDense(clause, denseSignals, composedRule, allow) {
+					markDirectiveProviderPair(destination, len(c.rules), intentIndex, objectIndex)
+					break
+				}
+			}
+		}
+	}
+}
+
 func firstPairSignalProvider(signals []bool, first, second, firstSignal, secondSignal int) int {
 	if signalMatched(signals, firstSignal) {
 		return first
 	}
 	if signalMatched(signals, secondSignal) {
+		return second
+	}
+	return -1
+}
+
+func firstPairDirectiveSignalProvider(signals directiveSignalSet, first, second, firstSignal, secondSignal int) int {
+	if signals.matched(firstSignal) {
+		return first
+	}
+	if signals.matched(secondSignal) {
+		return second
+	}
+	return -1
+}
+
+func firstPairAnalyzedDirectiveSignalProvider(
+	sparse directiveSignalSet,
+	dense []bool,
+	first, second, firstSignal, secondSignal int,
+) int {
+	if analyzedDirectiveSignalMatched(sparse, dense, firstSignal) {
+		return first
+	}
+	if analyzedDirectiveSignalMatched(sparse, dense, secondSignal) {
 		return second
 	}
 	return -1
@@ -1917,7 +2261,7 @@ func (c *Classifier) categoryMatchedIntentsAreOnlyNegated(category rules.Categor
 			continue
 		}
 		found = true
-		if !analysis.ruleIntentIsOnlyNegated(rule) {
+		if !analysis.ruleIntentIsOnlyNegated(ruleIndex, rule) {
 			return false
 		}
 	}
@@ -2092,30 +2436,270 @@ func categoryPriority(category rules.Category) int {
 
 const maxAnalyzedDirectiveClauses = 64
 
+const inlineDirectiveRuleWords = 4
+
+type directiveRuleIndexSet struct {
+	inline   [inlineDirectiveRuleWords]uint64
+	overflow []uint32
+}
+
+func (set *directiveRuleIndexSet) add(ruleIndex int) {
+	if ruleIndex < 0 {
+		return
+	}
+	word := ruleIndex / 64
+	if word < len(set.inline) {
+		set.inline[word] |= uint64(1) << uint(ruleIndex%64)
+		return
+	}
+	set.overflow = append(set.overflow, uint32(ruleIndex))
+}
+
+func (set directiveRuleIndexSet) matched(ruleIndex int) bool {
+	if ruleIndex < 0 {
+		return false
+	}
+	word := ruleIndex / 64
+	if word < len(set.inline) {
+		return set.inline[word]&(uint64(1)<<uint(ruleIndex%64)) != 0
+	}
+	for _, candidate := range set.overflow {
+		if int(candidate) == ruleIndex {
+			return true
+		}
+		if int(candidate) > ruleIndex {
+			break
+		}
+	}
+	return false
+}
+
 type analyzedDirectiveClause struct {
-	runes          []rune
-	text           string
-	signals        []bool
-	boundaryBefore directiveBoundaryKind
+	runes                      []rune
+	text                       string
+	signals                    directiveSignalSet
+	negatedRuleIntents         directiveRuleIndexSet
+	semanticIntentsPresent     uint16
+	semanticIntentsOnlyNegated uint16
+	boundaryBefore             directiveBoundaryKind
+}
+
+type directiveClauseProofCacheEntry struct {
+	text                       string
+	negatedRuleIntents         directiveRuleIndexSet
+	semanticIntentsPresent     uint16
+	semanticIntentsOnlyNegated uint16
+}
+
+func directiveRunesEqualString(runes []rune, text string) bool {
+	index := 0
+	for _, r := range text {
+		if index >= len(runes) || runes[index] != r {
+			return false
+		}
+		index++
+	}
+	return index == len(runes)
+}
+
+type directiveSignalSet []uint32
+
+func (signals directiveSignalSet) matched(signalID int) bool {
+	if signalID < 0 || uint64(signalID) > uint64(^uint32(0)) {
+		return false
+	}
+	target := uint32(signalID)
+	left, right := 0, len(signals)
+	for left < right {
+		middle := left + (right-left)/2
+		if signals[middle] < target {
+			left = middle + 1
+		} else {
+			right = middle
+		}
+	}
+	return left < len(signals) && signals[left] == target
+}
+
+func analyzedDirectiveSignalMatched(sparse directiveSignalSet, dense []bool, signalID int) bool {
+	if dense != nil {
+		return signalMatched(dense, signalID)
+	}
+	return sparse.matched(signalID)
+}
+
+func encodeDirectiveSignals(destination directiveSignalSet, signals []bool) directiveSignalSet {
+	destination = destination[:0]
+	for signalID, matched := range signals {
+		if matched {
+			destination = append(destination, uint32(signalID))
+		}
+	}
+	return destination
+}
+
+func directiveRunesEqual(left, right []rune) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
+}
+
+type analyzedDirectiveRuleState struct {
+	foundIntent     bool
+	unnegatedIntent bool
+	foundCore       bool
+	unnegatedCore   bool
+	contradictory   bool
+}
+
+type categoryCompositionMatch struct {
+	found                               bool
+	contradictory                       bool
+	localScore                          int
+	intent, object                      int
+	operational, target, evasion, scale int
 }
 
 type analyzedDirectives struct {
-	clauses  []analyzedDirectiveClause
-	overflow bool
+	clauses                                  []analyzedDirectiveClause
+	overflowTail                             []analyzedDirectiveClause
+	overflowRuleStates                       []analyzedDirectiveRuleState
+	overflowPairContradictions               []uint64
+	overflowCategoryComposition              [8]categoryCompositionMatch
+	overflowCategoryContradictoryComposition [8]categoryCompositionMatch
+	overflowSemantic                         []semanticAssessment
+	overflow                                 bool
+}
+
+func directiveProviderPairIndex(ruleCount, intentProvider, objectProvider int) (int, bool) {
+	if ruleCount <= 0 || intentProvider < 0 || intentProvider >= ruleCount || objectProvider < 0 || objectProvider >= ruleCount {
+		return 0, false
+	}
+	return intentProvider*ruleCount + objectProvider, true
+}
+
+func markDirectiveProviderPair(destination []uint64, ruleCount, intentProvider, objectProvider int) {
+	pairIndex, ok := directiveProviderPairIndex(ruleCount, intentProvider, objectProvider)
+	if !ok || pairIndex/64 >= len(destination) {
+		return
+	}
+	destination[pairIndex/64] |= uint64(1) << uint(pairIndex%64)
+}
+
+func directiveProviderPairMatched(source []uint64, ruleCount, intentProvider, objectProvider int) bool {
+	pairIndex, ok := directiveProviderPairIndex(ruleCount, intentProvider, objectProvider)
+	if !ok || pairIndex/64 >= len(source) {
+		return false
+	}
+	return source[pairIndex/64]&(uint64(1)<<uint(pairIndex%64)) != 0
 }
 
 // analyzeDirectives scans the current part once and shares the result across
 // all candidate rules. The previous implementation reran both literal
 // automata for every candidate, making adversarial candidate-rich input scale
 // with rules times input size.
-func (c *Classifier) analyzeDirectives(text []rune) analyzedDirectives {
+func (c *Classifier) analyzeDirectives(text []rune, policy Policy) analyzedDirectives {
 	analysis := analyzedDirectives{clauses: make([]analyzedDirectiveClause, 0, 4)}
-	allSignals := make([]bool, 0, minIntLocal(4, maxAnalyzedDirectiveClauses)*c.signalCount)
 	clauseSignals := make([]bool, c.signalCount)
+	clauseSignalIDs := make(directiveSignalSet, 0, 16)
 	compactScratch := make([]bool, c.compactMatcher.maxPatternLength)
+	var negationScratch ruleIntentNegationScratch
+	var proofCache [4]directiveClauseProofCacheEntry
+	proofCacheNext := 0
 	retainNextContext := false
 	strongBoundarySinceRetained := false
-	walkDirectiveClausesWithBoundary(text, func(clause []rune, boundaryBefore directiveBoundaryKind) bool {
+	var overflowSignalBuffers [maxSemanticDirectiveSpan]directiveSignalSet
+	overflowSignalBufferIndex := 0
+
+	prepareOverflow := func() {
+		if analysis.overflow {
+			return
+		}
+		analysis.overflow = true
+		analysis.overflowRuleStates = make([]analyzedDirectiveRuleState, len(c.rules))
+		pairCount := len(c.rules) * len(c.rules)
+		analysis.overflowPairContradictions = make([]uint64, (pairCount+63)/64)
+		previousText := ""
+		for _, clause := range analysis.clauses {
+			if clause.text == previousText {
+				continue
+			}
+			c.updateAnalyzedDirectiveRuleStates(analysis.overflowRuleStates, clause, nil, policy.Allow)
+			previousText = clause.text
+		}
+		analysis.overflowSemantic = make([]semanticAssessment, len(c.semanticProfiles))
+		start := len(analysis.clauses) - (maxSemanticDirectiveSpan - 1)
+		if start < 0 {
+			start = 0
+		}
+		analysis.overflowTail = make([]analyzedDirectiveClause, 0, maxSemanticDirectiveSpan)
+		analysis.overflowTail = append(analysis.overflowTail, analysis.clauses[start:]...)
+	}
+
+	recordOverflowClause := func(clause analyzedDirectiveClause, denseSignals []bool) {
+		prepareOverflow()
+		duplicate := false
+		if len(analysis.overflowTail) != 0 {
+			previous := analysis.overflowTail[len(analysis.overflowTail)-1]
+			duplicate = previous.boundaryBefore == clause.boundaryBefore && previous.text == clause.text
+		}
+		if !duplicate {
+			c.updateAnalyzedDirectiveRuleStates(analysis.overflowRuleStates, clause, denseSignals, policy.Allow)
+			for _, category := range classifierCategoryOrder {
+				priority := categoryPriority(category)
+				summary := &analysis.overflowCategoryComposition[priority]
+				contradictorySummary := &analysis.overflowCategoryContradictoryComposition[priority]
+				c.updateCategoryDirectivePairContradictions(
+					category, c.categoryRules[category], clause, denseSignals, policy.Allow, analysis.overflowPairContradictions,
+				)
+				if match, ok := c.matchCategoryCompositionClauseWithDense(c.categoryRules[category], clause, denseSignals, policy); ok {
+					if match.contradictory {
+						markDirectiveProviderPair(
+							analysis.overflowPairContradictions, len(c.rules), match.intent, match.object,
+						)
+					}
+					if preferCategoryCompositionMatch(match, *summary) {
+						*summary = match
+					}
+					if match.contradictory && preferCategoryCompositionMatch(match, *contradictorySummary) {
+						*contradictorySummary = match
+					}
+				}
+			}
+		}
+
+		// Keep only the exact semantic suffix. The reusable signal ring bounds
+		// overflow memory independently of clause count while preserving every
+		// window (maximum span four) that ends in the newly scanned clause.
+		if len(analysis.overflowTail) == maxSemanticDirectiveSpan {
+			copy(analysis.overflowTail, analysis.overflowTail[1:])
+			analysis.overflowTail = analysis.overflowTail[:maxSemanticDirectiveSpan-1]
+		}
+		buffer := overflowSignalBuffers[overflowSignalBufferIndex]
+		if cap(buffer) < len(clause.signals) {
+			buffer = make(directiveSignalSet, len(clause.signals))
+		} else {
+			buffer = buffer[:len(clause.signals)]
+		}
+		overflowSignalBuffers[overflowSignalBufferIndex] = buffer
+		overflowSignalBufferIndex = (overflowSignalBufferIndex + 1) % len(overflowSignalBuffers)
+		copy(buffer, clause.signals)
+		clause.signals = buffer
+		analysis.overflowTail = append(analysis.overflowTail, clause)
+		if duplicate {
+			return
+		}
+
+		c.updateOverflowSemanticAssessments(analysis.overflowSemantic, analysis.overflowTail, denseSignals, policy)
+	}
+
+	c.walkDirectiveClausesWithBoundary(text, func(clause []rune, boundaryBefore directiveBoundaryKind) bool {
 		clear(clauseSignals)
 		c.standardMatcher.match(clause, clauseSignals)
 		c.compactMatcher.matchCompactWithScratch(clause, clauseSignals, compactScratch)
@@ -2134,45 +2718,151 @@ func (c *Classifier) analyzeDirectives(text []rune) analyzedDirectives {
 			strongBoundarySinceRetained = strongBoundarySinceRetained || boundaryBefore == directiveBoundaryStrong
 			return true
 		}
-		if len(analysis.clauses) >= maxAnalyzedDirectiveClauses {
-			analysis.overflow = true
-			return false
-		}
 		if strongBoundarySinceRetained && len(analysis.clauses) != 0 {
 			// Never compose semantics across discarded inert clauses merely because
 			// the compact representation made the retained clauses adjacent.
 			boundaryBefore = directiveBoundaryStrong
 		}
-		allSignals = append(allSignals, clauseSignals...)
-		analysis.clauses = append(analysis.clauses, analyzedDirectiveClause{
-			runes: clause, text: string(clause), boundaryBefore: boundaryBefore,
-		})
+		analyzedClause := analyzedDirectiveClause{runes: clause, boundaryBefore: boundaryBefore}
+		var previousClause *analyzedDirectiveClause
+		if analysis.overflow && len(analysis.overflowTail) != 0 {
+			previousClause = &analysis.overflowTail[len(analysis.overflowTail)-1]
+		} else if len(analysis.clauses) != 0 {
+			previousClause = &analysis.clauses[len(analysis.clauses)-1]
+		}
+		if previousClause != nil && directiveRunesEqual(previousClause.runes, clause) {
+			analyzedClause.text = previousClause.text
+			analyzedClause.signals = previousClause.signals
+			analyzedClause.negatedRuleIntents = previousClause.negatedRuleIntents
+			analyzedClause.semanticIntentsPresent = previousClause.semanticIntentsPresent
+			analyzedClause.semanticIntentsOnlyNegated = previousClause.semanticIntentsOnlyNegated
+		} else {
+			clauseSignalIDs = encodeDirectiveSignals(clauseSignalIDs, clauseSignals)
+			analyzedClause.signals = clauseSignalIDs
+			cacheHit := false
+			for _, cached := range proofCache {
+				if cached.text == "" || !directiveRunesEqualString(clause, cached.text) {
+					continue
+				}
+				analyzedClause.text = cached.text
+				analyzedClause.negatedRuleIntents = cached.negatedRuleIntents
+				analyzedClause.semanticIntentsPresent = cached.semanticIntentsPresent
+				analyzedClause.semanticIntentsOnlyNegated = cached.semanticIntentsOnlyNegated
+				cacheHit = true
+				break
+			}
+			if !cacheHit {
+				analyzedClause.text = string(clause)
+				c.populateDirectiveClauseNegations(&analyzedClause, clauseSignals, &negationScratch)
+				proofCache[proofCacheNext] = directiveClauseProofCacheEntry{
+					text:                       analyzedClause.text,
+					negatedRuleIntents:         analyzedClause.negatedRuleIntents,
+					semanticIntentsPresent:     analyzedClause.semanticIntentsPresent,
+					semanticIntentsOnlyNegated: analyzedClause.semanticIntentsOnlyNegated,
+				}
+				proofCacheNext = (proofCacheNext + 1) % len(proofCache)
+			}
+		}
+		if len(analysis.clauses) < maxAnalyzedDirectiveClauses {
+			if previousClause == nil || analyzedClause.text != previousClause.text {
+				analyzedClause.signals = append(directiveSignalSet(nil), analyzedClause.signals...)
+			}
+			analysis.clauses = append(analysis.clauses, analyzedClause)
+		} else {
+			analyzedClause.signals = clauseSignalIDs
+			recordOverflowClause(analyzedClause, clauseSignals)
+		}
 		retainNextContext = hasSignal
 		strongBoundarySinceRetained = false
 		return true
 	})
-	if len(analysis.clauses) == 0 {
-		return analysis
-	}
-	for index := range analysis.clauses {
-		clause := &analysis.clauses[index]
-		clause.signals = allSignals[index*c.signalCount : (index+1)*c.signalCount]
-	}
 	return analysis
 }
 
-func (c *Classifier) ruleCoreIsOnlyNegated(analysis analyzedDirectives, rule compiledRule) bool {
-	// Extreme clause counts are ambiguous and must not turn a matched abuse core
-	// into an allow decision merely because analysis was bounded.
-	if analysis.overflow {
-		return false
+func (c *Classifier) populateDirectiveClauseNegations(
+	clause *analyzedDirectiveClause,
+	denseSignals []bool,
+	scratch *ruleIntentNegationScratch,
+) {
+	scratch.reset(clause.text)
+	for ruleIndex, rule := range c.rules {
+		if !analyzedDirectiveSignalMatched(clause.signals, denseSignals, rule.intent) {
+			continue
+		}
+		_, negated := clauseRuleIntentNegationPrepared(scratch, rule.intentStarts, rule.intentPatterns)
+		if negated {
+			clause.negatedRuleIntents.add(ruleIndex)
+		}
+	}
+	for profileIndex, profile := range c.semanticProfiles {
+		if profileIndex >= 16 {
+			break
+		}
+		intentMatched := false
+		for _, signalID := range profile.intentSignals {
+			if analyzedDirectiveSignalMatched(clause.signals, denseSignals, signalID) {
+				intentMatched = true
+				break
+			}
+		}
+		if !intentMatched {
+			continue
+		}
+		profileBit := uint16(1) << uint(profileIndex)
+		clause.semanticIntentsPresent |= profileBit
+		found, negated := clauseRuleIntentNegationPrepared(scratch, profile.intentStarts, profile.intentPatterns)
+		if found && negated {
+			clause.semanticIntentsOnlyNegated |= profileBit
+		}
+	}
+}
+
+func (c *Classifier) updateAnalyzedDirectiveRuleStates(
+	states []analyzedDirectiveRuleState,
+	clause analyzedDirectiveClause,
+	denseSignals []bool,
+	allow ContextPolicy,
+) {
+	for ruleIndex, rule := range c.rules {
+		state := &states[ruleIndex]
+		hasIntent := analyzedDirectiveSignalMatched(clause.signals, denseSignals, rule.intent)
+		if !hasIntent {
+			continue
+		}
+		state.foundIntent = true
+		intentNegated := clause.negatedRuleIntents.matched(ruleIndex)
+		if !intentNegated {
+			state.unnegatedIntent = true
+		}
+		hasObject := analyzedDirectiveSignalMatched(clause.signals, denseSignals, rule.object)
+		if !hasObject {
+			if state.foundCore && !intentNegated && continuesPriorRiskDirective(clause.text) {
+				state.unnegatedCore = true
+			}
+			continue
+		}
+		if !intentNegated && !state.contradictory && c.activeDirectiveClauseContradictsContextWithDense(clause, denseSignals, rule, allow) {
+			state.contradictory = true
+		}
+		state.foundCore = true
+		if len(clause.text) > maxCompactIntentProofBytes ||
+			(!intentNegated && !c.coordinatedCoreNegated(clause, rule)) {
+			state.unnegatedCore = true
+		}
+	}
+}
+
+func (c *Classifier) ruleCoreIsOnlyNegated(analysis analyzedDirectives, ruleIndex int, rule compiledRule) bool {
+	if analysis.overflow && ruleIndex >= 0 && ruleIndex < len(analysis.overflowRuleStates) {
+		state := analysis.overflowRuleStates[ruleIndex]
+		return state.foundCore && !state.unnegatedCore
 	}
 	foundCore := false
 	foundUnnegatedCore := false
 	for _, clause := range analysis.clauses {
 		signals := clause.signals
-		if !signals[rule.intent] || !signals[rule.object] {
-			if foundCore && signals[rule.intent] && !clauseNegatesRuleIntent(clause.text, rule.intentStarts) &&
+		if !signals.matched(rule.intent) || !signals.matched(rule.object) {
+			if foundCore && signals.matched(rule.intent) && !clause.negatedRuleIntents.matched(ruleIndex) &&
 				continuesPriorRiskDirective(clause.text) {
 				foundUnnegatedCore = true
 				break
@@ -2186,7 +2876,7 @@ func (c *Classifier) ruleCoreIsOnlyNegated(analysis analyzedDirectives, rule com
 			return false
 		}
 		foundCore = true
-		if !clauseNegatesRuleIntent(clause.text, rule.intentStarts) && !c.coordinatedCoreNegated(clause, rule) {
+		if !clause.negatedRuleIntents.matched(ruleIndex) && !c.coordinatedCoreNegated(clause, rule) {
 			foundUnnegatedCore = true
 			break
 		}
@@ -2335,17 +3025,18 @@ func hasAffirmativeSafetyPurpose(text string) bool {
 	)
 }
 
-func (analysis analyzedDirectives) ruleIntentIsOnlyNegated(rule compiledRule) bool {
-	if analysis.overflow {
-		return false
+func (analysis analyzedDirectives) ruleIntentIsOnlyNegated(ruleIndex int, rule compiledRule) bool {
+	if analysis.overflow && ruleIndex >= 0 && ruleIndex < len(analysis.overflowRuleStates) {
+		state := analysis.overflowRuleStates[ruleIndex]
+		return state.foundIntent && !state.unnegatedIntent
 	}
 	foundIntent := false
 	for _, clause := range analysis.clauses {
-		if !clause.signals[rule.intent] {
+		if !clause.signals.matched(rule.intent) {
 			continue
 		}
 		foundIntent = true
-		if !clauseNegatesRuleIntent(clause.text, rule.intentStarts) {
+		if !clause.negatedRuleIntents.matched(ruleIndex) {
 			return false
 		}
 	}
@@ -2363,9 +3054,56 @@ type ruleIntentLiteralSpan struct {
 }
 
 func clauseRuleIntentNegation(clause string, intents []string) (found, negates bool) {
-	clause = normalizeNegationSyntax(clause)
+	var scratch ruleIntentNegationScratch
+	scratch.reset(clause)
+	return clauseRuleIntentNegationPrepared(&scratch, intents, compileCompactRuleIntentPatterns(intents))
+}
+
+type ruleIntentNegationScratch struct {
+	clause               string
+	literalSpans         [maxRuleIntentOccurrences]ruleIntentLiteralSpan
+	occurrenceProofs     [maxRuleIntentOccurrences]ruleIntentOccurrenceProof
+	occurrenceProofCount int
+	compact              compactRuleIntentClauseScratch
+}
+
+type ruleIntentOccurrenceProof struct {
+	index   int
+	found   bool
+	negated bool
+}
+
+func (scratch *ruleIntentNegationScratch) reset(clause string) {
+	scratch.clause = normalizeNegationSyntax(clause)
+	scratch.occurrenceProofCount = 0
+	scratch.compact.reset()
+}
+
+func (scratch *ruleIntentNegationScratch) occurrenceNegation(intentIndex int) (found, negated bool) {
+	for proofIndex := 0; proofIndex < scratch.occurrenceProofCount; proofIndex++ {
+		proof := scratch.occurrenceProofs[proofIndex]
+		if proof.index == intentIndex {
+			return proof.found, proof.negated
+		}
+	}
+	found, negated = ruleIntentOccurrenceNegation(scratch.clause, intentIndex)
+	if scratch.occurrenceProofCount < len(scratch.occurrenceProofs) {
+		scratch.occurrenceProofs[scratch.occurrenceProofCount] = ruleIntentOccurrenceProof{
+			index: intentIndex, found: found, negated: negated,
+		}
+		scratch.occurrenceProofCount++
+	}
+	return found, negated
+}
+
+func clauseRuleIntentNegationPrepared(
+	scratch *ruleIntentNegationScratch,
+	intents []string,
+	patterns compactRuleIntentPatterns,
+) (found, negates bool) {
+	clause := scratch.clause
 	occurrences := 0
-	literalSpans := make([]ruleIntentLiteralSpan, 0, min(len(intents), maxRuleIntentOccurrences))
+	literalSpanCount := 0
 	for _, intent := range intents {
 		if intent == "" {
 			continue
@@ -2387,8 +3125,9 @@ func clauseRuleIntentNegation(clause string, intents []string) (found, negates b
 					// matched intent when that proof becomes ambiguous.
 					return true, false
 				}
-				literalSpans = append(literalSpans, ruleIntentLiteralSpan{start: index, end: right})
-				occurrenceFound, occurrenceNegates := ruleIntentOccurrenceNegation(clause, index)
+				scratch.literalSpans[literalSpanCount] = ruleIntentLiteralSpan{start: index, end: right}
+				literalSpanCount++
+				occurrenceFound, occurrenceNegates := scratch.occurrenceNegation(index)
 				if occurrenceFound && !occurrenceNegates &&
 					coordinatedRuleIntentNegation(clause, index, intent, intents) {
 					occurrenceNegates = true
@@ -2401,7 +3140,7 @@ func clauseRuleIntentNegation(clause string, intents []string) (found, negates b
 			offset = index + 1
 		}
 	}
-	if found && compactRuleIntentOutsideLiteralSpans(clause, intents, literalSpans) {
+	if found && compactRuleIntentOutsideLiteralSpansPrepared(clause, patterns, scratch.literalSpans[:literalSpanCount], &scratch.compact) {
 		// Literal negation cannot authorize a second compact-only occurrence in
 		// the same clause (for example "do not deploy ... and d.e.p.l.o.y").
 		// Compact matches that are wholly contained by a recognized family
@@ -2418,15 +3157,16 @@ type compactRuleIntentPattern struct {
 	ascii bool
 }
 
-func compactRuleIntentOutsideLiteralSpans(clause string, intents []string, literalSpans []ruleIntentLiteralSpan) bool {
-	if len(clause) > maxCompactIntentProofBytes {
-		// Mapping compact occurrences back to literal byte spans is optional
-		// defensive credit. Bound that proof before allocating clause-sized
-		// position tables or rescanning the same candidate-rich clause for every
-		// rule. Oversized clauses retain the matched intent (fail active).
-		return true
+type compactRuleIntentPatterns struct {
+	values  []compactRuleIntentPattern
+	byFirst map[rune][]int
+}
+
+func compileCompactRuleIntentPatterns(intents []string) compactRuleIntentPatterns {
+	patterns := compactRuleIntentPatterns{
+		values:  make([]compactRuleIntentPattern, 0, len(intents)),
+		byFirst: make(map[rune][]int),
 	}
-	patterns := make([]compactRuleIntentPattern, 0, len(intents))
 	seen := make(map[string]struct{}, len(intents))
 	for _, intent := range intents {
 		compact := compactString([]rune(intent))
@@ -2438,41 +3178,115 @@ func compactRuleIntentOutsideLiteralSpans(clause string, intents []string, liter
 			continue
 		}
 		seen[compact] = struct{}{}
-		patterns = append(patterns, compactRuleIntentPattern{
+		patternIndex := len(patterns.values)
+		patterns.values = append(patterns.values, compactRuleIntentPattern{
 			runes: compactRunes,
 			ascii: isASCIIStringLocal(compact),
 		})
+		patterns.byFirst[compactRunes[0]] = append(patterns.byFirst[compactRunes[0]], patternIndex)
 	}
-	if len(patterns) == 0 {
+	return patterns
+}
+
+type compactRuleIntentSegment struct {
+	start int
+	end   int
+}
+
+type compactRuleIntentClauseScratch struct {
+	prepared       bool
+	runes          []rune
+	byteStarts     []int
+	compactRunes   []rune
+	originalStarts []int
+	originalEnds   []int
+	wordStarts     []bool
+	wordEnds       []bool
+	segments       []compactRuleIntentSegment
+}
+
+func (scratch *compactRuleIntentClauseScratch) reset() {
+	scratch.prepared = false
+}
+
+func (scratch *compactRuleIntentClauseScratch) prepare(clause string) {
+	if scratch.prepared {
+		return
+	}
+	scratch.runes = scratch.runes[:0]
+	scratch.byteStarts = scratch.byteStarts[:0]
+	for byteIndex, r := range clause {
+		scratch.runes = append(scratch.runes, r)
+		scratch.byteStarts = append(scratch.byteStarts, byteIndex)
+	}
+	scratch.compactRunes = scratch.compactRunes[:0]
+	scratch.originalStarts = scratch.originalStarts[:0]
+	scratch.originalEnds = scratch.originalEnds[:0]
+	scratch.wordStarts = scratch.wordStarts[:0]
+	scratch.wordEnds = scratch.wordEnds[:0]
+	scratch.segments = scratch.segments[:0]
+	segmentStart := 0
+	flushSegment := func() {
+		if segmentStart < len(scratch.compactRunes) {
+			scratch.segments = append(scratch.segments, compactRuleIntentSegment{start: segmentStart, end: len(scratch.compactRunes)})
+		}
+		segmentStart = len(scratch.compactRunes)
+	}
+	for index, r := range scratch.runes {
+		if isHardCompactSeparator(scratch.runes, index) {
+			flushSegment()
+			continue
+		}
+		if !isCompactRune(r) {
+			continue
+		}
+		byteEnd := len(clause)
+		if index+1 < len(scratch.byteStarts) {
+			byteEnd = scratch.byteStarts[index+1]
+		}
+		scratch.compactRunes = append(scratch.compactRunes, r)
+		scratch.originalStarts = append(scratch.originalStarts, scratch.byteStarts[index])
+		scratch.originalEnds = append(scratch.originalEnds, byteEnd)
+		scratch.wordStarts = append(scratch.wordStarts, index == 0 || !isASCIILetterOrDigit(scratch.runes[index-1]))
+		scratch.wordEnds = append(scratch.wordEnds, index+1 == len(scratch.runes) || !isASCIILetterOrDigit(scratch.runes[index+1]))
+	}
+	flushSegment()
+	scratch.prepared = true
+}
+
+func compactRuleIntentOutsideLiteralSpans(clause string, intents []string, literalSpans []ruleIntentLiteralSpan) bool {
+	var scratch compactRuleIntentClauseScratch
+	return compactRuleIntentOutsideLiteralSpansPrepared(clause, compileCompactRuleIntentPatterns(intents), literalSpans, &scratch)
+}
+
+func compactRuleIntentOutsideLiteralSpansPrepared(
+	clause string,
+	patterns compactRuleIntentPatterns,
+	literalSpans []ruleIntentLiteralSpan,
+	scratch *compactRuleIntentClauseScratch,
+) bool {
+	if len(clause) > maxCompactIntentProofBytes {
+		// Mapping compact occurrences back to literal byte spans is optional
+		// defensive credit. Bound that proof before allocating clause-sized
+		// position tables or rescanning the same candidate-rich clause for every
+		// rule. Oversized clauses retain the matched intent (fail active).
+		return true
+	}
+	if len(patterns.values) == 0 {
 		return false
 	}
-
-	runes := []rune(clause)
-	byteStarts := make([]int, 0, len(runes))
-	for byteIndex := range clause {
-		byteStarts = append(byteStarts, byteIndex)
-	}
-	byteEnds := make([]int, len(byteStarts))
-	for index := range byteStarts {
-		if index+1 < len(byteStarts) {
-			byteEnds[index] = byteStarts[index+1]
-		} else {
-			byteEnds[index] = len(clause)
-		}
-	}
-
-	compactRunes := make([]rune, 0, len(runes))
-	originalStarts := make([]int, 0, len(runes))
-	originalEnds := make([]int, 0, len(runes))
-	wordStarts := make([]bool, 0, len(runes))
-	wordEnds := make([]bool, 0, len(runes))
+	scratch.prepare(clause)
 	compactOccurrences := 0
-	scanSegment := func() bool {
-		for _, pattern := range patterns {
-			for start := 0; start+len(pattern.runes) <= len(compactRunes); start++ {
+	for _, segment := range scratch.segments {
+		for start := segment.start; start < segment.end; start++ {
+			for _, patternIndex := range patterns.byFirst[scratch.compactRunes[start]] {
+				pattern := patterns.values[patternIndex]
+				if start+len(pattern.runes) > segment.end {
+					continue
+				}
 				matched := true
 				for offset := range pattern.runes {
-					if compactRunes[start+offset] != pattern.runes[offset] {
+					if scratch.compactRunes[start+offset] != pattern.runes[offset] {
 						matched = false
 						break
 					}
@@ -2481,15 +3295,15 @@ func compactRuleIntentOutsideLiteralSpans(clause string, intents []string, liter
 					continue
 				}
 				end := start + len(pattern.runes) - 1
-				if pattern.ascii && (!wordStarts[start] || !wordEnds[end]) {
+				if pattern.ascii && (!scratch.wordStarts[start] || !scratch.wordEnds[end]) {
 					continue
 				}
 				compactOccurrences++
 				if compactOccurrences > maxRuleIntentOccurrences {
 					return true
 				}
-				originalStart := originalStarts[start]
-				originalEnd := originalEnds[end]
+				originalStart := scratch.originalStarts[start]
+				originalEnd := scratch.originalEnds[end]
 				covered := false
 				for _, span := range literalSpans {
 					if span.start <= originalStart && originalEnd <= span.end {
@@ -2502,31 +3316,8 @@ func compactRuleIntentOutsideLiteralSpans(clause string, intents []string, liter
 				}
 			}
 		}
-		return false
 	}
-
-	for index, r := range runes {
-		if isHardCompactSeparator(runes, index) {
-			if scanSegment() {
-				return true
-			}
-			compactRunes = compactRunes[:0]
-			originalStarts = originalStarts[:0]
-			originalEnds = originalEnds[:0]
-			wordStarts = wordStarts[:0]
-			wordEnds = wordEnds[:0]
-			continue
-		}
-		if !isCompactRune(r) {
-			continue
-		}
-		compactRunes = append(compactRunes, r)
-		originalStarts = append(originalStarts, byteStarts[index])
-		originalEnds = append(originalEnds, byteEnds[index])
-		wordStarts = append(wordStarts, index == 0 || !isASCIILetterOrDigit(runes[index-1]))
-		wordEnds = append(wordEnds, index+1 == len(runes) || !isASCIILetterOrDigit(runes[index+1]))
-	}
-	return scanSegment()
+	return false
 }
 
 // coordinatedRuleIntentNegation extends a valid prohibition over a bounded
@@ -3155,57 +3946,87 @@ func earliestRuleIntentIndex(text string, intents []string) int {
 	return earliest
 }
 
-func (c *Classifier) hasRuleContradictoryDirective(analysis analyzedDirectives, rule compiledRule, allow ContextPolicy) bool {
-	if analysis.overflow {
-		// A context-bearing request with an extreme clause count is ambiguous;
-		// fail closed without unbounded rescanning or allocation.
-		return true
+func (c *Classifier) hasRuleContradictoryDirective(
+	analysis analyzedDirectives,
+	stateRuleIndex int,
+	intentProvider int,
+	rule compiledRule,
+	allow ContextPolicy,
+) bool {
+	if analysis.overflow && stateRuleIndex >= 0 && stateRuleIndex < len(analysis.overflowRuleStates) {
+		return analysis.overflowRuleStates[stateRuleIndex].contradictory
 	}
 	for _, clause := range analysis.clauses {
-		signals := clause.signals
-		if !signals[rule.intent] || !signals[rule.object] {
-			continue
-		}
-		clauseText := clause.text
-		if clauseNegatesRuleIntent(clauseText, rule.intentStarts) {
-			continue
-		}
-		clauseContext := c.matchContextsWithPolicy(signals, allow)
-		if isSafetyDeliverableClause(clauseText) {
-			if c.safetyMarkerHasPriorRuleCore(clauseText, rule) || safetyDeliverableTurnsOperational(clauseText, rule.intentStarts) {
-				return true
-			}
-			continue
-		}
-		if containsDetectionArtifact(clauseText) {
-			if !isSafeDetectionArtifactClause(clauseText) || explanatoryFramingTurnsOperational(clauseText, rule.intentStarts) {
-				return true
-			}
-			continue
-		}
-		if clauseContext.Remediation && isScopedRetentionMaintenance(clauseText) {
-			continue
-		}
-		if signals[rule.operational] && hasOperationalDeliverableFraming(clauseText) {
+		if c.directiveClauseContradictsContext(clause, intentProvider, rule, allow) {
 			return true
 		}
-		if startsWithRuleIntent(clauseText, rule.intentStarts) {
-			if !isSafeDetectionArtifactClause(clauseText) {
+	}
+	if analysis.overflow {
+		for _, clause := range analysis.overflowTail {
+			if c.directiveClauseContradictsContext(clause, intentProvider, rule, allow) {
 				return true
 			}
-			continue
-		}
-		if hasExplanatoryFraming(clauseText) {
-			if explanatoryFramingTurnsOperational(clauseText, rule.intentStarts) {
-				return true
-			}
-			continue
-		}
-		if clauseContext == (ContextFlags{}) {
-			return true
 		}
 	}
 	return false
+}
+
+func (c *Classifier) directiveClauseContradictsContext(
+	clause analyzedDirectiveClause,
+	intentProvider int,
+	rule compiledRule,
+	allow ContextPolicy,
+) bool {
+	signals := clause.signals
+	if !signals.matched(rule.intent) || !signals.matched(rule.object) {
+		return false
+	}
+	clauseText := clause.text
+	if (intentProvider >= 0 && clause.negatedRuleIntents.matched(intentProvider)) ||
+		(intentProvider < 0 && clauseNegatesRuleIntent(clauseText, rule.intentStarts)) {
+		return false
+	}
+	return c.activeDirectiveClauseContradictsContext(clause, rule, allow)
+}
+
+func (c *Classifier) activeDirectiveClauseContradictsContext(clause analyzedDirectiveClause, rule compiledRule, allow ContextPolicy) bool {
+	return c.activeDirectiveClauseContradictsContextWithDense(clause, nil, rule, allow)
+}
+
+func (c *Classifier) activeDirectiveClauseContradictsContextWithDense(
+	clause analyzedDirectiveClause,
+	denseSignals []bool,
+	rule compiledRule,
+	allow ContextPolicy,
+) bool {
+	signals := clause.signals
+	clauseText := clause.text
+	if isLegitimateCategoryWorkflow(rule.category, clauseText) {
+		return false
+	}
+	clauseContext := c.matchDirectiveContextsWithPolicy(signals, allow)
+	if denseSignals != nil {
+		clauseContext = c.matchContextsWithPolicy(denseSignals, allow)
+	}
+	if isSafetyDeliverableClause(clauseText) {
+		return c.safetyMarkerHasPriorRuleCore(clauseText, rule) || safetyDeliverableTurnsOperational(clauseText, rule.intentStarts)
+	}
+	if containsDetectionArtifact(clauseText) {
+		return !isSafeDetectionArtifactClause(clauseText) || explanatoryFramingTurnsOperational(clauseText, rule.intentStarts)
+	}
+	if clauseContext.Remediation && isScopedRetentionMaintenance(clauseText) {
+		return false
+	}
+	if analyzedDirectiveSignalMatched(signals, denseSignals, rule.operational) && hasOperationalDeliverableFraming(clauseText) {
+		return true
+	}
+	if startsWithRuleIntent(clauseText, rule.intentStarts) {
+		return !isSafeDetectionArtifactClause(clauseText)
+	}
+	if hasExplanatoryFraming(clauseText) {
+		return explanatoryFramingTurnsOperational(clauseText, rule.intentStarts)
+	}
+	return clauseContext == (ContextFlags{})
 }
 
 func hasOperationalDeliverableFraming(clause string) bool {
@@ -3338,6 +4159,10 @@ func explanatoryFramingTurnsOperational(clause string, intents []string) bool {
 }
 
 func containsUnnegatedRuleIntent(text string, intents []string) bool {
+	return containsUnnegatedRuleIntentPrepared(text, intents, compileCompactRuleIntentPatterns(intents))
+}
+
+func containsUnnegatedRuleIntentPrepared(text string, intents []string, patterns compactRuleIntentPatterns) bool {
 	if len(text) > maxCompactIntentProofBytes {
 		// An exhaustive per-occurrence negation proof over an oversized window
 		// is intentionally unavailable; fail active and bound repeated scans.
@@ -3347,6 +4172,7 @@ func containsUnnegatedRuleIntent(text string, intents []string) bool {
 	clauseCount := 0
 	overflow := false
 	unnegated := false
+	var negationScratch ruleIntentNegationScratch
 	walkDirectiveClauses([]rune(text), func(clause []rune) bool {
 		clauseCount++
 		if clauseCount > maxAnalyzedDirectiveClauses {
@@ -3354,7 +4180,8 @@ func containsUnnegatedRuleIntent(text string, intents []string) bool {
 			return false
 		}
 		clauseText := string(clause)
-		found, negated := clauseRuleIntentNegation(clauseText, intents)
+		negationScratch.reset(clauseText)
+		found, negated := clauseRuleIntentNegationPrepared(&negationScratch, intents, patterns)
 		if !found {
 			if containsRuleIntent(clauseText, intents) {
 				// A compact-only occurrence in this clause is active unless its
@@ -3560,10 +4387,25 @@ func walkDirectiveClauses(text []rune, visit func([]rune) bool) {
 }
 
 func walkDirectiveClausesWithBoundary(text []rune, visit func([]rune, directiveBoundaryKind) bool) {
+	walkDirectiveClausesWithBoundaryIntentStarts(text, nil, visit)
+}
+
+func (c *Classifier) walkDirectiveClausesWithBoundary(text []rune, visit func([]rune, directiveBoundaryKind) bool) {
+	walkDirectiveClausesWithBoundaryIntentStarts(text, &c.directiveIntentStarts, visit)
+}
+
+func walkDirectiveClausesWithBoundaryIntentStarts(
+	text []rune,
+	intentStarts *ruleIntentStartBuckets,
+	visit func([]rune, directiveBoundaryKind) bool,
+) {
 	start := 0
 	boundaryBefore := directiveBoundaryNone
 	for index := 0; index < len(text); index++ {
 		width, boundaryKind := directiveBoundaryAt(text, index)
+		if width == 0 {
+			width, boundaryKind = conditionalAndNowDirectiveBoundaryAt(text, start, index, intentStarts)
+		}
 		if width == 0 {
 			continue
 		}
@@ -3579,6 +4421,273 @@ func walkDirectiveClausesWithBoundary(text []rune, visit func([]rune, directiveB
 	if clause := trimRuneSpaces(text[start:]); len(clause) > 0 {
 		visit(clause, boundaryBefore)
 	}
+}
+
+var conditionalAndNowDirectiveMarker = []rune(" and now ")
+
+func conditionalAndNowDirectiveBoundaryAt(
+	text []rune,
+	start int,
+	index int,
+	intentStarts *ruleIntentStartBuckets,
+) (int, directiveBoundaryKind) {
+	marker := conditionalAndNowDirectiveMarker
+	if index < start || len(text)-index < len(marker) {
+		return 0, directiveBoundaryNone
+	}
+	for offset, expected := range marker {
+		if text[index+offset] != expected {
+			return 0, directiveBoundaryNone
+		}
+	}
+	prefix := trimRuneSpaces(text[start:index])
+	if len(prefix) == 0 {
+		return 0, directiveBoundaryNone
+	}
+	if directivePrefixHasExplanatoryGovernor(prefix) &&
+		!directiveSuffixStartsOperationalDeliverable(text[index+len(marker):], intentStarts) {
+		return 0, directiveBoundaryNone
+	}
+	return len(marker), directiveBoundaryStrong
+}
+
+func directivePrefixHasExplanatoryGovernor(prefix []rune) bool {
+	const maxGovernorPrefixRunes = 256
+	if len(prefix) > maxGovernorPrefixRunes {
+		prefix = prefix[:maxGovernorPrefixRunes]
+	}
+	wordStart := -1
+	for index := 0; index <= len(prefix); index++ {
+		isLetter := index < len(prefix) && ((prefix[index] >= 'a' && prefix[index] <= 'z') || (prefix[index] >= 'A' && prefix[index] <= 'Z'))
+		if isLetter {
+			if wordStart < 0 {
+				wordStart = index
+			}
+			continue
+		}
+		if wordStart < 0 {
+			continue
+		}
+		word := prefix[wordStart:index]
+		for _, governor := range [...]string{"explain", "compare", "describe", "discuss", "analyze", "review", "summarize"} {
+			if runeSliceEqualFoldASCII(word, governor) {
+				return true
+			}
+		}
+		wordStart = -1
+	}
+	return false
+}
+
+func directiveSuffixStartsOperationalDeliverable(
+	suffix []rune,
+	intentStarts *ruleIntentStartBuckets,
+) bool {
+	const maxSuffixPrefixRunes = 256
+	if len(suffix) > maxSuffixPrefixRunes {
+		suffix = suffix[:maxSuffixPrefixRunes]
+	}
+	suffix = trimLeadingRuneSpaces(suffix)
+	for stripped := 0; stripped < 4; stripped++ {
+		matched := false
+		for _, prefix := range [...]string{
+			"please ", "kindly ", "go ahead and ", "could you ", "can you ",
+			"i need you to ", "i want you to ", "you should ", "you must ",
+			"we need to ", "let us ", "let's ", "your task is to ",
+			"then ", "actually ", "instead ",
+		} {
+			if !runeSliceHasPrefixFoldASCII(suffix, prefix) {
+				continue
+			}
+			suffix = trimLeadingRuneSpaces(suffix[len(prefix):])
+			matched = true
+			break
+		}
+		if !matched {
+			break
+		}
+	}
+	for _, prefix := range [...]string{
+		"give ", "provide ", "write ", "build ", "create ", "make ", "generate ",
+		"show ", "produce ", "implement ", "develop ", "return ", "supply ",
+		"deploy ", "execute ", "run ", "launch ",
+	} {
+		if runeSliceHasPrefixFoldASCII(suffix, prefix) {
+			return true
+		}
+	}
+	return directiveSuffixStartsRuleIntent(suffix, intentStarts) ||
+		directiveSuffixContainsModalRuleIntent(suffix, intentStarts)
+}
+
+// directiveSuffixContainsModalRuleIntent recognizes a bounded grammatical
+// lead-in before an otherwise direct rule intent. Enumerating whole phrases
+// such as "you should" is not sufficient: equivalent forms like "it is
+// necessary to" or "we are expected to" would keep an approved-workflow marker
+// and the active tail in one clause. The restricted token grammar deliberately
+// rejects explanatory verbs, arbitrary prose, and more than twelve words, so
+// ordinary discussion is not split merely because it mentions a rule intent
+// later in the sentence.
+func directiveSuffixContainsModalRuleIntent(suffix []rune, intentStarts *ruleIntentStartBuckets) bool {
+	if intentStarts == nil {
+		return false
+	}
+	const maxModalLeadInRunes = 96
+	if len(suffix) > maxModalLeadInRunes {
+		suffix = suffix[:maxModalLeadInRunes]
+	}
+	for index := 1; index < len(suffix); index++ {
+		if unicode.IsSpace(suffix[index]) {
+			continue
+		}
+		if isASCIIWordRune(suffix[index]) && isASCIIWordRune(suffix[index-1]) {
+			continue
+		}
+		candidate := trimLeadingRuneSpaces(suffix[index:])
+		if len(candidate) == 0 || !directiveSuffixStartsRuleIntent(candidate, intentStarts) {
+			continue
+		}
+		if directiveModalLeadIn(string(suffix[:index])) {
+			return true
+		}
+	}
+	return false
+}
+
+func directiveModalLeadIn(prefix string) bool {
+	prefix = strings.ToLower(strings.TrimSpace(prefix))
+	if prefix == "" {
+		return false
+	}
+	for _, marker := range []string{"需要", "应该", "應該", "必须", "必須", "有必要", "务必", "務必", "应当", "應當"} {
+		if !strings.Contains(prefix, marker) {
+			continue
+		}
+		if containsAnyLiteral(prefix,
+			"解释", "解釋", "分析", "比较", "比較", "审查", "審查", "总结", "總結", "说明", "說明", "讨论", "討論", "为什么", "為什麼", "如何",
+		) {
+			return false
+		}
+		return true
+	}
+
+	words := strings.Fields(prefix)
+	if len(words) == 0 || len(words) > 12 {
+		return false
+	}
+	seenModal := false
+	seenAuxiliary := false
+	seenInfinitive := false
+	for _, word := range words {
+		word = strings.Trim(word, "'\"")
+		switch word {
+		case "i", "we", "you", "it", "they", "one", "us", "them",
+			"our", "your", "their", "the", "a", "an", "this", "that",
+			"team", "operator", "operators", "system", "service", "user", "users",
+			"now", "also", "actually", "still", "then", "next", "really", "simply",
+			"go", "ahead", "and", "for":
+			// Restricted neutral scaffolding around a modal construction.
+		case "am", "is", "are", "was", "were", "be", "been", "being",
+			"have", "has", "had", "do", "does", "did":
+			seenAuxiliary = true
+		case "should", "must", "need", "needs", "needed", "ought", "shall",
+			"will", "would", "can", "could", "may", "might",
+			"necessary", "required", "expected", "supposed", "important", "essential",
+			"going", "meant", "asked", "instructed", "tasked", "ready":
+			seenModal = true
+		case "to":
+			seenInfinitive = true
+		default:
+			return false
+		}
+	}
+	return seenModal || (seenAuxiliary && seenInfinitive)
+}
+
+func directiveSuffixStartsRuleIntent(suffix []rune, intentStarts *ruleIntentStartBuckets) bool {
+	if intentStarts == nil || len(suffix) == 0 {
+		return false
+	}
+	first := suffix[0]
+	if first >= 'A' && first <= 'Z' {
+		first += 'a' - 'A'
+	}
+	if first >= 'a' && first <= 'z' {
+		for _, intent := range intentStarts.ascii[first-'a'] {
+			if contextualRuleIntentNeedsObject(intent) {
+				continue
+			}
+			if !runeSliceHasPrefixFoldASCII(suffix, intent) {
+				continue
+			}
+			if len(suffix) == len(intent) || !isASCIIWordRune(suffix[len(intent)]) {
+				return true
+			}
+		}
+	}
+	for _, intent := range intentStarts.other[first] {
+		if !runeSliceHasPrefixFoldASCIIValue(suffix, intent) {
+			continue
+		}
+		if len(suffix) == len(intent) || !isASCIIWordRune(suffix[len(intent)]) {
+			return true
+		}
+	}
+	return false
+}
+
+func contextualRuleIntentNeedsObject(intent string) bool {
+	switch intent {
+	case "use", "turn", "convert", "leverage", "transform":
+		return true
+	default:
+		return false
+	}
+}
+
+func runeSliceHasPrefixFoldASCIIValue(value, expected []rune) bool {
+	if len(value) < len(expected) {
+		return false
+	}
+	for index, expectedRune := range expected {
+		current := value[index]
+		if current >= 'A' && current <= 'Z' {
+			current += 'a' - 'A'
+		}
+		if expectedRune >= 'A' && expectedRune <= 'Z' {
+			expectedRune += 'a' - 'A'
+		}
+		if current != expectedRune {
+			return false
+		}
+	}
+	return true
+}
+
+func trimLeadingRuneSpaces(value []rune) []rune {
+	for len(value) > 0 && unicode.IsSpace(value[0]) {
+		value = value[1:]
+	}
+	return value
+}
+
+func runeSliceHasPrefixFoldASCII(value []rune, expected string) bool {
+	return len(value) >= len(expected) && runeSliceEqualFoldASCII(value[:len(expected)], expected)
+}
+
+func runeSliceEqualFoldASCII(value []rune, expected string) bool {
+	if len(value) != len(expected) {
+		return false
+	}
+	for index, current := range value {
+		if current >= 'A' && current <= 'Z' {
+			current += 'a' - 'A'
+		}
+		if current != rune(expected[index]) {
+			return false
+		}
+	}
+	return true
 }
 
 func directiveBoundaryWidth(text []rune, index int) int {
@@ -3764,6 +4873,18 @@ func (c *Classifier) matchContextsWithPolicy(signals []bool, policy ContextPolic
 		StaticAnalysis:   context.StaticAnalysis && policy.StaticAnalysis,
 		IncidentResponse: context.IncidentResponse && policy.IncidentResponse,
 		HighLevel:        context.HighLevel && policy.HighLevel,
+	}
+}
+
+func (c *Classifier) matchDirectiveContextsWithPolicy(signals directiveSignalSet, policy ContextPolicy) ContextFlags {
+	return ContextFlags{
+		Defensive:        signals.matched(c.contexts[rules.ContextDefensive]) && policy.Defensive,
+		Remediation:      signals.matched(c.contexts[rules.ContextRemediation]) && policy.Remediation,
+		CTFOrLab:         (signals.matched(c.contexts[rules.ContextCTF]) && policy.CTF) || (signals.matched(c.contexts[rules.ContextLab]) && policy.Lab),
+		Authorized:       signals.matched(c.contexts[rules.ContextAuthorized]) && policy.Authorized,
+		StaticAnalysis:   signals.matched(c.contexts[rules.ContextStaticAnalysis]) && policy.StaticAnalysis,
+		IncidentResponse: signals.matched(c.contexts[rules.ContextIncidentResponse]) && policy.IncidentResponse,
+		HighLevel:        signals.matched(c.contexts[rules.ContextHighLevel]) && policy.HighLevel,
 	}
 }
 
