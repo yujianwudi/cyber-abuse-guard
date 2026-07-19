@@ -880,7 +880,7 @@ FROZEN_EVALUATION_STATUS_COMMAND = (
 )
 ROUND6_DOC_FIXTURE_WRAPPER_SCRIPT = "scripts/round6-doc-consistency-fixture-test.sh"
 ROUND6_DOC_FIXTURE_WRAPPER_SCRIPT_SHA256 = (
-    "6c64140ccf1e3f66b67d5baa2cc2f94a79b40e908180954e7eac1e73a3ce3765"
+    "dada1b0651b9ffa336790b2f861362f988d2051c2c2f2ed56c5b3c9387e6847f"
 )
 ROUND6_DOC_FIXTURE_DEPENDENCY_SHA256 = {
     "scripts/release-doc-consistency-test.sh": "8a2f9dbcd6d6da2af01afbebb1fda42a6b4483512ae3214a633fa730a6c30c13",
