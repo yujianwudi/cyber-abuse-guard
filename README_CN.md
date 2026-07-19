@@ -104,7 +104,7 @@ Incomplete 请求不进入 subject risk。半截 prefix 不能在 `balanced` 下
 来自四个公开破限项目的仓库中性回归覆盖 Chat/Responses 的 system、developer、
 assistant、tool、function/custom description、tool-call/output，以及 CPA v7.2.88
 Codex Desktop 的 `additional_tools`。测试不加入仓库名签名，不复制完整第三方提示词，
-并同时验证 1.4–17.4 KiB 长模板、16 KiB 边界、普通双用途安全请求与同身份干净后续请求。
+并同时验证 1,397–17,166 解码字节长模板、16 KiB 边界、普通双用途安全请求与同身份干净后续请求。
 
 ## 默认有效上限
 
