@@ -2,7 +2,7 @@
 
 ```text
 current_classifier_policy_version: classifier-policy-v5
-current_classifier_policy_sha256: 07e972eac4faba57ca5244e9a49d5db21d5c0e414778bf617b5378fa621b4f76
+current_classifier_policy_sha256: 0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b
 ```
 
 The default rule set is embedded into the shared object from `/rules`. Every
@@ -104,6 +104,16 @@ retains its category signals so a later affirmative `now give working code`
 follow-up is blocked, while an explicitly negated code request remains inert;
 missing/multiple quotes, double negation, unquoted category text, or an
 operational tail receive no credit.
+
+Referential follow-up parsing is occurrence- and action-family-aware. A later
+non-alternative prohibition cancels only an equivalent earlier family, so one
+cancelled `run` cannot erase an active `implement`; independently cancelling all
+families remains inert. `A or do not A`/`otherwise` branches remain optional
+alternatives, while coordinated `do not A or/nor B` applies one terminating
+negation across both families. Later `and`-joined cancellations inside an
+alternative arm remain scoped to that arm and cannot erase the active first
+choice. Narrow `follow`, `obey`, `carry out`, and `run [the] quoted request`
+forms are recognized only when a qualifying quoted-review referent exists.
 
 System, assistant, and tool segments are evaluated with their provenance.
 Benign safety/refusal quotations are kept separate from user intent, while an
@@ -229,7 +239,7 @@ policy is separately identified as:
 
 ```text
 current_release_classifier_policy_version: classifier-policy-v5
-current_release_classifier_policy_sha256: 07e972eac4faba57ca5244e9a49d5db21d5c0e414778bf617b5378fa621b4f76
+current_release_classifier_policy_sha256: 0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b
 ```
 
 The policy digest test binds the deterministic classifier, matcher,

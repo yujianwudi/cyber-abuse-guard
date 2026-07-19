@@ -2,7 +2,7 @@
 
 ```text
 current_classifier_policy_version: classifier-policy-v5
-current_classifier_policy_sha256: 07e972eac4faba57ca5244e9a49d5db21d5c0e414778bf617b5378fa621b4f76
+current_classifier_policy_sha256: 0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b
 ```
 
 ## 2026-07-18 Round 6 v0.15 当前交接门禁
@@ -60,6 +60,20 @@ prior field. Only a positively proven analytical/safety/negated form receives
 inert credit. Bounded adjacent reclassification is skipped when either field
 already proved an inert quoted referent.
 
+A final delta audit found that the earlier parser still collapsed a multi-action
+clause to one rightmost decision and retained only one later cancellation. That
+could allow `implement and run; do not run` by losing the still-active
+implementation action, and could also block a request after every distinct
+action family had been explicitly cancelled. The current source keeps every
+bounded active/cancelled occurrence, applies cancellations by action family and
+order, preserves alternative-branch semantics, and covers narrow
+`follow`/`obey`/`carry out`/`run quoted request` forms plus defensive neighbors.
+It also distinguishes coordinated `do not A or/nor B`, where one negation
+cancels both actions, from `A or do not A`, where the prohibition is only an
+optional alternative and cannot erase the active choice. An alternative arm
+remains alternative through later `and`-joined cancellations in that same arm;
+it cannot leak a cancellation back across the `or` boundary.
+
 Local Linux development evidence currently passes targeted OpenAI Chat and
 Responses routes, the long-text size/position ladder, classifier and plugin
 race, full `make unit-test`, and `make round6-script-test`. The safe-gate suite
@@ -73,7 +87,7 @@ project_version: 0.15
 formal_tag: v0.15
 streaming_scanner: streaming-scanner-v1
 recorded_current_classifier_policy_version: classifier-policy-v5
-recorded_current_classifier_policy_sha256: 07e972eac4faba57ca5244e9a49d5db21d5c0e414778bf617b5378fa621b4f76
+recorded_current_classifier_policy_sha256: 0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b
 ruleset: 1.0.7 / 7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134
 historical_v10: CONSUMED / FAIL / MUST NOT RERUN / NOT A FORMAL INPUT
 ```

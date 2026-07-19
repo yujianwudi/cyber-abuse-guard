@@ -2,7 +2,7 @@
 
 ```text
 current_classifier_policy_version: classifier-policy-v5
-current_classifier_policy_sha256: 07e972eac4faba57ca5244e9a49d5db21d5c0e414778bf617b5378fa621b4f76
+current_classifier_policy_sha256: 0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b
 ```
 
 ## Scope and invariants
@@ -324,6 +324,17 @@ attribution is separate: mixed-trust RoleUser pairs retain conservative direct
 classification with `FindingOriginNonUserOrUntrusted`, but cannot enter subject
 accumulation.
 
+Each bounded clause retains every recognized active or cancelled occurrence.
+The parser walks clauses and occurrences from newest to oldest, so a later
+non-alternative prohibition cancels only its equivalent action family. It cannot
+erase a different active family (`implement and run; do not run` still blocks),
+while separately cancelling every requested family remains inert. Alternative
+branches such as `A or do not A`/`otherwise` do not become terminating
+cancellations. A coordinated prohibition such as `do not A or/nor B` retains
+one negation scope across both action families. Once an `or` arm begins, later
+`and`-joined occurrences in that same clause retain the arm's alternative
+identity and cannot cancel an active occurrence from the first arm.
+
 The speech-act parser has three outcomes: active, proven inert, and
 unrecognized. Common directive governors such as `just`, `simply`, `let's`, and
 `let us` are active. A complete explanation, meaning/status/consequence
@@ -386,7 +397,7 @@ attest to local instruction-file integrity.
 Ruleset `1.0.7` identifies the embedded YAML assets only. The complete
 code-level behavior is separately identified as `classifier-policy-v5`,
 SHA-256
-`07e972eac4faba57ca5244e9a49d5db21d5c0e414778bf617b5378fa621b4f76`.
+`0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b`.
 Its tested source list binds the classifier, matcher, normalizer, role logic,
 wrapper assessment, behavior graph, semantic composition, bounded extractor,
 rule loader/schema, embedded YAML assets, and module dependency locks. The
@@ -771,7 +782,7 @@ SSE stream with terminal frames; returning successful chunks would force HTTP
 
 Builds link immutable version, full commit SHA, ruleset version/hash,
 `classifier-policy-v5` /
-`07e972eac4faba57ca5244e9a49d5db21d5c0e414778bf617b5378fa621b4f76`,
+`0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b`,
 streaming-scanner identity, and dirty state. Build metadata and the verifier bind
 these identities. Candidate mode requires a clean worktree, exact expected
 commit/tree, the commit timestamp, an absent formal `v0.15` tag, and forbids

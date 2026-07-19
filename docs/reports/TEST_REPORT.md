@@ -2,7 +2,7 @@
 
 ```text
 current_classifier_policy_version: classifier-policy-v5
-current_classifier_policy_sha256: 07e972eac4faba57ca5244e9a49d5db21d5c0e414778bf617b5378fa621b4f76
+current_classifier_policy_sha256: 0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b
 ```
 
 Last updated: 2026-07-20 (Asia/Shanghai)
@@ -23,9 +23,9 @@ Legacy version-specific profiles and Make aliases have been removed.
 | Exact post-merge main CI | [29630844605](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29630844605) **SUCCESS** |
 | Source-only prerelease tag CI | [29630926354](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29630926354) **SUCCESS** for the same commit/tree |
 | Public `v0.15-rc.1` prerelease | Exists with no attached release assets; not the private clean candidate or formal release |
-| Classifier identity | `classifier-policy-v5` / `07e972eac4faba57ca5244e9a49d5db21d5c0e414778bf617b5378fa621b4f76` |
+| Classifier identity | `classifier-policy-v5` / `0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b` |
 | Current hardening PR | [#18](https://github.com/yujianwudi/cyber-abuse-guard/pull/18) remains the external authority for the final exact head, CI, and review state; this source report does not self-certify a future commit |
-| Quoted-review reactivation and long-streaming delta | **PASS / LOCAL DEVELOPMENT EVIDENCE**: direct referent-result equivalence, rule and semantic categories, `just`/`simply`/`let's`/`let us` governors, active/inert/unrecognized tri-state parsing, negation/explanation/remediation controls, mixed-trust origin, newest-user-review binding, non-user provenance isolation, wrapper-safe adjacent suppression, long current/previous fields, dual cross-window degradation, and `MaxChunks` accounting |
+| Quoted-review reactivation and long-streaming delta | **PASS / LOCAL DEVELOPMENT EVIDENCE**: direct referent-result equivalence, rule and semantic categories, multi-action and multi-cancellation family ordering, alternative-branch controls, narrow `follow`/`obey`/quoted-request imperatives, defensive neighbors, `just`/`simply`/`let's`/`let us` governors, active/inert/unrecognized parsing, mixed-trust origin, newest-user-review binding, non-user provenance isolation, wrapper-safe adjacent suppression, long current/previous fields, dual cross-window degradation, and `MaxChunks` accounting |
 | Linux safe unit and race checks | **PASS / LOCAL DEVELOPMENT EVIDENCE**: full `make unit-test`; classifier and plugin `-race`; OpenAI Chat/Responses long quoted-review routing; 64 KiB through near-effective-RPC-limit position/coverage ladders |
 | Release-document and formal-package contracts | **PASS / LOCAL DEVELOPMENT EVIDENCE**: real-tree identity gate, mutation fixture, 152 safe-gate contract tests, formal environment-override rejection, and required/install/verify binding for the public jailbreak audit report |
 | `make round6-script-test` | **PASS / LOCAL LINUX DEVELOPMENT EVIDENCE** in a WSL-native exact source snapshot; candidate/attestation/source-exclusion/frozen-v10 contracts, safe gate, archive/HMAC/privacy, document mutation fixture, and real-tree document gate all passed |

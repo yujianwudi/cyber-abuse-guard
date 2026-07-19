@@ -2448,14 +2448,17 @@ func (c *Classifier) hasAffirmativeImplementationRequest(text string) bool {
 // retained quoted category. A direct prohibition remains inert unless the same
 // turn explicitly reverses it.
 var quotedReviewSpecificContinuationIntents = []string{
-	"execute it", "execute that", "execute the above", "execute the request", "execute the quoted request",
-	"follow the quoted request",
-	"carry it out", "carry that out", "carry out the above", "carry out the request",
-	"apply it", "apply that", "apply the above", "apply the request",
-	"implement it", "implement that", "implement the above", "implement the request",
+	"execute it", "execute that", "execute the above", "execute the request", "execute the quoted request", "execute quoted request",
+	"follow it", "follow that", "follow the above", "follow the request", "follow the quoted request", "follow quoted request",
+	"obey it", "obey that", "obey the request", "obey the quoted request", "obey quoted request",
+	"carry it out", "carry that out", "carry out the above", "carry out the request", "carry out the quoted request", "carry out quoted request",
+	"apply it", "apply that", "apply the above", "apply the request", "apply the quoted request", "apply quoted request",
+	"implement it", "implement that", "implement the above", "implement the request", "implement the quoted request", "implement quoted request",
 	"do it", "do so", "do likewise", "do the same", "do that", "proceed with it", "proceed with that",
 	"continue with the quoted request", "continue with the above operation",
-	"run it", "run that", "deploy it", "deploy that", "build it", "build that",
+	"run it", "run that", "run the quoted request", "run quoted request",
+	"deploy it", "deploy that", "deploy the quoted request", "deploy quoted request",
+	"build it", "build that", "build the quoted request", "build quoted request",
 	"执行它", "执行该内容", "执行上述", "照做", "按上述执行", "继续执行", "实施它", "实施上述",
 	"应用它", "应用上述", "实现它", "实现上述", "运行它", "运行上述", "部署它", "部署上述",
 }
@@ -2559,38 +2562,53 @@ func quotedReviewFollowUpDisposition(
 		return quotedReviewContinuationInert
 	}
 	sawInert := false
-	var cancellation quotedReviewContinuationDecision
-	hasCancellation := false
+	sawCancellation := false
+	cancellations := make([]quotedReviewContinuationDecision, 0, 4)
 	for index := len(clauses) - 1; index >= 0; index-- {
 		next := ""
 		if index+1 < len(clauses) {
 			next = clauses[index+1]
 		}
-		decision := quotedReviewClassifyContinuationClause(
+		decisions, clauseInert, occurrenceOverflow := quotedReviewContinuationClauseDecisions(
 			clauses[index], next, explicitIntents, explicitPatterns, allIntents,
 		)
-		if decision.disposition == quotedReviewContinuationCancelled &&
-			!decision.alternative && index > 0 &&
-			quotedReviewStandaloneAlternativeClause(clauses[index-1]) {
-			decision.alternative = true
-		}
-		switch decision.disposition {
-		case quotedReviewContinuationActive:
-			if hasCancellation && !cancellation.alternative &&
-				quotedReviewContinuationIntentsEquivalent(decision.intent, cancellation.intent) {
-				continue
+		if occurrenceOverflow {
+			if quotedReviewOverflowClauseHasActive(clauses[index], next, explicitIntents, allIntents) {
+				return quotedReviewContinuationActive
 			}
-			return quotedReviewContinuationActive
-		case quotedReviewContinuationCancelled:
-			if !hasCancellation {
-				cancellation = decision
-				hasCancellation = true
-			}
-		case quotedReviewContinuationInert:
 			sawInert = true
+			continue
+		}
+		sawInert = sawInert || clauseInert
+		for _, decision := range decisions {
+			if decision.disposition == quotedReviewContinuationCancelled &&
+				!decision.alternative && index > 0 &&
+				quotedReviewStandaloneAlternativeClause(clauses[index-1]) {
+				decision.alternative = true
+			}
+			switch decision.disposition {
+			case quotedReviewContinuationActive:
+				cancelled := false
+				for _, cancellation := range cancellations {
+					if quotedReviewContinuationIntentsEquivalent(decision.intent, cancellation.intent) {
+						cancelled = true
+						break
+					}
+				}
+				if !cancelled {
+					return quotedReviewContinuationActive
+				}
+			case quotedReviewContinuationCancelled:
+				sawCancellation = true
+				if !decision.alternative {
+					cancellations = append(cancellations, decision)
+				}
+			case quotedReviewContinuationInert:
+				sawInert = true
+			}
 		}
 	}
-	if hasCancellation {
+	if sawCancellation {
 		return quotedReviewContinuationCancelled
 	}
 	if sawInert {
@@ -2599,54 +2617,35 @@ func quotedReviewFollowUpDisposition(
 	return quotedReviewContinuationNone
 }
 
-func quotedReviewClassifyContinuationClause(
+func quotedReviewContinuationClauseDecisions(
 	clause, next string,
 	explicitIntents []string,
 	explicitPatterns compactRuleIntentPatterns,
 	allIntents []string,
-) quotedReviewContinuationDecision {
+) ([]quotedReviewContinuationDecision, bool, bool) {
 	_ = explicitPatterns
 	occurrences, occurrenceOverflow := quotedReviewContinuationOccurrences(clause, explicitIntents)
 	if occurrenceOverflow {
-		if quotedReviewOverflowClauseHasActive(clause, next, explicitIntents, allIntents) {
-			return quotedReviewContinuationDecision{disposition: quotedReviewContinuationActive}
-		}
-		return quotedReviewContinuationDecision{disposition: quotedReviewContinuationInert}
+		return nil, false, true
 	}
 	if len(occurrences) == 0 {
-		return quotedReviewContinuationDecision{disposition: quotedReviewContinuationNone}
+		return nil, false, false
 	}
 	sawInert := false
-	var cancellation quotedReviewContinuationDecision
-	hasCancellation := false
+	decisions := make([]quotedReviewContinuationDecision, 0, len(occurrences))
 	for index := len(occurrences) - 1; index >= 0; index-- {
 		occurrence := occurrences[index]
 		decision := quotedReviewEvaluateContinuationOccurrence(
 			clause, next, occurrence, explicitIntents, allIntents,
 		)
 		switch decision.disposition {
-		case quotedReviewContinuationActive:
-			if hasCancellation && !cancellation.alternative &&
-				quotedReviewContinuationIntentsEquivalent(decision.intent, cancellation.intent) {
-				continue
-			}
-			return decision
-		case quotedReviewContinuationCancelled:
-			if !hasCancellation {
-				cancellation = decision
-				hasCancellation = true
-			}
+		case quotedReviewContinuationActive, quotedReviewContinuationCancelled:
+			decisions = append(decisions, decision)
 		case quotedReviewContinuationInert:
 			sawInert = true
 		}
 	}
-	if hasCancellation {
-		return cancellation
-	}
-	if sawInert {
-		return quotedReviewContinuationDecision{disposition: quotedReviewContinuationInert}
-	}
-	return quotedReviewContinuationDecision{disposition: quotedReviewContinuationNone}
+	return decisions, sawInert, false
 }
 
 func quotedReviewEvaluateContinuationOccurrence(
@@ -2686,15 +2685,17 @@ func quotedReviewEvaluateContinuationOccurrence(
 		return decision
 	}
 	found, negated := ruleIntentOccurrenceNegation(clause, occurrence.index)
-	if found && !negated && coordinatedRuleIntentNegation(
+	coordinatedNegation := found && coordinatedRuleIntentNegation(
 		clause, occurrence.index, occurrence.intent, allIntents,
-	) {
+	)
+	if found && !negated && coordinatedNegation {
 		negated = true
 	}
 	if found && negated {
 		decision.disposition = quotedReviewContinuationCancelled
-		decision.alternative = quotedReviewOccurrenceUsesAlternative(clause, occurrence) ||
-			quotedReviewClauseStartsWithAlternative(segment)
+		decision.alternative = !coordinatedNegation &&
+			(quotedReviewOccurrenceUsesAlternative(clause, occurrence) ||
+				quotedReviewClauseStartsWithAlternative(segment))
 		return decision
 	}
 	decision.disposition = quotedReviewContinuationActive
@@ -2774,6 +2775,8 @@ func quotedReviewContinuationIntentFamily(intent string) string {
 		return "execute"
 	case hasAnyPrefix(intent, "carry"):
 		return "carry"
+	case hasAnyPrefix(intent, "follow", "obey"):
+		return "follow"
 	case hasAnyPrefix(intent, "apply", "应用"):
 		return "apply"
 	case hasAnyPrefix(intent, "implement", "实现", "实施"):
@@ -2795,24 +2798,17 @@ func quotedReviewOccurrenceUsesAlternative(clause string, occurrence quotedRevie
 	if quotedReviewClauseStartsWithAlternative(clause) {
 		return true
 	}
-	latest := -1
-	alternative := false
+	prefix := clause[:occurrence.index]
 	for _, connector := range quotedReviewContinuationConnectors {
-		if index := strings.LastIndex(clause[:occurrence.index], connector); index >= latest {
-			latest = index
-			trimmed := strings.TrimSpace(connector)
-			alternative = trimmed == "or" || trimmed == "nor" || trimmed == "或" || trimmed == "或者"
+		if !strings.Contains(prefix, connector) {
+			continue
+		}
+		switch strings.TrimSpace(connector) {
+		case "or", "nor", "或", "或者", "否则", "要么":
+			return true
 		}
 	}
-	if latest >= 0 && !alternative {
-		for _, connector := range []string{"或者", "否则", "要么", "或"} {
-			if strings.LastIndex(clause[:occurrence.index], connector) == latest {
-				alternative = true
-				break
-			}
-		}
-	}
-	return latest >= 0 && alternative
+	return false
 }
 
 func quotedReviewClauseStartsWithAlternative(clause string) bool {
@@ -3176,8 +3172,14 @@ func quotedReviewSafetyContinuation(clause string) bool {
 func quotedReviewOperationalExplanationGovernor(clause string) bool {
 	clause = quotedReviewTrimIntroductoryGovernors(clause)
 	return hasAnyPrefix(clause,
-		"explain step by step how to ", "explain how to ", "show me how to ", "tell me how to ", "describe how to ",
-		"walk me through how to ", "how do i ", "how can i ", "how would you ",
+		"explain step by step how to ", "explain in detail how to ", "explain how to ",
+		"show me step by step how to ", "show me how to ",
+		"tell me the exact steps to ", "tell me detailed steps to ", "tell me how to ",
+		"describe step by step how to ", "describe how to ",
+		"provide step-by-step instructions to ", "provide step by step instructions to ",
+		"give me detailed steps to ", "give me the exact steps to ",
+		"walk me through how to ", "teach me how to ",
+		"how do i ", "how can i ", "how would you ",
 		"解释如何", "说明如何", "告诉我如何", "演示如何",
 	)
 }
@@ -3189,7 +3191,8 @@ func quotedReviewTrimIntroductoryGovernors(clause string) string {
 		for _, prefix := range []string{
 			"please ", "kindly ", "now ", "then ", "actually ", "instead ",
 			"yes ", "sure ", "ok ", "okay ", "just ", "simply ", "really ",
-			"quickly ", "directly ", "immediately ", "still ", "anyway ",
+			"quickly ", "quietly ", "carefully ", "promptly ",
+			"directly ", "immediately ", "still ", "anyway ",
 			"nevertheless ", "nonetheless ", "even so ", "that said ",
 			"all the same ", "regardless ", "in any case ",
 			"or else ", "alternatively ", "otherwise ", "if not ", "or ", "either ",
@@ -3264,16 +3267,28 @@ func quotedReviewTrimDirectiveGovernors(clause string) string {
 			"do not ", "don't ", "never ", "must not ", "should not ", "cannot ", "can't ",
 			"will not ", "won't ", "would not ", "wouldn't ", "could not ", "couldn't ", "may not ",
 			"i authorize you to ", "we authorize you to ", "i permit you to ", "we permit you to ", "you are authorized to ",
+			"you have permission to ", "feel free to ",
 			"your task is to ", "be sure to ", "make sure you ", "make sure to ",
 			"you should ", "you must ", "you shall ", "you ought to ", "you may ", "you can ", "you need to ",
 			"we should ", "we must ", "we may ", "we can ", "we need to ",
+			"the assistant should ", "the assistant must ", "the assistant shall ", "the assistant ought to ",
+			"the model should ", "the model must ", "the model shall ", "the model ought to ",
+			"assistant should ", "assistant must ", "assistant shall ",
+			"model should ", "model must ", "model shall ",
 			"please ", "kindly ", "now ", "then ", "actually ", "instead ",
 			"yes ", "sure ", "ok ", "okay ", "just ", "simply ", "really ",
-			"quickly ", "directly ", "immediately ", "still ", "anyway ", "let's ", "let us ",
+			"quickly ", "quietly ", "carefully ", "promptly ",
+			"directly ", "immediately ", "still ", "anyway ", "let's ", "let us ",
 			"can you ", "could you ", "would you ", "will you ",
 			"i need you to ", "i want you to ", "go ahead and ",
-			"explain step by step how to ", "explain how to ", "show me how to ", "tell me how to ", "describe how to ",
-			"walk me through how to ", "how do i ", "how can i ", "how would you ",
+			"explain step by step how to ", "explain in detail how to ", "explain how to ",
+			"show me step by step how to ", "show me how to ",
+			"tell me the exact steps to ", "tell me detailed steps to ", "tell me how to ",
+			"provide step-by-step instructions to ", "provide step by step instructions to ",
+			"give me detailed steps to ", "give me the exact steps to ",
+			"describe step by step how to ", "describe how to ",
+			"walk me through how to ", "teach me how to ",
+			"how do i ", "how can i ", "how would you ",
 			"我不授权你", "我们不授权你", "你未获授权", "你没有被授权",
 			"请你不要", "你不应该", "你不应", "你不得", "你不能", "你不可以",
 			"不要不", "不得不", "不能不", "不要", "不得", "禁止", "严禁", "不能", "不应", "不可", "别",

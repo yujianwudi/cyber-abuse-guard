@@ -2,7 +2,7 @@
 
 ```text
 current_classifier_policy_version: classifier-policy-v5
-current_classifier_policy_sha256: 07e972eac4faba57ca5244e9a49d5db21d5c0e414778bf617b5378fa621b4f76
+current_classifier_policy_sha256: 0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b
 ```
 
 ## 0.15 — 2026-07-18
@@ -87,7 +87,7 @@ future stable release still requires a newly authored independent unseen set.
   mixed-role, and lower-confidence requests keep their direct per-request
   disposition but do not allocate subject state or add hits, receipts, or
   repeat multipliers. Publish the resulting code-level contract as
-`classifier-policy-v5` / `07e972eac4faba57ca5244e9a49d5db21d5c0e414778bf617b5378fa621b4f76`.
+`classifier-policy-v5` / `0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b`.
 - Treat one closed, explicitly quoted Cyber Abuse request as inert only when
   the surrounding user text asks to explain why it is unsafe and ends with an
   exact non-execution boundary. Missing or multiple quotes, double negation,
@@ -101,6 +101,17 @@ future stable release still requires a newly authored independent unseen set.
   does not inherit the safety wrapper's signals or context. Questions,
   explanations, negation, consequences, and remediation remain inert, and
   assistant/system/tool reviews cannot seed a later user referent.
+- Preserve every bounded active or cancelled quoted-review action occurrence
+  instead of collapsing a clause to its rightmost action and retaining only one
+  cancellation. A later prohibition now cancels only an equivalent action
+  family: `implement and run; do not run` remains blocked, while independently
+  cancelling every requested family remains allowed. Narrow `follow`, `obey`,
+  `carry out`, and `run [the] quoted request` imperatives are covered together
+  with analytical, defensive, alternative-branch, and no-referent neighbors.
+  Coordinated `do not A or/nor B` keeps one terminating negation scope across
+  both actions, while `A or do not A` remains an optional branch. That branch
+  identity persists through later `and` actions in the same arm, preventing an
+  optional cancellation from erasing the active first choice.
 - Recognize common directive governors including `just`, `simply`, `let's`, and
   `let us`. The follow-up parser now distinguishes active, proven inert, and
   unrecognized speech acts. Only a proven explanation, question, safety

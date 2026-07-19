@@ -2,7 +2,7 @@
 
 ```text
 current_classifier_policy_version: classifier-policy-v5
-current_classifier_policy_sha256: 07e972eac4faba57ca5244e9a49d5db21d5c0e414778bf617b5378fa621b4f76
+current_classifier_policy_sha256: 0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b
 ```
 
 1. **No guarantee against account action.** The plugin reduces the number of
@@ -279,7 +279,7 @@ current_classifier_policy_sha256: 07e972eac4faba57ca5244e9a49d5db21d5c0e414778bf
 37. **Classifier-policy identity is source- and artifact-bound, but still not
     independent approval.** The current identity is `classifier-policy-v5` /
     SHA-256
-`07e972eac4faba57ca5244e9a49d5db21d5c0e414778bf617b5378fa621b4f76`.
+`0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b`.
     Build metadata and artifact verification carry it. The historical
     round5.2 value was `classifier-policy-v2` /
     `e9b87f7e2635495bdbceae469ef89e696b419f0a9a6fd129558a20bc4be947ec`,
