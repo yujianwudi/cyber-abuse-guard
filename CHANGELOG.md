@@ -72,7 +72,13 @@ future stable release still requires a newly authored independent unseen set.
   mixed-role, and lower-confidence requests keep their direct per-request
   disposition but do not allocate subject state or add hits, receipts, or
   repeat multipliers. Publish the resulting code-level contract as
-`classifier-policy-v5` / `fed88bc2e9691eba2cf3d4ddf6d7ec984a3e8ded298f27d354a6e8c20c3293ea`.
+`classifier-policy-v5` / `42d48af7a854b19d29c956a6f99b9027189ce4ae7b19a1d92a83955639d0916e`.
+- Treat one closed, explicitly quoted Cyber Abuse request as inert only when
+  the surrounding user text asks to explain why it is unsafe and ends with an
+  exact non-execution boundary. Missing or multiple quotes, double negation,
+  unquoted abuse, and `then`/`however`/`and now` operational continuations fail
+  closed; a later explicit implementation follow-up reactivates the retained
+  quoted category signals and blocks.
 - Add a separate, zero-value-untrusted user-attribution proof. Only an explicit
   recognized `role: user` content path or an allowlisted multipart prompt is
   trusted; unknown top-level fields, unknown message siblings, roleless/future

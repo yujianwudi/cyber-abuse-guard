@@ -8,7 +8,7 @@ current execution evidence is Linux amd64-only. Windows, macOS, and musl/Alpine
 are outside this round.
 
 Classifier policy identity is `classifier-policy-v5` /
-`fed88bc2e9691eba2cf3d4ddf6d7ec984a3e8ded298f27d354a6e8c20c3293ea`;
+`42d48af7a854b19d29c956a6f99b9027189ce4ae7b19a1d92a83955639d0916e`;
 scanner identity is `streaming-scanner-v1`.
 
 The release chain is deliberately ordered:

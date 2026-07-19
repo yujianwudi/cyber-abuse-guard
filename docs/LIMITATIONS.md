@@ -52,6 +52,14 @@
    classification or update subject risk from a prefix. A no-copy oversized RPC
    event cannot include a request hash, model, source format, or body-derived
    byte count because the body is not copied into Go.
+   Inert quoted-review credit is likewise available only when the single quote,
+   unsafe assessment, and final non-execution boundary are all visible in one
+   complete classification view. Truncation or cross-window proof loss receives
+   no quoted-review credit and follows the normal incomplete-inspection contract.
+   The accepted lead-ins are exact enumerated English templates, not a general
+   natural-language intent model. A multipart request receives the optional
+   prior-history proof only for at most 8 prior parts totaling at most 32 KiB;
+   larger histories fail closed without running a second large streaming scan.
 
 7. **Role provenance is bounded, not universal.** Standard OpenAI, Anthropic,
    and Gemini envelopes use role-aware segments. Unsupported explicit roles and
@@ -260,7 +268,7 @@
 37. **Classifier-policy identity is source- and artifact-bound, but still not
     independent approval.** The current identity is `classifier-policy-v5` /
     SHA-256
-`fed88bc2e9691eba2cf3d4ddf6d7ec984a3e8ded298f27d354a6e8c20c3293ea`.
+`42d48af7a854b19d29c956a6f99b9027189ce4ae7b19a1d92a83955639d0916e`.
     Build metadata and artifact verification carry it. The historical
     round5.2 value was `classifier-policy-v2` /
     `e9b87f7e2635495bdbceae469ef89e696b419f0a9a6fd129558a20bc4be947ec`,

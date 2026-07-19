@@ -12,7 +12,7 @@ production approval. Windows and macOS validation is outside this round. See
 `round6-prerelease-attestation.json` and `formal-release-attestation.json`.
 
 Current classifier identity is `classifier-policy-v5` /
-`fed88bc2e9691eba2cf3d4ddf6d7ec984a3e8ded298f27d354a6e8c20c3293ea`.
+`42d48af7a854b19d29c956a6f99b9027189ce4ae7b19a1d92a83955639d0916e`.
 
 ## Release blockers
 
@@ -87,6 +87,10 @@ Current classifier identity is `classifier-policy-v5` /
   incompleteness rather than reconstructing or retaining the full field.
   Balanced mode therefore allows with audit and strict mode blocks, following
   the existing incomplete-inspection policy.
+- A defensive quoted Cyber Abuse review is recognized only when its one closed
+  quotation, unsafe assessment, and exact non-execution boundary are contained
+  in a complete classifier view. The scanner does not infer inert quotation
+  scope across a lost/truncated window boundary.
 - The compact shadow/index path no longer copies arbitrary long keys or semantic
   values, but structural metadata and decoder allocations still grow with
   bounded JSON token/node and logical-field counts. Linux allocation and RSS

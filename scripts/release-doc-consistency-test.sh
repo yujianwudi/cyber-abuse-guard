@@ -6,7 +6,7 @@ gate="$root/scripts/release-doc-consistency.sh"
 ruleset_sha256="a9bbfb2ed76d55cca02f83390e3fe10532dc7cb3fb389c440b0b130a0b2d1642"
 old_ruleset_sha256="5354e9b56c5986ac09b2b231b2750f4a519b8e3a6bfcbd71da7747dd32481cf6"
 classifier_policy_version="classifier-policy-v5"
-classifier_policy_sha256="fed88bc2e9691eba2cf3d4ddf6d7ec984a3e8ded298f27d354a6e8c20c3293ea"
+classifier_policy_sha256="42d48af7a854b19d29c956a6f99b9027189ce4ae7b19a1d92a83955639d0916e"
 old_classifier_policy_sha256="fd7627f1ac9c4e08d1e073ecfb4b8afd395a10e713d5e98fddbfe6a380edb59d"
 work="$(mktemp -d)"
 trap 'rm -rf -- "$work"' EXIT

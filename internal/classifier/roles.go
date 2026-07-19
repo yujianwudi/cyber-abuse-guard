@@ -210,7 +210,12 @@ func (c *Classifier) ClassifySegmentsWithPolicy(segments []extract.Segment, mode
 			// Adjacent user turns may split an abuse intent from its object. Join
 			// only user-authored text and only when the prior turn is eligible for
 			// follow-up; system/assistant/tool examples can never contribute.
-			if followUpEligible([]rune(previousUser)) {
+			joinEligible := followUpEligible([]rune(previousUser))
+			if joinEligible && c.isRawInertQuotedSafetyReview(previousUser) &&
+				!c.hasRawAffirmativeImplementationRequest(segment.Text) {
+				joinEligible = false
+			}
+			if joinEligible {
 				joined := withRoleAwareFindingOrigin(
 					c.ClassifyWithPolicy([]string{previousUser + "\n" + segment.Text}, mode, thresholds, policy),
 					origin,

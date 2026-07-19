@@ -87,6 +87,18 @@ fictional-target, and authorization claims do not wash an established dangerous
 behavior. Defensive quoted material can reduce wrapper evidence only when the
 request has an affirmative analysis/remediation purpose, an explicit
 non-execution signal, and no contradictory operational continuation.
+The same fail-closed structure applies to a base Cyber Abuse quotation only
+for one closed `quoted request`/`quoted prompt`. The normalized English lead-in
+must exactly match an enumerated `explain`/`analyze`/`analyse`/`review why ...`
+template (optionally prefixed by `for a defensive review,`), the next clause
+must characterize the quote as unsafe, and the final clause must be an exact
+non-execution boundary. For multipart classification, optional proof of the
+earlier history is capped at 8 prior parts and 32 KiB; exceeding either cap or
+losing complete coverage grants no inert-quotation credit. The quotation
+retains its category signals so a later affirmative `now give working code`
+follow-up is blocked, while an explicitly negated code request remains inert;
+missing/multiple quotes, double negation, unquoted category text, or an
+operational tail receive no credit.
 
 System, assistant, and tool segments are evaluated with their provenance.
 Benign safety/refusal quotations are kept separate from user intent, while an
@@ -212,7 +224,7 @@ policy is separately identified as:
 
 ```text
 classifier_policy_version: classifier-policy-v5
-classifier_policy_sha256: fed88bc2e9691eba2cf3d4ddf6d7ec984a3e8ded298f27d354a6e8c20c3293ea
+classifier_policy_sha256: 42d48af7a854b19d29c956a6f99b9027189ce4ae7b19a1d92a83955639d0916e
 ```
 
 The policy digest test binds the deterministic classifier, matcher,

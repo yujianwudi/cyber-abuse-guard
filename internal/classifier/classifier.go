@@ -22,6 +22,8 @@ const (
 	maxRuleIntentLookbackBytes    = 512
 	maxNegationReversalCandidates = 64
 	maxNegationReversalTailBytes  = 512
+	maxInertReviewPriorParts      = 8
+	maxInertReviewPriorBytes      = 32 << 10
 )
 
 // Mode controls how a score becomes an action. The hard threshold is a global
@@ -215,18 +217,20 @@ var classifierCategoryOrder = []rules.Category{
 
 // Classifier is immutable after construction and safe for concurrent use.
 type Classifier struct {
-	version               string
-	rules                 []compiledRule
-	contexts              compiledContexts
-	standardMatcher       *literalMatcher
-	compactMatcher        *literalMatcher
-	categoryRules         map[rules.Category][]int
-	signalCount           int
-	implementationRequest int
-	outcomeRequest        int
-	metaOverride          compiledMetaOverrideSignals
-	semanticProfiles      []compiledSemanticProfile
-	directiveIntentStarts ruleIntentStartBuckets
+	version                string
+	rules                  []compiledRule
+	contexts               compiledContexts
+	standardMatcher        *literalMatcher
+	compactMatcher         *literalMatcher
+	categoryRules          map[rules.Category][]int
+	signalCount            int
+	implementationRequest  int
+	implementationStarts   []string
+	implementationPatterns compactRuleIntentPatterns
+	outcomeRequest         int
+	metaOverride           compiledMetaOverrideSignals
+	semanticProfiles       []compiledSemanticProfile
+	directiveIntentStarts  ruleIntentStartBuckets
 }
 
 // New validates and precompiles a private matcher snapshot.
@@ -337,6 +341,8 @@ func New(set *rules.RuleSet) (*Classifier, error) {
 		return nil, err
 	}
 	c.implementationRequest = implementationSignal
+	c.implementationStarts = normalizedTermValues(implementationTerms)
+	c.implementationPatterns = compileCompactRuleIntentPatterns(c.implementationStarts)
 	outcomeTerms := rules.Terms{
 		ZH: []string{"最终结果", "最终要", "最终应", "最终状态", "最终需要", "目标结果", "目标是", "成功标准", "完成后", "交付后", "结果应", "结果要", "期望结果", "预期结果", "所需终态", "要求的终态"},
 		EN: []string{"desired outcome", "desired result", "required outcome", "required result", "specific outcome", "target outcome", "end result", "end state", "end-state", "required end state", "final outcome", "final state", "success means", "success is", "success criteria", "at completion", "when finished", "by the end", "once complete", "once finished"},
@@ -539,8 +545,9 @@ func (c *Classifier) classifyWithPolicyCaptured(parts []string, mode Mode, thres
 	hasAdjacentReversal := false
 	adjacentReversalCandidates := 0
 	adjacentReversalTerminal := false
+	inertQuotedSafetyReview := false
 	finishResult := func(result Result) Result {
-		if !hasAdjacentReversal {
+		if inertQuotedSafetyReview || !hasAdjacentReversal {
 			return result
 		}
 		candidate := bestAdjacentReversal
@@ -551,6 +558,7 @@ func (c *Classifier) classifyWithPolicyCaptured(parts []string, mode Mode, thres
 		return result
 	}
 	partCount := 0
+	currentPartIndex := -1
 	remainingBytes := maxClassifierInputBytes
 	truncated := false
 	resetMetaTail := func() {
@@ -753,12 +761,15 @@ func (c *Classifier) classifyWithPolicyCaptured(parts []string, mode Mode, thres
 		previousSignals, currentSignals, scratchSignals = currentSignals, scratchSignals, previousSignals
 		previousRunes, currentRunes, scratchRunes = currentRunes, views.standardRunes, previousRunes
 		previousRunesUsed, currentRunesUsed, scratchRunesUsed = currentRunesUsed, bufferUsed, previousRunesUsed
+		currentPartIndex = partIndex
 		partCount++
 	}
 	finalizeMetaTail()
 	var currentDirectives analyzedDirectives
 	directivesReady := false
 	currentText := string(currentRunes)
+	inertQuotedSafetyReview = !truncated && c.isInertQuotedSafetyReview(currentText) &&
+		c.priorPartsAllowInertQuotedSafetyReview(parts, currentPartIndex, mode, thresholds, policy)
 	if capture != nil {
 		capture.harmConflict = false
 		if cap(capture.signals) < c.signalCount {
@@ -852,10 +863,18 @@ func (c *Classifier) classifyWithPolicyCaptured(parts []string, mode Mode, thres
 	}
 	candidates := make([]candidate, 0, 8)
 	var categoryHasCandidate [8]bool
-	previousFollowUpEligible := partCount > 1 && followUpEligible(previousRunes)
+	previousInertQuotedSafetyReview := partCount > 1 && !truncated &&
+		c.isInertQuotedSafetyReview(string(previousRunes))
+	currentAffirmativeImplementation := currentSignals[c.implementationRequest] &&
+		c.hasAffirmativeImplementationRequest(currentText)
+	previousFollowUpEligible := partCount > 1 && ((!previousInertQuotedSafetyReview && followUpEligible(previousRunes)) ||
+		(previousInertQuotedSafetyReview && currentAffirmativeImplementation))
 	previousHarmConflict := false
 	previousHarmConflictReady := false
 	for ruleIndex, rule := range c.rules {
+		if inertQuotedSafetyReview {
+			break
+		}
 		intent := signals[rule.intent]
 		object := signals[rule.object]
 		current := currentSignals
@@ -1008,7 +1027,7 @@ func (c *Classifier) classifyWithPolicyCaptured(parts []string, mode Mode, thres
 	// lets related rules contribute complementary target/destination/scale
 	// vocabulary while retaining the same multi-evidence floor as ordinary
 	// rule candidates.
-	if signalMatched(currentSignals, c.outcomeRequest) && !hasAffirmativeSafetyPurpose(currentText) {
+	if !inertQuotedSafetyReview && signalMatched(currentSignals, c.outcomeRequest) && !hasAffirmativeSafetyPurpose(currentText) {
 		for _, category := range classifierCategoryOrder {
 			if categoryHasCandidate[categoryPriority(category)] || isLegitimateCategoryWorkflow(category, currentText) {
 				continue
@@ -1077,7 +1096,7 @@ func (c *Classifier) classifyWithPolicyCaptured(parts []string, mode Mode, thres
 	// weaken, rule-local intent/object candidates: an object, an agency/outcome
 	// signal, a target or destination, and an additional consequence dimension
 	// are all mandatory, and negative/legitimate workflow scope still wins.
-	if len(c.semanticProfiles) != 0 {
+	if !inertQuotedSafetyReview && len(c.semanticProfiles) != 0 {
 		semanticSignals := [][]bool{currentSignals}
 		previousText := ""
 		partsLinked := false
@@ -1142,6 +1161,9 @@ func (c *Classifier) classifyWithPolicyCaptured(parts []string, mode Mode, thres
 	// without turning a loose bag of security words, separate clauses, or
 	// evidence from different categories into a core.
 	for _, category := range classifierCategoryOrder {
+		if inertQuotedSafetyReview {
+			break
+		}
 		categoryAlreadyHasCandidate := categoryHasCandidate[categoryPriority(category)]
 		ruleIndexes := c.categoryRules[category]
 		if len(ruleIndexes) < 2 {
@@ -2285,6 +2307,201 @@ func hasExplicitHarmConflict(text string) bool {
 		"不属于我们", "不属于我", "目标不属于我", "目标站点不属于我", "服务器不是我的", "不是授权红队演练",
 		"非自有", "已失陷主机", "个人云盘", "私人网盘", "个人存储账号",
 	)
+}
+
+// isInertQuotedSafetyReview recognizes one deliberately narrow user request:
+// explain or review a single closed quotation, explicitly characterize it as
+// unsafe, and end with an exact non-execution boundary. The quoted bytes retain
+// their matcher signals so a later implementation follow-up can reactivate the
+// underlying category, but they do not create a current-turn cyber-abuse
+// candidate. Ambiguous quotations and any unquoted directive fail closed.
+func (c *Classifier) isInertQuotedSafetyReview(text string) bool {
+	if text == "" || !strings.Contains(text, "quoted ") || !strings.ContainsAny(text, "\"'`") {
+		return false
+	}
+	if !strings.Contains(text, "quoted request") && !strings.Contains(text, "quoted prompt") {
+		return false
+	}
+
+	spans, complete := metaOverrideQuotedSpans(text)
+	if !complete || len(spans) != 1 {
+		return false
+	}
+	quoted := spans[0]
+	if quoted.start <= 0 || quoted.end <= quoted.start+2 || quoted.end >= len(text) {
+		return false
+	}
+
+	prefix := strings.TrimSpace(text[:quoted.start])
+	suffix := strings.TrimSpace(text[quoted.end:])
+	if !inertQuotedSafetyReviewPrefix(prefix) {
+		return false
+	}
+	clauses, overflow := metaOverrideDirectiveClausesBounded(suffix)
+	if overflow || len(clauses) != 2 ||
+		!inertQuotedSafetyAssessment(clauses[0].text) ||
+		!inertQuotedNonExecutionBoundary(clauses[1].text) {
+		return false
+	}
+
+	// The rare structural path may spend one bounded matcher pass proving that
+	// the material before the quote contains no independent cyber-abuse,
+	// implementation, or control-plane directive. The common route exits above
+	// without allocating.
+	prefixRunes := []rune(prefix)
+	prefixSignals := make([]bool, c.signalCount)
+	c.standardMatcher.match(prefixRunes, prefixSignals)
+	if c.compactMatcher != nil {
+		compactScratch := make([]bool, c.compactMatcher.maxPatternLength)
+		c.compactMatcher.matchCompactWithScratch(prefixRunes, prefixSignals, compactScratch)
+	}
+	if prefixSignals[c.implementationRequest] || c.hasMetaOverrideSignal(prefixSignals) || hasNegationReversalFraming(prefix) {
+		return false
+	}
+	for _, rule := range c.rules {
+		if prefixSignals[rule.intent] || prefixSignals[rule.object] {
+			return false
+		}
+	}
+	return true
+}
+
+// isRawInertQuotedSafetyReview applies the exact structural proof to one raw
+// complete field. It is used only on the rare adjacent-user reconstruction path
+// after a quote delimiter has already passed the cheap gate. The temporary
+// normalized copy is scrubbed before its backing buffer is pooled.
+func (c *Classifier) isRawInertQuotedSafetyReview(text string) bool {
+	if text == "" || !strings.ContainsAny(text, "\"'`") {
+		return false
+	}
+	var scratch normalizationScratch
+	views := normalizePartsInto([]string{text}, nil, &scratch)
+	defer putNormalizedRuneBuffer(views.standardRunes, views.storageUsed)
+	return !views.truncated && c.isInertQuotedSafetyReview(string(views.standardRunes))
+}
+
+func (c *Classifier) hasAffirmativeImplementationRequest(text string) bool {
+	if c == nil || text == "" || len(c.implementationStarts) == 0 {
+		return false
+	}
+	return containsUnnegatedRuleIntentPrepared(text, c.implementationStarts, c.implementationPatterns)
+}
+
+func (c *Classifier) hasRawAffirmativeImplementationRequest(text string) bool {
+	if text == "" {
+		return false
+	}
+	var scratch normalizationScratch
+	views := normalizePartsInto([]string{text}, nil, &scratch)
+	defer putNormalizedRuneBuffer(views.standardRunes, views.storageUsed)
+	return !views.truncated && c.hasAffirmativeImplementationRequest(string(views.standardRunes))
+}
+
+// priorPartsAllowInertQuotedSafetyReview prevents a safe-looking final review
+// from hiding an earlier actionable request in the same multipart/untrusted
+// classification. This path runs only after the current part has satisfied the
+// narrow quote structure. Earlier reviews that independently satisfy the same
+// proof are blanked from this secondary scan: they are already inert, must not
+// recursively re-enter this proof, and must not lend quoted signals to another
+// part. Within the small optional-proof budget, every other earlier byte remains
+// subject to the conservative roleless adapter. Larger histories receive no
+// credit instead of triggering a second large streaming scan.
+func (c *Classifier) priorPartsAllowInertQuotedSafetyReview(parts []string, currentPartIndex int, mode Mode, thresholds Thresholds, policy Policy) bool {
+	if currentPartIndex <= 0 {
+		return true
+	}
+	if currentPartIndex > maxInertReviewPriorParts {
+		return false
+	}
+	priorParts := parts[:currentPartIndex]
+	priorBytes := 0
+	for _, part := range priorParts {
+		if len(part) > maxInertReviewPriorBytes-priorBytes {
+			return false
+		}
+		priorBytes += len(part)
+	}
+	scannedPriorParts := make([]string, len(priorParts))
+	for index, part := range priorParts {
+		var scratch normalizationScratch
+		views := normalizePartsInto([]string{part}, takeNormalizedRuneBuffer(), &scratch)
+		if views.truncated {
+			putNormalizedRuneBuffer(views.standardRunes, views.storageUsed)
+			return false
+		}
+		inert := c.isInertQuotedSafetyReview(string(views.standardRunes))
+		putNormalizedRuneBuffer(views.standardRunes, views.storageUsed)
+		if !inert {
+			scannedPriorParts[index] = part
+		}
+	}
+
+	// Reuse the conservative roleless adapter: it independently scans earlier
+	// parts and their adjacent combinations, so appended benign history cannot
+	// erase a prior block/audit finding. Provider-native tool privileges are not
+	// carried into this optional safety-credit proof.
+	priorResult := c.ClassifyUntrustedPartsWithPolicy(scannedPriorParts, mode, thresholds, policy)
+	if priorResult.Truncated ||
+		(priorResult.Coverage.State != "" && priorResult.Coverage.State != CoverageComplete) {
+		return false
+	}
+	return priorResult.Action == ActionAllow && priorResult.Score < thresholds.Audit
+}
+
+func inertQuotedSafetyReviewPrefix(prefix string) bool {
+	prefix = strings.Join(strings.Fields(prefix), " ")
+	for _, allowed := range []string{
+		"explain why the quoted request", "explain why this quoted request",
+		"analyze why the quoted request", "analyze why this quoted request",
+		"analyse why the quoted request", "analyse why this quoted request",
+		"review why the quoted request", "review why this quoted request",
+		"explain why the quoted prompt", "explain why this quoted prompt",
+		"analyze why the quoted prompt", "analyze why this quoted prompt",
+		"analyse why the quoted prompt", "analyse why this quoted prompt",
+		"review why the quoted prompt", "review why this quoted prompt",
+	} {
+		if prefix == allowed || prefix == "for a defensive review, "+allowed {
+			return true
+		}
+	}
+	return false
+}
+
+func inertQuotedSafetyAssessment(clause string) bool {
+	switch strings.Join(strings.Fields(clause), " ") {
+	case "is harmful", "is unsafe", "is dangerous", "is abusive", "is malicious",
+		"should be refused", "should be declined", "must be refused":
+		return true
+	default:
+		return false
+	}
+}
+
+func inertQuotedNonExecutionBoundary(clause string) bool {
+	clause = strings.Join(strings.Fields(normalizeNegationSyntax(clause)), " ")
+	switch clause {
+	case "do not provide code or operational steps",
+		"do not provide code",
+		"do not provide operational steps",
+		"do not implement it",
+		"do not implement the request",
+		"do not implement the quoted request",
+		"do not execute it",
+		"do not execute the request",
+		"do not execute the quoted request",
+		"do not follow it",
+		"do not follow the request",
+		"do not follow the quoted request",
+		"do not apply it",
+		"do not apply the request",
+		"do not apply the quoted request",
+		"keep the example inert",
+		"keep the quoted request inert",
+		"keep the quoted prompt inert":
+		return true
+	default:
+		return false
+	}
 }
 
 // isLegitimateCategoryWorkflow recognizes a narrow set of ordinary identity

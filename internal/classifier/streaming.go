@@ -887,7 +887,12 @@ func (s *ScanSession) considerRoleSummary(current *streamingFieldSummary, curren
 				s.consider(candidate, origin)
 			}
 		}
-		if s.coverage.State == CoverageComplete && followUpEligible([]rune(s.previousUser)) {
+		joinEligible := s.coverage.State == CoverageComplete && followUpEligible([]rune(s.previousUser))
+		if joinEligible && s.classifier.isRawInertQuotedSafetyReview(s.previousUser) &&
+			!s.classifier.hasRawAffirmativeImplementationRequest(text) {
+			joinEligible = false
+		}
+		if joinEligible {
 			if candidate, ok := batch.classify([]string{s.previousUser + "\n" + text}, false); ok {
 				s.consider(candidate, origin)
 			}
