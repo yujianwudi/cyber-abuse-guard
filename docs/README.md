@@ -1,5 +1,10 @@
 # Documentation index
 
+```text
+current_classifier_policy_version: classifier-policy-v5
+current_classifier_policy_sha256: 0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b
+```
+
 The root [English README](../README.md) and [Chinese README](../README_CN.md)
 are the shortest current-status entry points. The public
 [`v0.15-rc.2` prerelease](https://github.com/yujianwudi/cyber-abuse-guard/releases/tag/v0.15-rc.2)
@@ -62,6 +67,7 @@ Project baselines and engineering evidence:
 - [Performance report](reports/PERFORMANCE.md)
 - [Privacy report](reports/PRIVACY.md)
 - [Prompt-injection defensive review](reports/PROMPT_INJECTION_REVIEW.md)
+- [Public jailbreak repository review](reports/PUBLIC_JAILBREAK_REPOSITORY_REVIEW.md)
 - [Release evidence](reports/RELEASE_EVIDENCE.md)
 - [Test report](reports/TEST_REPORT.md)
 

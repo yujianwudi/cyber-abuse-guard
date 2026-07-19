@@ -35,13 +35,34 @@ const (
 	ProvenanceToolPayload
 )
 
+// UserAttribution records whether a closed, provider-aware schema path proved
+// that natural-language content was authored by the authenticated user. The
+// zero value is deliberately untrusted: unknown top-level fields, future
+// message siblings, roleless items, tool output, and callers that construct a
+// Segment without an explicit proof must never be upgraded implicitly.
+type UserAttribution uint8
+
+const (
+	UserAttributionUntrusted UserAttribution = iota
+	UserAttributionTrusted
+)
+
+type roleContentValueShape uint8
+
+const (
+	roleContentRoot roleContentValueShape = iota
+	roleContentArrayItem
+	roleContentTextField
+)
+
 // Segment is transient request text plus its normalized role and provenance.
 // Neither the extractor nor classifier stores segments after the current route
 // call.
 type Segment struct {
-	Role       Role
-	Provenance SegmentProvenance
-	Text       string
+	Role            Role
+	Provenance      SegmentProvenance
+	UserAttribution UserAttribution
+	Text            string
 }
 
 const (
@@ -84,6 +105,7 @@ func (r *segmentRing) ordered() []Segment {
 // shapes so role labels can never make an untrusted protocol less strict.
 func extractRoleSegments(body []byte, limits Limits) ([]Segment, bool, bool) {
 	var historyKey string
+	seenRoot := make(map[string]struct{}, 4)
 	segments := segmentRing{items: make([]Segment, 0, maxRoleSegments)}
 	truncated := false
 	ambiguous := false
@@ -91,6 +113,18 @@ func extractRoleSegments(body []byte, limits Limits) ([]Segment, bool, bool) {
 
 	err := walkRawObject(body, func(key string, raw json.RawMessage) error {
 		standardKey := standardRoleKey(key)
+		if standardKey == "" && isStandardRoleCanonical(canonicalKey(key)) {
+			ambiguous = true
+			return nil
+		}
+		if standardKey != "" {
+			identity := canonicalKey(standardKey)
+			if _, duplicate := seenRoot[identity]; duplicate {
+				ambiguous = true
+				return nil
+			}
+			seenRoot[identity] = struct{}{}
+		}
 		switch standardKey {
 		case "messages", "contents":
 			if historyKey != "" || !rawStartsWith(raw, '[') {
@@ -124,12 +158,11 @@ func extractRoleSegments(body []byte, limits Limits) ([]Segment, bool, bool) {
 			ambiguous = ambiguous || historyAmbiguous
 			unsafeRole = unsafeRole || historyUnsafeRole
 		case "system", "instructions", "systeminstruction":
-			partTruncated, partAmbiguous, err := addRoleContentSegments(&segments, raw, RoleSystem, limits)
+			partTruncated, err := addRoleSegment(&segments, raw, RoleSystem, ProvenanceContent, limits, contextText)
 			if err != nil {
 				return err
 			}
 			truncated = truncated || partTruncated
-			ambiguous = ambiguous || partAmbiguous
 		default:
 			if canonical := canonicalKey(key); isProviderToolDefinitionContainerCanonical(canonical) {
 				// Provider tool declarations are system-level context, not user
@@ -207,7 +240,7 @@ func addRoleHistorySegments(segments *segmentRing, history json.RawMessage, hist
 			ambiguous = true
 			return nil
 		}
-		messageTruncated, messageAmbiguous, err := addRoleMessageSegments(segments, raw, role, limits)
+		messageTruncated, messageAmbiguous, err := addRoleMessageSegments(segments, raw, role, historyKey, limits)
 		if err != nil {
 			return err
 		}
@@ -224,31 +257,53 @@ func addRoleHistorySegments(segments *segmentRing, history json.RawMessage, hist
 // addRoleMessageSegments separates rendered message content from executable
 // tool-call arguments. Provider wrapper metadata (function names, call IDs,
 // types) is deliberately excluded, while argument values remain inspectable.
-func addRoleMessageSegments(segments *segmentRing, raw json.RawMessage, role Role, limits Limits) (bool, bool, error) {
+func addRoleMessageSegments(segments *segmentRing, raw json.RawMessage, role Role, historyKey string, limits Limits) (bool, bool, error) {
 	truncated := false
 	ambiguous := false
 	seenFields := make(map[string]struct{}, 4)
+	userAttribution, typeAmbiguous, err := roleMessageUserAttribution(raw, role, historyKey)
+	if err != nil {
+		return false, false, err
+	}
+	if typeAmbiguous {
+		return false, true, nil
+	}
 
-	err := walkRawObject(raw, func(key string, value json.RawMessage) error {
+	err = walkRawObject(raw, func(key string, value json.RawMessage) error {
 		canonical := canonicalKey(key)
-		switch canonical {
-		case "role":
+		expectedContent := "content"
+		if historyKey == "contents" {
+			expectedContent = "parts"
+		}
+		switch {
+		case key == "role":
 			return nil
-		case "content", "parts", "refusal":
+		case historyKey == "input" && key == "type":
+			// Responses item type is a closed transport discriminator, not
+			// model-visible message text. roleMessageUserAttribution already
+			// validated duplicates, aliases, and the exact trusted message types.
+			return nil
+		case key == expectedContent:
 			if _, seen := seenFields[canonical]; seen {
 				ambiguous = true
 				return nil
 			}
 			seenFields[canonical] = struct{}{}
-			valueTruncated, valueAmbiguous, err := addRoleContentSegments(segments, value, role, limits)
+			valueTruncated, valueAmbiguous, err := addRoleContentSegments(
+				segments, value, role, userAttribution, limits,
+			)
 			truncated = truncated || valueTruncated
 			ambiguous = ambiguous || valueAmbiguous
 			return err
-		case "toolcalls", "toolcall", "functioncall", "tooluse":
+		case isExactLegacyToolWrapperKey(key):
 			valueTruncated, err := addRoleSegment(segments, value, role, ProvenanceToolPayload, limits, contextTool)
 			truncated = truncated || valueTruncated
 			return err
 		default:
+			if canonical == "role" || isRoleContentCarrierCanonical(canonical) {
+				ambiguous = true
+				return nil
+			}
 			// Keep the known message content under its proven role, but treat text
 			// below an unknown sibling field as a separate untrusted user segment.
 			// This is conservative without allowing harmless metadata to erase role
@@ -270,22 +325,82 @@ func addRoleMessageSegments(segments *segmentRing, raw json.RawMessage, role Rol
 	return truncated, ambiguous, err
 }
 
+func roleMessageUserAttribution(raw json.RawMessage, role Role, historyKey string) (UserAttribution, bool, error) {
+	if role != RoleUser {
+		return UserAttributionUntrusted, false, nil
+	}
+	if historyKey != "input" {
+		return UserAttributionTrusted, false, nil
+	}
+
+	typeSeen := false
+	typeAlias := false
+	typeValue := ""
+	typeIsString := false
+	err := walkRawObject(raw, func(key string, value json.RawMessage) error {
+		if canonicalKey(key) != "type" {
+			return nil
+		}
+		if key != "type" {
+			typeAlias = true
+			return nil
+		}
+		if typeSeen {
+			return errors.New("duplicate response item type")
+		}
+		typeSeen = true
+		trimmed := bytes.TrimSpace(value)
+		if len(trimmed) > 0 && trimmed[0] == '"' {
+			if err := json.Unmarshal(value, &typeValue); err != nil {
+				return err
+			}
+			typeIsString = true
+		}
+		return nil
+	})
+	if err != nil || typeAlias {
+		return UserAttributionUntrusted, true, err
+	}
+	if !typeSeen || typeIsString && (typeValue == "" || typeValue == "message") {
+		return UserAttributionTrusted, false, nil
+	}
+	if typeIsString {
+		canonical := canonicalKey(typeValue)
+		if isReservedResponseItemType(canonical) && !isExactResponseItemType(typeValue) {
+			return UserAttributionUntrusted, true, nil
+		}
+		if _, _, known := rolelessResponseItemRole(typeValue); known {
+			return UserAttributionUntrusted, true, nil
+		}
+	}
+	return UserAttributionUntrusted, false, nil
+}
+
 // addRoleContentSegments keeps adjacent natural-language blocks from one
 // provider message together. This preserves refusal/policy context when a
 // provider splits rendered text into multiple blocks, while tool payload blocks
 // remain separately identifiable and executable arguments are never merged
 // into the surrounding prose.
-func addRoleContentSegments(segments *segmentRing, raw json.RawMessage, role Role, limits Limits) (bool, bool, error) {
+func addRoleContentSegments(
+	segments *segmentRing,
+	raw json.RawMessage,
+	role Role,
+	userAttribution UserAttribution,
+	limits Limits,
+) (bool, bool, error) {
 	local := segmentRing{items: make([]Segment, 0, 4)}
-	truncated, ambiguous, err := addRoleContentValue(&local, raw, role, limits)
+	truncated, ambiguous, err := addRoleContentValue(
+		&local, raw, role, userAttribution, limits, roleContentRoot,
+	)
 	if err != nil || ambiguous {
 		return truncated || local.truncated, ambiguous, err
 	}
 
 	type pendingContent struct {
-		role       Role
-		provenance SegmentProvenance
-		rawParts   []string
+		role            Role
+		provenance      SegmentProvenance
+		userAttribution UserAttribution
+		rawParts        []string
 	}
 	var pending *pendingContent
 	flush := func() {
@@ -326,7 +441,10 @@ func addRoleContentSegments(segments *segmentRing, raw json.RawMessage, role Rol
 			appendDecoded(rawJoined)
 			text, textTruncated := joinRoleParts(analysisParts)
 			truncated = truncated || textTruncated
-			segments.add(Segment{Role: pending.role, Provenance: pending.provenance, Text: text})
+			segments.add(Segment{
+				Role: pending.role, Provenance: pending.provenance,
+				UserAttribution: pending.userAttribution, Text: text,
+			})
 			pending = nil
 		}
 	}
@@ -337,12 +455,19 @@ func addRoleContentSegments(segments *segmentRing, raw json.RawMessage, role Rol
 			continue
 		}
 		if pending == nil {
-			pending = &pendingContent{role: segment.Role, provenance: segment.Provenance, rawParts: []string{segment.Text}}
+			pending = &pendingContent{
+				role: segment.Role, provenance: segment.Provenance,
+				userAttribution: segment.UserAttribution, rawParts: []string{segment.Text},
+			}
 			continue
 		}
-		if pending.role != segment.Role || pending.provenance != segment.Provenance {
+		if pending.role != segment.Role || pending.provenance != segment.Provenance ||
+			pending.userAttribution != segment.UserAttribution {
 			flush()
-			pending = &pendingContent{role: segment.Role, provenance: segment.Provenance, rawParts: []string{segment.Text}}
+			pending = &pendingContent{
+				role: segment.Role, provenance: segment.Provenance,
+				userAttribution: segment.UserAttribution, rawParts: []string{segment.Text},
+			}
 			continue
 		}
 		pending.rawParts = append(pending.rawParts, segment.Text)
@@ -351,22 +476,51 @@ func addRoleContentSegments(segments *segmentRing, raw json.RawMessage, role Rol
 	return truncated || local.truncated, false, nil
 }
 
-func addRoleContentValue(segments *segmentRing, raw json.RawMessage, role Role, limits Limits) (bool, bool, error) {
+func addRoleContentValue(
+	segments *segmentRing,
+	raw json.RawMessage,
+	role Role,
+	userAttribution UserAttribution,
+	limits Limits,
+	shape roleContentValueShape,
+) (bool, bool, error) {
 	trimmed := bytes.TrimSpace(raw)
 	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
 		return false, false, nil
 	}
 	switch trimmed[0] {
 	case '"':
-		truncated, err := addRawRoleContentSegment(segments, raw, role, limits)
+		if shape == roleContentArrayItem {
+			truncated, err := addRawRoleContentSegmentAttributed(
+				segments, raw, RoleUser, UserAttributionUntrusted, limits,
+			)
+			return truncated, false, err
+		}
+		truncated, err := addRawRoleContentSegmentAttributed(
+			segments, raw, role, userAttribution, limits,
+		)
 		return truncated, false, err
 	case '{':
-		return addRoleContentBlock(segments, raw, role, limits)
+		if shape == roleContentTextField {
+			truncated, err := addRawRoleContentSegmentAttributed(
+				segments, raw, RoleUser, UserAttributionUntrusted, limits,
+			)
+			return truncated, false, err
+		}
+		return addRoleContentBlock(segments, raw, role, userAttribution, limits)
 	case '[':
+		if shape != roleContentRoot {
+			truncated, err := addRawRoleContentSegmentAttributed(
+				segments, raw, RoleUser, UserAttributionUntrusted, limits,
+			)
+			return truncated, false, err
+		}
 		truncated := false
 		ambiguous := false
 		err := walkRawArray(raw, func(item json.RawMessage) error {
-			itemTruncated, itemAmbiguous, err := addRoleContentValue(segments, item, role, limits)
+			itemTruncated, itemAmbiguous, err := addRoleContentValue(
+				segments, item, role, userAttribution, limits, roleContentArrayItem,
+			)
 			truncated = truncated || itemTruncated
 			ambiguous = ambiguous || itemAmbiguous
 			return err
@@ -377,7 +531,13 @@ func addRoleContentValue(segments *segmentRing, raw json.RawMessage, role Role, 
 	}
 }
 
-func addRoleContentBlock(segments *segmentRing, raw json.RawMessage, role Role, limits Limits) (bool, bool, error) {
+func addRoleContentBlock(
+	segments *segmentRing,
+	raw json.RawMessage,
+	role Role,
+	userAttribution UserAttribution,
+	limits Limits,
+) (bool, bool, error) {
 	blockType, hasToolPayloadKey, err := roleContentBlockShape(raw)
 	if err != nil {
 		return false, true, err
@@ -386,27 +546,111 @@ func addRoleContentBlock(segments *segmentRing, raw json.RawMessage, role Role, 
 	case "tooluse", "functioncall", "customtoolcall":
 		truncated, err := addRoleSegment(segments, raw, role, ProvenanceToolPayload, limits, contextTool)
 		return truncated, false, err
-	case "toolresult", "functioncalloutput", "customtoolcalloutput":
+	case "toolresult", "functionresponse", "functioncalloutput", "customtoolcalloutput":
 		truncated, err := addRawRoleContentSegment(segments, raw, RoleTool, limits)
 		return truncated, false, err
 	}
-	if hasToolPayloadKey {
-		// An unknown block carrying argument-shaped fields is not safe to label as
-		// ordinary assistant content. Force legacy classification instead.
-		return false, true, nil
+	if hasToolPayloadKey || blockType != "" && !isRoleTextBlockType(blockType) {
+		truncated, err := addRawRoleContentSegmentAttributed(
+			segments, raw, RoleUser, UserAttributionUntrusted, limits,
+		)
+		return truncated, false, err
 	}
-	truncated, err := addRawRoleContentSegment(segments, raw, role, limits)
-	return truncated, false, err
+	return addRoleContentObjectFields(segments, raw, role, userAttribution, blockType, limits)
 }
 
 func addRawRoleContentSegment(segments *segmentRing, raw json.RawMessage, role Role, limits Limits) (bool, error) {
+	attribution := UserAttributionUntrusted
+	if role == RoleUser {
+		attribution = UserAttributionTrusted
+	}
+	return addRawRoleContentSegmentAttributed(segments, raw, role, attribution, limits)
+}
+
+func addRawRoleContentSegmentAttributed(
+	segments *segmentRing,
+	raw json.RawMessage,
+	role Role,
+	attribution UserAttribution,
+	limits Limits,
+) (bool, error) {
 	parts, partTruncated, err := extractRawPartsWithoutDecode(raw, limits, contextText)
 	if err != nil {
 		return false, err
 	}
 	text, joinTruncated := joinRoleParts(parts)
-	segments.add(Segment{Role: role, Provenance: ProvenanceContent, Text: text})
+	segments.add(Segment{
+		Role:            role,
+		Provenance:      ProvenanceContent,
+		UserAttribution: attribution,
+		Text:            text,
+	})
 	return partTruncated || joinTruncated, nil
+}
+
+func addRoleContentObjectFields(
+	segments *segmentRing,
+	raw json.RawMessage,
+	role Role,
+	userAttribution UserAttribution,
+	blockType string,
+	limits Limits,
+) (bool, bool, error) {
+	truncated := false
+	ambiguous := false
+	seen := make(map[string]struct{}, 4)
+	err := walkRawObject(raw, func(key string, value json.RawMessage) error {
+		canonical := canonicalKey(key)
+		if canonical == "type" {
+			if key != "type" {
+				ambiguous = true
+			}
+			return nil
+		}
+		if isMetadataKeyCanonical(canonical) || isProviderMetadataContainerCanonical(canonical) {
+			return nil
+		}
+		if isRoleContentTextKeyCanonical(canonical) {
+			if !roleContentTextFieldAllowed(SourceProfileUnknown, blockType, key) {
+				ambiguous = true
+				return nil
+			}
+			if _, duplicate := seen[canonical]; duplicate {
+				ambiguous = true
+				return nil
+			}
+			seen[canonical] = struct{}{}
+			valueTruncated, valueAmbiguous, err := addRoleContentValue(
+				segments, value, role, userAttribution, limits, roleContentTextField,
+			)
+			truncated = truncated || valueTruncated
+			ambiguous = ambiguous || valueAmbiguous
+			return err
+		}
+
+		parts, valueTruncated, err := extractRawParts(value, limits, contextText)
+		if err != nil {
+			return err
+		}
+		for _, part := range parts {
+			segments.add(Segment{
+				Role: RoleUser, Provenance: ProvenanceContent,
+				UserAttribution: UserAttributionUntrusted, Text: part,
+			})
+		}
+		truncated = truncated || valueTruncated
+		return nil
+	})
+	return truncated, ambiguous, err
+}
+
+func isRoleTextBlockType(blockType string) bool {
+	switch blockType {
+	case "text", "inputtext", "outputtext", "refusal":
+		return true
+	default:
+		return false
+	}
 }
 
 func roleContentBlockShape(raw json.RawMessage) (string, bool, error) {
@@ -416,10 +660,14 @@ func roleContentBlockShape(raw json.RawMessage) (string, bool, error) {
 	hasToolPayloadKey := false
 	err := walkRawObject(raw, func(key string, value json.RawMessage) error {
 		canonical := canonicalKey(key)
-		if isToolArgumentCanonical(canonical) || canonical == "input" {
+		if isToolArgumentCanonical(canonical) || canonical == "input" ||
+			isToolWrapperKeyCanonical(canonical) {
 			hasToolPayloadKey = true
 		}
-		if canonical == "functioncall" {
+		if canonical == "functioncall" || canonical == "functionresponse" {
+			if !isExactLegacyContentToolWrapperKey(key) {
+				return errors.New("non-exact content block tool wrapper")
+			}
 			if wrapperType != "" {
 				return errors.New("duplicate content block tool wrapper")
 			}
@@ -427,21 +675,37 @@ func roleContentBlockShape(raw json.RawMessage) (string, bool, error) {
 			if len(trimmed) == 0 || trimmed[0] != '{' {
 				return errors.New("content block functionCall must be an object")
 			}
-			wrapperType = "functioncall"
+			wrapperType = canonical
 			hasToolPayloadKey = true
 		}
 		if canonical != "type" {
 			return nil
 		}
+		if key != "type" {
+			return errors.New("non-exact content block type")
+		}
 		if typeSeen {
 			return errors.New("duplicate content block type")
 		}
 		typeSeen = true
+		trimmed := bytes.TrimSpace(value)
+		if len(trimmed) == 0 || trimmed[0] != '"' {
+			if bytes.Equal(trimmed, []byte("null")) {
+				// JSON null is accepted by encoding/json when unmarshalling into a
+				// string, but it is not an omitted or empty block discriminator.
+				blockType = "unknown"
+				return nil
+			}
+			return errors.New("content block type must be a string")
+		}
 		var valueString string
 		if err := json.Unmarshal(value, &valueString); err != nil {
 			return err
 		}
 		blockType = canonicalKey(valueString)
+		if isReservedRoleContentBlockType(blockType) && !isExactRoleContentBlockType(valueString) {
+			return errors.New("non-exact content block type value")
+		}
 		return nil
 	})
 	if err != nil {
@@ -531,9 +795,13 @@ func addRolelessProviderItem(segments *segmentRing, raw json.RawMessage, envelop
 
 func messageRole(raw json.RawMessage, envelope string) (Role, bool, bool, error) {
 	seen := false
+	alias := false
 	value := ""
 	err := walkRawObject(raw, func(key string, rawValue json.RawMessage) error {
-		if !strings.EqualFold(strings.TrimSpace(key), "role") {
+		if key != "role" {
+			if canonicalKey(key) == "role" {
+				alias = true
+			}
 			return nil
 		}
 		if seen {
@@ -542,11 +810,10 @@ func messageRole(raw json.RawMessage, envelope string) (Role, bool, bool, error)
 		seen = true
 		return json.Unmarshal(rawValue, &value)
 	})
-	if err != nil || !seen {
+	if err != nil || alias || !seen {
 		return "", seen, false, err
 	}
-	role := strings.ToLower(strings.TrimSpace(value))
-	switch role {
+	switch value {
 	case "user":
 		return RoleUser, true, true, nil
 	case "system", "developer":
@@ -564,22 +831,48 @@ func messageRole(raw json.RawMessage, envelope string) (Role, bool, bool, error)
 }
 
 func standardRoleKey(key string) string {
-	trimmed := strings.TrimSpace(key)
-	switch {
-	case strings.EqualFold(trimmed, "messages"):
+	switch key {
+	case "messages":
 		return "messages"
-	case strings.EqualFold(trimmed, "contents"):
+	case "contents":
 		return "contents"
-	case strings.EqualFold(trimmed, "input"):
+	case "input":
 		return "input"
-	case strings.EqualFold(trimmed, "system"):
+	case "system":
 		return "system"
-	case strings.EqualFold(trimmed, "instructions"):
+	case "instructions":
 		return "instructions"
-	case strings.EqualFold(trimmed, "system_instruction"), strings.EqualFold(trimmed, "systemInstruction"):
+	case "system_instruction", "systemInstruction":
 		return "systeminstruction"
 	default:
 		return ""
+	}
+}
+
+func isStandardRoleCanonical(key string) bool {
+	switch key {
+	case "messages", "contents", "input", "system", "instructions", "systeminstruction":
+		return true
+	default:
+		return false
+	}
+}
+
+func isExactLegacyToolWrapperKey(key string) bool {
+	switch key {
+	case "tool_calls", "tool_call", "function_call", "tool_use", "functionCall":
+		return true
+	default:
+		return false
+	}
+}
+
+func isExactLegacyContentToolWrapperKey(key string) bool {
+	switch key {
+	case "functionCall", "functionResponse", "function_call", "function_response":
+		return true
+	default:
+		return false
 	}
 }
 

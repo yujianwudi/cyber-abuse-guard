@@ -57,6 +57,7 @@ var (
 		"openai_chat_content_parts",
 		"openai_chat_tool_arguments",
 		"openai_chat_multi_turn",
+		"openai_responses_instructions",
 		"openai_responses_input",
 		"openai_responses_function_call",
 		"anthropic_messages_plain",
@@ -160,9 +161,20 @@ func validateDevelopmentCorpus(root string) (validationMetrics, error) {
 	if err := validateCorpusDirectory(directory); err != nil {
 		return validationMetrics{}, err
 	}
-	manifestData, err := os.ReadFile(filepath.Join(directory, "manifest.json"))
-	if err != nil {
-		return validationMetrics{}, fmt.Errorf("read development manifest: %w", err)
+	corpusFiles := make(map[string][]byte, len(canonicalDevelopmentFiles))
+	for _, name := range canonicalDevelopmentFiles {
+		data, err := os.ReadFile(filepath.Join(directory, name))
+		if err != nil {
+			return validationMetrics{}, fmt.Errorf("read development corpus file %s: %w", name, err)
+		}
+		if err := validateCorpusSafety(data); err != nil {
+			return validationMetrics{}, fmt.Errorf("development corpus file %s: %w", name, err)
+		}
+		corpusFiles[name] = data
+	}
+	manifestData := corpusFiles["manifest.json"]
+	if err := validateDecodedJSONSafety(manifestData); err != nil {
+		return validationMetrics{}, fmt.Errorf("development manifest decoded content: %w", err)
 	}
 	var descriptor manifest
 	if err := decodeStrictJSON(manifestData, &descriptor); err != nil {
@@ -175,13 +187,7 @@ func validateDevelopmentCorpus(root string) (validationMetrics, error) {
 	if !pathWithin(directory, casePath) {
 		return validationMetrics{}, errors.New("development case file escapes its dataset directory")
 	}
-	rawCases, err := os.ReadFile(casePath)
-	if err != nil {
-		return validationMetrics{}, fmt.Errorf("read development cases: %w", err)
-	}
-	if err := validateCorpusSafety(rawCases); err != nil {
-		return validationMetrics{}, err
-	}
+	rawCases := corpusFiles[descriptor.Cases]
 
 	set, err := rules.LoadDefault()
 	if err != nil {
@@ -215,8 +221,8 @@ func validateDevelopmentCorpus(root string) (validationMetrics, error) {
 		if err := validateRecord(record, ids, descriptor); err != nil {
 			return validationMetrics{}, fmt.Errorf("development case %q: %w", record.ID, err)
 		}
-		if err := validateDecodedJSONSafety(record.Input); err != nil {
-			return validationMetrics{}, fmt.Errorf("development case %q decoded input: %w", record.ID, err)
+		if err := validateDecodedJSONSafety(line); err != nil {
+			return validationMetrics{}, fmt.Errorf("development case %q decoded record: %w", record.ID, err)
 		}
 		ids[record.ID] = struct{}{}
 		pairs[record.PairID] = append(pairs[record.PairID], record)
@@ -481,7 +487,12 @@ func validateCorpusSafety(raw []byte) error {
 func validateSafetyText(value string) error {
 	lower := strings.ToLower(value)
 	for _, forbidden := range []string{
-		"mdx-tom", "codex-x", "codex-5.5-codex-instruct", "github.com/",
+		"jia-ethan", "codex-keysmith", "mdx-tom", "gpt-5.6-instruct", "yynxxxxx",
+		"codex-x", "codex-5.5-codex-instruct", "codex-5.5-codex-instruct-5.5", "github.com/",
+		"f699b9bd2cb59eb0d54e69139c68f7808d869b6d",
+		"5f469e43ef66f540cadb475039fd9ed469aef654",
+		"7d0e0064d54f860d4bf12b557fd9f8c489043a35",
+		"ed0b6dc37d1994e93788d92f7af63f58bf0b9e2d",
 		"real victim", "real target", "真实目标", "真实受害", "password", "credential",
 		"malware", "ransomware", "phishing", "keylogger", "exploit", "exfiltrat",
 		"reverse shell", "powershell -", "curl ", "wget ", "api key", "token=",

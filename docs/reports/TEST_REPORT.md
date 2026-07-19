@@ -1,6 +1,11 @@
 # Test Report — v0.15 Round 6 current gate plus frozen Round 5 evidence
 
-Last updated: 2026-07-18 (Asia/Shanghai)
+```text
+current_classifier_policy_version: classifier-policy-v5
+current_classifier_policy_sha256: 0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b
+```
+
+Last updated: 2026-07-20 (Asia/Shanghai)
 
 ## Round 6 v0.15 current test status
 
@@ -18,7 +23,13 @@ Legacy version-specific profiles and Make aliases have been removed.
 | Exact post-merge main CI | [29630844605](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29630844605) **SUCCESS** |
 | Source-only prerelease tag CI | [29630926354](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29630926354) **SUCCESS** for the same commit/tree |
 | Public `v0.15-rc.1` prerelease | Exists with no attached release assets; not the private clean candidate or formal release |
-| Classifier identity | `classifier-policy-v3` / `1294c6fd587522829d07220d5a6f4214092eba6ce1837636da5b3e3d461ba2a3` |
+| Classifier identity | `classifier-policy-v5` / `0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b` |
+| Current hardening PR | [#18](https://github.com/yujianwudi/cyber-abuse-guard/pull/18) remains the external authority for the final exact head, CI, and review state; this source report does not self-certify a future commit |
+| Quoted-review reactivation and long-streaming delta | **PASS / LOCAL DEVELOPMENT EVIDENCE**: direct referent-result equivalence, rule and semantic categories, multi-action and multi-cancellation family ordering, alternative-branch controls, narrow `follow`/`obey`/quoted-request imperatives, defensive neighbors, `just`/`simply`/`let's`/`let us` governors, active/inert/unrecognized parsing, mixed-trust origin, newest-user-review binding, non-user provenance isolation, wrapper-safe adjacent suppression, long current/previous fields, dual cross-window degradation, and `MaxChunks` accounting |
+| Linux safe unit and race checks | **PASS / LOCAL DEVELOPMENT EVIDENCE**: full `make unit-test`; classifier and plugin `-race`; OpenAI Chat/Responses long quoted-review routing; 64 KiB through near-effective-RPC-limit position/coverage ladders |
+| Release-document and formal-package contracts | **PASS / LOCAL DEVELOPMENT EVIDENCE**: real-tree identity gate, mutation fixture, 152 safe-gate contract tests, formal environment-override rejection, and required/install/verify binding for the public jailbreak audit report |
+| `make round6-script-test` | **PASS / LOCAL LINUX DEVELOPMENT EVIDENCE** in a WSL-native exact source snapshot; candidate/attestation/source-exclusion/frozen-v10 contracts, safe gate, archive/HMAC/privacy, document mutation fixture, and real-tree document gate all passed |
+| Subject-admission and four-repository Linux self-check | **PASS / LOCAL DEVELOPMENT EVIDENCE**: safe allowlist, vet, targeted race, 36-case sanitized corpus, repository-neutral four-family carrier matrix, and pinned CPA v7.2.88 module/source/compile contracts; remote Git tag lookup was skipped and real Host remains pending |
 | Private untagged clean candidate artifact / manifest | **NOT CREATED / PENDING** |
 | CPA v7.2.88 Host + Mock | **NOT RUN / PENDING** |
 | Four-layer Auth/Provider/Usage/Mock zero-call proof | **NOT RUN / PENDING** |
@@ -30,7 +41,8 @@ Legacy version-specific profiles and Make aliases have been removed.
 The merged implementation baseline and its exact main/tag CI are engineering
 evidence only. The PR jobs that did not start are not retrospectively called a
 PASS. Any later source cleanup must pass its own CI before it can supersede this
-baseline. The private candidate workflow has not been dispatched; when used, it
+baseline. The current subject-admission self-check is not push/PR CI, native Host
+evidence, or release approval. The private candidate workflow has not been dispatched; when used, it
 must produce a private, untagged, clean exact-source Actions artifact whose
 `candidate-manifest.json`, `build-metadata.json`, SO, and Store ZIP bind that
 exact post-merge main commit/tree. Clean candidate bytes are unreleased. The
@@ -47,6 +59,18 @@ unchanged draft.
 The final PR head must have no unresolved, non-outdated actionable review
 threads before merge. Automated review is advisory; no independent approval is
 claimed.
+
+The quoted-review hardening reclassifies only the unique quote when the newest
+eligible RoleUser review receives an affirmative referential directive. It does
+not reuse the safety wrapper's signals or context. Mixed-trust RoleUser pairs
+retain conservative direct disposition with `non_user_or_untrusted` origin but
+cannot accumulate subject risk. Complete long fields retain only privacy-safe
+results and bounded follow-up facts; an unprovable
+cross-window relationship becomes `classifier_window_incomplete`, while an
+insufficient extra classification budget remains `classification_chunk_limit`.
+The Linux checks above are source-level development evidence only and do not
+replace exact-head GitHub CI, the candidate artifact, CPA v7.2.88 Host + Mock,
+or independent source/artifact/Host review.
 
 The neutral admission policy is [RELEASE_POLICY.md](../RELEASE_POLICY.md).
 Future decisions are external `round6-prerelease-attestation.json` and
@@ -482,8 +506,8 @@ cpa_upstream_tag_commit: 6279bb8a4c2835ff6ed99c6b85083b2afbefa681
 go_version_used_for_wsl_checks: go1.26.4 linux/amd64
 ruleset_version: 1.0.7
 ruleset_sha256: 7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134
-classifier_policy_version: classifier-policy-v2
-classifier_policy_sha256: dc9a174099cb2f621e5333a508d4645604f96f470a6d9ae12a1acfb363d29cf2
+historical_classifier_policy_version: classifier-policy-v2
+historical_classifier_policy_sha256: dc9a174099cb2f621e5333a508d4645604f96f470a6d9ae12a1acfb363d29cf2
 development_corpus: 35 visible cases; never future holdout
 github_ci: PASS — push 29312969925; pull_request 29312971717
 real_host_matrix: GITHUB CI PASS — 32 Host subtests; 15 Router scenarios

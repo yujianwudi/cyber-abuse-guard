@@ -1,5 +1,10 @@
 # Defensive Review: public prompt-injection references and v0.15 Round 6 controls
 
+```text
+current_classifier_policy_version: classifier-policy-v5
+current_classifier_policy_sha256: 0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b
+```
+
 > The Round 6 addendum below is current design/handoff context. The older
 > single-repository review is retained afterward as historical evidence; its
 > branch, commit, classifier identity, validation, and taxonomy statements must
@@ -20,8 +25,9 @@ matrix or Host evidence.
 
 ## Round 6 defensive addendum
 
-Round 6 treats the pinned snapshots of `MDX-Tom/gpt-5.6-instruct`,
-`yynxxxxx/Codex-X`, and `yynxxxxx/Codex-5.5-codex-instruct-5.5` only as
+Round 6 treats the pinned snapshots of `Jia-Ethan/codex-keysmith`,
+`MDX-Tom/gpt-5.6-instruct`, `yynxxxxx/Codex-X`, and
+`yynxxxxx/Codex-5.5-codex-instruct-5.5` only as
 untrusted public adversarial references. No prompt installer, injection script,
 configuration mutator, or third-party test runner is installed or executed.
 No original jailbreak prompt, live payload, real target, credential, URL/IP,
@@ -32,8 +38,9 @@ executing third-party code or copying prompt payloads:
 
 | Public reference | Fixed commit | Abstract mechanisms used for defensive review |
 |---|---|---|
+| `Jia-Ethan/codex-keysmith` | `f699b9bd2cb59eb0d54e69139c68f7808d869b6d` | conditional session routing, placeholder/default branches, hierarchy inversion, refusal suppression, concealed exact-output completion |
 | `MDX-Tom/gpt-5.6-instruct` | `5f469e43ef66f540cadb475039fd9ed469aef654` | persistent instruction-file replacement, refusal suppression, unrestricted persona, scope/placeholder laundering, direct completion, benchmark coercion, bilingual compound routing |
-| `yynxxxxx/Codex-X` | `659415f57c55b92f34600a2ae482475804b22760` | remote template/cache and Markdown import, append/replace, managed `AGENTS`, Skill/MCP, activation aliases, agentic execution, segmented continuation, concealment |
+| `yynxxxxx/Codex-X` | `7d0e0064d54f860d4bf12b557fd9f8c489043a35` | remote template/cache and Markdown import, append/replace, managed `AGENTS`, Skill/MCP, activation aliases, agentic execution, segmented continuation, concealment |
 | `yynxxxxx/Codex-5.5-codex-instruct-5.5` | `ed0b6dc37d1994e93788d92f7af63f58bf0b9e2d` | unrestricted developer mode, filter/refusal suppression, default lab authorization, persistent instruction-file injection |
 
 The corresponding Codex-5.5 example shared by the latter two repositories is
@@ -81,7 +88,7 @@ The visible corpus at
 }
 ```
 
-It contains 36 harmless cases (18 allow / 18 audit), five protocols, 13
+It contains 36 harmless cases (18 allow / 18 audit), five protocols, 14
 carriers, 19 transforms, and five effective source contexts: ordinary request
 bodies plus four abstract instruction-source contexts. Added cases cover
 mixed system/developer/tool composition, local model instructions, managed
@@ -115,8 +122,8 @@ Provider schema allowlist with rejection or forced-safe-value overrides.
 Ruleset `1.0.7` identifies only embedded YAML Cyber Abuse assets. It does not
 include the Go-level `META-OVERRIDE-001` overlay, extraction semantics,
 tool-schema mappings, or control-plane telemetry. Current v0.15 provenance must
-also bind `classifier-policy-v3` /
-`1294c6fd587522829d07220d5a6f4214092eba6ce1837636da5b3e3d461ba2a3`,
+also bind `classifier-policy-v5` /
+`0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b`,
 the exact Git commit/tree, and the candidate workflow run.
 
 The final reverse audit also closed a large-request extraction gap relevant to
@@ -230,6 +237,26 @@ lab, fictional-target, and authorization claims do not reduce the overlay.
 Explicit defensive analysis, quoted-sample review, detection, and mitigation
 can reduce it only when the request also has an affirmative non-execution
 purpose.
+
+Quoted-review credit is transactional rather than a reusable signal discount.
+Only one closed quoted referent is independently classified. If the newest
+eligible RoleUser review is followed by an affirmative referential directive
+such as `execute it`, `proceed`, or `go ahead`, the quote alone is reclassified
+and produces the same result as direct input. Wrapper signals are not reused.
+Questions, explanations, negation, consequences, remediation, and reviews from
+assistant/system/tool or unknown provenance remain inert. Mixed-trust RoleUser
+pairs remain conservatively classified with `non_user_or_untrusted` origin and
+cannot accumulate subject risk. Streaming retains only privacy-safe results and
+bounded follow-up facts; lost cross-window proof is
+`classifier_window_incomplete`, and the extra referent classification is charged
+to `MaxChunks`.
+
+The reviewed grammar treats `just`, `simply`, `let's`, and `let us` as directive
+governors. It separately records proven inert explanations/questions/safety
+deliverables/negations. A complete but unrecognized phrase cannot suppress the
+bounded implementation-signal fallback after prior text has crossed a scanner
+window. Likewise, adjacent head/tail classification is skipped if either field
+already proved an inert quoted referent.
 
 Additional extraction and scope hardening in the same change:
 

@@ -1,5 +1,10 @@
 # CPA Cyber Abuse Guard v0.15 Design
 
+```text
+current_classifier_policy_version: classifier-policy-v5
+current_classifier_policy_sha256: 0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b
+```
+
 ## Scope and invariants
 
 Cyber Abuse Guard is an in-process CPA C-ABI v1 plugin for CLIProxyAPI. Exact
@@ -280,6 +285,15 @@ They can preserve a genuine request to avoid or prohibit abuse, but an unrelated
 prefix such as "do not add comments" cannot suppress a later implementation
 request, and a prior negated policy statement cannot poison a follow-up segment.
 
+High-density directive analysis retains at most 64 exact head clauses and an
+exact four-clause suffix, while every later clause still updates bounded
+per-rule, per-provider-pair composition, context-conflict, and semantic
+summaries. The head and suffix are never joined across omitted clauses. Compact
+intent patterns are compiled once, and one reusable clause-position proof is
+shared by negation and composition checks, preventing repeated clauses or
+unique signal-bearing catalogs from multiplying proof allocations by the rule
+count.
+
 For recognized role histories, each retained segment is classified on its own,
 so old explicit abuse cannot be hidden by appending benign turns. Adjacent user
 turns are additionally classified as a pair to preserve follow-up semantics
@@ -288,6 +302,58 @@ user evidence, but an explicitly abusive system, assistant, or tool segment is
 still blocked. Ambiguous/role-less envelopes retain a joint legacy decision and
 also classify every part and adjacent pair, with the same bounded fail-closed
 capacity marker.
+
+### Defensive quotation and referential reactivation
+
+A safety review may discount exactly one closed quoted Cyber Abuse referent only
+when the surrounding user text proves an unsafe assessment and an exact final
+non-execution boundary. The quote is classified independently from the wrapper.
+The wrapper never lends its context, signals, evidence, or behavior graph to the
+referent.
+
+The most recent eligible user review can be linked to one later user follow-up.
+An affirmative referential directive such as `execute it`, `proceed`, or
+`go ahead`, including bounded polite or conditional forms, reclassifies only the
+quoted referent. The final score, category, rule IDs, evidence, context, and
+behavior graph are therefore the same as a direct classification of that
+referent. Explanations, meaning/risk/consequence questions, negation, and
+remediation do not reactivate it. A review carried by assistant, system, tool,
+or unknown-role provenance cannot establish a user referent, and an older review
+is discarded when a newer eligible RoleUser review is observed. User
+attribution is separate: mixed-trust RoleUser pairs retain conservative direct
+classification with `FindingOriginNonUserOrUntrusted`, but cannot enter subject
+accumulation.
+
+Each bounded clause retains every recognized active or cancelled occurrence.
+The parser walks clauses and occurrences from newest to oldest, so a later
+non-alternative prohibition cancels only its equivalent action family. It cannot
+erase a different active family (`implement and run; do not run` still blocks),
+while separately cancelling every requested family remains inert. Alternative
+branches such as `A or do not A`/`otherwise` do not become terminating
+cancellations. A coordinated prohibition such as `do not A or/nor B` retains
+one negation scope across both action families. Once an `or` arm begins, later
+`and`-joined occurrences in that same clause retain the arm's alternative
+identity and cannot cancel an active occurrence from the first arm.
+
+The speech-act parser has three outcomes: active, proven inert, and
+unrecognized. Common directive governors such as `just`, `simply`, `let's`, and
+`let us` are active. A complete explanation, meaning/status/consequence
+question, safety deliverable, or explicit negation is proven inert. An
+unrecognized complete phrase does not receive inert credit: when exact prior
+text is already unavailable, the streaming path still evaluates its bounded
+implementation signals and degrades coverage if they can complete a block.
+
+Complete long reviews retain only the privacy-safe `Result` and bounded state,
+never the quote or prompt text. A long current follow-up likewise retains only a
+bounded affirmative-reference fact. If the review or follow-up crosses a
+classifier window and exact linkage cannot be proved, the session returns
+`CoverageUnavailable` with `classifier_window_incomplete`; it must not produce
+`CoverageComplete` plus allow. Direct referent classification is charged through
+the same `MaxChunks` accounting as every other role classification, so an
+insufficient budget returns `classification_chunk_limit` rather than bypassing
+the limit. Bounded adjacent head/tail classification is skipped when either
+field has already proved an inert quoted referent, because removing the other
+side of that wrapper would not be an exact semantic view.
 
 The result contains only category, score, action, evidence IDs, aggregate
 context flags, the ruleset version, the classifier-policy identity, and a privacy-safe
@@ -329,9 +395,9 @@ These mechanisms remain stateless across independent API calls and do not
 attest to local instruction-file integrity.
 
 Ruleset `1.0.7` identifies the embedded YAML assets only. The complete
-code-level behavior is separately identified as `classifier-policy-v3`,
+code-level behavior is separately identified as `classifier-policy-v5`,
 SHA-256
-`1294c6fd587522829d07220d5a6f4214092eba6ce1837636da5b3e3d461ba2a3`.
+`0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b`.
 Its tested source list binds the classifier, matcher, normalizer, role logic,
 wrapper assessment, behavior graph, semantic composition, bounded extractor,
 rule loader/schema, embedded YAML assets, and module dependency locks. The
@@ -361,6 +427,10 @@ Subject selection is ordered:
    HMACed in memory;
 2. an anonymous bucket.
 
+The anonymous identity is never admitted to rolling subject state. Anonymous
+requests still receive the same direct classifier/transport disposition, but
+cannot allocate a shared bucket or accumulate cross-request risk across users.
+
 CPA ABI v1 does not supply a distinct authenticated principal/key-policy ID or
 a trustworthy direct-peer address to ModelRouter. v0.15 therefore rejects
 `trusted_proxy.enabled: true`; forwarded headers alone are spoofable and are
@@ -376,15 +446,38 @@ path-swap races.
 
 Subject control is disabled by default and the Router does not enter the
 identifier/controller path unless `subject_control.enabled: true` is explicit.
-The domain-separated request digest is computed lazily only for an enabled
-subject evaluation, a final block pending key, or a persisted audit event whose
-configuration includes `log_request_hash: true`.
+The domain-separated request digest is computed lazily only for an eligible
+accumulating subject hit, a final block pending key, or a persisted audit event
+whose configuration includes `log_request_hash: true`. A read-only subject
+lookup never hashes the request body.
 
-Risk entries are in-memory rolling windows with time decay. Risk is added only
-for results at or above the audit threshold. Repeat hits receive a bounded
-multiplier. Cooldown/manual-block state applies only to new risky requests;
-ordinary safe requests are not permanently denied. Manual blocks can be
-cleared through the authenticated management API.
+Risk entries are in-memory rolling windows with time decay. A hit, request
+receipt, and repeat multiplier are added only when every admission condition is
+true: the identity is authenticated rather than anonymous; extractor and
+classifier coverage are complete; finding confidence is
+`FindingCompleteRequest`; the winning finding origin is the closed,
+text-free `user_content` value; the behavior graph contains `BaseBehavior`;
+the classifier directly returned `ActionBlock`; and the score is at or above
+the configured `hard_block` threshold. System, assistant, tool, tool-payload,
+roleless, unknown, mixed-role, or lower-confidence findings retain their direct
+request disposition but cannot accumulate subject risk.
+
+User authorship is a separate, zero-value-untrusted transient proof rather than
+an inference from `RoleUser`. The extractor marks it trusted only for recognized
+model-visible `content` / `parts` / `refusal` below one explicit valid
+`role: user`, or for a profile-allowlisted multipart prompt. Unknown top-level
+fields, unknown message siblings, roleless/future items, non-user roles, tool
+definitions, tool arguments, and tool output remain untrusted. Multi-field or
+multi-turn findings receive `user_content` only when every contributing
+user-like field carries the trusted proof; unrelated untrusted fields do not
+erase a separately winning trusted user finding.
+
+Non-accumulating observations never allocate state or add a hit, receipt, or
+multiplier. A non-accumulating risky candidate at or above the audit threshold
+may read an already active cooldown/manual-block disposition, while an ordinary
+score below the audit threshold remains safe even for a previously cooling or
+manually blocked subject. Expired inactive state is pruned during this lookup.
+Manual blocks can be cleared through the authenticated management API.
 
 Risk accounting is idempotent per subject and domain-separated request digest.
 The same logical request crossing Router and executor methods, retrying, racing
@@ -455,6 +548,16 @@ cleanup, and a configured maximum size. A database open/write failure degrades
 to in-memory counters and rate-limited host-error diagnostics; classification
 continues. Shutdown has a five-second runtime budget so a locked SQLite writer
 cannot indefinitely stall plugin reconfiguration or shutdown.
+
+A complete non-user/untrusted category-free wrapper-only
+`audit_suspicious_text` result with no opaque media is a counter-only
+observation by default. It increments the fixed
+`audited` and `control_plane_meta_override` counters without deriving request or
+subject hashes and without enqueuing a SQLite event. This narrow fast path never
+applies to trusted-user wrapper evidence, a Cyber Abuse base behavior, block,
+incomplete inspection, or opaque media. `audit.persist_wrapper_only: true`
+explicitly restores the legacy
+per-request event stream for wrapper-only observations.
 
 New database directories are created with mode 0700, but the plugin never
 changes permissions on an existing operator-owned directory. Database, WAL,
@@ -678,8 +781,8 @@ SSE stream with terminal frames; returning successful chunks would force HTTP
 ## Build identity and release reproducibility
 
 Builds link immutable version, full commit SHA, ruleset version/hash,
-`classifier-policy-v3` /
-`1294c6fd587522829d07220d5a6f4214092eba6ce1837636da5b3e3d461ba2a3`,
+`classifier-policy-v5` /
+`0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b`,
 streaming-scanner identity, and dirty state. Build metadata and the verifier bind
 these identities. Candidate mode requires a clean worktree, exact expected
 commit/tree, the commit timestamp, an absent formal `v0.15` tag, and forbids

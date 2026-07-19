@@ -11,7 +11,9 @@ The profile pins go.mod sum
 `h1:ytvZNWbCv7PrAyR80+RKsDJPODsdL6qxyFaXDBNZdqs=`. The checked-in isolated
 module uses this reviewed CPA release. Unknown profile names fail closed.
 
-The tests run 18 official Host routing/status and metadata-sanitization contracts and
+The tests run 18 official Host routing/status and metadata-sanitization contracts,
+the official Responses namespace/custom `additional_tools` conversion contract,
+two official Codex Responses Lite `additional_tools` role/shape contracts, and
 11 official Interactions route/handler contracts, then apply three
 checksum-pinned overlays only to ephemeral copies of the selected official CPA
 module. `scripts/cpa-latest-compat.sh` compiles the Guard and integration

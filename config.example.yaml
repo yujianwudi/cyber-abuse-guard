@@ -76,6 +76,13 @@ plugins:
         log_subject_hash: true
         log_rule_ids: true
         log_category: true
+        # Complete non-user/untrusted category-free wrapper-only findings update
+        # counters without a request/subject hash or SQLite row. Trusted-user
+        # wrapper findings retain per-request audit attribution.
+        # Set true only when per-request wrapper correlation is operationally
+        # required; blocks, base Cyber Abuse findings, incomplete inspection,
+        # and opaque-media dispositions are always persisted when audit is on.
+        persist_wrapper_only: false
         # Compatibility field: true is always rejected. There is no debug
         # mode that persists original prompt/request text.
         log_original_text: false

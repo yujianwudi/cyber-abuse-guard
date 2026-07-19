@@ -177,11 +177,12 @@ func (p *transformedMultipartJSONPlanner) plan() IncompleteReason {
 				return IncompleteMultipartParseError
 			}
 			p.spans = append(p.spans, plannedText{
-				id:         uint64(p.textFieldCount),
-				rawStart:   start,
-				rawEnd:     end,
-				role:       RoleUser,
-				provenance: ProvenanceContent,
+				id:              uint64(p.textFieldCount),
+				rawStart:        start,
+				rawEnd:          end,
+				role:            RoleUser,
+				provenance:      ProvenanceContent,
+				userAttribution: UserAttributionTrusted,
 			})
 		case multipartFieldMetadata:
 			if reason := p.skipValue(1); reason != "" {
@@ -559,10 +560,11 @@ func streamMultipartTextField(part *multipart.Part, fieldID uint64, limits Limit
 		if len(chunk) == 0 {
 			if final && started {
 				if err := sink.AddSegment(SegmentChunk{
-					Role:       RoleUser,
-					Provenance: ProvenanceContent,
-					FieldID:    fieldID,
-					End:        true,
+					Role:            RoleUser,
+					Provenance:      ProvenanceContent,
+					UserAttribution: UserAttributionTrusted,
+					FieldID:         fieldID,
+					End:             true,
 				}); err != nil {
 					return false, fmtChunkSinkError(err)
 				}
@@ -575,12 +577,13 @@ func streamMultipartTextField(part *multipart.Part, fieldID uint64, limits Limit
 			return false, nil
 		}
 		if err := sink.AddSegment(SegmentChunk{
-			Role:       RoleUser,
-			Provenance: ProvenanceContent,
-			FieldID:    fieldID,
-			Start:      !started,
-			End:        final,
-			Text:       chunk,
+			Role:            RoleUser,
+			Provenance:      ProvenanceContent,
+			UserAttribution: UserAttributionTrusted,
+			FieldID:         fieldID,
+			Start:           !started,
+			End:             final,
+			Text:            chunk,
 		}); err != nil {
 			return false, fmtChunkSinkError(err)
 		}
@@ -616,10 +619,11 @@ func streamMultipartTextField(part *multipart.Part, fieldID uint64, limits Limit
 			}
 			for index, variant := range variants {
 				if err := emitter.emitOwned(plannedText{
-					id:         derivedFieldID(fieldID, index),
-					owned:      variant,
-					role:       RoleUser,
-					provenance: ProvenanceContent,
+					id:              derivedFieldID(fieldID, index),
+					owned:           variant,
+					role:            RoleUser,
+					provenance:      ProvenanceContent,
+					userAttribution: UserAttributionTrusted,
 				}); err != nil {
 					return false, err
 				}

@@ -313,7 +313,12 @@ func TestExtractRequestMediaMetadataAloneDoesNotInventOpaquePayload(t *testing.T
 func extractReverseOrderedMediaRequest(t testing.TB, canary, visible string) Result {
 	t.Helper()
 	body := []byte(`{"messages":[{"role":"user","content":[{"source":{"type":"base64","data":"` + canary + `"},"caption":"` + visible + `","type":"image"}]}]}`)
-	result, err := ExtractRequest(body, http.Header{"Content-Type": []string{"application/json"}}, Limits{})
+	result, err := ExtractProfiledRequest(
+		body,
+		http.Header{"Content-Type": []string{"application/json"}},
+		RequestProfile{Source: SourceProfileOpenAI},
+		Limits{},
+	)
 	if err != nil || !result.IsComplete() {
 		t.Fatalf("result=%#v err=%v", result, err)
 	}

@@ -1,5 +1,10 @@
 # Threat Model
 
+```text
+current_classifier_policy_version: classifier-policy-v5
+current_classifier_policy_sha256: 0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b
+```
+
 ## Protected assets
 
 - upstream OpenAI/Codex and other provider accounts behind CPA;
@@ -31,8 +36,8 @@ to `main`, exact post-merge main push CI, and candidate dispatch from
 Earlier v7.2.85/v7.2.84/v7.2.83/v7.2.82/v7.2.81 source/compile profiles are historical non-gating
 engineering evidence, not current v0.15 release requirements.
 
-The current classifier identity is `classifier-policy-v3` /
-`1294c6fd587522829d07220d5a6f4214092eba6ce1837636da5b3e3d461ba2a3`.
+The current classifier identity is `classifier-policy-v5` /
+`0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b`.
 
 ## Principal threats and controls
 
@@ -64,6 +69,7 @@ The current classifier identity is `classifier-policy-v3` /
 | Token counting or HTTP forwarding bypasses a policy self-route | `executor.execute`, `executor.execute_stream`, and `executor.count_tokens` share the policy 403 path. `executor.http_request` has a SOURCE/ADAPTER status-error 405 check: the official adapter returns `nil,error`. CPA's public `/v1/alpha/search` consumer normally selects `codex` and maps every executor error to 502, so no current official route yields Guard's final client 405. The project wrapper is not official Host evidence; final 405 is `NOT AVAILABLE / NOT RUN` and blocks handoff. |
 | Tool input hides abuse under a metadata-named key or reordered Anthropic block | Transport metadata remains excluded, but all textual fields inside tool payloads, including order-independent `tool_use.input` and `name`/`url`/`type`/`model`, are scanned under the shared budget. |
 | Appended history or forged role labels hide earlier abuse | Standard role segments are each classified independently plus adjacent user follow-ups; role-less shapes use a conservative part fallback, unsupported roles fail closed, and history-cap truncation is never silent. |
+| A safety review quotes abuse and a later turn says only `execute it`, `follow it`, or `proceed` | Only the newest eligible RoleUser review can establish a referent. An affirmative referential directive reclassifies the unique quote alone; questions, explanations, negation, remediation, and non-user/unknown review carriers remain inert. Multi-action clauses retain each action family, so cancelling one family cannot erase another active family, while explicit cancellation of every family remains inert. Alternative cancellation branches do not terminate an active choice. Mixed-trust RoleUser pairs retain conservative direct disposition with `non_user_or_untrusted` origin and cannot accumulate subject risk. Long or cross-window proof loss becomes `classifier_window_incomplete`, and the extra classification consumes `MaxChunks`. |
 | Router and executor retries count one logical request multiple times | Subject risk uses a domain-separated request digest and bounded idempotency receipts. The same subject/request pair is counted once across execute, stream, token count, retry, concurrency, pending-cache miss/expiry, enabled reconfigure, and shutdown races. Receipts persist with optional subject snapshots. |
 | Regex denial of service | Default rules use normalized literal terms; validation rejects unsupported/oversized rule constructs. |
 | Prompt or secret leakage through Guard audit | Fixed minimal event schema; SHA-256/HMAC correlation; tests search the DB for canary prompt/key/unknown-field values. This does not cover CPA Host request/error logs. |

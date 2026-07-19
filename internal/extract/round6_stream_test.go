@@ -19,6 +19,7 @@ type round6RecordingSink struct {
 	fieldText   map[uint64]*strings.Builder
 	fieldRole   map[uint64]Role
 	fieldProv   map[uint64]SegmentProvenance
+	fieldAttr   map[uint64]UserAttribution
 }
 
 func newRound6RecordingSink() *round6RecordingSink {
@@ -26,6 +27,7 @@ func newRound6RecordingSink() *round6RecordingSink {
 		fieldText: make(map[uint64]*strings.Builder),
 		fieldRole: make(map[uint64]Role),
 		fieldProv: make(map[uint64]SegmentProvenance),
+		fieldAttr: make(map[uint64]UserAttribution),
 	}
 }
 
@@ -42,6 +44,7 @@ func (s *round6RecordingSink) AddSegment(chunk SegmentChunk) error {
 		s.fieldText[chunk.FieldID] = &strings.Builder{}
 		s.fieldRole[chunk.FieldID] = chunk.Role
 		s.fieldProv[chunk.FieldID] = chunk.Provenance
+		s.fieldAttr[chunk.FieldID] = chunk.UserAttribution
 	} else if !s.active || s.activeField != chunk.FieldID {
 		return fmt.Errorf("non-serial chunk for field %d", chunk.FieldID)
 	}
@@ -75,6 +78,27 @@ func (s *round6RecordingSink) joined() string {
 
 func round6JSONHeaders() http.Header {
 	return http.Header{"Content-Type": []string{"application/json"}}
+}
+
+func TestRound6ShortJSONStringDecoderDoesNotReserveFullWindow(t *testing.T) {
+	t.Parallel()
+
+	raw := []byte(`"short field"`)
+	maxCapacity := 0
+	if err := decodeJSONStringChunks(raw, DefaultMaxTextPartBytes, func(chunk []byte, final bool) error {
+		if !final {
+			t.Fatal("short JSON string unexpectedly emitted a non-final chunk")
+		}
+		if cap(chunk) > maxCapacity {
+			maxCapacity = cap(chunk)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if maxCapacity > len(raw)-2 {
+		t.Fatalf("short JSON decoder capacity=%d, want <= raw content bytes %d", maxCapacity, len(raw)-2)
+	}
 }
 
 func TestRound6ScanLongJSONFieldComplete(t *testing.T) {
@@ -188,6 +212,409 @@ func TestRound6UnknownAndProvenUserRolesRemainDistinct(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestRound6UserAttributionUsesClosedSchemaPaths(t *testing.T) {
+	tests := []struct {
+		name          string
+		profile       SourceProfile
+		body          string
+		target        string
+		wantRoleAware bool
+		wantRole      Role
+		wantProv      SegmentProvenance
+		wantAttr      UserAttribution
+	}{
+		{
+			name: "explicit user structured text", profile: SourceProfileOpenAI,
+			body:   `{"messages":[{"role":"user","content":[{"type":"text","text":"trusted-user-content"}]}]}`,
+			target: "trusted-user-content", wantRoleAware: true, wantRole: RoleUser, wantAttr: UserAttributionTrusted,
+		},
+		{
+			name: "responses scalar input", profile: SourceProfileOpenAIResponse,
+			body:   `{"input":"trusted-responses-scalar"}`,
+			target: "trusted-responses-scalar", wantRoleAware: true, wantRole: RoleUser, wantAttr: UserAttributionTrusted,
+		},
+		{
+			name: "responses roleless function output", profile: SourceProfileOpenAIResponse,
+			body: `{"input":[{"type":"function_call_output","call_id":"call_1","output":"responses-tool-output"},` +
+				`{"role":"user","content":"trusted-after-tool-output"}]}`,
+			target: "responses-tool-output", wantRoleAware: true, wantRole: RoleTool,
+			wantProv: ProvenanceContent, wantAttr: UserAttributionUntrusted,
+		},
+		{
+			name: "responses user after roleless function output", profile: SourceProfileOpenAIResponse,
+			body: `{"input":[{"type":"function_call_output","call_id":"call_1","output":"responses-tool-output"},` +
+				`{"role":"user","content":"trusted-after-tool-output"}]}`,
+			target: "trusted-after-tool-output", wantRoleAware: true, wantRole: RoleUser,
+			wantProv: ProvenanceContent, wantAttr: UserAttributionTrusted,
+		},
+		{
+			name: "responses additional tools description", profile: SourceProfileOpenAIResponse,
+			body: `{"input":[{"type":"additional_tools","role":"developer","tools":[{"type":"namespace","name":"mcp__surrogate__","tools":[` +
+				`{"type":"custom","name":"inspect","description":"additional-tools-description"}]}]},` +
+				`{"type":"message","role":"user","content":[{"type":"input_text","text":"trusted-after-additional-tools"}]}]}`,
+			target: "additional-tools-description", wantRoleAware: true, wantRole: RoleSystem,
+			wantProv: ProvenanceContent, wantAttr: UserAttributionUntrusted,
+		},
+		{
+			name: "responses user after additional tools", profile: SourceProfileOpenAIResponse,
+			body: `{"input":[{"type":"additional_tools","role":"developer","tools":[{"type":"namespace","name":"mcp__surrogate__","tools":[` +
+				`{"type":"custom","name":"inspect","description":"additional-tools-description"}]}]},` +
+				`{"type":"message","role":"user","content":[{"type":"input_text","text":"trusted-after-additional-tools"}]}]}`,
+			target: "trusted-after-additional-tools", wantRoleAware: true, wantRole: RoleUser,
+			wantProv: ProvenanceContent, wantAttr: UserAttributionTrusted,
+		},
+		{
+			name: "responses additional tools role before type", profile: SourceProfileOpenAIResponse,
+			body: `{"input":[{"role":"developer","tools":[{"type":"custom","name":"inspect","description":"ordered-additional-tools-description"}],"type":"additional_tools"},` +
+				`{"type":"message","role":"user","content":"trusted-after-ordered-additional-tools"}]}`,
+			target: "ordered-additional-tools-description", wantRoleAware: true, wantRole: RoleSystem,
+			wantProv: ProvenanceContent, wantAttr: UserAttributionUntrusted,
+		},
+		{
+			name: "responses roleless additional tools remains compatible", profile: SourceProfileOpenAIResponse,
+			body: `{"input":[{"type":"additional_tools","tools":[{"type":"custom","name":"inspect","description":"roleless-additional-tools-description"}]},` +
+				`{"type":"message","role":"user","content":"trusted-after-roleless-additional-tools"}]}`,
+			target: "roleless-additional-tools-description", wantRoleAware: true, wantRole: RoleSystem,
+			wantProv: ProvenanceContent, wantAttr: UserAttributionUntrusted,
+		},
+		{
+			name: "responses additional tools empty official shape", profile: SourceProfileOpenAIResponse,
+			body:   `{"input":[{"type":"additional_tools","role":"developer","tools":[]},{"type":"message","role":"user","content":"trusted-after-empty-additional-tools"}]}`,
+			target: "trusted-after-empty-additional-tools", wantRoleAware: true, wantRole: RoleUser,
+			wantProv: ProvenanceContent, wantAttr: UserAttributionTrusted,
+		},
+		{
+			name: "responses roleless function call arguments", profile: SourceProfileOpenAIResponse,
+			body:   `{"input":[{"type":"function_call","call_id":"call_1","name":"lookup","arguments":"assistant-function-call-arguments"}]}`,
+			target: "assistant-function-call-arguments", wantRoleAware: true, wantRole: RoleAssistant,
+			wantProv: ProvenanceToolPayload, wantAttr: UserAttributionUntrusted,
+		},
+		{
+			name: "responses roleless custom tool call input", profile: SourceProfileOpenAIResponse,
+			body:   `{"input":[{"type":"custom_tool_call","call_id":"call_2","name":"apply_patch","input":"assistant-custom-tool-input"}]}`,
+			target: "assistant-custom-tool-input", wantRoleAware: true, wantRole: RoleAssistant,
+			wantProv: ProvenanceToolPayload, wantAttr: UserAttributionUntrusted,
+		},
+		{
+			name: "responses custom tool output content array", profile: SourceProfileOpenAIResponse,
+			body:   `{"input":[{"type":"custom_tool_call_output","call_id":"call_2","output":[{"type":"input_text","text":"custom-tool-output-array-text"}]}]}`,
+			target: "custom-tool-output-array-text", wantRoleAware: true, wantRole: RoleTool,
+			wantProv: ProvenanceContent, wantAttr: UserAttributionUntrusted,
+		},
+		{
+			name: "top level instructions", profile: SourceProfileOpenAIResponse,
+			body:   `{"instructions":"untrusted-root-instructions","input":"safe user request"}`,
+			target: "untrusted-root-instructions", wantRoleAware: true, wantRole: RoleSystem, wantAttr: UserAttributionUntrusted,
+		},
+		{
+			name: "claude top level system", profile: SourceProfileClaude,
+			body:   `{"system":"claude-system-content","messages":[{"role":"user","content":"safe user request"}]}`,
+			target: "claude-system-content", wantRoleAware: true, wantRole: RoleSystem, wantAttr: UserAttributionUntrusted,
+		},
+		{
+			name: "cross provider top level system is untrusted", profile: SourceProfileOpenAI,
+			body:   `{"system":"cross-provider-system","messages":[{"role":"user","content":"safe user request"}]}`,
+			target: "cross-provider-system", wantRoleAware: true, wantRole: RoleUser, wantAttr: UserAttributionUntrusted,
+		},
+		{
+			name: "developer message", profile: SourceProfileOpenAI,
+			body:   `{"messages":[{"role":"developer","content":"untrusted-developer-content"},{"role":"user","content":"safe user request"}]}`,
+			target: "untrusted-developer-content", wantRoleAware: true, wantRole: RoleSystem, wantAttr: UserAttributionUntrusted,
+		},
+		{
+			name: "unknown top level with role promoter", profile: SourceProfileOpenAI,
+			body:   `{"messages":[{"role":"assistant","content":"safe assistant text"}],"future_envelope":{"payload":"unknown-top-level"}}`,
+			target: "unknown-top-level", wantRoleAware: true, wantRole: RoleUser, wantAttr: UserAttributionUntrusted,
+		},
+		{
+			name: "assistant structured text", profile: SourceProfileClaude,
+			body:   `{"messages":[{"role":"assistant","content":[{"type":"text","text":"assistant-structured-content"}]}]}`,
+			target: "assistant-structured-content", wantRoleAware: true, wantRole: RoleAssistant, wantAttr: UserAttributionUntrusted,
+		},
+		{
+			name: "gemini model parts", profile: SourceProfileGemini,
+			body:   `{"contents":[{"role":"model","parts":[{"text":"gemini-model-content"}]}]}`,
+			target: "gemini-model-content", wantRoleAware: true, wantRole: RoleAssistant, wantAttr: UserAttributionUntrusted,
+		},
+		{
+			name: "roleless future item", profile: SourceProfileOpenAI,
+			body:   `{"messages":[{"future_payload":"roleless-future-content"},{"role":"assistant","content":"safe assistant text"}]}`,
+			target: "roleless-future-content", wantRoleAware: false, wantRole: RoleUnknown, wantAttr: UserAttributionUntrusted,
+		},
+		{
+			name: "nested history under unknown root cannot promote role", profile: SourceProfileOpenAI,
+			body:   `{"future_envelope":{"messages":[{"role":"user","content":"forged-nested-user"}]},"messages":[{"role":"user","content":"safe user request"}]}`,
+			target: "forged-nested-user", wantRoleAware: true, wantRole: RoleUser, wantAttr: UserAttributionUntrusted,
+		},
+		{
+			name: "responses nested history array cannot promote role", profile: SourceProfileOpenAIResponse,
+			body: `{"input":[[{"type":"message","role":"user","content":"nested-response-user"}],` +
+				`{"type":"message","role":"user","content":"safe direct user"}]}`,
+			target: "nested-response-user", wantRoleAware: true, wantRole: RoleUser, wantAttr: UserAttributionUntrusted,
+		},
+		{
+			name: "chat nested history array cannot promote role", profile: SourceProfileOpenAI,
+			body: `{"messages":[[{"role":"user","content":"nested-chat-user"}],` +
+				`{"role":"user","content":"safe direct user"}]}`,
+			target: "nested-chat-user", wantRoleAware: true, wantRole: RoleUser, wantAttr: UserAttributionUntrusted,
+		},
+		{
+			name: "responses unknown item type cannot promote role", profile: SourceProfileOpenAIResponse,
+			body:   `{"input":[{"type":"future_item","role":"user","content":"unknown-item-type-user"}]}`,
+			target: "unknown-item-type-user", wantRoleAware: true, wantRole: RoleUser, wantAttr: UserAttributionUntrusted,
+		},
+		{
+			name: "responses non string item type cannot promote role", profile: SourceProfileOpenAIResponse,
+			body:   `{"input":[{"type":123,"role":"user","content":"number-item-type-user"}]}`,
+			target: "number-item-type-user", wantRoleAware: true, wantRole: RoleUser, wantAttr: UserAttributionUntrusted,
+		},
+		{
+			name: "responses null item type cannot promote role", profile: SourceProfileOpenAIResponse,
+			body:   `{"input":[{"type":null,"role":"user","content":"null-item-type-user"}]}`,
+			target: "null-item-type-user", wantRoleAware: true, wantRole: RoleUser, wantAttr: UserAttributionUntrusted,
+		},
+		{
+			name: "responses unbounded item type cannot promote role", profile: SourceProfileOpenAIResponse,
+			body: `{"input":[{"type":"` + strings.Repeat("x", maxShadowValueBytes+1) +
+				`","role":"user","content":"unbounded-item-type-user"}]}`,
+			target: "unbounded-item-type-user", wantRoleAware: true, wantRole: RoleUser, wantAttr: UserAttributionUntrusted,
+		},
+		{
+			name: "responses null content block type cannot promote role", profile: SourceProfileOpenAIResponse,
+			body:   `{"input":[{"type":"message","role":"user","content":[{"type":null,"text":"null-block-type-user"}]}]}`,
+			target: "null-block-type-user", wantRoleAware: true, wantRole: RoleUser, wantAttr: UserAttributionUntrusted,
+		},
+		{
+			name: "responses unbounded content block type cannot promote role", profile: SourceProfileOpenAIResponse,
+			body: `{"input":[{"type":"message","role":"user","content":[{"type":"` +
+				strings.Repeat("x", maxShadowValueBytes+1) + `","text":"unbounded-block-type-user"}]}]}`,
+			target: "unbounded-block-type-user", wantRoleAware: true, wantRole: RoleUser, wantAttr: UserAttributionUntrusted,
+		},
+		{
+			name: "responses object valued text field cannot promote role", profile: SourceProfileOpenAIResponse,
+			body:   `{"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":{"text":"object-text-user"}}]}]}`,
+			target: "object-text-user", wantRoleAware: true, wantRole: RoleUser, wantAttr: UserAttributionUntrusted,
+		},
+		{
+			name: "chat nested content under unknown sibling cannot promote role", profile: SourceProfileOpenAI,
+			body:   `{"messages":[{"role":"user","content":"safe direct user","future_payload":{"content":"nested-sibling-content-user"}}]}`,
+			target: "nested-sibling-content-user", wantRoleAware: true, wantRole: RoleUser, wantAttr: UserAttributionUntrusted,
+		},
+		{
+			name: "responses hybrid text and tool payload block cannot promote role", profile: SourceProfileOpenAIResponse,
+			body:   `{"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"hybrid-block-user","input":{"value":"tool payload"}}]}]}`,
+			target: "hybrid-block-user", wantRoleAware: true, wantRole: RoleUser, wantAttr: UserAttributionUntrusted,
+		},
+		{
+			name: "responses hybrid text and tool call wrapper cannot promote role", profile: SourceProfileOpenAIResponse,
+			body:   `{"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"hybrid-tool-call-user","tool_call":{"function":{"arguments":{"value":"tool payload"}}}}]}]}`,
+			target: "hybrid-tool-call-user", wantRoleAware: true, wantRole: RoleUser, wantAttr: UserAttributionUntrusted,
+		},
+		{
+			name: "responses hybrid text and tool calls wrapper cannot promote role", profile: SourceProfileOpenAIResponse,
+			body:   `{"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"hybrid-tool-calls-user","tool_calls":[{"function":{"arguments":{"value":"tool payload"}}}]}]}]}`,
+			target: "hybrid-tool-calls-user", wantRoleAware: true, wantRole: RoleUser, wantAttr: UserAttributionUntrusted,
+		},
+		{
+			name: "responses hybrid text and function wrapper cannot promote role", profile: SourceProfileOpenAIResponse,
+			body:   `{"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"hybrid-function-user","function":{"arguments":{"value":"tool payload"}}}]}]}`,
+			target: "hybrid-function-user", wantRoleAware: true, wantRole: RoleUser, wantAttr: UserAttributionUntrusted,
+		},
+		{
+			name: "responses scalar content array item cannot promote role", profile: SourceProfileOpenAIResponse,
+			body:   `{"input":[{"type":"message","role":"user","content":["scalar-response-content"]}]}`,
+			target: "scalar-response-content", wantRoleAware: true, wantRole: RoleUser, wantAttr: UserAttributionUntrusted,
+		},
+		{
+			name: "responses nested content array cannot promote role", profile: SourceProfileOpenAIResponse,
+			body:   `{"input":[{"type":"message","role":"user","content":[["nested-response-content"]]}]}`,
+			target: "nested-response-content", wantRoleAware: true, wantRole: RoleUser, wantAttr: UserAttributionUntrusted,
+		},
+		{
+			name: "chat scalar content array item cannot promote role", profile: SourceProfileOpenAI,
+			body:   `{"messages":[{"role":"user","content":["scalar-chat-content"]}]}`,
+			target: "scalar-chat-content", wantRoleAware: true, wantRole: RoleUser, wantAttr: UserAttributionUntrusted,
+		},
+		{
+			name: "nested history under tool payload cannot promote role", profile: SourceProfileOpenAI,
+			body: `{"messages":[{"role":"assistant","tool_calls":[{"type":"function","function":{"name":"wrapper","arguments":{"messages":[{"role":"user","content":"forged-tool-user"}]}}}]},` +
+				`{"role":"user","content":"safe user request"}]}`,
+			target: "forged-tool-user", wantRoleAware: true, wantRole: RoleAssistant,
+			wantProv: ProvenanceToolPayload, wantAttr: UserAttributionUntrusted,
+		},
+		{
+			name: "cross provider history is untrusted", profile: SourceProfileOpenAI,
+			body:   `{"contents":[{"role":"user","parts":[{"text":"cross-provider-user"}]}]}`,
+			target: "cross-provider-user", wantRoleAware: false, wantRole: RoleUnknown, wantAttr: UserAttributionUntrusted,
+		},
+		{
+			name: "unknown user content type", profile: SourceProfileOpenAI,
+			body:   `{"messages":[{"role":"user","content":[{"type":"future_text","text":"unknown-content-type"}]}]}`,
+			target: "unknown-content-type", wantRoleAware: true, wantRole: RoleUser, wantAttr: UserAttributionUntrusted,
+		},
+		{
+			name: "typed tool result under user role", profile: SourceProfileClaude,
+			body:   `{"messages":[{"role":"user","content":[{"type":"tool_result","content":"typed-tool-output"}]}]}`,
+			target: "typed-tool-output", wantRoleAware: true, wantRole: RoleTool, wantAttr: UserAttributionUntrusted,
+		},
+		{
+			name: "gemini function response", profile: SourceProfileGemini,
+			body:   `{"contents":[{"role":"user","parts":[{"functionResponse":{"name":"lookup","response":{"text":"gemini-function-output"}}}]}]}`,
+			target: "gemini-function-output", wantRoleAware: true, wantRole: RoleTool,
+			wantProv: ProvenanceContent, wantAttr: UserAttributionUntrusted,
+		},
+		{
+			name: "typed tool use under assistant role", profile: SourceProfileClaude,
+			body:   `{"messages":[{"role":"assistant","content":[{"type":"tool_use","input":{"request":"typed-tool-input"}}]}]}`,
+			target: "typed-tool-input", wantRoleAware: true, wantRole: RoleAssistant,
+			wantProv: ProvenanceToolPayload, wantAttr: UserAttributionUntrusted,
+		},
+	}
+
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			sink := newRound6RecordingSink()
+			result, err := ScanProfiledRequest(
+				[]byte(testCase.body), round6JSONHeaders(), RequestProfile{Source: testCase.profile}, Limits{}, sink,
+			)
+			if err != nil || !result.IsComplete() || result.RoleAware != testCase.wantRoleAware {
+				t.Fatalf("result=%#v err=%v", result, err)
+			}
+			found := false
+			for fieldID, builder := range sink.fieldText {
+				if !strings.Contains(builder.String(), testCase.target) {
+					continue
+				}
+				found = true
+				if sink.fieldRole[fieldID] != testCase.wantRole || sink.fieldProv[fieldID] != testCase.wantProv ||
+					sink.fieldAttr[fieldID] != testCase.wantAttr {
+					t.Fatalf("field %d role/provenance/attribution=%q/%d/%d want=%q/%d/%d", fieldID,
+						sink.fieldRole[fieldID], sink.fieldProv[fieldID], sink.fieldAttr[fieldID],
+						testCase.wantRole, testCase.wantProv, testCase.wantAttr)
+				}
+			}
+			if !found {
+				t.Fatalf("target %q not found in fields=%#v", testCase.target, sink.fieldText)
+			}
+		})
+	}
+}
+
+func TestRound6ResponsesReasoningReplayKeepsUserTrustedAndSkipsEncryptedContent(t *testing.T) {
+	t.Parallel()
+
+	const encryptedCanary = "ENCRYPTED_REASONING_MUST_NOT_BE_SCANNED_"
+	encrypted := encryptedCanary + strings.Repeat("A", 64<<10)
+	body, err := json.Marshal(map[string]any{
+		"input": []any{
+			map[string]any{
+				"type":              "reasoning",
+				"summary":           []any{map[string]any{"type": "summary_text", "text": "assistant reasoning summary"}},
+				"encrypted_content": encrypted,
+			},
+			map[string]any{"role": "user", "content": "trusted user after reasoning replay"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sink := newRound6RecordingSink()
+	result, err := ScanProfiledRequest(
+		body, round6JSONHeaders(), RequestProfile{Source: SourceProfileOpenAIResponse}, Limits{}, sink,
+	)
+	if err != nil || !result.IsComplete() || !result.RoleAware {
+		t.Fatalf("result=%#v err=%v", result, err)
+	}
+	if strings.Contains(sink.joined(), encryptedCanary) || result.TextBytesScanned >= len(encrypted) {
+		t.Fatalf("encrypted reasoning entered semantic scan: bytes=%d surface=%q", result.TextBytesScanned, sink.joined())
+	}
+
+	wants := map[string]struct {
+		role Role
+		attr UserAttribution
+	}{
+		"assistant reasoning summary":         {role: RoleAssistant, attr: UserAttributionUntrusted},
+		"trusted user after reasoning replay": {role: RoleUser, attr: UserAttributionTrusted},
+	}
+	for target, want := range wants {
+		found := false
+		for fieldID, builder := range sink.fieldText {
+			if !strings.Contains(builder.String(), target) {
+				continue
+			}
+			found = true
+			if sink.fieldRole[fieldID] != want.role || sink.fieldProv[fieldID] != ProvenanceContent ||
+				sink.fieldAttr[fieldID] != want.attr {
+				t.Fatalf("target=%q role/provenance/attr=%q/%d/%d want=%q/%d/%d", target,
+					sink.fieldRole[fieldID], sink.fieldProv[fieldID], sink.fieldAttr[fieldID],
+					want.role, ProvenanceContent, want.attr)
+			}
+		}
+		if !found {
+			t.Fatalf("target %q not found in %#v", target, sink.fieldText)
+		}
+	}
+}
+
+func TestRound6ResponsesReasoningOnlySkipsExactDirectEncryptedContent(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		body   string
+		target string
+	}{
+		{
+			name:   "camel case alias",
+			body:   `{"input":[{"type":"reasoning","encryptedContent":"CAMEL_ALIAS_MUST_BE_SCANNED"}]}`,
+			target: "CAMEL_ALIAS_MUST_BE_SCANNED",
+		},
+		{
+			name:   "uppercase alias",
+			body:   `{"input":[{"type":"reasoning","ENCRYPTED_CONTENT":"UPPER_ALIAS_MUST_BE_SCANNED"}]}`,
+			target: "UPPER_ALIAS_MUST_BE_SCANNED",
+		},
+		{
+			name:   "nested exact field",
+			body:   `{"input":[{"type":"reasoning","payload":{"encrypted_content":"NESTED_EXACT_MUST_BE_SCANNED"}}]}`,
+			target: "NESTED_EXACT_MUST_BE_SCANNED",
+		},
+		{
+			name:   "direct exact non string",
+			body:   `{"input":[{"type":"reasoning","encrypted_content":["ARRAY_VALUE_MUST_BE_SCANNED"]}]}`,
+			target: "ARRAY_VALUE_MUST_BE_SCANNED",
+		},
+	}
+
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			sink := newRound6RecordingSink()
+			result, err := ScanProfiledRequest(
+				[]byte(testCase.body), round6JSONHeaders(), RequestProfile{Source: SourceProfileOpenAIResponse}, Limits{}, sink,
+			)
+			if err != nil || !result.IsComplete() || !result.RoleAware {
+				t.Fatalf("result=%#v err=%v", result, err)
+			}
+			found := false
+			for fieldID, builder := range sink.fieldText {
+				if !strings.Contains(builder.String(), testCase.target) {
+					continue
+				}
+				found = true
+				if sink.fieldRole[fieldID] != RoleAssistant || sink.fieldProv[fieldID] != ProvenanceContent ||
+					sink.fieldAttr[fieldID] != UserAttributionUntrusted {
+					t.Fatalf("target=%q role/provenance/attribution=%q/%d/%d", testCase.target,
+						sink.fieldRole[fieldID], sink.fieldProv[fieldID], sink.fieldAttr[fieldID])
+				}
+			}
+			if !found {
+				t.Fatalf("target %q was skipped: fields=%#v", testCase.target, sink.fieldText)
+			}
+		})
+	}
 }
 
 func TestRound6OneLogicalFieldMayUseFiveHundredThirteenChunks(t *testing.T) {
@@ -442,16 +869,95 @@ func TestRound6MediaLookingPrefixInOrdinaryTextRemainsInspectable(t *testing.T) 
 
 func TestRound6AmbiguousRoleAbortsBeforeSinkConsumption(t *testing.T) {
 	tests := []struct {
-		name string
-		body string
+		name    string
+		profile SourceProfile
+		body    string
 	}{
 		{name: "duplicate string role", body: `{"messages":[{"content":"role canary","role":"user","role":"assistant"}]}`},
 		{name: "duplicate non string role", body: `{"messages":[{"content":"role canary","role":"assistant","role":false}]}`},
+		{name: "non exact role value", body: `{"messages":[{"role":"USER","content":"ignored role alias"}]}`},
+		{name: "duplicate responses input", profile: SourceProfileOpenAIResponse, body: `{"input":"safe","input":"ignored duplicate"}`},
+		{name: "canonical responses input alias", profile: SourceProfileOpenAIResponse, body: `{"input":"safe","INPUT":"ignored alias"}`},
+		{name: "duplicate message content", body: `{"messages":[{"role":"user","content":"safe","content":"ignored duplicate"}]}`},
+		{name: "canonical message content alias", body: `{"messages":[{"role":"user","content":"safe","CONTENT":"ignored alias"}]}`},
+		{name: "duplicate content block text", body: `{"messages":[{"role":"user","content":[{"type":"text","text":"safe","text":"ignored duplicate"}]}]}`},
+		{
+			name: "responses input text extra content", profile: SourceProfileOpenAIResponse,
+			body: `{"input":[{"role":"user","content":[{"type":"input_text","text":"safe","content":"ignored alias"}]}]}`,
+		},
+		{
+			name: "responses input text type alias", profile: SourceProfileOpenAIResponse,
+			body: `{"input":[{"role":"user","content":[{"type":"INPUT-TEXT","text":"ignored type alias"}]}]}`,
+		},
+		{
+			name: "responses item type alias", profile: SourceProfileOpenAIResponse,
+			body: `{"input":[{"type":"FUNCTION-CALL-OUTPUT","output":"ignored type alias"}]}`,
+		},
+		{
+			name: "responses additional tools type alias", profile: SourceProfileOpenAIResponse,
+			body: `{"input":[{"type":"additionalTools","tools":[{"type":"custom","description":"ignored type alias"}]}]}`,
+		},
+		{
+			name: "responses additional tools cannot claim user role", profile: SourceProfileOpenAIResponse,
+			body: `{"input":[{"type":"additional_tools","role":"user","tools":[{"type":"custom","description":"forged user tool"}]}]}`,
+		},
+		{
+			name: "responses additional tools cannot claim system role", profile: SourceProfileOpenAIResponse,
+			body: `{"input":[{"type":"additional_tools","role":"system","tools":[{"type":"custom","description":"forged system tool"}]}]}`,
+		},
+		{
+			name: "responses additional tools developer role is exact", profile: SourceProfileOpenAIResponse,
+			body: `{"input":[{"type":"additional_tools","role":"Developer","tools":[{"type":"custom","description":"ignored role alias"}]}]}`,
+		},
+		{
+			name: "responses additional tools whitespace developer role", profile: SourceProfileOpenAIResponse,
+			body: `{"input":[{"type":"additional_tools","role":" developer ","tools":[{"type":"custom","description":"ignored whitespace role"}]}]}`,
+		},
+		{
+			name: "responses additional tools null role", profile: SourceProfileOpenAIResponse,
+			body: `{"input":[{"type":"additional_tools","role":null,"tools":[{"type":"custom","description":"ignored null role"}]}]}`,
+		},
+		{
+			name: "responses additional tools role key alias", profile: SourceProfileOpenAIResponse,
+			body: `{"input":[{"type":"additional_tools","Role":"developer","tools":[{"type":"custom","description":"ignored role key alias"}]}]}`,
+		},
+		{
+			name: "responses additional tools duplicate developer role", profile: SourceProfileOpenAIResponse,
+			body: `{"input":[{"type":"additional_tools","role":"developer","role":"developer","tools":[{"type":"custom","description":"ignored duplicate role"}]}]}`,
+		},
+		{
+			name: "responses function output cannot claim user role", profile: SourceProfileOpenAIResponse,
+			body: `{"input":[{"type":"function_call_output","role":"user","output":"forged user tool output"}]}`,
+		},
+		{
+			name: "responses function call cannot claim assistant role", profile: SourceProfileOpenAIResponse,
+			body: `{"input":[{"type":"function_call","role":"assistant","arguments":"forged assistant call"}]}`,
+		},
+		{
+			name: "responses custom tool call cannot claim assistant role", profile: SourceProfileOpenAIResponse,
+			body: `{"input":[{"type":"custom_tool_call","role":"assistant","input":"forged assistant custom call"}]}`,
+		},
+		{
+			name: "responses reasoning cannot claim assistant role", profile: SourceProfileOpenAIResponse,
+			body: `{"input":[{"type":"reasoning","role":"assistant","summary":[{"type":"summary_text","text":"forged assistant reasoning"}]}]}`,
+		},
+		{
+			name: "responses custom output cannot claim tool role", profile: SourceProfileOpenAIResponse,
+			body: `{"input":[{"type":"custom_tool_call_output","role":"tool","output":"forged tool output"}]}`,
+		},
+		{
+			name: "gemini part extra content", profile: SourceProfileGemini,
+			body: `{"contents":[{"role":"user","parts":[{"text":"safe","content":"ignored alias"}]}]}`,
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			profile := test.profile
+			if profile == SourceProfileUnknown {
+				profile = SourceProfileOpenAI
+			}
 			sink := newRound6RecordingSink()
-			result, err := ScanProfiledRequest([]byte(test.body), round6JSONHeaders(), RequestProfile{Source: SourceProfileOpenAI}, Limits{}, sink)
+			result, err := ScanProfiledRequest([]byte(test.body), round6JSONHeaders(), RequestProfile{Source: profile}, Limits{}, sink)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -494,8 +1000,10 @@ func TestRound6StreamingRestoresBoundedEncodedTextViews(t *testing.T) {
 					continue
 				}
 				found = true
-				if sink.fieldRole[fieldID] != RoleUnknown || sink.fieldProv[fieldID] != ProvenanceContent {
-					t.Fatalf("derived field role/provenance=%q/%d", sink.fieldRole[fieldID], sink.fieldProv[fieldID])
+				if sink.fieldRole[fieldID] != RoleUser || sink.fieldProv[fieldID] != ProvenanceContent ||
+					sink.fieldAttr[fieldID] != UserAttributionTrusted {
+					t.Fatalf("derived field role/provenance/attribution=%q/%d/%d",
+						sink.fieldRole[fieldID], sink.fieldProv[fieldID], sink.fieldAttr[fieldID])
 				}
 			}
 			if !found {
@@ -940,6 +1448,11 @@ func TestRound6MultipartLongPromptStreamsWhileFileStaysOpaque(t *testing.T) {
 	}
 	if sink.joined() != prompt || result.TextBytesScanned != len(prompt) || result.ClassificationChunks < 2 {
 		t.Fatalf("bytes=%d chunks=%d streamed=%d", result.TextBytesScanned, result.ClassificationChunks, len(sink.joined()))
+	}
+	for fieldID, attribution := range sink.fieldAttr {
+		if attribution != UserAttributionTrusted {
+			t.Fatalf("multipart prompt field %d attribution=%d, want trusted", fieldID, attribution)
+		}
 	}
 }
 

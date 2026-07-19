@@ -1,5 +1,10 @@
 # Round 6 v0.15 CI, candidate, and release gate
 
+```text
+current_classifier_policy_version: classifier-policy-v5
+current_classifier_policy_sha256: 0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b
+```
+
 Status: **BLOCKED / PENDING HOST AND INDEPENDENT AUDIT**.
 
 The exact project version is `0.15`; the only formal tag is `v0.15`, never
@@ -7,8 +12,8 @@ The exact project version is `0.15`; the only formal tag is `v0.15`, never
 current execution evidence is Linux amd64-only. Windows, macOS, and musl/Alpine
 are outside this round.
 
-Classifier policy identity is `classifier-policy-v3` /
-`1294c6fd587522829d07220d5a6f4214092eba6ce1837636da5b3e3d461ba2a3`;
+Classifier policy identity is `classifier-policy-v5` /
+`0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b`;
 scanner identity is `streaming-scanner-v1`.
 
 The release chain is deliberately ordered:

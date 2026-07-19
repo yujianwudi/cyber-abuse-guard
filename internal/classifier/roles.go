@@ -34,6 +34,7 @@ func (c *Classifier) ClassifyUntrustedPartsWithPolicy(parts []string, mode Mode,
 			segments[index] = extract.Segment{Role: extract.RoleUnknown, Provenance: extract.ProvenanceContent, Text: part}
 		}
 		result := c.classifyStreamingSegmentsCompat(segments, mode, thresholds, policy)
+		result = withFindingOrigin(result, FindingOriginNonUserOrUntrusted)
 		attachBehaviorGraph(&result, "untrusted_parts", "")
 		return result
 	}
@@ -43,7 +44,10 @@ func (c *Classifier) ClassifyUntrustedPartsWithPolicy(parts []string, mode Mode,
 	}
 	result := c.ClassifySegmentsWithPolicy(segments, mode, thresholds, policy)
 	for _, reconstructed := range reconstructedIsolatedPartRuns(parts) {
-		candidate := c.ClassifyWithPolicy([]string{reconstructed}, mode, thresholds, policy)
+		candidate := withFindingOrigin(
+			c.ClassifyWithPolicy([]string{reconstructed}, mode, thresholds, policy),
+			FindingOriginNonUserOrUntrusted,
+		)
 		if roleResultBetter(candidate, result) {
 			result = candidate
 		}
@@ -70,16 +74,22 @@ func (c *Classifier) ClassifySegmentsWithPolicy(segments []extract.Segment, mode
 		for _, segment := range segments {
 			parts = append(parts, segment.Text)
 		}
-		best := c.ClassifyWithPolicy(parts, mode, thresholds, policy)
+		best := withFindingOrigin(c.ClassifyWithPolicy(parts, mode, thresholds, policy), FindingOriginNonUserOrUntrusted)
 		truncated = truncated || best.Truncated
 		for index, segment := range segments {
-			candidate := c.ClassifyWithPolicy([]string{segment.Text}, mode, thresholds, policy)
+			candidate := withFindingOrigin(
+				c.ClassifyWithPolicy([]string{segment.Text}, mode, thresholds, policy),
+				FindingOriginNonUserOrUntrusted,
+			)
 			truncated = truncated || candidate.Truncated
 			if roleResultBetter(candidate, best) {
 				best = candidate
 			}
 			if index > 0 {
-				adjacent := c.ClassifyWithPolicy([]string{segments[index-1].Text, segment.Text}, mode, thresholds, policy)
+				adjacent := withFindingOrigin(
+					c.ClassifyWithPolicy([]string{segments[index-1].Text, segment.Text}, mode, thresholds, policy),
+					FindingOriginNonUserOrUntrusted,
+				)
 				truncated = truncated || adjacent.Truncated
 				if roleResultBetter(adjacent, best) {
 					best = adjacent
@@ -94,8 +104,11 @@ func (c *Classifier) ClassifySegmentsWithPolicy(segments []extract.Segment, mode
 	best := c.ClassifyWithPolicy(nil, mode, thresholds, policy)
 	previousUser := ""
 	hasPreviousUser := false
+	previousUserTrusted := false
 	recentUsers := make([]string, 0, 3)
+	recentUsersTrusted := make([]bool, 0, 3)
 	linkedMetaUsers := make([]string, 0, 8)
+	linkedMetaUsersTrusted := make([]bool, 0, 8)
 	lastMetaUser := ""
 	pendingNonUserControl := ""
 	lastUserControl := ""
@@ -103,7 +116,12 @@ func (c *Classifier) ClassifySegmentsWithPolicy(segments []extract.Segment, mode
 		if nonUser == "" || user == "" || !metaOverridePartsLinked(nonUser, user) {
 			return
 		}
-		controlCandidate := c.ClassifyWithPolicy([]string{nonUser, user}, mode, thresholds, policy)
+		controlCandidate := withRoleAwareFindingOrigin(
+			c.ClassifyWithPolicy([]string{nonUser, user}, mode, thresholds, policy),
+			FindingOriginNonUserOrUntrusted,
+			mode,
+			thresholds,
+		)
 		truncated = truncated || controlCandidate.Truncated
 		if standaloneMetaControlResult(controlCandidate) && roleResultBetter(controlCandidate, best) {
 			best = controlCandidate
@@ -116,6 +134,7 @@ func (c *Classifier) ClassifySegmentsWithPolicy(segments []extract.Segment, mode
 				[]string{segment.Text}, mode, thresholds, policy,
 				segment.Provenance == extract.ProvenanceToolPayload,
 			)
+			candidate = withRoleAwareFindingOrigin(candidate, findingOriginForSegment(segment), mode, thresholds)
 			truncated = truncated || candidate.Truncated
 			if roleResultBetter(candidate, best) {
 				best = candidate
@@ -131,7 +150,12 @@ func (c *Classifier) ClassifySegmentsWithPolicy(segments []extract.Segment, mode
 		}
 		if segment.Provenance == extract.ProvenanceContent && (segment.Role == extract.RoleAssistant || segment.Role == extract.RoleSystem) {
 			if continuation := unscopedSafetyContinuation(segment.Role, strings.ToLower(roleSafetyPunctuation.Replace(segment.Text))); continuation != "" {
-				candidate := c.ClassifyWithPolicy([]string{continuation}, mode, thresholds, policy)
+				candidate := withRoleAwareFindingOrigin(
+					c.ClassifyWithPolicy([]string{continuation}, mode, thresholds, policy),
+					FindingOriginNonUserOrUntrusted,
+					mode,
+					thresholds,
+				)
 				truncated = truncated || candidate.Truncated
 				if roleResultBetter(candidate, best) {
 					best = candidate
@@ -141,28 +165,44 @@ func (c *Classifier) ClassifySegmentsWithPolicy(segments []extract.Segment, mode
 		if segment.Role != extract.RoleUser || segment.Provenance != extract.ProvenanceContent {
 			continue
 		}
+		currentUserTrusted := segment.UserAttribution == extract.UserAttributionTrusted
 		considerControlPair(pendingNonUserControl, segment.Text)
 		pendingNonUserControl = ""
 		lastUserControl = segment.Text
 		if len(linkedMetaUsers) == 0 || metaOverridePartsLinked(lastMetaUser, segment.Text) {
 			linkedMetaUsers = append(linkedMetaUsers, segment.Text)
+			linkedMetaUsersTrusted = append(linkedMetaUsersTrusted, currentUserTrusted)
 			if len(linkedMetaUsers) > maxRoleClassifierSegments {
 				copy(linkedMetaUsers, linkedMetaUsers[len(linkedMetaUsers)-maxRoleClassifierSegments:])
 				linkedMetaUsers = linkedMetaUsers[:maxRoleClassifierSegments]
+				copy(linkedMetaUsersTrusted, linkedMetaUsersTrusted[len(linkedMetaUsersTrusted)-maxRoleClassifierSegments:])
+				linkedMetaUsersTrusted = linkedMetaUsersTrusted[:maxRoleClassifierSegments]
 			}
 		} else {
 			linkedMetaUsers = append(linkedMetaUsers[:0], segment.Text)
+			linkedMetaUsersTrusted = append(linkedMetaUsersTrusted[:0], currentUserTrusted)
 		}
 		lastMetaUser = segment.Text
 		if len(linkedMetaUsers) > 1 {
-			metaCandidate := c.ClassifyWithPolicy(linkedMetaUsers, mode, thresholds, policy)
+			metaCandidate := withRoleAwareFindingOrigin(
+				c.ClassifyWithPolicy(linkedMetaUsers, mode, thresholds, policy),
+				userCombinationFindingOrigin(allTrusted(linkedMetaUsersTrusted)),
+				mode,
+				thresholds,
+			)
 			truncated = truncated || metaCandidate.Truncated
 			if roleResultBetter(metaCandidate, best) {
 				best = metaCandidate
 			}
 		}
 		if hasPreviousUser {
-			followUp := c.ClassifyWithPolicy([]string{previousUser, segment.Text}, mode, thresholds, policy)
+			origin := userCombinationFindingOrigin(previousUserTrusted && currentUserTrusted)
+			followUp := withRoleAwareFindingOrigin(
+				c.ClassifyWithPolicy([]string{previousUser, segment.Text}, mode, thresholds, policy),
+				origin,
+				mode,
+				thresholds,
+			)
 			truncated = truncated || followUp.Truncated
 			if roleResultBetter(followUp, best) {
 				best = followUp
@@ -170,8 +210,17 @@ func (c *Classifier) ClassifySegmentsWithPolicy(segments []extract.Segment, mode
 			// Adjacent user turns may split an abuse intent from its object. Join
 			// only user-authored text and only when the prior turn is eligible for
 			// follow-up; system/assistant/tool examples can never contribute.
-			if followUpEligible([]rune(previousUser)) {
-				joined := c.ClassifyWithPolicy([]string{previousUser + "\n" + segment.Text}, mode, thresholds, policy)
+			joinEligible := followUpEligible([]rune(previousUser))
+			if joinEligible && c.isRawInertQuotedSafetyReview(previousUser) {
+				joinEligible = false
+			}
+			if joinEligible {
+				joined := withRoleAwareFindingOrigin(
+					c.ClassifyWithPolicy([]string{previousUser + "\n" + segment.Text}, mode, thresholds, policy),
+					origin,
+					mode,
+					thresholds,
+				)
 				truncated = truncated || joined.Truncated
 				if roleResultBetter(joined, best) {
 					best = joined
@@ -179,12 +228,20 @@ func (c *Classifier) ClassifySegmentsWithPolicy(segments []extract.Segment, mode
 			}
 		}
 		recentUsers = append(recentUsers, segment.Text)
+		recentUsersTrusted = append(recentUsersTrusted, currentUserTrusted)
 		if len(recentUsers) > 3 {
 			copy(recentUsers, recentUsers[len(recentUsers)-3:])
 			recentUsers = recentUsers[:3]
+			copy(recentUsersTrusted, recentUsersTrusted[len(recentUsersTrusted)-3:])
+			recentUsersTrusted = recentUsersTrusted[:3]
 		}
 		if len(recentUsers) == 3 && threeTurnPlanWindowEligible(recentUsers) {
-			joined := c.ClassifyWithPolicy([]string{strings.Join(recentUsers, "\n")}, mode, thresholds, policy)
+			joined := withRoleAwareFindingOrigin(
+				c.ClassifyWithPolicy([]string{strings.Join(recentUsers, "\n")}, mode, thresholds, policy),
+				userCombinationFindingOrigin(allTrusted(recentUsersTrusted)),
+				mode,
+				thresholds,
+			)
 			truncated = truncated || joined.Truncated
 			if roleResultBetter(joined, best) {
 				best = joined
@@ -192,9 +249,15 @@ func (c *Classifier) ClassifySegmentsWithPolicy(segments []extract.Segment, mode
 		}
 		previousUser = segment.Text
 		hasPreviousUser = true
+		previousUserTrusted = currentUserTrusted
 	}
 	for _, reconstructed := range reconstructedIsolatedUserRuns(segments) {
-		candidate := c.ClassifyWithPolicy([]string{reconstructed}, mode, thresholds, policy)
+		candidate := withRoleAwareFindingOrigin(
+			c.ClassifyWithPolicy([]string{reconstructed.text}, mode, thresholds, policy),
+			userCombinationFindingOrigin(reconstructed.trusted),
+			mode,
+			thresholds,
+		)
 		truncated = truncated || candidate.Truncated
 		if roleResultBetter(candidate, best) {
 			best = candidate
@@ -209,7 +272,12 @@ func (c *Classifier) ClassifySegmentsWithPolicy(segments []extract.Segment, mode
 	// malformed quote boundaries can never be cleared by this path.
 	if best.Behavior != nil && best.Behavior.Wrapper && !best.Behavior.BaseBehavior {
 		if joined, ok := metaOverrideDefensiveUserSegmentRun(segments); ok {
-			candidate := c.ClassifyWithPolicy([]string{joined}, mode, thresholds, policy)
+			candidate := withRoleAwareFindingOrigin(
+				c.ClassifyWithPolicy([]string{joined}, mode, thresholds, policy),
+				FindingOriginUserContent,
+				mode,
+				thresholds,
+			)
 			truncated = truncated || candidate.Truncated
 			if !truncated && candidate.Action == ActionAllow && candidate.Score < AuditThreshold &&
 				(candidate.Behavior == nil || !candidate.Behavior.BaseBehavior) {
@@ -229,7 +297,8 @@ func metaOverrideDefensiveUserSegmentRun(segments []extract.Segment) (string, bo
 	parts := make([]string, 0, len(segments))
 	totalBytes := 0
 	for _, segment := range segments {
-		if segment.Role != extract.RoleUser || segment.Provenance != extract.ProvenanceContent {
+		if segment.Role != extract.RoleUser || segment.Provenance != extract.ProvenanceContent ||
+			segment.UserAttribution != extract.UserAttributionTrusted {
 			return "", false
 		}
 		totalBytes += len(segment.Text)
@@ -289,6 +358,64 @@ func knownSegmentRoles(segments []extract.Segment) bool {
 		}
 	}
 	return true
+}
+
+func findingOriginForSegment(segment extract.Segment) FindingOrigin {
+	if segment.Role == extract.RoleUser && segment.Provenance == extract.ProvenanceContent &&
+		segment.UserAttribution == extract.UserAttributionTrusted {
+		return FindingOriginUserContent
+	}
+	return FindingOriginNonUserOrUntrusted
+}
+
+func userCombinationFindingOrigin(trusted bool) FindingOrigin {
+	if trusted {
+		return FindingOriginUserContent
+	}
+	return FindingOriginNonUserOrUntrusted
+}
+
+func allTrusted(values []bool) bool {
+	if len(values) == 0 {
+		return false
+	}
+	for _, trusted := range values {
+		if !trusted {
+			return false
+		}
+	}
+	return true
+}
+
+func withFindingOrigin(result Result, origin FindingOrigin) Result {
+	if result.Score == 0 && result.Action == ActionAllow && result.Category == "" &&
+		len(result.RuleIDs) == 0 && len(result.Evidence) == 0 && result.Behavior == nil {
+		result.FindingOrigin = FindingOriginNone
+		return result
+	}
+	result.FindingOrigin = origin
+	return result
+}
+
+// withRoleAwareFindingOrigin applies the role boundary before candidates are
+// ranked. A persistent prompt-injection wrapper remains a local hard block when
+// it is an explicit trusted-user request, but the same wrapper arriving from a
+// system, assistant, tool, or structurally untrusted field is audit-only unless
+// that field independently establishes a cyber-abuse base behavior.
+//
+// This helper is intentionally not used by the roleless Classify API or the
+// unknown-role fallback: callers without proven role provenance retain their
+// existing conservative behavior.
+func withRoleAwareFindingOrigin(result Result, origin FindingOrigin, mode Mode, thresholds Thresholds) Result {
+	result = withFindingOrigin(result, origin)
+	if origin != FindingOriginNonUserOrUntrusted || result.Behavior == nil ||
+		!result.Behavior.Wrapper || result.Behavior.BaseBehavior {
+		return result
+	}
+	thresholds = validThresholdsOrDefault(thresholds)
+	result.Score = metaControlAuditScore(result.Score, thresholds)
+	result.Action = actionForMetaControl(mode, result.Score, thresholds)
+	return result
 }
 
 func shouldClassifyRoleSegment(segment extract.Segment) bool {
@@ -762,12 +889,21 @@ func reconstructedIsolatedPartRuns(parts []string) []string {
 	return runs
 }
 
-func reconstructedIsolatedUserRuns(segments []extract.Segment) []string {
+type reconstructedUserRun struct {
+	text    string
+	trusted bool
+}
+
+func reconstructedIsolatedUserRuns(segments []extract.Segment) []reconstructedUserRun {
 	parts := make([]string, 0, len(segments))
-	runs := make([]string, 0, 2)
+	trusted := true
+	runs := make([]reconstructedUserRun, 0, 2)
 	flush := func() {
-		runs = append(runs, reconstructedIsolatedPartRuns(parts)...)
+		for _, run := range reconstructedIsolatedPartRuns(parts) {
+			runs = append(runs, reconstructedUserRun{text: run, trusted: trusted})
+		}
 		parts = parts[:0]
+		trusted = true
 	}
 	for _, segment := range segments {
 		if segment.Role != extract.RoleUser || segment.Provenance != extract.ProvenanceContent {
@@ -779,6 +915,7 @@ func reconstructedIsolatedUserRuns(segments []extract.Segment) []string {
 			continue
 		}
 		parts = append(parts, segment.Text)
+		trusted = trusted && segment.UserAttribution == extract.UserAttributionTrusted
 	}
 	flush()
 	return runs
@@ -802,6 +939,9 @@ func roleResultBetter(candidate, current Result) bool {
 	}
 	if candidate.Category != current.Category {
 		return categoryPriority(candidate.Category) < categoryPriority(current.Category)
+	}
+	if candidate.FindingOrigin != current.FindingOrigin {
+		return candidate.FindingOrigin == FindingOriginUserContent
 	}
 	return false
 }

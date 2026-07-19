@@ -1,5 +1,10 @@
 # Round 6 development handoff
 
+```text
+current_classifier_policy_version: classifier-policy-v5
+current_classifier_policy_sha256: 0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b
+```
+
 Status: **BLOCKED / PENDING HOST AND INDEPENDENT AUDIT**
 
 Target project version: exact `0.15`; intended formal tag: exact `v0.15`
@@ -53,7 +58,7 @@ authorized Linux CPA + Mock-upstream sandbox. It did not authorize:
 - reading production requests, audit rows, tokens, API keys, HMAC keys, account
   pools, or user data;
 - connecting a real Provider or billing upstream;
-- executing the three public adversarial repositories or replaying their raw
+- executing the four public adversarial repositories or replaying their raw
   payloads;
 - rerunning consumed evaluation or Holdout data.
 
@@ -78,8 +83,8 @@ performance number from them is promoted by this handoff.
 | Final v0.15 candidate tree | **PENDING - post-merge `main` push CI, build metadata, and candidate manifest must agree** |
 | Candidate artifact hashes | **PENDING - private untagged clean-candidate Actions run only** |
 | Scanner identity | streaming-scanner-v1 |
-| Classifier policy | classifier-policy-v3 |
-| Classifier policy SHA-256 | 1294c6fd587522829d07220d5a6f4214092eba6ce1837636da5b3e3d461ba2a3 |
+| Classifier policy | classifier-policy-v5 |
+| Classifier policy SHA-256 | 0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b |
 | YAML ruleset | 1.0.7 |
 | YAML ruleset SHA-256 | 7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134 |
 | Audit schema | v3 |
@@ -436,7 +441,7 @@ blind, and retired material. Only the low-sensitivity external evaluation ID and
 report SHA-256 recorded in `round6-prerelease-attestation.json` may cross the
 release boundary. Historical evaluation-v10 is not a bundle input.
 
-The three public adversarial repositories were treated only as untrusted
+The four public adversarial repositories were treated only as untrusted
 defensive context. Their original payloads were not executed or replayed.
 
 No production Host was logged into or modified. No production observe
@@ -543,8 +548,8 @@ Candidate tree: PENDING POST-MERGE MAIN CI / BUILD METADATA / CANDIDATE MANIFEST
 Candidate artifact: PRIVATE UNTAGGED CLEAN ACTIONS ARTIFACT / NOT CREATED / PENDING
 Platform: Linux amd64 only
 Streaming scanner identity: streaming-scanner-v1
-Classifier policy: classifier-policy-v3
-Classifier policy SHA-256: 1294c6fd587522829d07220d5a6f4214092eba6ce1837636da5b3e3d461ba2a3
+Classifier policy: classifier-policy-v5
+Classifier policy SHA-256: 0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b
 CPA v7.2.88 Host result: NOT RUN / PENDING
 Long-text Linux size ladder result: PENDING FINAL PR / POST-MERGE MAIN LINUX CI
 Cross-window result: PENDING FINAL PR / POST-MERGE MAIN LINUX CI

@@ -1,5 +1,10 @@
 # Performance Report — post-v10 development handoff
 
+```text
+current_classifier_policy_version: classifier-policy-v5
+current_classifier_policy_sha256: 0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b
+```
+
 Last updated: 2026-07-14 (Asia/Shanghai)
 
 ## Status
@@ -154,8 +159,8 @@ implementation_freeze_commit: 9c8114e22841f9a19b15b1f4b3c48531aa2453a0
 evidence_document_commit: SELF (resolve with git log -1 -- this file)
 ruleset_version: 1.0.7
 ruleset_sha256: 7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134
-classifier_policy_version: classifier-policy-v2
-classifier_policy_sha256: dc9a174099cb2f621e5333a508d4645604f96f470a6d9ae12a1acfb363d29cf2
+historical_classifier_policy_version: classifier-policy-v2
+historical_classifier_policy_sha256: dc9a174099cb2f621e5333a508d4645604f96f470a6d9ae12a1acfb363d29cf2
 development_benchmark_result: PASS FOR RECORDED SELF-CHECKS
 github_ci_benchmark: PASS — push run 29292693070
 leo_independent_benchmark: NOT RUN

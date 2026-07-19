@@ -1,5 +1,10 @@
 # v0.15 release admission policy
 
+```text
+current_classifier_policy_version: classifier-policy-v5
+current_classifier_policy_sha256: 0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b
+```
+
 This source file defines the release process; it does not claim that external
 Host, audit, or publication gates have passed. A source commit becomes an
 official release only when the GitHub Release is non-draft and carries the

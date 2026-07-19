@@ -1,5 +1,10 @@
 # Rule System — ruleset 1.0.7
 
+```text
+current_classifier_policy_version: classifier-policy-v5
+current_classifier_policy_sha256: 0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b
+```
+
 The default rule set is embedded into the shared object from `/rules`. Every
 rule has a unique stable ID, category, severity, weighted score, bilingual
 evidence groups, allow contexts, and an optional hard authorization floor.
@@ -45,6 +50,11 @@ exfiltration. Negation/prohibition cues are scoped to nearby evidence in the
 same clause; an unrelated “do not” prefix cannot suppress a later operational
 request.
 
+Directive density does not create an implicit allow or block boundary. After
+64 exact retained clauses, the classifier continues a bounded rolling scan with
+an exact four-clause suffix plus per-rule and per-composition-provider summaries;
+it never composes the retained head directly with an omitted middle region.
+
 Standard OpenAI/Anthropic/Gemini roles are classified per segment, and adjacent
 user turns are paired for follow-up semantics. Assistant refusals and system
 safety policy are not combined as user intent. Role-less shapes use a bounded
@@ -82,6 +92,28 @@ fictional-target, and authorization claims do not wash an established dangerous
 behavior. Defensive quoted material can reduce wrapper evidence only when the
 request has an affirmative analysis/remediation purpose, an explicit
 non-execution signal, and no contradictory operational continuation.
+The same fail-closed structure applies to a base Cyber Abuse quotation only
+for one closed `quoted request`/`quoted prompt`. The normalized English lead-in
+must exactly match an enumerated `explain`/`analyze`/`analyse`/`review why ...`
+template (optionally prefixed by `for a defensive review,`), the next clause
+must characterize the quote as unsafe, and the final clause must be an exact
+non-execution boundary. For multipart classification, optional proof of the
+earlier history is capped at 8 prior parts and 32 KiB; exceeding either cap or
+losing complete coverage grants no inert-quotation credit. The quotation
+retains its category signals so a later affirmative `now give working code`
+follow-up is blocked, while an explicitly negated code request remains inert;
+missing/multiple quotes, double negation, unquoted category text, or an
+operational tail receive no credit.
+
+Referential follow-up parsing is occurrence- and action-family-aware. A later
+non-alternative prohibition cancels only an equivalent earlier family, so one
+cancelled `run` cannot erase an active `implement`; independently cancelling all
+families remains inert. `A or do not A`/`otherwise` branches remain optional
+alternatives, while coordinated `do not A or/nor B` applies one terminating
+negation across both families. Later `and`-joined cancellations inside an
+alternative arm remain scoped to that arm and cannot erase the active first
+choice. Narrow `follow`, `obey`, `carry out`, and `run [the] quoted request`
+forms are recognized only when a qualifying quoted-review referent exists.
 
 System, assistant, and tool segments are evaluated with their provenance.
 Benign safety/refusal quotations are kept separate from user intent, while an
@@ -97,6 +129,12 @@ The management plane may count a fixed low-cardinality
 `control_plane_event=meta_override` dimension. It remains orthogonal to the
 base Cyber Abuse taxonomy, contains no prompt text, repository name, dynamic
 field, target, or prompt hash, and does not change subject-risk semantics.
+Complete non-user/untrusted category-free wrapper-only audits use that counter
+together with the fixed `audited` counter instead of a per-request event by
+default. Operators can set `audit.persist_wrapper_only: true` when individual
+correlation events are required; this does not relax the full audit path for
+trusted-user wrapper findings, base findings, blocks, incomplete inspection, or
+opaque media.
 
 ## Bounded decoding before matching
 
@@ -200,8 +238,8 @@ This identity covers the embedded YAML rule assets. The complete code-level
 policy is separately identified as:
 
 ```text
-classifier_policy_version: classifier-policy-v3
-classifier_policy_sha256: 1294c6fd587522829d07220d5a6f4214092eba6ce1837636da5b3e3d461ba2a3
+current_release_classifier_policy_version: classifier-policy-v5
+current_release_classifier_policy_sha256: 0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b
 ```
 
 The policy digest test binds the deterministic classifier, matcher,
@@ -211,9 +249,23 @@ module dependency locks. Classifier results and authenticated status expose the
 identity. Build metadata and the artifact verifier bind it, but a handoff must
 still record the exact full Git commit/tree and candidate workflow run.
 
-Commit `21ceb57e6b6030e56d7820c9a67a8eecd068c669` passed push and PR CI
-with this policy identity as a pre-version-migration checkpoint. It is not the
-final v0.15 candidate identity. Automated review is development feedback only.
+`Result.finding_origin` is a text-free closed value: `user_content` or
+`non_user_or_untrusted`; neutral/incomplete results omit it. It never contains
+provider field names, role text, prompt fragments, or tool arguments.
+
+`user_content` requires a separate trusted-user attribution proof; `RoleUser`
+alone is insufficient. The proof is zero-value untrusted and is emitted only
+for an explicit valid user role in a SourceProfile-matched root history, an
+OpenAI Responses root scalar `input`, or a profile-allowlisted multipart prompt.
+Nested/cross-provider histories, unknown top-level/message fields, unknown
+content types, roleless/future items, assistant/system/tool content, function
+responses, and tool payload/output remain `non_user_or_untrusted`. Composite
+findings are user-originated only if all contributing user-like fields are
+trusted. A role-attribution failure clears every tentative trust bit.
+
+Commit `21ceb57e6b6030e56d7820c9a67a8eecd068c669` passed push and PR CI as
+an earlier classifier-policy-v3 checkpoint. It does not verify the current v5
+identity or the final v0.15 candidate. Automated review is development feedback only.
 The final PR head must have no unresolved, non-outdated actionable review
 threads before merge; no independent approval is claimed.
 

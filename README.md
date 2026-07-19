@@ -1,5 +1,10 @@
 # CPA Cyber Abuse Guard
 
+```text
+current_classifier_policy_version: classifier-policy-v5
+current_classifier_policy_sha256: 0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b
+```
+
 [![CI](https://github.com/yujianwudi/cyber-abuse-guard/actions/workflows/ci.yml/badge.svg)](https://github.com/yujianwudi/cyber-abuse-guard/actions/workflows/ci.yml)
 [![Go](https://img.shields.io/badge/Go-1.26.4-00ADD8?logo=go&logoColor=white)](go.mod)
 [![Platform](https://img.shields.io/badge/platform-Linux%20amd64-lightgrey)](docs/ROUND6_LIMITATIONS.md)
@@ -50,7 +55,7 @@ classifier.
 | CPA Host matrix | Active validation and the supported release target are pinned to CPA v7.2.88 (`93d74a890a44802f656d7f39a573916b2611896e`); owner-operated isolated Host + Mock-upstream evidence is **NOT RUN / PENDING** |
 | Production | Not accessed or modified; no production request, audit database, credential, HMAC key, account pool, or real Provider was used |
 | Scanner identity | `streaming-scanner-v1` |
-| Classifier policy | `classifier-policy-v3` / `1294c6fd587522829d07220d5a6f4214092eba6ce1837636da5b3e3d461ba2a3` |
+| Classifier policy | `classifier-policy-v5` / `0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b` |
 | Embedded YAML ruleset | `1.0.7` / `7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134` |
 | Audit schema | v3 |
 | Code review | Automated review is advisory; no independent approval is claimed |
@@ -110,6 +115,33 @@ hash the full request body for audit correlation.
 
 Incomplete requests never update subject risk. A partial prefix cannot produce
 a policy block in `balanced`.
+Subject accumulation also requires an explicit trusted-user attribution proof;
+unknown/future fields and non-user or tool-originated text keep their direct
+request disposition but cannot poison rolling subject state.
+The proof is bound to the CPA `SourceFormat`: only a matching root provider
+history or Responses scalar `input` can establish user authorship. Nested or
+cross-provider histories, developer/system/tool content, unknown content types,
+function responses, and opaque Responses reasoning state remain untrusted.
+Nested history/content arrays, scalar members of provider content arrays, and
+unknown or non-string Responses item `type` values are likewise scanned without
+receiving trusted-user attribution. The exact Responses `type` discriminator is
+transport metadata, not model-visible prompt text.
+
+With audit enabled, a complete category-free wrapper-only finding attributed
+to non-user or untrusted wrapper traffic stays visible through the bounded
+`audited` and
+`control_plane_meta_override` counters but does not create a per-request SQLite
+event or request/subject correlation hash by default. Set
+`audit.persist_wrapper_only: true` to restore those events. Cyber Abuse base
+findings, trusted-user wrapper findings, blocks, incomplete inspections, and
+opaque-media dispositions keep the full configured audit path.
+
+Repository-neutral regressions derived from four public prompt-override source
+pins cover high-authority `instructions`, Chat and Responses tool descriptions,
+CPA v7.2.88 Codex Desktop `additional_tools`, assistant/tool history, defensive
+domain catalogs, 1,397-17,166 decoded-byte templates, and the 16 KiB boundary
+without adding repository-name signatures or complete third-party prompts. See the
+[public jailbreak repository review](docs/reports/PUBLIC_JAILBREAK_REPOSITORY_REVIEW.md).
 
 ## Effective default limits
 
@@ -181,7 +213,7 @@ policy.
 - Media URLs are never fetched. No request-supplied code is executed.
 - The Round 6 work did not connect to a real Provider or account pool and did
   not read production requests or audit data.
-- The three public adversarial repositories were not executed and their raw
+- The four public adversarial repositories were not executed and their raw
   payloads were not replayed.
 - CPA can still fail open in Host conditions outside the plugin's control,
   including failed loading, Router fuse/error behavior, higher-priority

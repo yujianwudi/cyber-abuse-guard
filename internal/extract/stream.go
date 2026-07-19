@@ -10,12 +10,13 @@ import (
 // with another field. Start and End describe real logical field boundaries,
 // not classifier window boundaries.
 type SegmentChunk struct {
-	Role       Role
-	Provenance SegmentProvenance
-	FieldID    uint64
-	Start      bool
-	End        bool
-	Text       []byte
+	Role            Role
+	Provenance      SegmentProvenance
+	UserAttribution UserAttribution
+	FieldID         uint64
+	Start           bool
+	End             bool
+	Text            []byte
 }
 
 // ChunkSink consumes request text synchronously. AddSegment must not retain
@@ -33,6 +34,7 @@ type collectingChunkSink struct {
 	activeField uint64
 	activeRole  Role
 	activeProv  SegmentProvenance
+	activeAttr  UserAttribution
 	activeText  strings.Builder
 	parts       []string
 	segments    []Segment
@@ -50,8 +52,11 @@ func (s *collectingChunkSink) AddSegment(chunk SegmentChunk) error {
 		s.activeField = chunk.FieldID
 		s.activeRole = defaultRole(chunk.Role)
 		s.activeProv = chunk.Provenance
+		s.activeAttr = chunk.UserAttribution
 		s.activeText.Reset()
-	} else if !s.active || s.activeField != chunk.FieldID {
+	} else if !s.active || s.activeField != chunk.FieldID ||
+		s.activeRole != defaultRole(chunk.Role) || s.activeProv != chunk.Provenance ||
+		s.activeAttr != chunk.UserAttribution {
 		return errors.New("collector received a non-serial field chunk")
 	}
 	s.activeText.Write(chunk.Text)
@@ -62,17 +67,22 @@ func (s *collectingChunkSink) AddSegment(chunk SegmentChunk) error {
 		return errors.New("collector received an out-of-order field end")
 	}
 	text := s.activeText.String()
+	role := s.activeRole
+	provenance := s.activeProv
+	attribution := s.activeAttr
 	s.active = false
 	s.activeField = 0
+	s.activeAttr = UserAttributionUntrusted
 	s.activeText.Reset()
 	if strings.TrimSpace(text) == "" {
 		return nil
 	}
 	s.parts = append(s.parts, text)
 	s.segments = append(s.segments, Segment{
-		Role:       s.activeRole,
-		Provenance: s.activeProv,
-		Text:       text,
+		Role:            role,
+		Provenance:      provenance,
+		UserAttribution: attribution,
+		Text:            text,
 	})
 	return nil
 }
@@ -81,6 +91,7 @@ func (s *collectingChunkSink) Abort() {
 	s.aborted = true
 	s.active = false
 	s.activeField = 0
+	s.activeAttr = UserAttributionUntrusted
 	s.activeText.Reset()
 	s.parts = nil
 	s.segments = nil

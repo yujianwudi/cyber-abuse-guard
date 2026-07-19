@@ -140,6 +140,7 @@ type Audit struct {
 	LogSubjectHash        bool   `yaml:"log_subject_hash"`
 	LogRuleIDs            bool   `yaml:"log_rule_ids"`
 	LogCategory           bool   `yaml:"log_category"`
+	PersistWrapperOnly    bool   `yaml:"persist_wrapper_only"`
 	LogOriginalText       bool   `yaml:"log_original_text"`
 	BackupBeforeMigration bool   `yaml:"backup_before_migration"`
 	MaxMigrationBackups   int    `yaml:"max_migration_backups"`
@@ -215,6 +216,7 @@ func Default() Config {
 			LogSubjectHash:        true,
 			LogRuleIDs:            true,
 			LogCategory:           true,
+			PersistWrapperOnly:    false,
 			LogOriginalText:       false,
 			BackupBeforeMigration: true,
 			MaxMigrationBackups:   3,

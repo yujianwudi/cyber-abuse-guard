@@ -1,5 +1,10 @@
 # Changelog
 
+```text
+current_classifier_policy_version: classifier-policy-v5
+current_classifier_policy_sha256: 0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b
+```
+
 ## 0.15 — 2026-07-18
 
 Release status: **BLOCKED / PENDING HOST AND INDEPENDENT AUDIT**. Exact project
@@ -30,13 +35,145 @@ future stable release still requires a newly authored independent unseen set.
 - Extend release-policy and CI contracts so schema-v2 Host evidence fields,
   fixed CPA verification, and the absence of checked-out repository tokens are
   covered by mutation tests rather than documentation alone.
+- Give every current release document exactly one machine-readable classifier
+  policy version/hash declaration. The release-document gate now rejects stale,
+  conflicting, or duplicate canonical identities even when the current value is
+  appended later, with dedicated mutation fixtures for each bypass shape. The
+  declaration must occupy the fixed visible prologue immediately below a
+  top-level H1 rather than being hidden inside HTML comments or frontmatter.
+  Formal release rejects document-root, fixture, and current-identity
+  environment overrides; ordinary CI, candidate, and
+  attested-prerelease gates validate the real source tree. The public jailbreak
+  review is now both identity-bound and included in the strict audit bundle.
 - Change safe startup behavior to `mode: observe` with subject control disabled.
   Observe now updates counters without persisting per-request SQLite events,
   including streaming/incomplete and oversized request paths. Explicit
   `balanced` plus `subject_control.enabled: true` remains supported.
 - Defer the domain-separated full-body request hash until it is required by an
-  enabled subject evaluation, a final local block pending key, or a persisted
-  audit event with `log_request_hash: true`.
+  eligible accumulating subject hit, a final local block pending key, or a
+  persisted audit event with `log_request_hash: true`. Read-only subject
+  observations do not hash the request body.
+- Keep complete non-user/untrusted category-free wrapper-only findings on
+  bounded `audited` and
+  `control_plane_meta_override` counters by default, avoiding per-request body
+  hashing and SQLite writes on benign wrapper traffic. Operators can restore
+  the legacy event stream with `audit.persist_wrapper_only: true`; base Cyber
+  Abuse findings, trusted-user wrapper findings, blocks, incomplete
+  inspections, and opaque media remain fully audited.
+- Continue directive analysis after the first 64 retained risk clauses instead
+  of treating overflow as either a complete allow or an unconditional active
+  finding. The classifier now keeps an exact bounded suffix plus rolling
+  per-rule, per-provider-pair composition, context-conflict, and semantic
+  summaries, so a late malicious clause cannot escape while repeated complete
+  prohibitions remain inert. Compact intent patterns and clause proof scratch
+  are reused to bound high-density negation work.
+- Prevent a low-score same-category candidate or an approved-workflow marker
+  from suppressing a contradictory different-provider composition. Exact and
+  overflow paths now apply the proven context contradiction before candidate
+  suppression, so a harmless head cannot launder an active composed tail.
+- Treat bounded modal lead-ins after an explanatory `and now` pivot as a strong
+  directive boundary when they lead to a compiled rule intent. This covers
+  unlisted English forms such as `it is necessary to`, mixed-language tails,
+  and overflow while retaining legitimate approved-migration explanations.
+- Tighten closed-schema user attribution for malformed provider arrays and
+  Responses item discriminators. Nested history/content arrays, scalar content
+  array members, and unknown or non-string Responses `type` values remain
+  inspectable but untrusted; the exact Responses `type` field is transport
+  metadata and no longer becomes legacy prompt text.
+- Tighten subject-risk admission so only authenticated, completely inspected
+  user-content base-behavior findings with `FindingCompleteRequest`, a direct
+  classifier `ActionBlock`, and `score >= hard_block` add rolling risk.
+  Anonymous, system, assistant, tool, tool-payload, roleless, unknown,
+  mixed-role, and lower-confidence requests keep their direct per-request
+  disposition but do not allocate subject state or add hits, receipts, or
+  repeat multipliers. Publish the resulting code-level contract as
+`classifier-policy-v5` / `0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b`.
+- Treat one closed, explicitly quoted Cyber Abuse request as inert only when
+  the surrounding user text asks to explain why it is unsafe and ends with an
+  exact non-execution boundary. Missing or multiple quotes, double negation,
+  unquoted abuse, and `then`/`however`/`and now` operational continuations fail
+  closed; a later explicit implementation follow-up reactivates the retained
+  quoted category signals and blocks.
+- Reclassify only that unique quoted referent when the newest eligible user
+  review is followed by an affirmative referential directive such as
+  `execute it`, `proceed`, or `go ahead`, including bounded polite and
+  conditional forms. The reactivated result is the direct referent result; it
+  does not inherit the safety wrapper's signals or context. Questions,
+  explanations, negation, consequences, and remediation remain inert, and
+  assistant/system/tool reviews cannot seed a later user referent.
+- Preserve every bounded active or cancelled quoted-review action occurrence
+  instead of collapsing a clause to its rightmost action and retaining only one
+  cancellation. A later prohibition now cancels only an equivalent action
+  family: `implement and run; do not run` remains blocked, while independently
+  cancelling every requested family remains allowed. Narrow `follow`, `obey`,
+  `carry out`, and `run [the] quoted request` imperatives are covered together
+  with analytical, defensive, alternative-branch, and no-referent neighbors.
+  Coordinated `do not A or/nor B` keeps one terminating negation scope across
+  both actions, while `A or do not A` remains an optional branch. That branch
+  identity persists through later `and` actions in the same arm, preventing an
+  optional cancellation from erasing the active first choice.
+- Recognize common directive governors including `just`, `simply`, `let's`, and
+  `let us`. The follow-up parser now distinguishes active, proven inert, and
+  unrecognized speech acts. Only a proven explanation, question, safety
+  deliverable, or negation suppresses the conservative streaming risk fallback;
+  an unrecognized phrase can no longer turn a cross-window prior risk into a
+  complete allow.
+- Preserve only privacy-safe quoted-review results and affirmative-follow-up
+  facts across long streaming fields. Referent reclassification consumes the
+  normal classification-chunk budget. When either side crosses a bounded
+  scanner window and the exact relationship cannot be proved, return
+  `CoverageUnavailable` / `classifier_window_incomplete` instead of a silent
+  complete allow; budget exhaustion remains separately reported as
+  `classification_chunk_limit`.
+- Exclude a bounded adjacent head/tail reclassification whenever either field
+  already proved a complete inert quoted referent. This prevents a long review's
+  truncated tail from losing one side of the safety wrapper, and avoids charging
+  an unnecessary classification window.
+- Add a separate, zero-value-untrusted user-attribution proof. Only an explicit
+  recognized `role: user` content path or an allowlisted multipart prompt is
+  trusted; unknown top-level fields, unknown message siblings, roleless/future
+  items, assistant/system/tool content, and tool payload/output remain
+  non-user-or-untrusted. A composite finding is user-originated only when every
+  contributing user-like field is trusted.
+- Bind that proof to the CPA `SourceProfile`: only a matching root history
+  container can establish a user role; Responses scalar `input` is supported,
+  while nested histories, cross-provider envelopes, unknown content types,
+  function responses, and roleless unknown items stay untrusted. Responses
+  reasoning replay treats `encrypted_content` as opaque only after the closed
+  `reasoning` item type is proven.
+- Recognize CPA v7.2.88 Codex Desktop `input[].type="additional_tools"` as a
+  closed Responses item. Namespace/function/custom descriptions remain
+  system-originated and untrusted, while a following exact user message keeps
+  trusted attribution. The official exact `role: "developer"` sibling and the
+  translator's roleless form are accepted; canonical aliases and every other
+  explicit role on a type-derived item fail closed.
+- Add repository-neutral regression coverage for authority wrappers, developer
+  and tool carriers, Chat/Responses tool descriptions, assistant/tool-call
+  history, all four control families across 17 non-user carriers, defensive
+  domain catalogs, 1.4-17.4 KiB size variants, 16 KiB boundaries, exact-tie user
+  winners, and clean same-identity follow-ups.
+- Skip authenticated subject HMAC derivation and controller locking for a
+  complete classifier `allow`: the subject contract already guarantees that a
+  below-audit clean request is safe even when prior cooldown/manual metadata
+  exists. Audit/block paths and accumulating trusted-user findings are unchanged.
+- Reduce clean-request scanner overhead without changing coverage: short JSON
+  strings no longer reserve a full 16 KiB decode buffer twice per field, and a
+  single-window field skips cross-window risk-potential synthesis when no
+  multi-window contribution can exist. Valid unescaped JSON strings now stream
+  directly from the request buffer without an intermediate decode buffer.
+- Make the Linux `round6-benchmark` lane fail on full-route regressions instead
+  of reporting measurements only. It now enforces latency/allocation ceilings
+  for ordinary clean traffic, the 17 KiB wrapper-audit counter fast path, and
+  parallel clean subject-enabled traffic, and also executes the parallel
+  benchmark explicitly.
+- Clear inherited Git repository-routing variables in every shared release
+  helper before fixture or source operations. Contract validation freezes this
+  guard so temporary sparse/archive work cannot silently regain access to the
+  caller's checkout.
+- Require every current release-facing report to declare the source-derived
+  classifier policy version and SHA-256. Historical reports may retain their
+  recorded identities, but stale current identities now fail the documentation
+  consistency fixture.
 
 - Add a dedicated, manual `v0.15-rc.2` prerelease workflow for clean Linux
   amd64 server-sandbox assets. It binds an annotated RC tag to the exact main

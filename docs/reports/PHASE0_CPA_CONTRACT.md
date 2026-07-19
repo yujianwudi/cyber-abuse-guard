@@ -1,5 +1,10 @@
 # CPA v7.2.88 Packaging and Contract Baseline
 
+```text
+current_classifier_policy_version: classifier-policy-v5
+current_classifier_policy_sha256: 0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b
+```
+
 This path is retained by the audit-bundle contract, but its contents describe
 only the current CPA target. Historical Phase 0 version matrices are available
 in Git history and are not shipped here as active validation guidance.

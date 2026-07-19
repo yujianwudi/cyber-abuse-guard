@@ -1,5 +1,10 @@
 # Round 6 known limitations and release blockers
 
+```text
+current_classifier_policy_version: classifier-policy-v5
+current_classifier_policy_sha256: 0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b
+```
+
 Status: **BLOCKED / PENDING HOST AND INDEPENDENT AUDIT**; a candidate-bound
 `evaluation-v11` or later first-and-only `CONSUMED / PASS` attestation is also
 pending.
@@ -11,8 +16,8 @@ production approval. Windows and macOS validation is outside this round. See
 [RELEASE_POLICY.md](RELEASE_POLICY.md). External eligibility is recorded only in
 `round6-prerelease-attestation.json` and `formal-release-attestation.json`.
 
-Current classifier identity is `classifier-policy-v3` /
-`1294c6fd587522829d07220d5a6f4214092eba6ce1837636da5b3e3d461ba2a3`.
+Current classifier identity is `classifier-policy-v5` /
+`0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b`.
 
 ## Release blockers
 
@@ -87,6 +92,18 @@ Current classifier identity is `classifier-policy-v3` /
   incompleteness rather than reconstructing or retaining the full field.
   Balanced mode therefore allows with audit and strict mode blocks, following
   the existing incomplete-inspection policy.
+- A defensive quoted Cyber Abuse review is recognized only when its one closed
+  quotation, unsafe assessment, and exact non-execution boundary are contained
+  in a complete classifier view. A later affirmative referential directive can
+  bind only the newest eligible user review; the quote is reclassified without
+  borrowing wrapper context. The scanner retains only a privacy-safe result and
+  bounded follow-up facts, never the quote, and does not infer inert or active
+  quotation scope across a lost/truncated window boundary. Such proof loss is
+  `classifier_window_incomplete`; referent reclassification also consumes the
+  ordinary `MaxChunks` budget. The recognized speech-act grammar is bounded;
+  only a positively proven analytical, safety, or negated form receives inert
+  credit. An unrecognized form retains the conservative signal fallback rather
+  than being treated as a complete safe negative.
 - The compact shadow/index path no longer copies arbitrary long keys or semantic
   values, but structural metadata and decoder allocations still grow with
   bounded JSON token/node and logical-field counts. Linux allocation and RSS

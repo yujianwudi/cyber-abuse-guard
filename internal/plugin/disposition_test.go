@@ -80,6 +80,17 @@ func TestInspectionDispositionCompleteMaliciousTextStillBlocksBalanced(t *testin
 	}
 }
 
+func TestInspectionDispositionCleanAllowSkipsSubjectEvaluation(t *testing.T) {
+	for _, mode := range []config.Mode{config.ModeAudit, config.ModeBalanced, config.ModeStrict} {
+		decision := inspectionDisposition(mode, inspectionOutcome{
+			Classification: classifier.Result{Action: classifier.ActionAllow},
+		}, config.OpaqueMediaPolicyAudit)
+		if decision.Block || decision.Audit || decision.Observe || decision.EvaluateSubject || decision.Code != "allow_clean" {
+			t.Fatalf("mode=%s clean decision=%#v", mode, decision)
+		}
+	}
+}
+
 func TestInspectionDispositionCompleteOpaqueMediaAuditDoesNotHideTextBlock(t *testing.T) {
 	blocked := inspectionDisposition(config.ModeBalanced, inspectionOutcome{
 		Classification: classifier.Result{Action: classifier.ActionBlock, Score: 100},

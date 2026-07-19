@@ -1,5 +1,10 @@
 # Privacy Verification Report — post-v10 development handoff
 
+```text
+current_classifier_policy_version: classifier-policy-v5
+current_classifier_policy_sha256: 0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b
+```
+
 Last updated: 2026-07-14 (Asia/Shanghai)
 
 ## Status
@@ -134,8 +139,8 @@ starting_baseline: a121a444cb0d82cba4e27754914a1f88258e1d7b
 reliability_checkpoint_commit: 573def2649d164161e2dfdfeb3f59b1e1b38ebbc
 implementation_freeze_commit: 9c8114e22841f9a19b15b1f4b3c48531aa2453a0
 evidence_document_commit: SELF (resolve with git log -1 -- this file)
-classifier_policy_version: classifier-policy-v2
-classifier_policy_sha256: dc9a174099cb2f621e5333a508d4645604f96f470a6d9ae12a1acfb363d29cf2
+historical_classifier_policy_version: classifier-policy-v2
+historical_classifier_policy_sha256: dc9a174099cb2f621e5333a508d4645604f96f470a6d9ae12a1acfb363d29cf2
 development_canary_tests: PASS FOR RECORDED WSL/SCRIPT SELF-CHECKS
 real_host_management_auth: GITHUB CI PASS
 management_proxy_413: GITHUB CI PASS

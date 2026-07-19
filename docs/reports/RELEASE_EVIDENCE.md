@@ -1,6 +1,11 @@
 # v0.15 Round 6 Development Evidence — current gate plus frozen Round 5 history
 
-Last updated: 2026-07-18 (Asia/Shanghai)
+```text
+current_classifier_policy_version: classifier-policy-v5
+current_classifier_policy_sha256: 0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b
+```
+
+Last updated: 2026-07-20 (Asia/Shanghai)
 
 ## Round 6 v0.15 current evidence status — not a release PASS
 
@@ -21,6 +26,9 @@ round6_pr_ci: 29620335143 / JOBS NOT STARTED DUE BILLING / NOT A PASS
 post_merge_main_push_ci: 29630844605 / SUCCESS
 public_source_only_prerelease_tag: v0.15-rc.1
 source_only_tag_ci: 29630926354 / SUCCESS
+current_hardening_pr: 18 / OPEN / final exact-head CI and review state are external evidence
+current_hardening_local_linux: QUOTED-REVIEW + LONG-STREAM + UNIT + RACE PASS / DEVELOPMENT ONLY
+current_release_contract_local: ROUND6-SCRIPT-TEST + REAL DOC GATE + MUTATION FIXTURE + 152 SAFE-CONTRACT TESTS PASS / DEVELOPMENT ONLY
 attached_release_assets: none
 private_untagged_clean_candidate: NOT CREATED / PENDING
 candidate_manifest: NOT CREATED / PENDING
@@ -56,10 +64,38 @@ records the evaluation ID and report SHA-256; the annotated formal `v0.15` tag
 and verified draft consume that same candidate-level attestation. Protected
 promotion may publish only the unchanged draft.
 
-Current policy identity is `classifier-policy-v3` /
-`1294c6fd587522829d07220d5a6f4214092eba6ce1837636da5b3e3d461ba2a3`;
+Current policy identity is `classifier-policy-v5` /
+`0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b`;
 scanner identity is `streaming-scanner-v1`; ruleset identity remains `1.0.7` /
 `7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134`.
+
+The current PR #18 hardening delta closes a quoted-review continuation bypass
+without turning the safety wrapper into reusable malicious evidence. Only the
+unique quote from the newest eligible RoleUser review is reclassified, and
+its score, category, rule IDs, evidence, context, and behavior match direct
+classification of that referent. Questions, explanations, negation,
+consequences, remediation, and assistant/system/tool/unknown review carriers
+remain inert. Mixed-trust RoleUser pairs preserve conservative direct
+disposition with `non_user_or_untrusted` origin and remain ineligible for subject
+accumulation.
+
+Long-field handling retains only privacy-safe `Result` values and bounded
+affirmative-reference facts. If exact linkage falls outside the retained
+classifier windows, coverage becomes `CoverageUnavailable` /
+`classifier_window_incomplete`; the additional referent classification consumes
+the ordinary chunk budget and can produce `classification_chunk_limit`. Common
+directive governors now include `just`, `simply`, `let's`, and `let us`; only a
+positively proven analytical/safety/negated form suppresses the incomplete-prior
+signal fallback. Bounded adjacent reclassification is skipped when either field
+already proved an inert quoted referent.
+Targeted OpenAI Chat/Responses routes, the Linux long-text size ladder, full safe
+unit tests, classifier/plugin race checks, and `make round6-script-test` passed
+locally. Release contracts also reject formal document override environments
+and lock the public jailbreak review into required inputs, audit-bundle
+installation, and verification. These
+facts remain local development evidence until PR #18 exact-head CI and review
+complete; they are not candidate, Host, independent-audit, evaluation, tag, or
+Release approval.
 
 The final PR head must have no unresolved, non-outdated actionable review
 threads before merge. No automated-review result is treated as an independent
@@ -171,8 +207,9 @@ verifies both GitHub `releases/latest` and the pinned Tag-to-Commit ref through
 authenticated REST metadata when a token is available.
 
 The sanitized public-reference refresh is fixed to
+`Jia-Ethan/codex-keysmith@f699b9bd2cb59eb0d54e69139c68f7808d869b6d`,
 `MDX-Tom/gpt-5.6-instruct@5f469e43ef66f540cadb475039fd9ed469aef654`,
-`yynxxxxx/Codex-X@659415f57c55b92f34600a2ae482475804b22760`, and
+`yynxxxxx/Codex-X@7d0e0064d54f860d4bf12b557fd9f8c489043a35`, and
 `yynxxxxx/Codex-5.5-codex-instruct-5.5@ed0b6dc37d1994e93788d92f7af63f58bf0b9e2d`.
 No third-party installer, mutator, test runner, or prompt payload was executed or
 copied. The 36-case corpus proves only visible sanitized mechanism regression;
@@ -511,8 +548,8 @@ target: linux/amd64, glibc 2.34+
 go_toolchain_for_recorded_wsl_checks: go1.26.4 linux/amd64
 ruleset_version: 1.0.7
 ruleset_sha256: 7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134
-classifier_policy_version: classifier-policy-v2
-classifier_policy_sha256: dc9a174099cb2f621e5333a508d4645604f96f470a6d9ae12a1acfb363d29cf2
+historical_classifier_policy_version: classifier-policy-v2
+historical_classifier_policy_sha256: dc9a174099cb2f621e5333a508d4645604f96f470a6d9ae12a1acfb363d29cf2
 ```
 
 The final resolution-only follow-up commit changes only the `SELF` evidence

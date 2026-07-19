@@ -39,10 +39,12 @@ type compiledSemanticEvidence struct {
 }
 
 type compiledSemanticProfile struct {
-	category     rules.Category
-	evidence     []compiledSemanticEvidence
-	result       [semanticDimensionCount]Evidence
-	intentStarts []string
+	category       rules.Category
+	evidence       []compiledSemanticEvidence
+	result         [semanticDimensionCount]Evidence
+	intentStarts   []string
+	intentPatterns compactRuleIntentPatterns
+	intentSignals  []int
 }
 
 func (profile compiledSemanticProfile) id() string {
@@ -50,8 +52,9 @@ func (profile compiledSemanticProfile) id() string {
 }
 
 type semanticSignalWindow struct {
-	signals [][]bool
-	text    string
+	signals          [][]bool
+	directiveSignals []directiveSignalSet
+	text             string
 }
 
 type semanticAssessment struct {
@@ -203,13 +206,23 @@ func semanticDimensionsPotential(dimensions semanticDimensions) bool {
 }
 
 func semanticDirectiveWindows(analysis analyzedDirectives) []semanticSignalWindow {
-	windows := make([]semanticSignalWindow, 0, len(analysis.clauses)*2)
-	for start := range analysis.clauses {
+	windows := make([]semanticSignalWindow, 0, (len(analysis.clauses)+len(analysis.overflowTail))*2)
+	windows = appendSemanticDirectiveWindows(windows, analysis.clauses)
+	if analysis.overflow {
+		// The retained head and exact four-clause suffix are separate evidence
+		// regions. Never invent a link across omitted overflow clauses.
+		windows = appendSemanticDirectiveWindows(windows, analysis.overflowTail)
+	}
+	return windows
+}
+
+func appendSemanticDirectiveWindows(windows []semanticSignalWindow, clauses []analyzedDirectiveClause) []semanticSignalWindow {
+	for start := range clauses {
 		text := ""
-		signals := make([][]bool, 0, maxSemanticDirectiveSpan)
-		for end := start; end < len(analysis.clauses) && end < start+maxSemanticDirectiveSpan; end++ {
-			clause := analysis.clauses[end]
-			if end > start && !semanticClausesLinked(analysis.clauses[end-1].text, clause.text, clause.boundaryBefore) {
+		signals := make([]directiveSignalSet, 0, maxSemanticDirectiveSpan)
+		for end := start; end < len(clauses) && end < start+maxSemanticDirectiveSpan; end++ {
+			clause := clauses[end]
+			if end > start && !semanticClausesLinked(clauses[end-1].text, clause.text, clause.boundaryBefore) {
 				break
 			}
 			signals = append(signals, clause.signals)
@@ -218,10 +231,130 @@ func semanticDirectiveWindows(analysis analyzedDirectives) []semanticSignalWindo
 			} else {
 				text += "\n" + clause.text
 			}
-			windows = append(windows, semanticSignalWindow{signals: append([][]bool(nil), signals...), text: text})
+			windows = append(windows, semanticSignalWindow{directiveSignals: append([]directiveSignalSet(nil), signals...), text: text})
 		}
 	}
 	return windows
+}
+
+func semanticDirectiveSuffixWindows(clauses []analyzedDirectiveClause) []semanticSignalWindow {
+	if len(clauses) == 0 {
+		return nil
+	}
+	last := len(clauses) - 1
+	windows := make([]semanticSignalWindow, 0, len(clauses))
+	for start := range clauses {
+		text := ""
+		signals := make([]directiveSignalSet, 0, len(clauses)-start)
+		linked := true
+		for end := start; end <= last; end++ {
+			clause := clauses[end]
+			if end > start && !semanticClausesLinked(clauses[end-1].text, clause.text, clause.boundaryBefore) {
+				linked = false
+				break
+			}
+			signals = append(signals, clause.signals)
+			if text == "" {
+				text = clause.text
+			} else {
+				text += "\n" + clause.text
+			}
+		}
+		if linked {
+			windows = append(windows, semanticSignalWindow{directiveSignals: signals, text: text})
+		}
+	}
+	return windows
+}
+
+func (c *Classifier) updateOverflowSemanticAssessments(
+	destination []semanticAssessment,
+	clauses []analyzedDirectiveClause,
+	denseLastSignals []bool,
+	policy Policy,
+) {
+	if len(clauses) == 0 || len(destination) == 0 {
+		return
+	}
+	last := len(clauses) - 1
+	var signalStorage [maxSemanticDirectiveSpan]directiveSignalSet
+	for start := range clauses {
+		signals := signalStorage[:0]
+		linked := true
+		for end := start; end <= last; end++ {
+			if end > start && !semanticClausesLinked(clauses[end-1].text, clauses[end].text, clauses[end].boundaryBefore) {
+				linked = false
+				break
+			}
+			signals = append(signals, clauses[end].signals)
+		}
+		if !linked {
+			continue
+		}
+		windowClauses := clauses[start:]
+		if len(windowClauses) == 1 && semanticDirectiveClauseOnlyNegated(windowClauses[0]) {
+			continue
+		}
+		window := semanticSignalWindow{directiveSignals: signals}
+		textReady := false
+		for profileIndex, profile := range c.semanticProfiles {
+			if profileIndex >= len(destination) || semanticDirectiveProfileOnlyNegated(windowClauses, profileIndex) {
+				continue
+			}
+			dimensions := c.semanticDirectiveDimensionsWithDenseLast(profile, signals, denseLastSignals)
+			if !semanticDimensionsPotential(dimensions) {
+				continue
+			}
+			if !textReady {
+				window.text = joinAnalyzedDirectiveClauseText(windowClauses)
+				textReady = true
+			}
+			assessment := c.assessSemanticWindowWithDimensions(profile, window, dimensions, policy)
+			if assessment.score > destination[profileIndex].score {
+				destination[profileIndex] = assessment
+			}
+		}
+	}
+}
+
+func semanticDirectiveClauseOnlyNegated(clause analyzedDirectiveClause) bool {
+	return clause.semanticIntentsPresent != 0 &&
+		clause.semanticIntentsPresent == clause.semanticIntentsOnlyNegated &&
+		semanticNegatedBoundary(clause.text)
+}
+
+func semanticDirectiveProfileOnlyNegated(clauses []analyzedDirectiveClause, profileIndex int) bool {
+	if profileIndex < 0 || profileIndex >= 16 {
+		return false
+	}
+	profileBit := uint16(1) << uint(profileIndex)
+	present := false
+	for _, clause := range clauses {
+		if clause.semanticIntentsPresent&profileBit == 0 {
+			continue
+		}
+		present = true
+		if clause.semanticIntentsOnlyNegated&profileBit == 0 {
+			return false
+		}
+	}
+	return present
+}
+
+func joinAnalyzedDirectiveClauseText(clauses []analyzedDirectiveClause) string {
+	size := max(0, len(clauses)-1)
+	for _, clause := range clauses {
+		size += len(clause.text)
+	}
+	var text strings.Builder
+	text.Grow(size)
+	for index, clause := range clauses {
+		if index != 0 {
+			text.WriteByte('\n')
+		}
+		text.WriteString(clause.text)
+	}
+	return text.String()
 }
 
 func semanticClausesLinked(previous, current string, boundary directiveBoundaryKind) bool {
@@ -369,10 +502,35 @@ func semanticPartsLinked(previous, current string) bool {
 }
 
 func (c *Classifier) assessSemanticWindow(profile compiledSemanticProfile, window semanticSignalWindow, policy Policy) semanticAssessment {
-	if strings.TrimSpace(window.text) == "" || isLegitimateCategoryWorkflow(profile.category, window.text) || hasAffirmativeSafetyPurpose(window.text) {
+	if semanticWindowExcluded(profile, window.text) {
 		return semanticAssessment{}
 	}
-	dimensions := c.semanticDimensions(profile, window.signals)
+	dimensions := c.semanticWindowDimensions(profile, window)
+	return c.assessEligibleSemanticWindow(profile, window, dimensions, policy)
+}
+
+func (c *Classifier) assessSemanticWindowWithDimensions(
+	profile compiledSemanticProfile,
+	window semanticSignalWindow,
+	dimensions semanticDimensions,
+	policy Policy,
+) semanticAssessment {
+	if semanticWindowExcluded(profile, window.text) {
+		return semanticAssessment{}
+	}
+	return c.assessEligibleSemanticWindow(profile, window, dimensions, policy)
+}
+
+func semanticWindowExcluded(profile compiledSemanticProfile, text string) bool {
+	return strings.TrimSpace(text) == "" || isLegitimateCategoryWorkflow(profile.category, text) || hasAffirmativeSafetyPurpose(text)
+}
+
+func (c *Classifier) assessEligibleSemanticWindow(
+	profile compiledSemanticProfile,
+	window semanticSignalWindow,
+	dimensions semanticDimensions,
+	policy Policy,
+) semanticAssessment {
 	if !dimensions.object || !(dimensions.harm || dimensions.action || dimensions.outcome) {
 		return semanticAssessment{}
 	}
@@ -385,7 +543,7 @@ func (c *Classifier) assessSemanticWindow(profile compiledSemanticProfile, windo
 	if riskAxes < 2 {
 		return semanticAssessment{}
 	}
-	if semanticIntentOnlyNegated(window.text, profile.intentStarts) {
+	if semanticIntentOnlyNegatedPrepared(window.text, profile.intentStarts, profile.intentPatterns) {
 		return semanticAssessment{}
 	}
 
@@ -416,13 +574,7 @@ func (c *Classifier) assessSemanticWindow(profile compiledSemanticProfile, windo
 		return semanticAssessment{}
 	}
 
-	contextSignals := make([]bool, c.signalCount)
-	for _, signals := range window.signals {
-		for signalID, matched := range signals {
-			contextSignals[signalID] = contextSignals[signalID] || matched
-		}
-	}
-	context := c.matchContextsWithPolicy(contextSignals, policy.Allow)
+	context := c.semanticWindowContexts(window, policy.Allow)
 	if hasExplicitHarmConflict(window.text) {
 		context.Authorized = false
 		context.CTFOrLab = false
@@ -445,6 +597,62 @@ func (c *Classifier) semanticDimensions(profile compiledSemanticProfile, windows
 		}
 		return false
 	}
+	return c.semanticDimensionsByMatch(profile, matched)
+}
+
+func (c *Classifier) semanticDirectiveDimensions(profile compiledSemanticProfile, windows []directiveSignalSet) semanticDimensions {
+	matched := func(signalID int) bool {
+		for _, signals := range windows {
+			if signals.matched(signalID) {
+				return true
+			}
+		}
+		return false
+	}
+	return c.semanticDimensionsByMatch(profile, matched)
+}
+
+func (c *Classifier) semanticDirectiveDimensionsWithDenseLast(
+	profile compiledSemanticProfile,
+	windows []directiveSignalSet,
+	denseLastSignals []bool,
+) semanticDimensions {
+	matched := func(signalID int) bool {
+		last := len(windows) - 1
+		for index, signals := range windows {
+			if index == last && denseLastSignals != nil {
+				if signalMatched(denseLastSignals, signalID) {
+					return true
+				}
+				continue
+			}
+			if signals.matched(signalID) {
+				return true
+			}
+		}
+		return false
+	}
+	return c.semanticDimensionsByMatch(profile, matched)
+}
+
+func (c *Classifier) semanticWindowDimensions(profile compiledSemanticProfile, window semanticSignalWindow) semanticDimensions {
+	matched := func(signalID int) bool {
+		for _, signals := range window.signals {
+			if signalMatched(signals, signalID) {
+				return true
+			}
+		}
+		for _, signals := range window.directiveSignals {
+			if signals.matched(signalID) {
+				return true
+			}
+		}
+		return false
+	}
+	return c.semanticDimensionsByMatch(profile, matched)
+}
+
+func (c *Classifier) semanticDimensionsByMatch(profile compiledSemanticProfile, matched func(int) bool) semanticDimensions {
 	var reachable [1 << semanticDimensionCount]bool
 	reachable[0] = true
 	for _, evidence := range profile.evidence {
@@ -497,7 +705,36 @@ func (c *Classifier) semanticDimensions(profile compiledSemanticProfile, windows
 	return semanticDimensionsFromMask(bestMask)
 }
 
+func (c *Classifier) semanticWindowContexts(window semanticSignalWindow, policy ContextPolicy) ContextFlags {
+	matched := func(signalID int) bool {
+		for _, signals := range window.signals {
+			if signalMatched(signals, signalID) {
+				return true
+			}
+		}
+		for _, signals := range window.directiveSignals {
+			if signals.matched(signalID) {
+				return true
+			}
+		}
+		return false
+	}
+	return ContextFlags{
+		Defensive:        matched(c.contexts[rules.ContextDefensive]) && policy.Defensive,
+		Remediation:      matched(c.contexts[rules.ContextRemediation]) && policy.Remediation,
+		CTFOrLab:         (matched(c.contexts[rules.ContextCTF]) && policy.CTF) || (matched(c.contexts[rules.ContextLab]) && policy.Lab),
+		Authorized:       matched(c.contexts[rules.ContextAuthorized]) && policy.Authorized,
+		StaticAnalysis:   matched(c.contexts[rules.ContextStaticAnalysis]) && policy.StaticAnalysis,
+		IncidentResponse: matched(c.contexts[rules.ContextIncidentResponse]) && policy.IncidentResponse,
+		HighLevel:        matched(c.contexts[rules.ContextHighLevel]) && policy.HighLevel,
+	}
+}
+
 func semanticIntentOnlyNegated(text string, intents []string) bool {
+	return semanticIntentOnlyNegatedPrepared(text, intents, compileCompactRuleIntentPatterns(intents))
+}
+
+func semanticIntentOnlyNegatedPrepared(text string, intents []string, patterns compactRuleIntentPatterns) bool {
 	if len(text) > maxCompactIntentProofBytes {
 		// Semantic suppression is optional defensive credit. Oversized windows
 		// retain the matched semantic intent instead of paying rules x input
@@ -507,5 +744,5 @@ func semanticIntentOnlyNegated(text string, intents []string) bool {
 	if !containsRuleIntent(text, intents) {
 		return false
 	}
-	return !containsUnnegatedRuleIntent(text, intents)
+	return !containsUnnegatedRuleIntentPrepared(text, intents, patterns)
 }
