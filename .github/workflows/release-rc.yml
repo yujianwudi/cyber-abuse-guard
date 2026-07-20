@@ -256,6 +256,8 @@ jobs:
           RELEASE_RC_TAG: ${{ inputs.tag }}
           RELEASE_RC_EXPECTED_COMMIT: ${{ inputs.expected_commit }}
           RELEASE_RC_EXPECTED_TREE: ${{ inputs.expected_tree }}
+          CI_RUN_ID: ${{ inputs.ci_run_id }}
+          CI_RUN_ATTEMPT: ${{ inputs.ci_run_attempt }}
           ROUND6_SAFE_SPARSE_BUILD: '1'
           CPA_COMPAT_VERIFY_REMOTE: '1'
         run: |
@@ -266,10 +268,10 @@ jobs:
           {
             printf '%s\n' \
               'CPA Cyber Abuse Guard v0.15-rc.3 internal Linux release gates' \
-              "commit=${{ inputs.expected_commit }}" \
-              "tree=${{ inputs.expected_tree }}" \
-              "exact_main_ci_run=${{ inputs.ci_run_id }}" \
-              "exact_main_ci_attempt=${{ inputs.ci_run_attempt }}" \
+              "commit=$RELEASE_RC_EXPECTED_COMMIT" \
+              "tree=$RELEASE_RC_EXPECTED_TREE" \
+              "exact_main_ci_run=$CI_RUN_ID" \
+              "exact_main_ci_attempt=$CI_RUN_ATTEMPT" \
               'rc_gate.safe_contract=PASS'
             make round6-format-check round6-git-diff-check round6-module-verify
             make cpa-host-fixture-contract

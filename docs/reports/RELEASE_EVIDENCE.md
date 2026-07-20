@@ -73,7 +73,7 @@ Current policy identity is `classifier-policy-v5` /
 scanner identity is `streaming-scanner-v1`; ruleset identity remains `1.0.7` /
 `7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134`.
 
-The current PR #18 hardening delta closes a quoted-review continuation bypass
+The merged PR #18 hardening delta closes a quoted-review continuation bypass
 without turning the safety wrapper into reusable malicious evidence. Only the
 unique quote from the newest eligible RoleUser review is reclassified, and
 its score, category, rule IDs, evidence, context, and behavior match direct
@@ -97,9 +97,9 @@ unit tests, classifier/plugin race checks, and `make round6-script-test` passed
 locally. Release contracts also reject formal document override environments
 and lock the public jailbreak review into required inputs, audit-bundle
 installation, and verification. These
-facts remain local development evidence until PR #18 exact-head CI and review
-complete; they are not candidate, Host, independent-audit, evaluation, tag, or
-Release approval.
+facts are merged development evidence after PR #18 exact-head CI and review
+completed; they are not candidate, Host, independent-audit, evaluation, tag,
+or Release approval.
 
 The final PR head must have no unresolved, non-outdated actionable review
 threads before merge. No automated-review result is treated as an independent
