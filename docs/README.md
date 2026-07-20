@@ -7,8 +7,8 @@ current_classifier_policy_sha256: 0e114d98862282d2492fb62e4300297b4746eeaf816533
 
 The root [English README](../README.md) and [Chinese README](../README_CN.md)
 are the shortest current-status entry points. The public
-[`v0.15-rc.2` prerelease](https://github.com/yujianwudi/cyber-abuse-guard/releases/tag/v0.15-rc.2)
-is Linux amd64 sandbox-only; formal `v0.15` remains blocked.
+[`v0.15-rc.3` prerelease](https://github.com/yujianwudi/cyber-abuse-guard/releases/tag/v0.15-rc.3)
+is the Linux amd64 formal-structure sandbox RC; formal `v0.15` remains blocked.
 
 This cleanup adds navigation without relocating frozen evaluation or Holdout
 evidence. Those files keep their existing paths so historical hashes and
@@ -39,6 +39,8 @@ Current GitHub Actions entry points are intentionally limited to:
 - `.github/workflows/candidate.yml` for private unreleased candidate bytes;
 - `.github/workflows/attested-prerelease.yml` for the externally attested
   development prerelease gate;
+- `.github/workflows/release-rc.yml` for the exact-main, Linux-only
+  `v0.15-rc.3` formal-structure sandbox prerelease;
 - `.github/workflows/release.yml` and
   `.github/workflows/release-promote.yml` for the formal draft and its
   protected promotion.
@@ -46,7 +48,8 @@ Current GitHub Actions entry points are intentionally limited to:
 The retired attempted `v0.15-rc.2` workflow definition is archived under
 [`archive/workflows/`](archive/workflows/) and cannot be dispatched by GitHub
 Actions. Its recorded runs failed and did not produce the public RC, which was
-published separately through the disclosed direct owner override.
+published separately through the disclosed direct owner override. It remains
+historical evidence and is separate from the active RC3 workflow.
 
 ## Current v0.15 / Round 6 handoff
 

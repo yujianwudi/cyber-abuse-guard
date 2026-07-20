@@ -71,7 +71,7 @@ The current v7.2.88 matrix covers:
 The shared test fixtures under `integration/pluginstorecontract/testfixtures/`
 are current v7.2.88 inputs and must not be treated as legacy-version fixtures.
 
-## Last fully verified pre-cleanup baseline
+## Historical pre-cleanup baseline (not the current RC target)
 
 The merged Round 6 source is:
 
@@ -97,6 +97,12 @@ Host source/fail-open contracts, Round 4/5/6 regressions, unit and race tests,
 vet, fuzz, benchmarks, vulnerability checks, Linux build, artifact hashing,
 Store validation, integration compilation, and clean-tree verification. It did
 not run the native Host black-box or pure-C Router fixture targets.
+
+These commit, asset, and CPA v7.2.86 statements are retained only as historical
+baseline evidence. The current RC3 package is fixed to CPA v7.2.88; exact
+tag/commit/tree, current CI, 17 asset hashes, and RC-versioned integration
+results are recorded at runtime in `rc-release-evidence.md` and
+`rc-release-manifest.json` rather than self-recorded in this source file.
 
 ## Evidence boundary
 

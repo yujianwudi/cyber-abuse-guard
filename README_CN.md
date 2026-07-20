@@ -9,56 +9,42 @@ current_classifier_policy_sha256: 0e114d98862282d2492fb62e4300297b4746eeaf816533
 [![Go](https://img.shields.io/badge/Go-1.26.4-00ADD8?logo=go&logoColor=white)](go.mod)
 [![Platform](https://img.shields.io/badge/platform-Linux%20amd64-lightgrey)](docs/ROUND6_LIMITATIONS.md)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Prerelease](https://img.shields.io/badge/prerelease-v0.15--rc.2-orange)](https://github.com/yujianwudi/cyber-abuse-guard/releases/tag/v0.15-rc.2)
+[![Prerelease](https://img.shields.io/badge/prerelease-v0.15--rc.3-orange)](https://github.com/yujianwudi/cyber-abuse-guard/releases/tag/v0.15-rc.3)
 [![Formal release](https://img.shields.io/badge/formal_v0.15-BLOCKED-critical)](docs/ROUND6_RELEASE_GATE.md)
 
-**面向 [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)（CPA）的本地、
-确定性、前置 Cyber Abuse 请求风控插件。**
+**面向 [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)（CPA）的本地、确定性、路由前 Cyber Abuse 请求风控插件。**
 
 [English](README.md) | 简体中文
 
-带资产的 [`v0.15-rc.2`](https://github.com/yujianwudi/cyber-abuse-guard/releases/tag/v0.15-rc.2)
-已作为公开 Linux amd64 prerelease 发布，仅供所有者服务器沙盒验证。该版本通过直接
-所有者覆盖发布，并明确标记 `TESTS_SKIPPED_BY_REQUEST`；它不是私有 Round 6
-candidate、正式 `v0.15` 证据、CPA Host 兼容证明或生产部署授权。
-
 > [!WARNING]
-> 精确项目版本 `0.15` 与正式标签 `v0.15` 仍为
-> **BLOCKED / PENDING HOST AND INDEPENDENT AUDIT**。`v0.15-rc.2` 的自动化测试套件和
-> CPA Host 集成没有作为发行门禁。RC 源码提交的精确 main CI
-> [29644688551](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29644688551)
-> 在 CPA 最新源码兼容检查收到 HTTP 403 后失败，后续回归、单元测试、race、vet、构建与
-> 可复现性步骤未执行。因此该 RC 必须视为 **SANDBOX ONLY**，真实 CPA Host 验证仍需在
-> 所有者 Linux 服务器沙盒完成；Windows、macOS 构建与测试不在范围内。
+> 项目版本 `0.15` 与正式标签 `v0.15` 仍为 **BLOCKED / PENDING HOST AND INDEPENDENT AUDIT**。
+> [`v0.15-rc.3`](https://github.com/yujianwudi/cyber-abuse-guard/releases/tag/v0.15-rc.3) 只在精确 main CI、完整 Linux 内部门禁、CPA v7.2.88 源码兼容、RC 版本集成以及两个独立干净克隆的可复现构建全部通过后发布。
+> RC3 按正式包结构提供 17 项资产，但只携带 RC 证据，不生成正式 attestation。
+> 它仍是 **SANDBOX ONLY / SERVER VALIDATION REQUIRED**，不代表真实 CPA Host PASS、独立审计 PASS、独立评测 PASS、正式发布或生产授权。Windows 与 macOS 不在本轮范围内。
 
-当 CPA 已加载并注册插件、Router 顺序能够到达本插件且本地 Executor 已就绪时，
-Guard 会在 Provider 选择、账号认证调度、用量记账和上游请求之前检查受支持的模型
-请求。请求内容只在进程内判断，不发送给公网分类器。
+CPA 加载并注册插件、Router 顺序可到达插件且本地 Executor 就绪后，Guard 会在 Provider 选择、账号认证调度、用量记账和上游请求之前检查受支持的模型请求。请求内容只在进程内判断，不发送给公网分类器。
 
 ## Round 6 当前状态
 
 | 项目 | 状态 |
 |---|---|
-| 项目版本 / 预期正式标签 | `0.15` / 精确 `v0.15`（绝不使用 `v0.15.0`） |
-| 当前公开 RC 源码 | `main@965c9bdef68a5ddcc954d5f86fae12a8854ec0e5`，tree `03ef0288998df799d620c6310d6f8c2e0351c2e8` |
-| 清理前最后一个完整验证的 main 基线 | `6782dfaffd4da3f09604113c7d38675f331dc759`，tree `a8edbe2e6d19fa725fb962cdd6aaad5b416d4b85`；main CI [29630844605](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29630844605) 与标签 CI [29630926354](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29630926354) 已通过 |
-| 发布结论 | **BLOCKED / PENDING HOST AND INDEPENDENT AUDIT** |
-| 候选字节 | 必须由私有、无标签的 Actions 候选工作流从干净精确源码生成；干净不等于已发布 |
-| 合并与发布 | Round 6 与后续发布工作流修复已合并；公开 `v0.15-rc.2` 已发布十项 Linux 沙盒资产，正式 `v0.15` 仍不存在且被阻断 |
-| RC 发布模式 | `DIRECT_OWNER_OVERRIDE / TESTS_SKIPPED_BY_REQUEST`；精确 main CI 与 CPA Host 集成未作为发行门禁 |
-| RC 源码提交 CI | [29644688551](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29644688551) 在 CPA 最新源码兼容请求收到 HTTP 403 后 **失败**；后续回归、测试、构建和可复现性步骤被跳过 |
-| 验证平台 | 仅 Linux amd64；产物引用的数值型 GLIBC ABI 版本必须 `<= 2.34` |
+| 项目版本 / 预期正式标签 | `0.15` / 精确 `v0.15`，绝不使用 `v0.15.0` |
+| 当前 RC 身份 | 精确 post-merge `main` 上的 annotated `v0.15-rc.3`；tag object、commit、tree、CI、workflow run 与 17 项资产哈希写入 `rc-release-manifest.json` |
+| 发布结论 | 正式 `v0.15` 仍为 **BLOCKED / PENDING HOST AND INDEPENDENT AUDIT** |
+| RC 发布方式 | `AUTOMATED / COMPLETE_INTERNAL_LINUX_GATES / TWO-CLEAN-CLONE_REPRODUCIBLE / SANDBOX_ONLY` |
+| RC 资产 | Linux amd64 共 17 项：SO、Store ZIP、audit bundle、source archive、SBOM、checksums、测试摘要、RC evidence、manifest 及 sidecar |
+| 发布事务 | 先创建 draft，上传后逐字节下载比对，再以 `prerelease=true`、`latest=false` 发布；失败则恢复 draft |
+| CPA 固定目标 | v7.2.88（`93d74a890a44802f656d7f39a573916b2611896e`） |
+| 真实 CPA Host | `NOT_RUN / SERVER_SANDBOX_REQUIRED` |
+| 独立审计 / 独立评测 | `NOT_PROVIDED` |
+| 验证平台 | 仅 Linux amd64；产物引用的数字型 GLIBC ABI 版本必须 `<= 2.34` |
 | 不在范围 | Windows、macOS、musl/Alpine、本地部署、生产验证 |
-| CPA Host 矩阵 | 当前验证与支持的发行目标固定为 CPA v7.2.88（`93d74a890a44802f656d7f39a573916b2611896e`）；所有者运行的隔离 Host + Mock-upstream 证据为 **NOT RUN / PENDING** |
-| 生产环境 | 未登录、未修改；未读取生产请求、审计库、凭证、HMAC key，未连接真实账号池或 Provider |
 | Scanner identity | `streaming-scanner-v1` |
 | Classifier policy | `classifier-policy-v5` / `0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b` |
 | 内嵌 YAML ruleset | `1.0.7` / `7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134` |
 | 审计 schema | v3 |
-| 代码复核 | 自动化审查仅作建议；不声称已获得独立批准 |
 
-历史 v10 评估仍为 `CONSUMED / FAIL`，不得重跑或用于调参。工程检查通过不能
-覆盖该方法学结论，也不能授权生产阻断。
+历史 v10 评测仍为 `CONSUMED / FAIL`，不得重跑或用于调参。内部工程门禁通过不能覆盖该方法学结论，也不能授权生产封控。
 
 ## Round 6 做了什么
 
@@ -196,7 +182,7 @@ build-tag 修改的前提下声称“完全零触及”，但没有使用受限 
 |---|---|
 | Round 6 实现 PR | [PR #9](https://github.com/yujianwudi/cyber-abuse-guard/pull/9) 已合并；其 PR runner 因已记录的 GitHub Billing 限制没有启动，因此不声称 PR CI PASS |
 | 清理前最后一个完整验证的 `main` Push CI | [29630844605](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29630844605) 对 `6782dfa` / tree `a8edbe2` **SUCCESS** |
-| RC 源码精确 main CI | [29644688551](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29644688551) 在 CPA 最新源码检查遇到 HTTP 403 后 **FAILED**；明确未作为 RC 发行门禁 |
+| RC3 精确 main CI | 必须是精确 tagged `main` commit 的 `ci.yml` push SUCCESS，并绑定 run ID 与精确 run attempt；发布前重复验证 |
 | 源码预发行 `v0.15-rc.1` 标签 CI | [29630926354](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29630926354) 对 `6782dfa` / tree `a8edbe2` **SUCCESS** |
 | 私有无标签干净候选 Actions 产物 | **NOT CREATED / PENDING**；必须绑定最终 commit/tree 并生成 `candidate-manifest.json` |
 | CPA v7.2.88 Host + Mock upstream | **NOT RUN / PENDING** |
@@ -204,7 +190,8 @@ build-tag 修改的前提下声称“完全零触及”，但没有使用受限 
 | 与候选绑定的外部 evaluation-v11 或更高 | **NOT RUN / PENDING**；必须是该精确候选首次且唯一的 `CONSUMED / PASS` |
 | 注解标签 `v0.15-dev.round6[.N]` 预发行 | 可选；Host、独立审计、候选级评估通过前阻断，且永远不是正式发行 |
 | 公开源码预发行 `v0.15-rc.1` | 已存在但没有附加资产；不是私有候选、Host 证据或正式发行 |
-| 带资产预发行 `v0.15-rc.2` | **PUBLIC / PRERELEASE / SANDBOX ONLY**；通过直接所有者覆盖发布十项 Linux amd64 资产并按要求跳过测试；不是候选、Host、正式或生产证据 |
+| 历史带资产预发行 `v0.15-rc.2` | **PUBLIC / PRERELEASE / SANDBOX ONLY**；通过直接所有者覆盖发布十项 Linux amd64 资产并跳过测试 |
+| 正式结构 `v0.15-rc.3` 预发行 | 精确 17 项 Linux amd64 资产；完整内部门禁与可复现构建必须通过，真实 Host、独立审计/评测、正式发布与生产授权仍缺失 |
 | 注解标签 `v0.15` 与已验证 draft | 阻断 |
 | 受保护地发布未变化 draft | 阻断 |
 

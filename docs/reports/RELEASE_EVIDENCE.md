@@ -26,10 +26,11 @@ round6_pr_ci: 29620335143 / JOBS NOT STARTED DUE BILLING / NOT A PASS
 post_merge_main_push_ci: 29630844605 / SUCCESS
 public_source_only_prerelease_tag: v0.15-rc.1
 source_only_tag_ci: 29630926354 / SUCCESS
-current_hardening_pr: 18 / OPEN / final exact-head CI and review state are external evidence
-current_hardening_local_linux: QUOTED-REVIEW + LONG-STREAM + UNIT + RACE PASS / DEVELOPMENT ONLY
-current_release_contract_local: ROUND6-SCRIPT-TEST + REAL DOC GATE + MUTATION FIXTURE + 152 SAFE-CONTRACT TESTS PASS / DEVELOPMENT ONLY
-attached_release_assets: none
+current_hardening_pr: 18 / MERGED / exact source history remains external GitHub evidence
+current_release_contract_local: ROUND6-SCRIPT-TEST + REAL DOC GATE + MUTATION FIXTURE + 154 SAFE-CONTRACT TESTS PASS / DEVELOPMENT ONLY
+current_rc_target: v0.15-rc.3 / ACTIVE EXACT-MAIN WORKFLOW / LINUX AMD64
+current_rc_asset_contract: EXACTLY 17 / FORMAL STRUCTURE / RC EVIDENCE ONLY
+current_rc_runtime_evidence: rc-release-evidence.md + rc-release-manifest.json
 private_untagged_clean_candidate: NOT CREATED / PENDING
 candidate_manifest: NOT CREATED / PENDING
 cpa_host_target: v7.2.88 / 93d74a890a44802f656d7f39a573916b2611896e
@@ -45,8 +46,11 @@ formal_release_attestation: NOT CREATED / PENDING
 formal_v0.15_promotion: NOT RUN / BLOCKED
 ```
 
-The merged Round 6 implementation baseline and its exact main/tag CI are
-engineering evidence, not final candidate, Host, audit, or formal-release
+This checked-in report is a source-policy baseline, not a self-referential
+record of the future tagged commit. Exact RC3 tag object, commit, tree, CI run,
+workflow run, asset hashes, and upload verification belong only in the
+run-generated `rc-release-evidence.md` and `rc-release-manifest.json`.
+Engineering evidence is not final candidate, Host, audit, or formal-release
 evidence. The PR jobs that did not start are not retrospectively called a PASS.
 The public `v0.15-rc.1` prerelease has no attached release assets and does not
 replace the dedicated private, untagged candidate workflow. That workflow has

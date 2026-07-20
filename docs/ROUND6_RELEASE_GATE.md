@@ -31,10 +31,13 @@ final PR head + PR CI
   -> protected promotion of that unchanged draft
 ```
 
-An isolated side lane may publish annotated `v0.15-rc.2` Linux amd64 assets for
-server sandbox validation after exact-main CI succeeds. That lane embeds the RC
-version in the SO, Store ZIP, and metadata, emits only an RC manifest, and is
-explicitly **not** the private Round 6 candidate or a formal-release
+An isolated side lane may publish the annotated `v0.15-rc.3` Linux amd64
+formal-structure package after exact-main CI and the complete internal Linux
+gate set succeed. It emits exactly 17 assets: RC-versioned SO and Store ZIP,
+audit bundle, source archive, SBOM, checksums, internal test summary, RC-only
+evidence, and exact manifest with sidecars. Two independent clean-clone builds
+must reproduce the 11 source-derived assets byte-for-byte before publication.
+The lane is explicitly **not** the private Round 6 candidate or a formal-release
 attestation. It does not alter, satisfy, or bypass the ordered formal chain
 above. Real CPA Host validation remains pending in the owner's server sandbox.
 

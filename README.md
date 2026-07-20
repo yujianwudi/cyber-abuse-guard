@@ -9,7 +9,7 @@ current_classifier_policy_sha256: 0e114d98862282d2492fb62e4300297b4746eeaf816533
 [![Go](https://img.shields.io/badge/Go-1.26.4-00ADD8?logo=go&logoColor=white)](go.mod)
 [![Platform](https://img.shields.io/badge/platform-Linux%20amd64-lightgrey)](docs/ROUND6_LIMITATIONS.md)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Prerelease](https://img.shields.io/badge/prerelease-v0.15--rc.2-orange)](https://github.com/yujianwudi/cyber-abuse-guard/releases/tag/v0.15-rc.2)
+[![Prerelease](https://img.shields.io/badge/prerelease-v0.15--rc.3-orange)](https://github.com/yujianwudi/cyber-abuse-guard/releases/tag/v0.15-rc.3)
 [![Formal release](https://img.shields.io/badge/formal_v0.15-BLOCKED-critical)](docs/ROUND6_RELEASE_GATE.md)
 
 **A local, deterministic, pre-routing cyber-abuse request guard for
@@ -19,18 +19,16 @@ English | [简体中文](README_CN.md)
 
 > [!WARNING]
 > Version `0.15` and its formal tag `v0.15` remain
-> **BLOCKED / PENDING HOST AND INDEPENDENT AUDIT**. The asset-bearing
-> [`v0.15-rc.2`](https://github.com/yujianwudi/cyber-abuse-guard/releases/tag/v0.15-rc.2)
-> is a public Linux amd64 prerelease for owner-operated server sandbox
-> validation. It was published through a direct owner override with
-> `TESTS_SKIPPED_BY_REQUEST`; automated test suites and CPA Host integration
-> were not used as release gates. The RC source commit's exact-main CI
-> [29644688551](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29644688551)
-> failed when the CPA latest-source compatibility check received HTTP 403,
-> before its downstream regression, unit, race, vet, build, and reproducibility
-> steps. The RC binary and accompanying assets are therefore **SANDBOX ONLY**,
-> not a private clean candidate, formal release, production authorization, or
-> proof of CPA Host compatibility. Windows and macOS remain outside scope.
+> **BLOCKED / PENDING HOST AND INDEPENDENT AUDIT**. The
+> [`v0.15-rc.3`](https://github.com/yujianwudi/cyber-abuse-guard/releases/tag/v0.15-rc.3)
+> side lane publishes only after exact-main CI, the complete internal Linux
+> quality suite, CPA v7.2.88 source compatibility, RC-versioned integration, and
+> two independent clean-clone rebuilds pass. Its 17 assets follow the formal
+> package structure but carry RC-only evidence and no formal attestation.
+> Therefore RC3 remains **SANDBOX ONLY / SERVER VALIDATION REQUIRED**, not a
+> private clean candidate, formal release, production authorization, real CPA
+> Host PASS, independent audit PASS, or independent evaluation PASS. Windows
+> and macOS remain outside scope.
 
 When CPA has loaded and registered the plugin, Router ordering reaches it, and
 the self-executor is ready, the Guard inspects supported model requests before
@@ -43,13 +41,13 @@ classifier.
 | Item | State |
 |---|---|
 | Project version / intended formal tag | `0.15` / exact tag `v0.15` (never `v0.15.0`) |
-| Current public RC source | `main@965c9bdef68a5ddcc954d5f86fae12a8854ec0e5`, tree `03ef0288998df799d620c6310d6f8c2e0351c2e8` |
+| Current RC identity | Annotated `v0.15-rc.3` at the exact post-merge `main` commit/tree; the tag object, CI run, workflow run, and 17 asset hashes are bound in `rc-release-manifest.json` |
 | Last fully verified pre-cleanup main baseline | `6782dfaffd4da3f09604113c7d38675f331dc759`, tree `a8edbe2e6d19fa725fb962cdd6aaad5b416d4b85`; main CI [29630844605](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29630844605) and tag CI [29630926354](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29630926354) passed |
 | Release decision | **BLOCKED / PENDING HOST AND INDEPENDENT AUDIT** |
 | Candidate bytes | Must be clean exact-source Linux amd64 bytes from the private untagged Actions candidate workflow; clean does not mean released |
-| Merge and release | Round 6 and subsequent publication-workflow fixes are merged. Public `v0.15-rc.2` is published with ten Linux sandbox assets; formal `v0.15` is absent and blocked |
-| RC publication mode | `DIRECT_OWNER_OVERRIDE / TESTS_SKIPPED_BY_REQUEST`; exact-main CI and CPA Host integration were not release gates |
-| RC source commit CI | [29644688551](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29644688551) **FAILED** at the CPA latest-source compatibility request with HTTP 403; downstream regression, test, build, and reproducibility steps were skipped |
+| Merge and release | The active RC3 workflow creates a draft, re-downloads and byte-compares all 17 assets, then publishes `prerelease=true` and `latest=false`; formal `v0.15` remains absent and blocked |
+| RC publication mode | `AUTOMATED / COMPLETE_INTERNAL_LINUX_GATES / TWO-CLEAN-CLONE_REPRODUCIBLE / SANDBOX_ONLY` |
+| RC exact-main CI | Required and bound by run ID plus exact run attempt to the tagged `main` commit; the run URL and attempt are recorded in RC evidence and manifest |
 | Validation platform | Linux amd64 only; emitted numeric GLIBC ABI versions must be `<= 2.34` |
 | Out of scope | Windows, macOS, musl/Alpine, local deployment, production validation |
 | CPA Host matrix | Active validation and the supported release target are pinned to CPA v7.2.88 (`93d74a890a44802f656d7f39a573916b2611896e`); owner-operated isolated Host + Mock-upstream evidence is **NOT RUN / PENDING** |
@@ -232,7 +230,7 @@ for implementation or conclusions.
 |---|---|
 | Round 6 implementation PR | [PR #9](https://github.com/yujianwudi/cyber-abuse-guard/pull/9) merged; its PR runner did not start because of the recorded GitHub billing limit, so it is not claimed as a PR-CI PASS |
 | Last fully verified pre-cleanup `main` push CI | [29630844605](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29630844605) **SUCCESS** for `6782dfa` / tree `a8edbe2` |
-| RC source exact-main CI | [29644688551](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29644688551) **FAILED** on HTTP 403 in the CPA latest-source check; it was explicitly not used as the RC release gate |
+| RC3 exact-main CI | Must be a completed successful `push` run of `ci.yml` for the exact tagged `main` commit and is revalidated before checkout |
 | Source-only `v0.15-rc.1` tag CI | [29630926354](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29630926354) **SUCCESS** for `6782dfa` / tree `a8edbe2` |
 | Private untagged clean candidate Actions artifact | **NOT CREATED / PENDING**; must bind one final commit/tree and emit `candidate-manifest.json` |
 | CPA v7.2.88 Host + Mock upstream | **NOT RUN / PENDING** |
@@ -240,7 +238,8 @@ for implementation or conclusions.
 | Candidate-bound external evaluation-v11 or later | **NOT RUN / PENDING**; must be first-and-only `CONSUMED / PASS` for the exact candidate |
 | Annotated `v0.15-dev.round6[.N]` prerelease | Optional and blocked until Host, independent audit, and candidate-level evaluation pass; never a formal release |
 | Public source-only `v0.15-rc.1` prerelease | Exists with no attached assets; not the private candidate, Host evidence, or formal release |
-| Asset-bearing `v0.15-rc.2` prerelease | **PUBLIC / PRERELEASE / SANDBOX ONLY**; ten Linux amd64 assets published by direct owner override with tests skipped by request; not candidate, Host, formal, or production evidence |
+| Historical asset-bearing `v0.15-rc.2` prerelease | **PUBLIC / PRERELEASE / SANDBOX ONLY**; ten Linux amd64 assets were published by direct owner override with tests skipped |
+| Formal-structure `v0.15-rc.3` prerelease | Exactly 17 Linux amd64 assets; internal gates and reproducibility must pass, while real CPA Host, independent audit/evaluation, formal release, and production authorization remain absent |
 | Annotated `v0.15` formal tag and verified draft | Blocked |
 | Protected promotion of the unchanged draft | Blocked |
 

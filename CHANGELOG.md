@@ -9,6 +9,29 @@ current_classifier_policy_sha256: 0e114d98862282d2492fb62e4300297b4746eeaf816533
 
 Release status: **BLOCKED / PENDING HOST AND INDEPENDENT AUDIT**. Exact project
 version is `0.15` and the only formal tag name is `v0.15` (never `v0.15.0`).
+
+### v0.15-rc.3 formal-structure prerelease
+
+- Add a dedicated active `release-rc.yml` workflow fixed to the annotated
+  exact-main `v0.15-rc.3` tag and its tag-object SHA. Admission requires a
+  successful exact-main push CI before checkout and rechecks immutable
+  tag/commit/tree/main identity before publication.
+- Run the complete Linux internal quality suite, CPA v7.2.88 source
+  compatibility, RC-versioned integration, and two independent clean-clone
+  rebuilds. Windows and macOS remain intentionally outside scope.
+- Publish exactly 17 formal-structure RC assets: versioned SO and CPA Store ZIP,
+  audit bundle, source archive, build metadata, checksums, ruleset manifest,
+  SBOM, internal test summary, RC-only evidence, exact manifest, and sidecars.
+- Create a draft first, upload and re-download every asset for byte comparison,
+  then publish only as `prerelease=true` and `latest=false`. Post-publication
+  validation failure restores the release to draft.
+- Keep the status explicitly `RC_INTERNAL_GATES_PASS / SANDBOX_ONLY /
+  SERVER_VALIDATION_REQUIRED / NOT_FORMAL / NOT_ROUND6_CANDIDATE`. No real CPA
+  Host PASS, independent audit/evaluation PASS, formal attestation, or
+  production authorization is generated.
+
+### Historical RC2 state
+
 The Round 6 implementation was merged by PR #9 at
 `main@6782dfaffd4da3f09604113c7d38675f331dc759`, tree
 `a8edbe2e6d19fa725fb962cdd6aaad5b416d4b85`, and exact main/tag CI passed. A
