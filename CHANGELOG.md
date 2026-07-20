@@ -7,7 +7,8 @@ current_classifier_policy_sha256: ece497210db938528cb166a34f2ce3013324b792a7eedf
 
 ## 0.16 — 2026-07-21
 
-Development target: **PLANNED LOCAL RC CORE PACKAGE / NOT A GITHUB RELEASE**. The
+Development status: **LOCAL RC SOURCE / PACKAGE EVIDENCE EXTERNAL TO SOURCE /
+NOT A GITHUB RELEASE**. The
 source version is `0.16`, the intended formal tag is `v0.16` (never
 `v0.16.0`), and the current local artifact target is `v0.16-rc.1`.
 
@@ -24,7 +25,7 @@ source version is `0.16`, the intended formal tag is `v0.16` (never
 - Target Linux amd64 and the pinned CPA v7.2.88 source contract. Windows,
   macOS, local deployment, and production deployment are outside this package
   operation.
-- When produced, treat this local RC package only as a handoff artifact. It is not
+- Treat any locally produced RC package only as a handoff artifact. It is not
   a GitHub Release, GitHub Actions result, formal-release attestation, or new
   CPA Host validation record. The retained `v0.15-rc.*` workflows and evidence
   below are historical v0.15 records.

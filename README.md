@@ -44,7 +44,7 @@ classifier.
 | Item | State |
 |---|---|
 | Source version / local RC tag target | `0.16` / exact annotated tag `v0.16-rc.1` (never `v0.16-rc1`) |
-| Package state in this source snapshot | **PLANNED / PENDING CLEAN TAG BUILD**; no GitHub Release, Actions result, or formal attestation is claimed |
+| Package evidence | Artifact-bound and external to the source tree; a delivered local package must carry `local-rc-manifest.json` plus checksums and still claims no GitHub Release, Actions result, or formal attestation |
 | Linux source gates | `make test`, `make round6-vet`, format/module checks, release-document consistency, and 154 safe-gate contract tests pass locally |
 | CPA compatibility | Pinned v7.2.88 module, checksums, compile probes, registration, role-aware routing, and Store contracts pass; the final repeated direct Git Origin refresh timed out and is not called a remote PASS |
 | v0.16 workflows | Existing candidate/RC/formal workflows are historical v0.15 machinery and have **NOT BEEN MIGRATED** to v0.16 |

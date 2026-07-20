@@ -24,7 +24,7 @@ independent audit, or formal attestation.
 | Release-document and safe-gate contracts | **PASS** — document consistency and 154 Python contract tests |
 | CPA v7.2.88 local source contract | **PASS** — pinned module/checksums, compile probes, registration, role-aware routing, integration compile and Store contracts |
 | CPA official Git Origin repeat check | **NETWORK BLOCKED / NOT A PASS** — isolated direct refresh timed out after 60 seconds; an earlier direct Origin result identified the official repository, tag and commit, but the final repeated remote refresh was not completed |
-| Local RC package | **PENDING CLEAN COMMIT + ANNOTATED TAG BUILD** |
+| Local RC package | Artifact-bound result is external to this source report; require the delivered `local-rc-manifest.json` and checksum files |
 | GitHub v0.16 evidence | **NOT CREATED** |
 
 The raw-capture privacy review additionally verifies that a live disable must
@@ -558,6 +558,6 @@ local_rc_artifact_version: 0.16-rc.1
 platform: linux-amd64
 cpa_contract: v7.2.88
 ruleset_sha256: 1d908c8c631bc6f72e7ec6b098bea49c4923580766859393d0be48c8c00c6d7d
-verification_status: SOURCE GATES PASS / LOCAL RC PACKAGE PENDING CLEAN TAG BUILD
+verification_status: SOURCE GATES PASS / PACKAGE STATUS IS EXTERNAL ARTIFACT EVIDENCE
 github_actions_evidence: NOT CREATED
 ```
