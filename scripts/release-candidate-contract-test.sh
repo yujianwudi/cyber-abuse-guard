@@ -137,7 +137,7 @@ rc_case() {
   RELEASE_ROOT="$fixture"
   RELEASE_CANDIDATE_BUILD="${RELEASE_CANDIDATE_BUILD:-0}"
   RELEASE_RC_BUILD="${RELEASE_RC_BUILD:-1}"
-  RELEASE_RC_TAG="${RELEASE_RC_TAG:-v0.15-rc.2}"
+  RELEASE_RC_TAG="${RELEASE_RC_TAG:-v0.15-rc.3}"
   RELEASE_RC_EXPECTED_COMMIT="${RELEASE_RC_EXPECTED_COMMIT:-$commit}"
   RELEASE_RC_EXPECTED_TREE="${RELEASE_RC_EXPECTED_TREE:-$tree}"
   ALLOW_DIRTY_BUILD="${ALLOW_DIRTY_BUILD:-0}"
@@ -157,7 +157,7 @@ rc_success() {
   release_assert_tag
   release_assert_rc_build
   [[ "$RELEASE_BUILD_KIND" == rc ]]
-  [[ "$RELEASE_ARTIFACT_VERSION" == 0.15-rc.2 ]]
+  [[ "$RELEASE_ARTIFACT_VERSION" == 0.15-rc.3 ]]
   [[ "$RELEASE_DIRTY" == false ]]
 }
 
@@ -312,11 +312,11 @@ run_must_fail formal-build-with-lightweight-tag formal_without_tag
 run_must_fail candidate-after-lightweight-formal-tag candidate_success
 git -C "$fixture" tag -d v0.15 >/dev/null
 
-git -C "$fixture" tag v0.15-rc.2
+git -C "$fixture" tag v0.15-rc.3
 run_must_fail rc-build-with-lightweight-tag rc_success
-git -C "$fixture" tag -d v0.15-rc.2 >/dev/null
+git -C "$fixture" tag -d v0.15-rc.3 >/dev/null
 
-git -C "$fixture" tag -a v0.15-rc.2 -m 'sandbox v0.15-rc.2'
+git -C "$fixture" tag -a v0.15-rc.3 -m 'sandbox v0.15-rc.3'
 run_must_pass rc-build-with-annotated-tag rc_success
 run_must_fail rc-cannot-run-formal-operation rc_cannot_run_formal_operation
 run_must_fail rc-cannot-run-candidate-operation rc_cannot_run_candidate_operation
@@ -326,7 +326,7 @@ run_must_pass formal-build-with-annotated-tag formal_with_annotated_tag
 run_must_fail candidate-after-formal-tag candidate_success
 run_must_fail rc-after-formal-tag rc_success
 git -C "$fixture" tag -d v0.15 >/dev/null
-git -C "$fixture" tag -d v0.15-rc.2 >/dev/null
+git -C "$fixture" tag -d v0.15-rc.3 >/dev/null
 
 sed -i 's/Version = "0\.15"/Version = "0.15.0"/' "$fixture/internal/buildinfo/buildinfo.go"
 run_must_fail_with three-component-project-alias \

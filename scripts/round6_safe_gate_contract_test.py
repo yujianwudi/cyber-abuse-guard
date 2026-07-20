@@ -10,6 +10,7 @@ from pathlib import Path
 sys.dont_write_bytecode = True
 
 from round6_safe_gate_contract import (
+    ACTIVE_RC_WORKFLOW_PATH,
     ACTIVE_WORKFLOW_PATHS,
     ARCHIVED_RC_WORKFLOW_PATH,
     BLOCKED_PRERELEASE_MARKER,
@@ -35,6 +36,7 @@ from round6_safe_gate_contract import (
     validate_formal_release_workflow,
     validate_frozen_evaluation_tree_script,
     validate_release_mode_contracts,
+    validate_rc_release_workflow,
     validate_archived_rc_workflow,
     validate_release_promote_workflow,
     validate_reproducibility_wrapper_script,
@@ -988,6 +990,10 @@ jobs:
         source = Path(__file__).parent.parent / ".github/workflows/release-promote.yml"
         return source.read_text(encoding="utf-8")
 
+    def rc_release_workflow(self) -> str:
+        source = Path(__file__).parent.parent / ACTIVE_RC_WORKFLOW_PATH
+        return source.read_text(encoding="utf-8")
+
     def workflow_layout_fixture(self) -> Path:
         source_root = Path(__file__).resolve().parent.parent
         temporary = tempfile.TemporaryDirectory()
@@ -1004,7 +1010,7 @@ jobs:
             target.write_bytes(source.read_bytes())
         return root
 
-    def test_workflow_layout_has_exact_five_active_entrypoints_and_archived_rc(self):
+    def test_workflow_layout_has_exact_six_active_entrypoints_and_archived_rc(self):
         root = Path(__file__).resolve().parent.parent
         validate_workflow_layout(root)
         entrypoints = default_entrypoints(root)
@@ -1016,20 +1022,20 @@ jobs:
         active_directory = (root / ".github/workflows").resolve()
         self.assertFalse(archive.is_relative_to(active_directory))
         self.assertNotIn(archive, {path.resolve() for path in entrypoints})
-        self.assertFalse((active_directory / "release-rc.yml").exists())
+        self.assertTrue((active_directory / "release-rc.yml").is_file())
 
     def test_workflow_layout_rejects_extra_entrypoint_and_archived_rc_mutation(self):
         root = self.workflow_layout_fixture()
         extra = root / ".github/workflows/unreviewed.yml"
         extra.write_text("name: Unreviewed\n", encoding="utf-8")
-        with self.assertRaisesRegex(ContractError, "exactly the five reviewed entrypoints"):
+        with self.assertRaisesRegex(ContractError, "exactly the six reviewed entrypoints"):
             validate_workflow_layout(root)
         extra.unlink()
 
         missing = root / ACTIVE_WORKFLOW_PATHS[1]
         missing_bytes = missing.read_bytes()
         missing.unlink()
-        with self.assertRaisesRegex(ContractError, "exactly the five reviewed entrypoints"):
+        with self.assertRaisesRegex(ContractError, "exactly the six reviewed entrypoints"):
             validate_workflow_layout(root)
         missing.write_bytes(missing_bytes)
 
@@ -2340,6 +2346,37 @@ command /usr/bin/git --no-pager tag v0.1.2-dev.round6
         self.assertNotEqual(workflow, self.blocked_workflow())
         with self.assertRaisesRegex(ContractError, "exact reviewed text"):
             validate_blocked_prerelease_workflow(workflow, Path("round6-prerelease.yml"))
+
+    def test_active_rc_workflow_matches_reviewed_contract(self):
+        workflow_path = Path(__file__).resolve().parent.parent / ACTIVE_RC_WORKFLOW_PATH
+        workflow = workflow_path.read_text(encoding="utf-8")
+        validate_rc_release_workflow(workflow, workflow_path)
+
+    def test_active_rc_workflow_security_mutations_fail_closed(self):
+        workflow_path = Path(__file__).resolve().parent.parent / ACTIVE_RC_WORKFLOW_PATH
+        original = workflow_path.read_text(encoding="utf-8")
+        mutations = (
+            original.replace("[[ \"$TAG\" == v0.15-rc.3 ]]", "[[ \"$TAG\" == v0.15-rc.* ]]", 1),
+            original.replace("--latest=false", "--latest", 1),
+            original.replace("--prerelease", "--latest", 1),
+            original.replace("ubuntu-24.04", "windows-2025", 1),
+            original.replace("v7.2.88", "v7.2.86", 1),
+            original.replace(".assets | length == 17", ".assets | length >= 1", 1),
+            original.replace(
+                "rc-release-manifest.json.sha256",
+                "formal-release-attestation.json",
+                1,
+            ),
+            original.replace(
+                '[[ "$tag_object_sha" == "$EXPECTED_TAG_OBJECT" ]]',
+                "true",
+                1,
+            ),
+        )
+        for workflow in mutations:
+            self.assertNotEqual(workflow, original)
+            with self.assertRaisesRegex(ContractError, "exact reviewed contract"):
+                validate_rc_release_workflow(workflow, workflow_path)
 
     def test_archived_rc_workflow_matches_reviewed_contract(self):
         workflow_path = Path(__file__).resolve().parent.parent / ARCHIVED_RC_WORKFLOW_PATH

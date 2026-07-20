@@ -26,10 +26,11 @@ round6_pr_ci: 29620335143 / JOBS NOT STARTED DUE BILLING / NOT A PASS
 post_merge_main_push_ci: 29630844605 / SUCCESS
 public_source_only_prerelease_tag: v0.15-rc.1
 source_only_tag_ci: 29630926354 / SUCCESS
-current_hardening_pr: 18 / OPEN / final exact-head CI and review state are external evidence
-current_hardening_local_linux: QUOTED-REVIEW + LONG-STREAM + UNIT + RACE PASS / DEVELOPMENT ONLY
-current_release_contract_local: ROUND6-SCRIPT-TEST + REAL DOC GATE + MUTATION FIXTURE + 152 SAFE-CONTRACT TESTS PASS / DEVELOPMENT ONLY
-attached_release_assets: none
+current_hardening_pr: 18 / MERGED / exact source history remains external GitHub evidence
+current_release_contract_local: ROUND6-SCRIPT-TEST + REAL DOC GATE + MUTATION FIXTURE + 154 SAFE-CONTRACT TESTS PASS / DEVELOPMENT ONLY
+current_rc_target: v0.15-rc.3 / ACTIVE EXACT-MAIN WORKFLOW / LINUX AMD64
+current_rc_asset_contract: EXACTLY 17 / FORMAL STRUCTURE / RC EVIDENCE ONLY
+current_rc_runtime_evidence: rc-release-evidence.md + rc-release-manifest.json
 private_untagged_clean_candidate: NOT CREATED / PENDING
 candidate_manifest: NOT CREATED / PENDING
 cpa_host_target: v7.2.88 / 93d74a890a44802f656d7f39a573916b2611896e
@@ -45,8 +46,11 @@ formal_release_attestation: NOT CREATED / PENDING
 formal_v0.15_promotion: NOT RUN / BLOCKED
 ```
 
-The merged Round 6 implementation baseline and its exact main/tag CI are
-engineering evidence, not final candidate, Host, audit, or formal-release
+This checked-in report is a source-policy baseline, not a self-referential
+record of the future tagged commit. Exact RC3 tag object, commit, tree, CI run,
+workflow run, asset hashes, and upload verification belong only in the
+run-generated `rc-release-evidence.md` and `rc-release-manifest.json`.
+Engineering evidence is not final candidate, Host, audit, or formal-release
 evidence. The PR jobs that did not start are not retrospectively called a PASS.
 The public `v0.15-rc.1` prerelease has no attached release assets and does not
 replace the dedicated private, untagged candidate workflow. That workflow has
@@ -69,7 +73,7 @@ Current policy identity is `classifier-policy-v5` /
 scanner identity is `streaming-scanner-v1`; ruleset identity remains `1.0.7` /
 `7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134`.
 
-The current PR #18 hardening delta closes a quoted-review continuation bypass
+The merged PR #18 hardening delta closes a quoted-review continuation bypass
 without turning the safety wrapper into reusable malicious evidence. Only the
 unique quote from the newest eligible RoleUser review is reclassified, and
 its score, category, rule IDs, evidence, context, and behavior match direct
@@ -93,9 +97,9 @@ unit tests, classifier/plugin race checks, and `make round6-script-test` passed
 locally. Release contracts also reject formal document override environments
 and lock the public jailbreak review into required inputs, audit-bundle
 installation, and verification. These
-facts remain local development evidence until PR #18 exact-head CI and review
-complete; they are not candidate, Host, independent-audit, evaluation, tag, or
-Release approval.
+facts are merged development evidence after PR #18 exact-head CI and review
+completed; they are not candidate, Host, independent-audit, evaluation, tag,
+or Release approval.
 
 The final PR head must have no unresolved, non-outdated actionable review
 threads before merge. No automated-review result is treated as an independent

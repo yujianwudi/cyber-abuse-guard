@@ -83,7 +83,10 @@ make_fixture() {
         'candidate_workflow: .github/workflows/candidate.yml' \
         'candidate_attestation: candidate-manifest.json' \
         'attested_prerelease_workflow: .github/workflows/attested-prerelease.yml' \
+        'rc_workflow: .github/workflows/release-rc.yml' \
         'rc_workflow_archive: docs/archive/workflows/release-rc-v0.15-rc.2.yml' \
+        'rc_artifact_version: 0.15-rc.3' \
+        'rc_status: internal-gates-pass-sandbox-only-not-formal-not-round6-candidate' \
         'host_audit_attestation: round6-prerelease-attestation.json' \
         'formal_gate_attestation: formal-release-attestation.json' \
         'promotion_workflow: .github/workflows/release-promote.yml' \
@@ -203,18 +206,27 @@ must_fail alias-policy "$work/alias-policy" \
   'docs/RELEASE_POLICY.md must contain exactly one policy line: version_alias_policy: reject-v0.15.0'
 
 policy_keys=(
+  rc_workflow
+  rc_artifact_version
+  rc_status
   host_matrix_commit
   host_attestation_schema
   host_evidence_fields
   upstream_version_policy
 )
 policy_values=(
+  .github/workflows/release-rc.yml
+  0.15-rc.3
+  internal-gates-pass-sandbox-only-not-formal-not-round6-candidate
   93d74a890a44802f656d7f39a573916b2611896e
   2
   cpa_version,cpa_commit,cpa_host_sha256
   no-automatic-follow
 )
 policy_bad_values=(
+  docs/archive/workflows/release-rc-v0.15-rc.2.yml
+  0.15-rc.2
+  sandbox-only-not-formal-not-round6-candidate
   0000000000000000000000000000000000000000
   1
   cpa_version,cpa_commit

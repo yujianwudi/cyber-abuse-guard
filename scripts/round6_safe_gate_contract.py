@@ -81,10 +81,12 @@ ACTIVE_WORKFLOW_PATHS = (
     ".github/workflows/ci.yml",
     ".github/workflows/candidate.yml",
     ".github/workflows/attested-prerelease.yml",
+    ".github/workflows/release-rc.yml",
     ".github/workflows/release.yml",
     ".github/workflows/release-promote.yml",
 )
 WORKFLOW_DIRECTORY_AUXILIARY_PATHS = (".github/workflows/README.md",)
+ACTIVE_RC_WORKFLOW_PATH = ".github/workflows/release-rc.yml"
 ARCHIVED_RC_WORKFLOW_PATH = "docs/archive/workflows/release-rc-v0.15-rc.2.yml"
 BLOCKED_PRERELEASE_MARKER = (
     "Attested prerelease - HOST, AUDIT, AND EVALUATION REQUIRED"
@@ -220,12 +222,14 @@ SAFE_GATE_COMMANDS = (
 SAFE_WORKFLOW_ENV_LINES = {
     "GO_VERSION: '1.26.4'",
     "VERSION: '0.15'",
+    "RC_VERSION: '0.15-rc.3'",
     "CYCLONEDX_GOMOD_VERSION: 'v1.9.0'",
     "GOVULNCHECK_VERSION: 'v1.6.0'",
 }
 SAFE_WORKFLOW_ENV = {
     "GO_VERSION": "1.26.4",
     "VERSION": "0.15",
+    "RC_VERSION": "0.15-rc.3",
     "CYCLONEDX_GOMOD_VERSION": "v1.9.0",
     "GOVULNCHECK_VERSION": "v1.6.0",
 }
@@ -817,9 +821,10 @@ CANDIDATE_ARTIFACTS = (
 )
 CANDIDATE_SCRIPT_SHA256 = {
     "round6-candidate-artifacts.sh": "3f45700378adc9fe2f4d5194fa8466020f54b8e3b05f8df634f89e4341515676",
-    "release-candidate-contract-test.sh": "82879ce86da1a0424c1ba688d33635176411e2a646449e355dc705ba7d982a69",
+    "release-candidate-contract-test.sh": "f43d89c895d5a17a136aaac2b543d629e013368f3de3c8e72fcd5db4ee60bc48",
 }
-RC_RELEASE_SCRIPT_SHA256 = "30d349c1f6d7e78b3b66d78042b493e1e17f14a5bc89bad2abaf16958f7521fd"
+RC_RELEASE_SCRIPT_SHA256 = "b46c0235c8dc8259f7812ebaf36236bae473ea1abd9fca664e0e87b05b43a7ca"
+ACTIVE_RC_WORKFLOW_SHA256 = "dfebd5747bca3bf49d29d711836ca7318013e289d99b12c422e1379711dca69f"
 RC_RELEASE_WORKFLOW_SHA256 = "5ff480e2bb84bc33da81cc4e9839e4bca50453fc7e77debc1f24dd5b04362107"
 FORMAL_OPERATION_SCRIPTS = (
     "formal-release.sh",
@@ -890,11 +895,11 @@ FROZEN_EVALUATION_STATUS_COMMAND = (
 )
 ROUND6_DOC_FIXTURE_WRAPPER_SCRIPT = "scripts/round6-doc-consistency-fixture-test.sh"
 ROUND6_DOC_FIXTURE_WRAPPER_SCRIPT_SHA256 = (
-    "75f8122472ff3ae4729d7a97aa52bd2e60e55f04c0d48e5f2e7066c513aaf43c"
+    "937cffdd1b722868016a0b3056317874f2a0f97bd630ec46dfd5082336b0012e"
 )
 ROUND6_DOC_FIXTURE_DEPENDENCY_SHA256 = {
-    "scripts/release-doc-consistency-test.sh": "72b02658c6ab12a541cfbd67529e1687cce5fc69d4566444e4da01b1e11c0752",
-    "scripts/release-doc-consistency.sh": "db4ee0d5bcfa4969d4b38bdf4b059c8f07b3010b1cf6445cd25a682ed86b3506",
+    "scripts/release-doc-consistency-test.sh": "01bff8f68657cfcbf74442457954d36879bb97574a0ca3201e8e2d8e840496e7",
+    "scripts/release-doc-consistency.sh": "bb239cc945f3e09be5839e751170aae25b0e503f197e792e6dd0e53253244018",
 }
 ROUND6_PRIVACY_FIXTURE_SCRIPT = "scripts/release-evidence-privacy-test.sh"
 ROUND6_PRIVACY_FIXTURE_SCRIPT_SHA256 = (
@@ -2517,6 +2522,10 @@ def validate_release_mode_contracts(root: Path) -> None:
         rc_script = read_regular_text(rc_script_path, root)
         if hashlib.sha256(rc_script.encode("utf-8")).hexdigest() != RC_RELEASE_SCRIPT_SHA256:
             raise ContractError("RC release artifact script differs from reviewed contract")
+        if "\\$" + "{" in rc_script:
+            raise ContractError(
+                "RC release artifact script contains an escaped Bash parameter expansion"
+            )
 
     for script_name in FORMAL_OPERATION_SCRIPTS:
         path = root / "scripts" / script_name
@@ -4360,6 +4369,58 @@ def validate_blocked_prerelease_workflow(text: str, source: Path) -> None:
         final_publish_step,
     ) or re.search(r"(?m)^\s+(?:if|continue-on-error|shell):", final_publish_step):
         raise ContractError("blocked prerelease must end with one unconditional publish step")
+def validate_rc_release_workflow(text: str, source: Path) -> None:
+    parse_workflow_yaml(text, source)
+    if hashlib.sha256(text.encode("utf-8")).hexdigest() != ACTIVE_RC_WORKFLOW_SHA256:
+        raise ContractError("active RC workflow differs from the exact reviewed contract")
+    required = (
+        "RC release v0.15-rc.3 - Linux sandbox validation",
+        "expected_tag_object_sha:",
+        "ci_run_attempt:",
+        '[[ "$TAG" == v0.15-rc.3 ]]',
+        '[[ "$tag_object_sha" == "$EXPECTED_TAG_OBJECT" ]]',
+        '[[ "$(git rev-parse "$TAG^{tag}")" == "$EXPECTED_TAG_OBJECT" ]]',
+        "Bind RC admission to successful exact-main push CI",
+        "Run complete Linux RC verification gates and capture summary",
+        "rc_gate.safe_contract=PASS",
+        "rc_gate.full_linux_quality=PASS",
+        "rc_gate.cpa_v7.2.88_source_compatibility=PASS",
+        "rc_gate.rc_integration=PASS",
+        "rc_gate.clean_tree=PASS",
+        ".run_attempt == $run_attempt",
+        "Build and reproduce exact RC release assets",
+        "RC_TEST_SUMMARY_INPUT:",
+        "v7.2.88",
+        "93d74a890a44802f656d7f39a573916b2611896e",
+        "RC_INTERNAL_GATES_PASS / SANDBOX_ONLY / SERVER_VALIDATION_REQUIRED / NOT_FORMAL / NOT_ROUND6_CANDIDATE",
+        "cyber-abuse-guard-v0.15-rc.3.so",
+        "cyber-abuse-guard_0.15-rc.3_linux_amd64.zip",
+        "cyber-abuse-guard-v0.15-rc.3-audit-bundle.zip",
+        "rc-release-test-summary.txt.sha256",
+        "rc-release-evidence.md.sha256",
+        "cyber-abuse-guard-v0.15-rc.3-source.tar.gz.sha256",
+        "rc-release-manifest.json.sha256",
+        "Create, byte-check, and publish v0.15-rc.3 prerelease",
+        "v0.15-rc.3 - Linux server sandbox validation required",
+        ".assets | length == 17",
+        "--draft",
+        "--prerelease",
+        "--latest=false",
+        '"repos/${GITHUB_REPOSITORY}/releases/latest"',
+    )
+    for marker in required:
+        if marker not in text:
+            raise ContractError(f"active RC workflow is missing reviewed marker: {marker}")
+    if text.count("contents: write") != 1:
+        raise ContractError("active RC workflow must grant contents: write only in publish")
+    if re.search(r"(?im)runs-on:\s*(?:windows|macos)", text):
+        raise ContractError("active RC workflow must remain Linux only")
+    if "round6-prerelease-attestation.json" in text or "formal-release-attestation.json" in text:
+        raise ContractError("active RC workflow may not emit formal evidence assets")
+    if "release-evidence-final.md" in text or "FORMAL_GATES_PASS" in text:
+        raise ContractError("active RC workflow may not claim formal release evidence")
+
+
 def validate_archived_rc_workflow(text: str, source: Path) -> None:
     parse_workflow_yaml(text, source)
     if hashlib.sha256(text.encode("utf-8")).hexdigest() != RC_RELEASE_WORKFLOW_SHA256:
@@ -4839,9 +4900,13 @@ def validate_workflow_layout(root: Path) -> None:
         expected_directory_paths
     ):
         raise ContractError(
-            "workflow directory must contain exactly the five reviewed entrypoints and its README: "
+            "workflow directory must contain exactly the six reviewed entrypoints and its README: "
             + ", ".join(expected_directory_paths)
         )
+
+    active_rc_path = root / ACTIVE_RC_WORKFLOW_PATH
+    active_rc_text = read_regular_text(active_rc_path, root)
+    validate_rc_release_workflow(active_rc_text, active_rc_path)
 
     archive_path = root / ARCHIVED_RC_WORKFLOW_PATH
     archive_text = read_regular_text(archive_path, root)
@@ -4877,6 +4942,8 @@ def audit(root: Path, entrypoints: list[Path]) -> tuple[set[str], set[str]]:
                 validate_candidate_workflow(text, entrypoint)
             elif name == "attested-prerelease.yml":
                 validate_blocked_prerelease_workflow(text, entrypoint)
+            elif name == "release-rc.yml":
+                validate_rc_release_workflow(text, entrypoint)
             elif name == "release.yml":
                 validate_formal_release_workflow(text, entrypoint)
                 continue

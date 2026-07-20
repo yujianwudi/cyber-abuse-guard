@@ -19,9 +19,10 @@ platform: linux-amd64
 candidate_workflow: .github/workflows/candidate.yml
 candidate_attestation: candidate-manifest.json
 attested_prerelease_workflow: .github/workflows/attested-prerelease.yml
+rc_workflow: .github/workflows/release-rc.yml
 rc_workflow_archive: docs/archive/workflows/release-rc-v0.15-rc.2.yml
-rc_artifact_version: 0.15-rc.2
-rc_status: sandbox-only-not-formal-not-round6-candidate
+rc_artifact_version: 0.15-rc.3
+rc_status: internal-gates-pass-sandbox-only-not-formal-not-round6-candidate
 host_audit_attestation: round6-prerelease-attestation.json
 formal_gate_attestation: formal-release-attestation.json
 promotion_workflow: .github/workflows/release-promote.yml
@@ -44,16 +45,20 @@ tag at the same commit. The formal `v0.15` workflow rebuilds and byte-compares
 the Host-tested SO and Store ZIP, creates a draft, and the separate promotion
 workflow publishes that unchanged draft only after another protected approval.
 
-The archived `v0.15-rc.2` workflow definition records a retired attempted
-publication path. Its recorded runs failed and did not produce the public RC.
-The public Linux amd64 sandbox assets were instead published through the
-separately disclosed direct owner override. Their artifact identity is exactly
-`0.15-rc.2`, and the release manifest explicitly states `SANDBOX_ONLY /
-SERVER_VALIDATION_REQUIRED / NOT_FORMAL / NOT_ROUND6_CANDIDATE`. RC assets are
-never accepted as the private Round 6 candidate, external
-Host/audit/evaluation evidence, or formal `v0.15` input. The retired attempted
-workflow is retained only as non-executable historical evidence and is not an
-active publication entry point.
+The active `v0.15-rc.3` workflow is a Linux-only side lane. It requires an
+annotated tag at the exact `main` tip, a successful exact-main push CI, the
+complete internal Linux gate set, CPA v7.2.88 source compatibility, RC-versioned
+integration, two independent clean-clone rebuilds, and byte verification of a
+17-asset formal-structure package. Its evidence and manifest explicitly state
+`RC_INTERNAL_GATES_PASS / SANDBOX_ONLY / SERVER_VALIDATION_REQUIRED /
+NOT_FORMAL / NOT_ROUND6_CANDIDATE`; real CPA Host validation, independent audit,
+and independent evaluation remain absent.
+
+The archived `v0.15-rc.2` workflow remains immutable historical evidence. Its
+recorded attempts failed; the public RC2 assets were published separately
+through the disclosed direct owner override. RC2 and RC3 assets are never
+accepted as the private Round 6 candidate, external Host/audit/evaluation
+evidence, or formal `v0.15` input.
 
 The consumed v10 evaluation remains historical FAIL evidence. It is never
 rerun, upgraded, or treated as a formal-build input. A release candidate needs
