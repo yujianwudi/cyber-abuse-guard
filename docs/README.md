@@ -6,8 +6,8 @@ current_classifier_policy_sha256: 0e114d98862282d2492fb62e4300297b4746eeaf816533
 ```
 
 The root [English README](../README.md) and [Chinese README](../README_CN.md)
-are the shortest current-status entry points. The public
-[`v0.15-rc.3` prerelease](https://github.com/yujianwudi/cyber-abuse-guard/releases/tag/v0.15-rc.3)
+are the shortest current-status entry points. The active
+[`v0.15-rc.4` prerelease target](https://github.com/yujianwudi/cyber-abuse-guard/releases/tag/v0.15-rc.4)
 is the Linux amd64 formal-structure sandbox RC; formal `v0.15` remains blocked.
 
 This cleanup adds navigation without relocating frozen evaluation or Holdout
@@ -40,7 +40,7 @@ Current GitHub Actions entry points are intentionally limited to:
 - `.github/workflows/attested-prerelease.yml` for the externally attested
   development prerelease gate;
 - `.github/workflows/release-rc.yml` for the exact-main, Linux-only
-  `v0.15-rc.3` formal-structure sandbox prerelease;
+  `v0.15-rc.4` formal-structure sandbox prerelease;
 - `.github/workflows/release.yml` and
   `.github/workflows/release-promote.yml` for the formal draft and its
   protected promotion.
@@ -49,7 +49,11 @@ The retired attempted `v0.15-rc.2` workflow definition is archived under
 [`archive/workflows/`](archive/workflows/) and cannot be dispatched by GitHub
 Actions. Its recorded runs failed and did not produce the public RC, which was
 published separately through the disclosed direct owner override. It remains
-historical evidence and is separate from the active RC3 workflow.
+historical evidence and is separate from the active RC4 workflow.
+
+The protected `v0.15-rc.3` tag is separate failed evidence. Workflow run
+29728286559 passed admission, failed before packaging, published no Actions
+artifact, and created no GitHub Release. It is not moved or reused by RC4.
 
 ## Current v0.15 / Round 6 handoff
 

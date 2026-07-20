@@ -21,8 +21,8 @@ candidate_attestation: candidate-manifest.json
 attested_prerelease_workflow: .github/workflows/attested-prerelease.yml
 rc_workflow: .github/workflows/release-rc.yml
 rc_workflow_archive: docs/archive/workflows/release-rc-v0.15-rc.2.yml
-rc_artifact_version: 0.15-rc.3
-rc_status: internal-gates-pass-sandbox-only-not-formal-not-round6-candidate
+rc_artifact_version: 0.15-rc.4
+rc_status: internal-gates-required-sandbox-only-not-formal-not-round6-candidate
 host_audit_attestation: round6-prerelease-attestation.json
 formal_gate_attestation: formal-release-attestation.json
 promotion_workflow: .github/workflows/release-promote.yml
@@ -45,7 +45,7 @@ tag at the same commit. The formal `v0.15` workflow rebuilds and byte-compares
 the Host-tested SO and Store ZIP, creates a draft, and the separate promotion
 workflow publishes that unchanged draft only after another protected approval.
 
-The active `v0.15-rc.3` workflow is a Linux-only side lane. It requires an
+The active `v0.15-rc.4` workflow is a Linux-only side lane. It requires an
 annotated tag at the exact `main` tip, a successful exact-main push CI, the
 complete internal Linux gate set, CPA v7.2.88 source compatibility, RC-versioned
 integration, two independent clean-clone rebuilds, and byte verification of a
@@ -56,7 +56,10 @@ and independent evaluation remain absent.
 
 The archived `v0.15-rc.2` workflow remains immutable historical evidence. Its
 recorded attempts failed; the public RC2 assets were published separately
-through the disclosed direct owner override. RC2 and RC3 assets are never
+through the disclosed direct owner override. The protected `v0.15-rc.3` tag
+records failed workflow run 29728286559: admission passed, build failed before
+packaging, publish was skipped, and no Actions artifact or GitHub Release was
+created. RC2, RC3, and RC4 assets are never
 accepted as the private Round 6 candidate, external Host/audit/evaluation
 evidence, or formal `v0.15` input.
 

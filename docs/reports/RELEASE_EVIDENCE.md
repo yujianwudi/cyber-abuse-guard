@@ -28,7 +28,10 @@ public_source_only_prerelease_tag: v0.15-rc.1
 source_only_tag_ci: 29630926354 / SUCCESS
 current_hardening_pr: 18 / MERGED / exact source history remains external GitHub evidence
 current_release_contract_local: ROUND6-SCRIPT-TEST + REAL DOC GATE + MUTATION FIXTURE + 154 SAFE-CONTRACT TESTS PASS / DEVELOPMENT ONLY
-current_rc_target: v0.15-rc.3 / ACTIVE EXACT-MAIN WORKFLOW / LINUX AMD64
+failed_rc3_tag_object: 6733a74903c7f2174a24fc53fad601e763e6a4c7 / IMMUTABLE / NO RELEASE
+failed_rc3_source: ac1456b74edd73bec5d8a8fb8b87630cb3320d21 / tree 5838d9bac6251fd1212cce86c2c608b6d8cbee47
+failed_rc3_workflow: 29728286559 attempt 1 / ADMISSION PASS / BUILD FAIL / PUBLISH SKIPPED / ZERO ARTIFACTS
+current_rc_target: v0.15-rc.4 / ACTIVE EXACT-MAIN WORKFLOW / LINUX AMD64
 current_rc_asset_contract: EXACTLY 17 / FORMAL STRUCTURE / RC EVIDENCE ONLY
 current_rc_runtime_evidence: rc-release-evidence.md + rc-release-manifest.json
 private_untagged_clean_candidate: NOT CREATED / PENDING
@@ -47,8 +50,9 @@ formal_v0.15_promotion: NOT RUN / BLOCKED
 ```
 
 This checked-in report is a source-policy baseline, not a self-referential
-record of the future tagged commit. Exact RC3 tag object, commit, tree, CI run,
-workflow run, asset hashes, and upload verification belong only in the
+record of the future tagged commit. The protected RC3 tag records a failed,
+unpublished attempt and is not moved or reused. Exact RC4 tag object, commit,
+tree, CI run, workflow run, asset hashes, and upload verification belong only in the
 run-generated `rc-release-evidence.md` and `rc-release-manifest.json`.
 Engineering evidence is not final candidate, Host, audit, or formal-release
 evidence. The PR jobs that did not start are not retrospectively called a PASS.

@@ -13,8 +13,8 @@ import (
 const (
 	exactGuardVersion       = "0.15"
 	exactGuardReleaseTag    = "v0.15"
-	exactGuardRCVersion     = "0.15-rc.3"
-	exactGuardRCReleaseTag  = "v0.15-rc.3"
+	exactGuardRCVersion     = "0.15-rc.4"
+	exactGuardRCReleaseTag  = "v0.15-rc.4"
 	unsupportedVersionAlias = "0.15.0"
 	guardPluginID           = "cyber-abuse-guard"
 )
@@ -81,7 +81,7 @@ func TestExactGuardV015PluginStoreContract(t *testing.T) {
 		profile.Version, exactGuardReleaseTag, exactGuardVersion, archiveName, exactLibraryName, aliasVersion, errAlias)
 }
 
-func TestExactGuardV015RC3PluginStoreContract(t *testing.T) {
+func TestExactGuardV015RC4PluginStoreContract(t *testing.T) {
 	profile := selectedCPACompatibilityProfile(t)
 
 	version, errVersion := pluginstore.ReleaseVersion(pluginstore.Release{TagName: exactGuardRCReleaseTag})
@@ -93,12 +93,12 @@ func TestExactGuardV015RC3PluginStoreContract(t *testing.T) {
 	}
 
 	archiveName := pluginstore.ArchiveName(guardPluginID, version, "linux", "amd64")
-	wantArchiveName := "cyber-abuse-guard_0.15-rc.3_linux_amd64.zip"
+	wantArchiveName := "cyber-abuse-guard_0.15-rc.4_linux_amd64.zip"
 	if archiveName != wantArchiveName {
 		t.Fatalf("%s ArchiveName() = %q, want %q", profile.Version, archiveName, wantArchiveName)
 	}
 
-	libraryName := "cyber-abuse-guard-v0.15-rc.3.so"
+	libraryName := "cyber-abuse-guard-v0.15-rc.4.so"
 	archiveData := makeReleaseVersionContractArchive(t, libraryName)
 	pluginsDir := t.TempDir()
 	result, errInstall := pluginstore.InstallArchive(archiveData, pluginstore.Plugin{

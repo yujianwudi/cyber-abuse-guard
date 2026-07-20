@@ -2356,7 +2356,7 @@ command /usr/bin/git --no-pager tag v0.1.2-dev.round6
         workflow_path = Path(__file__).resolve().parent.parent / ACTIVE_RC_WORKFLOW_PATH
         original = workflow_path.read_text(encoding="utf-8")
         mutations = (
-            original.replace("[[ \"$TAG\" == v0.15-rc.3 ]]", "[[ \"$TAG\" == v0.15-rc.* ]]", 1),
+            original.replace("[[ \"$TAG\" == v0.15-rc.4 ]]", "[[ \"$TAG\" == v0.15-rc.* ]]", 1),
             original.replace("--latest=false", "--latest", 1),
             original.replace("--prerelease", "--latest", 1),
             original.replace("ubuntu-24.04", "windows-2025", 1),
