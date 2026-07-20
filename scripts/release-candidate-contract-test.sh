@@ -6,6 +6,21 @@ root="$(cd "${BASH_SOURCE[0]%/*}/.." && pwd -P)"
 source "$root/scripts/release-common.sh"
 release_require_commands git mktemp rm mkdir sed
 
+# This script owns the complete formal/candidate/RC test matrix. Do not let a
+# caller's active release mode or identity leak into the synthetic fixture.
+unset \
+  ALLOW_DIRTY_BUILD \
+  RELEASE_CANDIDATE_BUILD \
+  RELEASE_CANDIDATE_EXPECTED_COMMIT \
+  RELEASE_CANDIDATE_EXPECTED_TREE \
+  RELEASE_RC_BUILD \
+  RELEASE_RC_TAG \
+  RELEASE_RC_EXPECTED_COMMIT \
+  RELEASE_RC_EXPECTED_TREE \
+  ROUND6_SAFE_SPARSE_BUILD \
+  SOURCE_DATE_EPOCH \
+  VERSION
+
 work="$(mktemp -d)"
 fixture="$work/repository"
 cleanup() {
