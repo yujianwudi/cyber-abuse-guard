@@ -1,8 +1,8 @@
 # Threat Model
 
 ```text
-current_classifier_policy_version: classifier-policy-v5
-current_classifier_policy_sha256: 0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b
+current_classifier_policy_version: classifier-policy-v6
+current_classifier_policy_sha256: ece497210db938528cb166a34f2ce3013324b792a7eedf276a96fa5d256001d4
 ```
 
 ## Protected assets
@@ -36,8 +36,8 @@ to `main`, exact post-merge main push CI, and candidate dispatch from
 Earlier v7.2.85/v7.2.84/v7.2.83/v7.2.82/v7.2.81 source/compile profiles are historical non-gating
 engineering evidence, not current v0.15 release requirements.
 
-The current classifier identity is `classifier-policy-v5` /
-`0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b`.
+The current classifier identity is `classifier-policy-v6` /
+`ece497210db938528cb166a34f2ce3013324b792a7eedf276a96fa5d256001d4`.
 
 ## Principal threats and controls
 
@@ -129,7 +129,7 @@ tree. Current source and pending-candidate status are recorded in `AUDIT_HANDOFF
 `reports/TEST_REPORT.md`, and
 `reports/RELEASE_EVIDENCE.md`. Any missing final-commit Host,
 GitHub CI, artifact, or proxy result is **NOT RUN** or **BLOCKED**, never an
-inferred PASS. Embedded ruleset `1.0.7` identifies YAML assets only and does
+inferred PASS. Embedded ruleset `1.0.8` identifies YAML assets only and does
 not include the Go `META-OVERRIDE-001` overlay. The current CPA v7.2.88 Host
 matrix, independent source/artifact/Host review, and candidate-bound external
 `evaluation-v11` or later first-and-only `CONSUMED / PASS` attestation remain

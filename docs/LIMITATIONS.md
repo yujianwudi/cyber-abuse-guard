@@ -1,8 +1,8 @@
 # Known Limitations — v0.15 Round 6 development candidate
 
 ```text
-current_classifier_policy_version: classifier-policy-v5
-current_classifier_policy_sha256: 0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b
+current_classifier_policy_version: classifier-policy-v6
+current_classifier_policy_sha256: ece497210db938528cb166a34f2ce3013324b792a7eedf276a96fa5d256001d4
 ```
 
 1. **No guarantee against account action.** The plugin reduces the number of
@@ -277,15 +277,15 @@ current_classifier_policy_sha256: 0e114d98862282d2492fb62e4300297b4746eeaf816533
     reverse the frozen v10 failure.
 
 37. **Classifier-policy identity is source- and artifact-bound, but still not
-    independent approval.** The current identity is `classifier-policy-v5` /
+    independent approval.** The current identity is `classifier-policy-v6` /
     SHA-256
-`0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b`.
+`ece497210db938528cb166a34f2ce3013324b792a7eedf276a96fa5d256001d4`.
     Build metadata and artifact verification carry it. The historical
     round5.2 value was `classifier-policy-v2` /
     `e9b87f7e2635495bdbceae469ef89e696b419f0a9a6fd129558a20bc4be947ec`,
     and the historical round5.1 value was `classifier-policy-v2` /
     `c2092d0949fcaa1d0f085dfe31a668d45cc4d14efc10427d0f3ebcf3e821a112`.
-    Ruleset `1.0.7` separately identifies YAML assets and
+    Ruleset `1.0.8` separately identifies YAML assets and
     does **not** include the Go-level `META-OVERRIDE-001` overlay, extractor
     semantics, approved tool-schema mappings, or control-plane telemetry. A
     digest test binds the reviewed source list, and authenticated status exposes

@@ -76,16 +76,20 @@ make_fixture() {
       printf '%s\n' \
         '# Release policy' \
         '' \
-        'release_version: 0.15' \
-        'formal_tag: v0.15' \
-        'version_alias_policy: reject-v0.15.0' \
+        'release_version: 0.16' \
+        'formal_tag: v0.16' \
+        'version_alias_policy: reject-v0.16.0' \
         'platform: linux-amd64' \
+        'local_rc_artifact_version: 0.16-rc.1' \
+        'local_rc_artifact_scope: local-linux-amd64-core-package' \
+        'local_rc_evidence_policy: not-github-release-actions-or-host-evidence' \
         'candidate_workflow: .github/workflows/candidate.yml' \
         'candidate_attestation: candidate-manifest.json' \
         'attested_prerelease_workflow: .github/workflows/attested-prerelease.yml' \
         'rc_workflow: .github/workflows/release-rc.yml' \
         'rc_workflow_archive: docs/archive/workflows/release-rc-v0.15-rc.2.yml' \
         'rc_artifact_version: 0.15-rc.4' \
+        'rc_artifact_history: historical-v0.15-rc4-only' \
         'rc_status: internal-gates-required-sandbox-only-not-formal-not-round6-candidate' \
         'host_audit_attestation: round6-prerelease-attestation.json' \
         'formal_gate_attestation: formal-release-attestation.json' \
@@ -102,7 +106,7 @@ make_fixture() {
         'formal_bundle_content_policy: exclude-evaluation-holdout-consumed-private-blind-retired' \
         >"$fixture/$relative"
     elif [[ "$relative" == CHANGELOG.md ]]; then
-      printf '# Changelog\n\n## 0.15 - 2026-07-17\n\nround6-prerelease-attestation.json\nformal-release-attestation.json\n' >"$fixture/$relative"
+      printf '# Changelog\n\n## 0.16 - 2026-07-21\n\nround6-prerelease-attestation.json\nformal-release-attestation.json\n' >"$fixture/$relative"
     elif [[ "$relative" == docs/reports/CORPUS_REPORT.md ]]; then
       printf '# Historical project regression corpus report - v0.1.2 candidate\n' >"$fixture/$relative"
     else
@@ -135,7 +139,7 @@ run_gate() {
   local environment=(
     "RELEASE_DOC_ROOT=$fixture"
     "RELEASE_DOC_FIXTURE_MODE=1"
-    "CURRENT_RELEASE_VERSION=0.15"
+    "CURRENT_RELEASE_VERSION=0.16"
     "CURRENT_RULESET_SHA256=$ruleset_sha256"
     "CURRENT_CLASSIFIER_POLICY_VERSION=$classifier_policy_version"
     "CURRENT_CLASSIFIER_POLICY_SHA256=$classifier_policy_sha256"
@@ -173,7 +177,7 @@ grep -Fq \
 printf 'release document consistency source-tree classifier override rejected as expected\n'
 
 if RELEASE_DOC_ROOT="$work/pass" \
-  CURRENT_RELEASE_VERSION=0.15 \
+  CURRENT_RELEASE_VERSION=0.16 \
   CURRENT_RULESET_SHA256="$ruleset_sha256" \
   CURRENT_CLASSIFIER_POLICY_VERSION="$classifier_policy_version" \
   CURRENT_CLASSIFIER_POLICY_SHA256="$classifier_policy_sha256" \
@@ -200,14 +204,18 @@ must_fail stale-document "$work/stale-document" \
   'README.md must point readers to the formal gate attestation'
 
 cp -a "$work/pass" "$work/alias-policy"
-sed -i 's/version_alias_policy: reject-v0.15.0/version_alias_policy: allow-v0.15.0/' \
+sed -i 's/version_alias_policy: reject-v0.16.0/version_alias_policy: allow-v0.16.0/' \
   "$work/alias-policy/docs/RELEASE_POLICY.md"
 must_fail alias-policy "$work/alias-policy" \
-  'docs/RELEASE_POLICY.md must contain exactly one policy line: version_alias_policy: reject-v0.15.0'
+  'docs/RELEASE_POLICY.md must contain exactly one policy line: version_alias_policy: reject-v0.16.0'
 
 policy_keys=(
+  local_rc_artifact_version
+  local_rc_artifact_scope
+  local_rc_evidence_policy
   rc_workflow
   rc_artifact_version
+  rc_artifact_history
   rc_status
   host_matrix_commit
   host_attestation_schema
@@ -215,8 +223,12 @@ policy_keys=(
   upstream_version_policy
 )
 policy_values=(
+  0.16-rc.1
+  local-linux-amd64-core-package
+  not-github-release-actions-or-host-evidence
   .github/workflows/release-rc.yml
   0.15-rc.4
+  historical-v0.15-rc4-only
   internal-gates-required-sandbox-only-not-formal-not-round6-candidate
   93d74a890a44802f656d7f39a573916b2611896e
   2
@@ -224,8 +236,12 @@ policy_values=(
   no-automatic-follow
 )
 policy_bad_values=(
+  0.16-rc.2
+  github-release
+  github-release-evidence
   docs/archive/workflows/release-rc-v0.15-rc.2.yml
   0.15-rc.2
+  active-v0.15-rc4
   sandbox-only-not-formal-not-round6-candidate
   0000000000000000000000000000000000000000
   1
@@ -251,7 +267,7 @@ for index in "${!policy_keys[@]}"; do
 done
 
 cp -a "$work/pass" "$work/duplicate-policy-key"
-printf '%s\n' 'version_alias_policy: allow-v0.15.0' \
+printf '%s\n' 'version_alias_policy: allow-v0.16.0' \
   >>"$work/duplicate-policy-key/docs/RELEASE_POLICY.md"
 must_fail duplicate-policy-key "$work/duplicate-policy-key" \
   'docs/RELEASE_POLICY.md must contain exactly one policy key: version_alias_policy'

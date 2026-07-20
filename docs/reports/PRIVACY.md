@@ -1,8 +1,8 @@
 # Privacy Verification Report — post-v10 development handoff
 
 ```text
-current_classifier_policy_version: classifier-policy-v5
-current_classifier_policy_sha256: 0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b
+current_classifier_policy_version: classifier-policy-v6
+current_classifier_policy_sha256: ece497210db938528cb166a34f2ce3013324b792a7eedf276a96fa5d256001d4
 ```
 
 Last updated: 2026-07-14 (Asia/Shanghai)
@@ -31,8 +31,8 @@ LOCAL MIS-EXECUTION RECORDED / EXCLUDED; NOT AUTHORITATIVE
 
 ## Privacy invariants
 
-The plugin must never persist, log, or return through management or executor
-surfaces:
+With `audit.raw_capture.enabled: false` (the default), the plugin must never
+persist, log, or return through management or executor surfaces:
 
 - raw Prompt, Messages, Instructions, Tool Arguments, tool output, or uploaded
   code;
@@ -44,13 +44,21 @@ surfaces:
   values containing attacker-controlled text.
 
 `audit.log_original_text=true` is rejected at initial configuration and hot
-reconfigure. There is no debug or test override.
+reconfigure. There is no debug or test override. The only supported content
+review exception is the separate `audit.raw_capture` facility: it requires
+ordinary audit storage, applies only to final blocking decisions (`block`,
+including subject cooldown), mandates secret
+redaction, truncates each preview, and deletes captures under a bounded TTL.
+Allowed, observed, and audit-only requests never enter the capture table.
 
 Allowed retained values are limited to fixed/coarse metadata: timestamps,
 disposition, mode, category, score, stable rule/reason IDs, a domain-separated
 request digest, subject HMAC, domain-separated model digest, canonical source
 format, stream flag, scanned-byte count, latency, aggregate counters, build/
-ruleset/classifier-policy identity, and bounded persistence state.
+ruleset/classifier-policy identity, and bounded persistence state. When raw
+capture is explicitly enabled, the additional allowed record is limited to
+block-event correlation metadata, redaction/truncation flags, a bounded
+redacted preview, and a SHA-256 digest of the original complete request bytes.
 
 The classifier `BehaviorGraph` contains only stable booleans/relations and never
 contains a prompt span or decoded content.
@@ -59,6 +67,10 @@ contains a prompt span or decoded content.
 
 - Request correlation is `sha256:` over an explicit domain separator plus the
   request bytes; it is distinct from model and subject correlation domains.
+- Raw-capture previews are secret-redacted before UTF-8-safe truncation. The
+  feature is default-off, blocking-disposition-only, separately TTL-bound, and
+  queryable only through CPA's authenticated exact management route. Redaction
+  is best-effort and is not represented as a complete DLP guarantee.
 - Subjects are `hmac-sha256:` values only. Optional persisted idempotency
   receipts store request digests, not raw requests.
 - Model names are stored only as `sha256-model-v1:` digests; source formats are
@@ -76,6 +88,10 @@ contains a prompt span or decoded content.
   fails closed: no backup is published, no migration occurs, and the original
   database is retained for operator repair. The plugin does not automatically
   sanitize a legacy plaintext database.
+- Schema v4 isolates sensitive previews in `raw_request_captures`; each row has
+  an audit-event foreign key with `ON DELETE CASCADE`, one capture per event,
+  and fixed indexes for timestamp and request correlation. Opening the database
+  removes expired captures before serving queries.
 - Classifier and media handling perform no guard-originated DNS lookup, remote
   classification, media fetch, archive expansion, or telemetry call.
 

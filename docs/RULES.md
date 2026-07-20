@@ -1,8 +1,8 @@
-# Rule System — ruleset 1.0.7
+# Rule System — ruleset 1.0.8
 
 ```text
-current_classifier_policy_version: classifier-policy-v5
-current_classifier_policy_sha256: 0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b
+current_classifier_policy_version: classifier-policy-v6
+current_classifier_policy_sha256: ece497210db938528cb166a34f2ce3013324b792a7eedf276a96fa5d256001d4
 ```
 
 The default rule set is embedded into the shared object from `/rules`. Every
@@ -204,7 +204,12 @@ The classifier returns only action, category, score, ruleset version,
 classifier-policy version/hash, stable rule/evidence IDs, aggregate context
 flags, and the privacy-safe behavior graph. It never returns or persists a
 matched prompt fragment. Audit configuration cannot enable original-text
-logging.
+logging through `log_original_text`. A separate default-off
+`audit.raw_capture` review path may store a mandatory-redacted, bounded preview
+only after the final disposition prevents upstream routing (`block`, including
+subject cooldown); it is not classifier output and
+never applies to allowed, observed, or audit-only requests. See
+[Blocked-request review capture](RAW_CAPTURE.md).
 
 This privacy statement covers classifier output and Guard/plugin audit. It does
 not override CPA Host behavior: request logging may temporarily spool a
@@ -213,9 +218,9 @@ directory, retention, permissions, and cleanup require separate review.
 
 ## Version and identity
 
-Ruleset `1.0.7` is the source version in `rules/manifest.yaml`. Its current
+Ruleset `1.0.8` is the source version in `rules/manifest.yaml`. Its current
 canonical embedded SHA-256 is
-`7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134`.
+`1d908c8c631bc6f72e7ec6b098bea49c4923580766859393d0be48c8c00c6d7d`.
 A release emits:
 
 ```text
@@ -228,7 +233,7 @@ version and canonical SHA-256 are linked into the binary, exposed by
 authenticated status, compared with source by `verify-release.sh`, and included
 in `build-metadata.json`. A missing or mismatched identity is a release failure.
 
-Ruleset `1.0.7` identifies only the embedded YAML Cyber Abuse assets. It does
+Ruleset `1.0.8` identifies only the embedded YAML Cyber Abuse assets. It does
 **not** contain the Go-code `META-OVERRIDE-001` overlay, extractor/media and
 multipart semantics, approved tool-schema mappings, or control-plane event
 logic. Those behaviors require the separately verified classifier-policy
@@ -238,8 +243,8 @@ This identity covers the embedded YAML rule assets. The complete code-level
 policy is separately identified as:
 
 ```text
-current_release_classifier_policy_version: classifier-policy-v5
-current_release_classifier_policy_sha256: 0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b
+current_release_classifier_policy_version: classifier-policy-v6
+current_release_classifier_policy_sha256: ece497210db938528cb166a34f2ce3013324b792a7eedf276a96fa5d256001d4
 ```
 
 The policy digest test binds the deterministic classifier, matcher,

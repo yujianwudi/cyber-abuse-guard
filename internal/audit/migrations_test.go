@@ -289,6 +289,52 @@ func TestFreshDatabaseAppliesAllMigrations(t *testing.T) {
 	if exists, err := sqliteTableExists(db, "subject_state"); err != nil || !exists {
 		t.Fatalf("subject_state exists = %v, err = %v", exists, err)
 	}
+	if exists, err := sqliteTableExists(db, "raw_request_captures"); err != nil || !exists {
+		t.Fatalf("raw_request_captures exists = %v, err = %v", exists, err)
+	}
+}
+
+func TestV3DatabaseMigratesToRawCaptureSchemaV4(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "audit.db")
+	db, err := sql.Open("sqlite3", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(schema + subjectStateSchema + round6AuditEventColumns + migrationMetadataSchema); err != nil {
+		t.Fatal(err)
+	}
+	now := fixedMigrationTime().UnixNano()
+	if _, err := db.Exec(`INSERT INTO schema_version(singleton, version, updated_at_ns) VALUES(1, 3, ?)`, now); err != nil {
+		t.Fatal(err)
+	}
+	for version := 1; version <= 3; version++ {
+		if _, err := db.Exec(`INSERT INTO migration_history(version, applied_at_ns, description) VALUES(?, ?, 'fixture')`, version, now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	store, err := Open(Config{Path: path, Now: fixedMigrationTime})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if got := store.Status().SchemaVersion; got != 4 {
+		t.Fatalf("schema version = %d, want 4", got)
+	}
+	if err := validateSchemaContract(store.db, 4); err != nil {
+		t.Fatalf("v4 schema contract = %v", err)
+	}
+	var migrationRows int
+	if err := store.db.QueryRow(`SELECT COUNT(*) FROM migration_history WHERE version = 4`).Scan(&migrationRows); err != nil {
+		t.Fatal(err)
+	}
+	if migrationRows != 1 {
+		t.Fatalf("migration v4 rows = %d", migrationRows)
+	}
 }
 
 func TestMigrationAcceptsCanonicalMediaSourceFormats(t *testing.T) {

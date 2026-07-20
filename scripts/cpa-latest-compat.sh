@@ -4,7 +4,15 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 go_bin="${GO:-go}"
 git_identity_dir="$(mktemp -d)"
-trap 'rm -rf -- "$git_identity_dir"' EXIT
+origin_modcache=""
+cleanup() {
+  rm -rf -- "$git_identity_dir"
+  if [[ -n "$origin_modcache" ]]; then
+    chmod -R u+w "$origin_modcache" 2>/dev/null || true
+    rm -rf -- "$origin_modcache"
+  fi
+}
+trap cleanup EXIT
 cpa_module='github.com/router-for-me/CLIProxyAPI/v7'
 cpa_origin_url='https://github.com/router-for-me/CLIProxyAPI'
 cpa_origin_git_url="${cpa_origin_url}.git"
@@ -70,12 +78,14 @@ resolve_remote_tag_commit() {
   printf '%s\n' "$cpa_commit"
 }
 
-command -v jq >/dev/null 2>&1 || {
-  printf 'jq is required for CPA module identity verification\n' >&2
-  exit 1
-}
+for required_command in jq timeout; do
+  command -v "$required_command" >/dev/null 2>&1 || {
+    printf '%s is required for CPA module identity verification\n' "$required_command" >&2
+    exit 1
+  }
+done
 if [[ "$verify_remote" == 1 ]]; then
-  for required_command in git timeout; do
+  for required_command in git; do
     command -v "$required_command" >/dev/null 2>&1 || {
       printf '%s is required for CPA remote tag verification\n' "$required_command" >&2
       exit 1
@@ -109,10 +119,6 @@ for profile in "${profiles[@]}"; do
   download_version="$(printf '%s\n' "$download_json" | jq -er '.Version | select(type == "string" and length > 0)')"
   download_sum="$(printf '%s\n' "$download_json" | jq -er '.Sum | select(type == "string" and length > 0)')"
   download_go_mod_sum="$(printf '%s\n' "$download_json" | jq -er '.GoModSum | select(type == "string" and length > 0)')"
-  download_origin_vcs="$(printf '%s\n' "$download_json" | jq -er '.Origin.VCS | select(type == "string" and length > 0)')"
-  download_origin_url="$(printf '%s\n' "$download_json" | jq -er '.Origin.URL | select(type == "string" and length > 0)')"
-  download_origin_hash="$(printf '%s\n' "$download_json" | jq -er '.Origin.Hash | select(type == "string" and length > 0)')"
-  download_origin_ref="$(printf '%s\n' "$download_json" | jq -er '.Origin.Ref | select(type == "string" and length > 0)')"
   [[ "$download_path" == "$cpa_module" && \
      "$download_version" == "$cpa_version" && \
      "$download_sum" == "$cpa_module_sum" && \
@@ -121,6 +127,48 @@ for profile in "${profiles[@]}"; do
       "$profile" "$download_path" "$download_version" "$download_sum" "$download_go_mod_sum" >&2
     exit 1
   }
+
+  # Go reports Origin on a fresh direct VCS download, but may omit it when the
+  # same module is served from a warm module cache. Revalidate only the pinned
+  # module in an isolated direct cache instead of treating a harmless warm
+  # cache as an origin mismatch or forcing all transitive dependencies direct.
+  origin_json="$download_json"
+  if ! printf '%s\n' "$origin_json" | jq -e '.Origin.VCS and .Origin.URL and .Origin.Hash and .Origin.Ref' >/dev/null; then
+    origin_modcache="$(mktemp -d)"
+    printf 'CPA module Origin missing from warm cache; refreshing pinned identity in an isolated direct cache\n' >&2
+    if ! origin_json="$(timeout --signal=KILL 60s env \
+      GIT_CONFIG_GLOBAL=/dev/null \
+      GIT_CONFIG_SYSTEM=/dev/null \
+      GIT_TERMINAL_PROMPT=0 \
+      GOPROXY=direct \
+      GOMODCACHE="$origin_modcache" \
+      GOWORK=off \
+      "$go_bin" -C "$root" mod download -json "$cpa_module@$cpa_version")"; then
+      printf 'CPA pinned module Origin could not be refreshed from the official Git source within 60 seconds\n' >&2
+      exit 1
+    fi
+  fi
+  origin_error="$(printf '%s\n' "$origin_json" | jq -er '.Error // ""')"
+  [[ -z "$origin_error" ]] || {
+    printf 'CPA pinned module Origin refresh failed: %s\n' "$origin_error" >&2
+    exit 1
+  }
+  origin_path="$(printf '%s\n' "$origin_json" | jq -er '.Path | select(type == "string" and length > 0)')"
+  origin_version="$(printf '%s\n' "$origin_json" | jq -er '.Version | select(type == "string" and length > 0)')"
+  origin_sum="$(printf '%s\n' "$origin_json" | jq -er '.Sum | select(type == "string" and length > 0)')"
+  origin_go_mod_sum="$(printf '%s\n' "$origin_json" | jq -er '.GoModSum | select(type == "string" and length > 0)')"
+  [[ "$origin_path" == "$cpa_module" && \
+     "$origin_version" == "$cpa_version" && \
+     "$origin_sum" == "$cpa_module_sum" && \
+     "$origin_go_mod_sum" == "$cpa_go_mod_sum" ]] || {
+    printf 'CPA isolated Origin identity mismatch for %s: got %s@%s sum=%s go_mod_sum=%s\n' \
+      "$profile" "$origin_path" "$origin_version" "$origin_sum" "$origin_go_mod_sum" >&2
+    exit 1
+  }
+  download_origin_vcs="$(printf '%s\n' "$origin_json" | jq -er '.Origin.VCS | select(type == "string" and length > 0)')"
+  download_origin_url="$(printf '%s\n' "$origin_json" | jq -er '.Origin.URL | select(type == "string" and length > 0)')"
+  download_origin_hash="$(printf '%s\n' "$origin_json" | jq -er '.Origin.Hash | select(type == "string" and length > 0)')"
+  download_origin_ref="$(printf '%s\n' "$origin_json" | jq -er '.Origin.Ref | select(type == "string" and length > 0)')"
   [[ "$download_origin_vcs" == git && \
      "$download_origin_url" == "$cpa_origin_url" && \
      "$download_origin_hash" == "$cpa_commit" && \
@@ -130,6 +178,8 @@ for profile in "${profiles[@]}"; do
       "$download_origin_hash" "$download_origin_ref" >&2
     exit 1
   }
+  origin_metadata_file="$git_identity_dir/cpa-origin-$profile.json"
+  printf '%s\n' "$origin_json" >"$origin_metadata_file"
 
   (
     cd "$root"
@@ -148,6 +198,7 @@ for profile in "${profiles[@]}"; do
       ./integration
     CPA_COMPAT_PROFILE="$profile" \
       CPA_COMPAT_EXPECTED_COMMIT="$cpa_commit" \
+      CPA_COMPAT_ORIGIN_FILE="$origin_metadata_file" \
       GOWORK=off "$go_bin" -C integration/cpalatestcontract test \
       -mod=readonly -count=1 -v .
   )

@@ -1,4 +1,4 @@
-version: "1.0.7"
+version: "1.0.8"
 rules:
   - id: EXFIL-001
     category: data_exfiltration

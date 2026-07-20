@@ -724,8 +724,8 @@ jobs:
         mutations = (
             text + "\n: <<'ROUND6_INERT'\nremote check bypass fixture\nROUND6_INERT\n",
             text.replace(
-                'if [[ "$verify_remote" == 1 ]]; then\n  for required_command in git timeout; do',
-                'if false; then\n  for required_command in git timeout; do',
+                'if [[ "$verify_remote" == 1 ]]; then\n  for required_command in git; do',
+                'if false; then\n  for required_command in git; do',
                 1,
             ),
             text.replace('git -C "$git_identity_dir" \\\n', 'git \\\n', 1),

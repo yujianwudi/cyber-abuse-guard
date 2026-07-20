@@ -1,15 +1,47 @@
-# Test Report — v0.15 Round 6 current gate plus frozen Round 5 evidence
+# Test Report — v0.16 local RC source gates plus historical v0.15 evidence
 
 ```text
-current_classifier_policy_version: classifier-policy-v5
-current_classifier_policy_sha256: 0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b
+current_classifier_policy_version: classifier-policy-v6
+current_classifier_policy_sha256: ece497210db938528cb166a34f2ce3013324b792a7eedf276a96fa5d256001d4
 ```
 
-Last updated: 2026-07-20 (Asia/Shanghai)
+Last updated: 2026-07-21 (Asia/Shanghai)
 
-## Round 6 v0.15 current test status
+## v0.16-rc.1 current local source status
 
-Exact project version is `0.15`; the only formal tag is `v0.15`, never
+Exact source version is `0.16`; the local Linux amd64 RC target is the exact
+annotated tag `v0.16-rc.1`. This source snapshot does not claim a GitHub
+Release, GitHub Actions run, real CPA Host load, production deployment,
+independent audit, or formal attestation.
+
+| Current v0.16 evidence | Result |
+|---|---|
+| Classifier identity | `classifier-policy-v6` / `ece497210db938528cb166a34f2ce3013324b792a7eedf276a96fa5d256001d4` |
+| Ruleset | `1.0.8` / `1d908c8c631bc6f72e7ec6b098bea49c4923580766859393d0be48c8c00c6d7d` |
+| Audit schema | v4 with default-off `raw_request_captures` |
+| Linux safe tests | **PASS** — `make test`, including audit, config, extract, plugin and classifier |
+| Linux vet / format / modules | **PASS** — `make round6-vet`, `round6-format-check`, `round6-module-verify` |
+| Release-document and safe-gate contracts | **PASS** — document consistency and 154 Python contract tests |
+| CPA v7.2.88 local source contract | **PASS** — pinned module/checksums, compile probes, registration, role-aware routing, integration compile and Store contracts |
+| CPA official Git Origin repeat check | **NETWORK BLOCKED / NOT A PASS** — isolated direct refresh timed out after 60 seconds; an earlier direct Origin result identified the official repository, tag and commit, but the final repeated remote refresh was not completed |
+| Local RC package | **PENDING CLEAN COMMIT + ANNOTATED TAG BUILD** |
+| GitHub v0.16 evidence | **NOT CREATED** |
+
+The raw-capture privacy review additionally verifies that a live disable must
+drain and purge before runtime swap, and that cold startup rejects a disabled
+runtime when an existing audit database cannot be opened/purged. If audit is
+enabled but a new empty store is unavailable, enforcement may remain degraded,
+while the raw-capture management endpoint returns HTTP 503 instead of an
+authoritative empty list.
+
+## Historical Round 6 v0.15 test status
+
+The section below is a frozen pre-publication record. It is not current v0.16
+evidence. The later `v0.15` stable Release was manually published on 2026-07-20
+with ten assets and an owner-reported sandbox result; no independent attestation
+was attached.
+
+Historical project version is `0.15`; its formal tag is `v0.15`, never
 `v0.15.0`. Active validation and the supported release target are fixed at
 CPA v7.2.88 at `93d74a890a44802f656d7f39a573916b2611896e`.
 Later upstream versions are not followed automatically.
@@ -24,7 +56,7 @@ Legacy version-specific profiles and Make aliases have been removed.
 | Source-only prerelease tag CI | [29630926354](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29630926354) **SUCCESS** for the same commit/tree |
 | Public `v0.15-rc.1` prerelease | Exists with no attached release assets; not the private clean candidate or formal release |
 | Classifier identity | `classifier-policy-v5` / `0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b` |
-| Current hardening PR | [#18](https://github.com/yujianwudi/cyber-abuse-guard/pull/18) remains the external authority for the final exact head, CI, and review state; this source report does not self-certify a future commit |
+| Historical hardening PR | [#18](https://github.com/yujianwudi/cyber-abuse-guard/pull/18) was merged; this frozen row does not establish v0.16 source or release evidence |
 | Quoted-review reactivation and long-streaming delta | **PASS / LOCAL DEVELOPMENT EVIDENCE**: direct referent-result equivalence, rule and semantic categories, multi-action and multi-cancellation family ordering, alternative-branch controls, narrow `follow`/`obey`/quoted-request imperatives, defensive neighbors, `just`/`simply`/`let's`/`let us` governors, active/inert/unrecognized parsing, mixed-trust origin, newest-user-review binding, non-user provenance isolation, wrapper-safe adjacent suppression, long current/previous fields, dual cross-window degradation, and `MaxChunks` accounting |
 | Linux safe unit and race checks | **PASS / LOCAL DEVELOPMENT EVIDENCE**: full `make unit-test`; classifier and plugin `-race`; OpenAI Chat/Responses long quoted-review routing; 64 KiB through near-effective-RPC-limit position/coverage ladders |
 | Release-document and formal-package contracts | **PASS / LOCAL DEVELOPMENT EVIDENCE**: real-tree identity gate, mutation fixture, 152 safe-gate contract tests, formal environment-override rejection, and required/install/verify binding for the public jailbreak audit report |
@@ -516,4 +548,16 @@ official_cpa_final_client_http_405: NOT AVAILABLE / NOT RUN — BLOCKED FOR HAND
 development_candidate_artifacts: CREATED / HASHED / VERIFIED IN GITHUB CI; see RELEASE_EVIDENCE.md
 formal_blind_result: v10 CONSUMED / FAIL; unchanged
 handoff_status: BLOCKED FOR HANDOFF
+```
+
+## v0.16-rc.1 local verification target
+
+```text
+source_version: 0.16
+local_rc_artifact_version: 0.16-rc.1
+platform: linux-amd64
+cpa_contract: v7.2.88
+ruleset_sha256: 1d908c8c631bc6f72e7ec6b098bea49c4923580766859393d0be48c8c00c6d7d
+verification_status: SOURCE GATES PASS / LOCAL RC PACKAGE PENDING CLEAN TAG BUILD
+github_actions_evidence: NOT CREATED
 ```

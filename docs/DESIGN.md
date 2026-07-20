@@ -1,8 +1,8 @@
 # CPA Cyber Abuse Guard v0.15 Design
 
 ```text
-current_classifier_policy_version: classifier-policy-v5
-current_classifier_policy_sha256: 0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b
+current_classifier_policy_version: classifier-policy-v6
+current_classifier_policy_sha256: ece497210db938528cb166a34f2ce3013324b792a7eedf276a96fa5d256001d4
 ```
 
 ## Scope and invariants
@@ -259,9 +259,9 @@ text behavior does not depend on this policy.
 
 ## Deterministic classifier
 
-Ruleset `1.0.7` is versioned YAML embedded into the shared object. Its current
+Ruleset `1.0.8` is versioned YAML embedded into the shared object. Its current
 canonical embedded SHA-256 is
-`7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134`. Startup
+`1d908c8c631bc6f72e7ec6b098bea49c4923580766859393d0be48c8c00c6d7d`. Startup
 compiles and validates it once. Rules use literal normalized terms rather than
 runtime regular expressions, eliminating catastrophic-backtracking risk.
 
@@ -394,10 +394,10 @@ plan may compose; placeholder bindings remain local to the supplied request.
 These mechanisms remain stateless across independent API calls and do not
 attest to local instruction-file integrity.
 
-Ruleset `1.0.7` identifies the embedded YAML assets only. The complete
-code-level behavior is separately identified as `classifier-policy-v5`,
+Ruleset `1.0.8` identifies the embedded YAML assets only. The complete
+code-level behavior is separately identified as `classifier-policy-v6`,
 SHA-256
-`0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b`.
+`ece497210db938528cb166a34f2ce3013324b792a7eedf276a96fa5d256001d4`.
 Its tested source list binds the classifier, matcher, normalizer, role logic,
 wrapper assessment, behavior graph, semantic composition, bounded extractor,
 rule loader/schema, embedded YAML assets, and module dependency locks. The
@@ -578,9 +578,14 @@ model, source format, or request hash. When audit is enabled, the plugin records
 a minimal `scan_limit` event with `text_bytes_scanned: 0` and does not invent
 those unavailable fields.
 
-No prompt, message, authorization header, plaintext subject, token, cookie,
-OAuth material, user code, or upstream account identity is persisted. Request
-correlation uses SHA-256 of the raw body. Subject correlation uses HMAC-SHA256.
+By default no prompt, message, authorization header, plaintext subject, token,
+cookie, OAuth material, user code, or upstream account identity is persisted.
+The sole explicit exception is `audit.raw_capture.enabled`: after a final
+blocking decision (`block`, including subject cooldown) it may persist a
+separately stored, mandatory-redacted preview bounded
+by `max_bytes` and `ttl_hours`. Allowed, observed, and audit-only requests never
+enter that table. Request correlation uses SHA-256 of the raw body. Subject
+correlation uses HMAC-SHA256.
 Requested models use a separate `cyber-abuse-guard/audit/model/v1` hash domain
 and `sha256-model-v1:` prefix. Source format is restricted to the canonical
 `openai`, `openai-response`, `interactions`, `openai-image`, `openai-video`,
@@ -590,8 +595,11 @@ database reads are sanitized before query or CSV output.
 The database schema is versioned. `schema_version` records the active schema;
 `migration_history` records every applied version. A v0.1.1 event database with
 no metadata is recognized as schema v1. The schema-v2 migration adds optional
-subject-state tables inside a transaction. On failure, the old schema remains
-intact. When `audit.backup_before_migration` is enabled, SQLite `VACUUM INTO`
+subject-state tables; schema v3 adds the fixed decision/coverage fields; schema
+v4 adds the separate `raw_request_captures` table, its event foreign key with
+`ON DELETE CASCADE`, and bounded query indexes. Migrations run inside a
+transaction. On failure, the old schema remains intact. When
+`audit.backup_before_migration` is enabled, SQLite `VACUUM INTO`
 creates a consistent mode-0400 pre-migration copy before the transaction.
 Backups are capped by `audit.max_migration_backups` and are never placed in a
 release archive.
@@ -603,7 +611,12 @@ structural contract, not a keyed proof that no otherwise valid row was deleted.
 
 `audit.log_original_text` remains in the compatibility schema only to reject
 unsafe input. A value of `true` prevents activation or reconfiguration. There
-is no debug or emergency mode that persists raw request text.
+is no debug or emergency mode that persists unrestricted raw request text.
+The replacement review facility is `audit.raw_capture`: it defaults off,
+requires audit storage, requires `only_blocked: true` and
+`redact_secrets: true`, redacts before UTF-8-safe truncation, and applies a
+separate capture TTL no longer than the ordinary audit retention period. See
+[Blocked-request review capture](RAW_CAPTURE.md).
 
 Reconfiguration builds and validates a complete immutable runtime state before
 an atomic swap. Invalid configuration leaves the last valid state active. This
@@ -628,6 +641,7 @@ exposed in v0.15.
 
 - `GET /plugins/cyber-abuse-guard/status`
 - `GET /plugins/cyber-abuse-guard/events`
+- `GET /plugins/cyber-abuse-guard/raw-captures`
 - `GET /plugins/cyber-abuse-guard/stats`
 - `POST /plugins/cyber-abuse-guard/test`
 - `POST /plugins/cyber-abuse-guard/health/probe`
@@ -645,8 +659,9 @@ CPA's Management Key middleware is the authentication authority. The plugin
 adds bounded body/query/method guards but cannot independently compare the
 configured Management Key because ABI v1 does not expose it. A normal client
 key therefore cannot authorize these routes, and deployment tests must verify
-the host's 401 behavior. Responses never include prompt text or plaintext
-subjects.
+the host's 401 behavior. Ordinary responses never include prompt text or
+plaintext subjects. The exact authenticated `/raw-captures` route is the only
+exception and returns only enabled, redacted, truncated block-review previews.
 
 The plugin rejects a management body above 1 MiB and a serialized RPC envelope
 above 2 MiB. These are plugin-side limits only: CPA currently calls `io.ReadAll`
@@ -781,8 +796,8 @@ SSE stream with terminal frames; returning successful chunks would force HTTP
 ## Build identity and release reproducibility
 
 Builds link immutable version, full commit SHA, ruleset version/hash,
-`classifier-policy-v5` /
-`0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b`,
+`classifier-policy-v6` /
+`ece497210db938528cb166a34f2ce3013324b792a7eedf276a96fa5d256001d4`,
 streaming-scanner identity, and dirty state. Build metadata and the verifier bind
 these identities. Candidate mode requires a clean worktree, exact expected
 commit/tree, the commit timestamp, an absent formal `v0.15` tag, and forbids

@@ -84,8 +84,22 @@ plugins:
         # and opaque-media dispositions are always persisted when audit is on.
         persist_wrapper_only: false
         # Compatibility field: true is always rejected. There is no debug
-        # mode that persists original prompt/request text.
+        # mode that persists unrestricted original prompt/request text.
         log_original_text: false
+        # Sensitive operator-only false-positive review. Disabled by default.
+        # When enabled, only requests whose final disposition prevents upstream
+        # routing (block, including subject cooldown) receive a separate
+        # redacted, UTF-8-safe truncated preview. Redaction is best
+        # effort and must not be treated as a complete DLP boundary.
+        raw_capture:
+          enabled: false
+          # Safety invariants: false values are rejected.
+          only_blocked: true
+          redact_secrets: true
+          # 1..1048576 bytes per stored preview; redaction runs first.
+          max_bytes: 8192
+          # 1..87600 hours; when enabled, no longer than retention_days * 24.
+          ttl_hours: 72
         # v0.1.1 databases are detected as schema v1. Migration to schema v2
         # is atomic; optional VACUUM INTO backups are read-only and bounded.
         backup_before_migration: true

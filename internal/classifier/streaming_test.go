@@ -1212,8 +1212,9 @@ func TestRound6StreamingUnrelatedMetaWindowsDoNotCompose(t *testing.T) {
 	}
 	input, limits := round6SyntheticStreamingFixture(c, core, meta)
 	whole := c.ClassifyWithPolicy([]string{input}, ModeBalanced, DefaultThresholds(), DefaultPolicy())
-	if whole.Action != ActionBlock {
-		t.Fatalf("whole meta-amplified field did not block: %+v", whole)
+	if whole.Action != ActionAudit || whole.Score >= BalancedThreshold || whole.Category == "" ||
+		!containsRuleID(whole.RuleIDs, metaOverrideRuleID) {
+		t.Fatalf("whole weak ordinary plus META field was not retained as categorized audit: %+v", whole)
 	}
 	session := newRound6Session(t, c, limits)
 	addRound6Field(t, session, 1, extract.RoleUser, []byte(input))

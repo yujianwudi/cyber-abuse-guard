@@ -1,8 +1,8 @@
-# v0.15 release admission policy
+# v0.16 release admission policy
 
 ```text
-current_classifier_policy_version: classifier-policy-v5
-current_classifier_policy_sha256: 0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b
+current_classifier_policy_version: classifier-policy-v6
+current_classifier_policy_sha256: ece497210db938528cb166a34f2ce3013324b792a7eedf276a96fa5d256001d4
 ```
 
 This source file defines the release process; it does not claim that external
@@ -12,20 +12,30 @@ attestations named below. Pull requests and source snapshots are never
 deployment authorization by themselves.
 
 ```text
-release_version: 0.15
-formal_tag: v0.15
-version_alias_policy: reject-v0.15.0
+release_version: 0.16
+formal_tag: v0.16
+version_alias_policy: reject-v0.16.0
 platform: linux-amd64
+local_rc_artifact_version: 0.16-rc.1
+local_rc_artifact_scope: local-linux-amd64-core-package
+local_rc_evidence_policy: not-github-release-actions-or-host-evidence
+v016_candidate_workflow_status: NOT_MIGRATED/NOT_AVAILABLE
+v016_rc_workflow_status: NOT_MIGRATED/NOT_AVAILABLE
+v016_formal_workflow_status: NOT_MIGRATED/NOT_AVAILABLE
+v016_promotion_workflow_status: NOT_MIGRATED/NOT_AVAILABLE
 candidate_workflow: .github/workflows/candidate.yml
 candidate_attestation: candidate-manifest.json
 attested_prerelease_workflow: .github/workflows/attested-prerelease.yml
 rc_workflow: .github/workflows/release-rc.yml
 rc_workflow_archive: docs/archive/workflows/release-rc-v0.15-rc.2.yml
 rc_artifact_version: 0.15-rc.4
+rc_artifact_history: historical-v0.15-rc4-only
 rc_status: internal-gates-required-sandbox-only-not-formal-not-round6-candidate
 host_audit_attestation: round6-prerelease-attestation.json
 formal_gate_attestation: formal-release-attestation.json
 promotion_workflow: .github/workflows/release-promote.yml
+historical_v015_stable_release: PUBLISHED_MANUALLY/2026-07-20/TEN_ASSETS
+historical_v015_independent_attestation: NOT_ATTACHED
 host_matrix: v7.2.88
 host_matrix_commit: 93d74a890a44802f656d7f39a573916b2611896e
 host_attestation_schema: 2
@@ -38,6 +48,19 @@ historical_evaluation_v10_policy: immutable-consumed-fail-not-formal-input
 formal_bundle_content_policy: exclude-evaluation-holdout-consumed-private-blind-retired
 ```
 
+The `release_version`, `formal_tag`, and `local_rc_*` keys define the current
+v0.16 source and local package target. The local `v0.16-rc.1` package may be
+built for Linux amd64 handoff, but it does not create or imply a GitHub
+Release, GitHub Actions result, formal attestation, production authorization,
+or fresh CPA Host validation.
+
+The workflow fields, `rc_artifact_version`, and `rc_status` intentionally
+preserve the previously reviewed v0.15 release machinery as historical
+records. Those workflows have not been migrated to v0.16 and must not be used
+to claim v0.16 release evidence.
+
+## Historical v0.15 workflow record
+
 The candidate workflow creates a private, untagged, clean `0.15` SO and CPA
 Store ZIP bound to an exact commit and tree. The Host and independent-audit
 workflow may later attach an external attestation to an annotated development
@@ -45,7 +68,7 @@ tag at the same commit. The formal `v0.15` workflow rebuilds and byte-compares
 the Host-tested SO and Store ZIP, creates a draft, and the separate promotion
 workflow publishes that unchanged draft only after another protected approval.
 
-The active `v0.15-rc.4` workflow is a Linux-only side lane. It requires an
+The historical `v0.15-rc.4` workflow is a Linux-only side lane. It requires an
 annotated tag at the exact `main` tip, a successful exact-main push CI, the
 complete internal Linux gate set, CPA v7.2.88 source compatibility, RC-versioned
 integration, two independent clean-clone rebuilds, and byte verification of a
@@ -53,6 +76,12 @@ integration, two independent clean-clone rebuilds, and byte verification of a
 `RC_INTERNAL_GATES_PASS / SANDBOX_ONLY / SERVER_VALIDATION_REQUIRED /
 NOT_FORMAL / NOT_ROUND6_CANDIDATE`; real CPA Host validation, independent audit,
 and independent evaluation remain absent.
+
+The later `v0.15` stable Release was published manually on 2026-07-20 with ten
+assets. Its Release Notes disclose the GitHub Billing limitation, manual build,
+and owner-reported production sandbox result. That publication did not complete
+the protected draft/promotion chain and does not supply independent Host,
+audit, or evaluation attestation.
 
 The archived `v0.15-rc.2` workflow remains immutable historical evidence. Its
 recorded attempts failed; the public RC2 assets were published separately
@@ -70,6 +99,8 @@ low-sensitivity report is bound by SHA-256 in the Host/audit prerelease
 attestation. Raw evaluation, holdout, consumed, private, blind, and retired
 materials are not copied into formal source or audit bundles.
 
-`v0.15` is a CPA plugin/artifact tag. It is intentionally a two-component
-project version and is not a canonical Go module semantic-version tag. The
-project must not publish a `v0.15.0` alias.
+`v0.16` is the current CPA plugin/artifact tag target. It is intentionally a
+two-component project version and is not a canonical Go module
+semantic-version tag. The project must not publish a `v0.16.0` alias. The
+historical v0.15 workflow record above retains its original two-component
+identity and does not become a v0.16 release path.

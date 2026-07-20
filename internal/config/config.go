@@ -39,6 +39,7 @@ const (
 	maxPersistedSubjects           = 10000
 	maxAuditRetentionDay           = 3650
 	maxAuditDBMB                   = 10240
+	maxRawCaptureBytes             = 1 << 20
 	maxClassifierTimeout           = 10000
 	maxDataDirBytes                = 4096
 )
@@ -132,18 +133,32 @@ type SubjectControl struct {
 }
 
 type Audit struct {
-	Enabled               bool   `yaml:"enabled"`
-	DataDir               string `yaml:"data_dir"`
-	RetentionDays         int    `yaml:"retention_days"`
-	MaxDBMB               int    `yaml:"max_db_mb"`
-	LogRequestHash        bool   `yaml:"log_request_hash"`
-	LogSubjectHash        bool   `yaml:"log_subject_hash"`
-	LogRuleIDs            bool   `yaml:"log_rule_ids"`
-	LogCategory           bool   `yaml:"log_category"`
-	PersistWrapperOnly    bool   `yaml:"persist_wrapper_only"`
-	LogOriginalText       bool   `yaml:"log_original_text"`
-	BackupBeforeMigration bool   `yaml:"backup_before_migration"`
-	MaxMigrationBackups   int    `yaml:"max_migration_backups"`
+	Enabled               bool       `yaml:"enabled"`
+	DataDir               string     `yaml:"data_dir"`
+	RetentionDays         int        `yaml:"retention_days"`
+	MaxDBMB               int        `yaml:"max_db_mb"`
+	LogRequestHash        bool       `yaml:"log_request_hash"`
+	LogSubjectHash        bool       `yaml:"log_subject_hash"`
+	LogRuleIDs            bool       `yaml:"log_rule_ids"`
+	LogCategory           bool       `yaml:"log_category"`
+	PersistWrapperOnly    bool       `yaml:"persist_wrapper_only"`
+	LogOriginalText       bool       `yaml:"log_original_text"`
+	RawCapture            RawCapture `yaml:"raw_capture"`
+	BackupBeforeMigration bool       `yaml:"backup_before_migration"`
+	MaxMigrationBackups   int        `yaml:"max_migration_backups"`
+}
+
+// RawCapture is an explicit, sensitive operator-review feature. It is kept
+// separate from the legacy LogOriginalText switch so raw request previews can
+// remain disabled by default, bounded, short-lived, and independently
+// redacted. The runtime records only requests whose final action is block or
+// cooldown.
+type RawCapture struct {
+	Enabled       bool `yaml:"enabled"`
+	OnlyBlocked   bool `yaml:"only_blocked"`
+	MaxBytes      int  `yaml:"max_bytes"`
+	TTLHours      int  `yaml:"ttl_hours"`
+	RedactSecrets bool `yaml:"redact_secrets"`
 }
 
 type TrustedProxy struct {
@@ -208,16 +223,23 @@ func Default() Config {
 			CooldownMinutes:  30,
 		},
 		Audit: Audit{
-			Enabled:               true,
-			DataDir:               "",
-			RetentionDays:         30,
-			MaxDBMB:               256,
-			LogRequestHash:        true,
-			LogSubjectHash:        true,
-			LogRuleIDs:            true,
-			LogCategory:           true,
-			PersistWrapperOnly:    false,
-			LogOriginalText:       false,
+			Enabled:            true,
+			DataDir:            "",
+			RetentionDays:      30,
+			MaxDBMB:            256,
+			LogRequestHash:     true,
+			LogSubjectHash:     true,
+			LogRuleIDs:         true,
+			LogCategory:        true,
+			PersistWrapperOnly: false,
+			LogOriginalText:    false,
+			RawCapture: RawCapture{
+				Enabled:       false,
+				OnlyBlocked:   true,
+				MaxBytes:      8192,
+				TTLHours:      72,
+				RedactSecrets: true,
+			},
 			BackupBeforeMigration: true,
 			MaxMigrationBackups:   3,
 		},
@@ -487,13 +509,31 @@ func validateSubjectControl(s SubjectControl) error {
 
 func validateAudit(a Audit) error {
 	if a.LogOriginalText {
-		return invalidf("audit.log_original_text must remain false; prompts and request bodies are never persisted")
+		return invalidf("audit.log_original_text must remain false; use the explicit bounded audit.raw_capture feature")
 	}
 	if a.RetentionDays < 1 || a.RetentionDays > maxAuditRetentionDay {
 		return invalidf("audit.retention_days must be between 1 and %d", maxAuditRetentionDay)
 	}
 	if a.MaxDBMB < 1 || a.MaxDBMB > maxAuditDBMB {
 		return invalidf("audit.max_db_mb must be between 1 and %d", maxAuditDBMB)
+	}
+	if a.RawCapture.Enabled && !a.Enabled {
+		return invalidf("audit.raw_capture.enabled requires audit.enabled")
+	}
+	if !a.RawCapture.OnlyBlocked {
+		return invalidf("audit.raw_capture.only_blocked must remain true")
+	}
+	if !a.RawCapture.RedactSecrets {
+		return invalidf("audit.raw_capture.redact_secrets must remain true")
+	}
+	if a.RawCapture.MaxBytes < 1 || a.RawCapture.MaxBytes > maxRawCaptureBytes {
+		return invalidf("audit.raw_capture.max_bytes must be between 1 and %d", maxRawCaptureBytes)
+	}
+	if a.RawCapture.TTLHours < 1 || a.RawCapture.TTLHours > maxAuditRetentionDay*24 {
+		return invalidf("audit.raw_capture.ttl_hours must be between 1 and %d", maxAuditRetentionDay*24)
+	}
+	if a.RawCapture.Enabled && a.RawCapture.TTLHours > a.RetentionDays*24 {
+		return invalidf("audit.raw_capture.ttl_hours must not exceed audit.retention_days")
 	}
 	if a.MaxMigrationBackups < 0 || a.MaxMigrationBackups > 10 {
 		return invalidf("audit.max_migration_backups must be between 0 and 10")

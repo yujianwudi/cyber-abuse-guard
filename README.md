@@ -1,16 +1,23 @@
 # CPA Cyber Abuse Guard
 
 ```text
-current_classifier_policy_version: classifier-policy-v5
-current_classifier_policy_sha256: 0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b
+current_classifier_policy_version: classifier-policy-v6
+current_classifier_policy_sha256: ece497210db938528cb166a34f2ce3013324b792a7eedf276a96fa5d256001d4
 ```
 
-[![CI](https://github.com/yujianwudi/cyber-abuse-guard/actions/workflows/ci.yml/badge.svg)](https://github.com/yujianwudi/cyber-abuse-guard/actions/workflows/ci.yml)
+> **Current development target:** a planned local Linux amd64 `v0.16-rc.1`
+> core package from exact source version `0.16` for the pinned CPA v7.2.88
+> contract. It is not a GitHub Release, GitHub Actions result, production
+> deployment, or new CPA Host attestation. All `v0.15-rc.*` workflows, badges,
+> release states, and Round 6 evidence retained below are historical v0.15
+> records and do not establish v0.16 release evidence.
+
+[![Historical CI](https://img.shields.io/badge/historical_CI-v0.15-blue)](https://github.com/yujianwudi/cyber-abuse-guard/actions/workflows/ci.yml)
 [![Go](https://img.shields.io/badge/Go-1.26.4-00ADD8?logo=go&logoColor=white)](go.mod)
 [![Platform](https://img.shields.io/badge/platform-Linux%20amd64-lightgrey)](docs/ROUND6_LIMITATIONS.md)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![RC target](https://img.shields.io/badge/RC_target-v0.15--rc.4-orange)](docs/ROUND6_RELEASE_GATE.md)
-[![Formal release](https://img.shields.io/badge/formal_v0.15-BLOCKED-critical)](docs/ROUND6_RELEASE_GATE.md)
+[![Historical RC](https://img.shields.io/badge/historical_RC-v0.15--rc.4-orange)](docs/ROUND6_RELEASE_GATE.md)
+[![Historical stable](https://img.shields.io/badge/historical_stable-v0.15-published-success)](https://github.com/yujianwudi/cyber-abuse-guard/releases/tag/v0.15)
 
 **A local, deterministic, pre-routing cyber-abuse request guard for
 [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) (CPA).**
@@ -18,20 +25,13 @@ current_classifier_policy_sha256: 0e114d98862282d2492fb62e4300297b4746eeaf816533
 English | [简体中文](README_CN.md)
 
 > [!WARNING]
-> Version `0.15` and its formal tag `v0.15` remain
-> **BLOCKED / PENDING HOST AND INDEPENDENT AUDIT**. The
-> [`v0.15-rc.4`](https://github.com/yujianwudi/cyber-abuse-guard/releases/tag/v0.15-rc.4)
-> side lane publishes only after exact-main CI, the complete internal Linux
-> quality suite, CPA v7.2.88 source compatibility, RC-versioned integration, and
-> two independent clean-clone rebuilds pass. Its 17 assets follow the formal
-> package structure but carry RC-only evidence and no formal attestation.
-> Therefore RC4 remains **SANDBOX ONLY / SERVER VALIDATION REQUIRED**, not a
-> private clean candidate, formal release, production authorization, real CPA
-> Host PASS, independent audit PASS, or independent evaluation PASS. Windows
-> and macOS remain outside scope.
-> The protected `v0.15-rc.3` tag is retained as a failed, unpublished attempt:
-> run 29728286559 failed before packaging, uploaded no artifact, and created no
-> GitHub Release.
+> [`v0.15`](https://github.com/yujianwudi/cyber-abuse-guard/releases/tag/v0.15)
+> was manually published as the latest stable release on 2026-07-20 with ten
+> assets. Its release notes disclose that GitHub Actions did not run because of
+> billing and that the owner built the assets manually after an owner-reported
+> production sandbox pass. No independent Host/audit/evaluation attestation is
+> attached. The Round 6 and `v0.15-rc.*` material retained below is a historical
+> pre-publication engineering record, not the current v0.16 release state.
 
 When CPA has loaded and registered the plugin, Router ordering reaches it, and
 the self-executor is ready, the Guard inspects supported model requests before
@@ -39,27 +39,34 @@ provider selection, authentication scheduling, usage accounting, and upstream
 work. Request content is evaluated in process and is not sent to a public
 classifier.
 
-## Current Round 6 status
+## Current v0.16 development status
 
 | Item | State |
 |---|---|
-| Project version / intended formal tag | `0.15` / exact tag `v0.15` (never `v0.15.0`) |
-| Current RC identity | Active target `v0.15-rc.4`; its exact post-merge `main` commit/tree, annotated tag object, CI run, workflow run, and 17 asset hashes are bound only by runtime `rc-release-manifest.json` |
-| Last fully verified pre-cleanup main baseline | `6782dfaffd4da3f09604113c7d38675f331dc759`, tree `a8edbe2e6d19fa725fb962cdd6aaad5b416d4b85`; main CI [29630844605](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29630844605) and tag CI [29630926354](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29630926354) passed |
-| Release decision | **BLOCKED / PENDING HOST AND INDEPENDENT AUDIT** |
-| Candidate bytes | Must be clean exact-source Linux amd64 bytes from the private untagged Actions candidate workflow; clean does not mean released |
-| Merge and release | The active RC4 workflow creates a draft, re-downloads and byte-compares all 17 assets, then publishes `prerelease=true` and `latest=false`; formal `v0.15` remains absent and blocked |
-| RC publication mode | `AUTOMATED / COMPLETE_INTERNAL_LINUX_GATES / TWO-CLEAN-CLONE_REPRODUCIBLE / SANDBOX_ONLY` |
-| RC exact-main CI | Required and bound by run ID plus exact run attempt to the tagged `main` commit; the run URL and attempt are recorded in RC evidence and manifest |
+| Source version / local RC tag target | `0.16` / exact annotated tag `v0.16-rc.1` (never `v0.16-rc1`) |
+| Package state in this source snapshot | **PLANNED / PENDING CLEAN TAG BUILD**; no GitHub Release, Actions result, or formal attestation is claimed |
+| Linux source gates | `make test`, `make round6-vet`, format/module checks, release-document consistency, and 154 safe-gate contract tests pass locally |
+| CPA compatibility | Pinned v7.2.88 module, checksums, compile probes, registration, role-aware routing, and Store contracts pass; the final repeated direct Git Origin refresh timed out and is not called a remote PASS |
+| v0.16 workflows | Existing candidate/RC/formal workflows are historical v0.15 machinery and have **NOT BEEN MIGRATED** to v0.16 |
 | Validation platform | Linux amd64 only; emitted numeric GLIBC ABI versions must be `<= 2.34` |
 | Out of scope | Windows, macOS, musl/Alpine, local deployment, production validation |
 | CPA Host matrix | Active validation and the supported release target are pinned to CPA v7.2.88 (`93d74a890a44802f656d7f39a573916b2611896e`); owner-operated isolated Host + Mock-upstream evidence is **NOT RUN / PENDING** |
 | Production | Not accessed or modified; no production request, audit database, credential, HMAC key, account pool, or real Provider was used |
 | Scanner identity | `streaming-scanner-v1` |
-| Classifier policy | `classifier-policy-v5` / `0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b` |
-| Embedded YAML ruleset | `1.0.7` / `7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134` |
-| Audit schema | v3 |
+| Classifier policy | `classifier-policy-v6` / `ece497210db938528cb166a34f2ce3013324b792a7eedf276a96fa5d256001d4` |
+| Embedded YAML ruleset | `1.0.8` / `1d908c8c631bc6f72e7ec6b098bea49c4923580766859393d0be48c8c00c6d7d` |
+| Audit schema | v4; new capture writes are default-off and disable transitions are purge-gated |
 | Code review | Automated review is advisory; no independent approval is claimed |
+
+## Historical v0.15 release record
+
+| Item | Historical fact |
+|---|---|
+| Stable release | `v0.15` was manually published on 2026-07-20 as non-draft, non-prerelease, latest stable |
+| Assets | Ten manually built release assets |
+| Validation claim | Production sandbox PASS is owner-reported in the Release notes; supporting independent Host evidence is not attached |
+| Independent evidence | No `formal-release-attestation.json` or `round6-prerelease-attestation.json` asset |
+| Source identities | classifier `v5`, ruleset `1.0.7`, audit schema v3 |
 
 The historical v10 evaluation remains `CONSUMED / FAIL` and cannot be rerun or
 used for tuning. Engineering checks do not override that methodology result or
@@ -204,13 +211,17 @@ policy.
 
 ## Security and privacy boundary
 
-- The Guard does not persist raw prompts, tool payloads, authorization headers,
-  plaintext credentials, uploaded code, or provider account identity.
+- By default the Guard does not persist raw prompts, tool payloads,
+  authorization headers, plaintext credentials, uploaded code, or provider
+  account identity. The explicit `audit.raw_capture.enabled` exception below
+  stores only redacted, bounded previews of requests whose final disposition
+  prevented upstream routing (`block`, including subject cooldown).
 - This is a Guard-local guarantee, not an end-to-end Host guarantee. CPA may
   temporarily spool non-multipart request bodies and may persist raw bodies in
   Host HTTP error logs; see [Decision output and privacy](docs/RULES.md#decision-output-and-privacy).
-- Audit, metrics, and management status expose fixed fields, counters, and
-  identities rather than prompt fragments or offsets.
+- Ordinary audit, metrics, and management status expose fixed fields, counters,
+  and identities rather than prompt fragments or offsets. Only the
+  authenticated `/raw-captures` route can return an enabled review preview.
 - Media URLs are never fetched. No request-supplied code is executed.
 - The Round 6 work did not connect to a real Provider or account pool and did
   not read production requests or audit data.
@@ -227,7 +238,55 @@ zero source-level contact where an over-broad search or mechanical build-tag
 edit occurred, but no restricted corpus payload or production data was used
 for implementation or conclusions.
 
-## Verification and release gates
+## Blocked-request review capture
+
+`audit.raw_capture` is an operator-only false-positive review feature. It is
+**disabled by default**, requires ordinary audit storage, and is hard-limited
+to blocking decisions (`block` or subject `cooldown`). It does not record
+allowed, observed, or audit-only requests. Each stored preview is best-effort
+secret-redacted first, then truncated on a valid UTF-8 boundary; the defaults
+are 8 KiB per capture and a 72-hour TTL. Redaction is not a complete DLP
+guarantee, so the SQLite data directory and CPA Management Key must be treated
+as sensitive production secrets.
+
+Enable it explicitly:
+
+```yaml
+audit:
+  enabled: true
+  raw_capture:
+    enabled: true
+    only_blocked: true
+    redact_secrets: true
+    max_bytes: 8192
+    ttl_hours: 72
+```
+
+`only_blocked: false` and `redact_secrets: false` are rejected. Query through
+CPA's authenticated management API with `event_id`, `request_hash`, and/or
+`limit` (default 20, maximum 100):
+
+```bash
+curl -H "X-Management-Key: $CPA_MANAGEMENT_KEY" \
+  "http://127.0.0.1:8317/v0/management/plugins/cyber-abuse-guard/raw-captures?limit=20"
+```
+
+The management response applies a fixed 8 MiB budget to JSON-encoded preview
+content. A requested `limit` of 100 is still valid, but the endpoint may return
+fewer rows; check `response_truncated` and `returned_count`.
+
+When a live disable transition succeeds while audit storage remains enabled,
+the endpoint returns an empty list only after the capture table is purged and
+the WAL checkpoint completes. If the whole audit subsystem is disabled across
+a restart, the old database is not opened or cleaned automatically. See the
+[operator guide](docs/RAW_CAPTURE.md) for the response contract and handling
+warnings.
+
+## Historical v0.15 pre-publication verification record
+
+The table and process below describe the reviewed v0.15 admission design before
+the later manual stable publication. They are retained for audit history and do
+not describe an available v0.16 workflow.
 
 | Gate | Current state |
 |---|---|
@@ -244,8 +303,8 @@ for implementation or conclusions.
 | Historical asset-bearing `v0.15-rc.2` prerelease | **PUBLIC / PRERELEASE / SANDBOX ONLY**; ten Linux amd64 assets were published by direct owner override with tests skipped |
 | Protected `v0.15-rc.3` attempt | **FAILED / UNPUBLISHED / ZERO ASSETS**; run [29728286559](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29728286559) passed admission, failed before packaging, skipped publish, and created no Release |
 | Formal-structure `v0.15-rc.4` prerelease | Exactly 17 Linux amd64 assets; internal gates and reproducibility must pass, while real CPA Host, independent audit/evaluation, formal release, and production authorization remain absent |
-| Annotated `v0.15` formal tag and verified draft | Blocked |
-| Protected promotion of the unchanged draft | Blocked |
+| Annotated `v0.15` formal tag | Manually published as stable on 2026-07-20; the protected draft/promotion chain was not used |
+| Protected promotion of the unchanged draft | Not used for the actual v0.15 publication |
 
 Windows and macOS are intentionally absent from this matrix. Their absence is
 not a failed gate for this Linux-only round and must not be represented as test
@@ -256,14 +315,14 @@ Safe Round 6 entry points are documented in
 allowlisted gates with broad `go test ./...` or `go vet ./...` commands that
 could compile or open consumed evaluation packages.
 
-Do not create `v0.15`, run the formal release path, rerun consumed v10, or use
-historical release assets as current evidence. The candidate workflow must first
-exist on the default branch, so candidate creation is restricted to a dispatch
-from `main` after the final PR is merged and the exact main push CI succeeds.
+Before the manual publication, the reviewed process prohibited creating
+`v0.15` until its external gates passed. That instruction is now historical;
+the published v0.15 assets still must not be reused as v0.16 evidence. Consumed
+v10 remains immutable and must not be rerun.
 
 ## Artifact contract
 
-The v0.15 evidence chain is intentionally split:
+The historical v0.15 pre-publication evidence chain was designed as follows:
 
 1. Freeze the final PR head, pass PR CI, merge it to `main`, and pass push CI on
    the exact resulting main commit/tree. Merge is a candidate prerequisite, not
@@ -298,6 +357,10 @@ hashes, merge identity, or Release state. Stable v0.15 eligibility is determined
 only by external Round 6/formal attestation assets that bind the final source,
 candidate workflow run, candidate bytes, Host records, independent audit, and
 release evaluation.
+
+The actual 2026-07-20 v0.15 publication did not complete that protected chain;
+its owner-reported sandbox result and manual-build disclosure live in the
+GitHub Release notes and are not upgraded here into independent evidence.
 
 Active release and Host validation is pinned to CPA v7.2.88 at
 `93d74a890a44802f656d7f39a573916b2611896e`. Later upstream CPA versions do

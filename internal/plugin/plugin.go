@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -56,9 +57,9 @@ var metadata = pluginapi.Metadata{
 		{Name: "allow_context", Type: pluginapi.ConfigFieldTypeObject, Description: "Explicit defensive, remediation, CTF, lab, authorization, and static-analysis allowances."},
 		{Name: "hard_block_even_if_authorized", Type: pluginapi.ConfigFieldTypeObject, Description: "Categories whose operational abuse remains protected from authorization score reductions."},
 		{Name: "subject_control", Type: pluginapi.ConfigFieldTypeObject, Description: "Rolling subject-risk, cooldown, and manual-block settings."},
-		{Name: "audit", Type: pluginapi.ConfigFieldTypeObject, Description: "Privacy-minimal SQLite audit retention and field settings; original text is never supported."},
+		{Name: "audit", Type: pluginapi.ConfigFieldTypeObject, Description: "SQLite audit settings plus an explicit default-off, block-only, redacted and truncated operator request-preview capture."},
 		{Name: "trusted_proxy", Type: pluginapi.ConfigFieldTypeObject, Description: "Reserved for a future verified-peer API; enabling it is rejected on CPA v7.2.88."},
-		{Name: "classifier", Type: pluginapi.ConfigFieldTypeObject, Description: "Reserved local-classifier interface; enabling it is unsupported in v0.15 and rejected."},
+		{Name: "classifier", Type: pluginapi.ConfigFieldTypeObject, Description: "Reserved local-classifier interface; enabling it is unsupported in v0.16 and rejected."},
 	},
 }
 
@@ -524,7 +525,7 @@ func (p *Plugin) configure(raw []byte, reconfigure bool) []byte {
 		return errorEnvelope("unsupported_schema", fmt.Sprintf("unsupported schema version %d", request.SchemaVersion), 0, "")
 	}
 
-	state, err := p.buildRuntime(request.ConfigYAML)
+	state, err := p.buildRuntime(request.ConfigYAML, reconfigure && p.runtime.Load() != nil)
 	if err != nil {
 		p.setLastConfigError(err)
 		if reconfigure && p.runtime.Load() != nil {
@@ -557,6 +558,28 @@ func (p *Plugin) configure(raw []byte, reconfigure bool) []byte {
 			return okEnvelope(currentRegistration())
 		}
 		state.subject = current.subject
+	}
+	if reconfigure && current != nil &&
+		(!state.config.Audit.Enabled || !state.config.Audit.RawCapture.Enabled) {
+		// p.opMu is exclusive here, every old router/management callback has
+		// finished, and all other runtime migrations have succeeded. Purge and
+		// WAL truncation therefore form the final hard privacy gate before Swap.
+		// If the gate cannot complete, retain the previous runtime instead of
+		// publishing a disabled configuration that merely hides sensitive rows.
+		for _, store := range []*audit.Store{current.audit, state.audit} {
+			if store == nil {
+				continue
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			_, purgeErr := store.PurgeRawCaptures(ctx)
+			cancel()
+			if purgeErr != nil {
+				p.opMu.Unlock()
+				state.close()
+				p.rejectReconfigure(purgeErr, "raw_capture_purge_failed")
+				return okEnvelope(currentRegistration())
+			}
+		}
 	}
 	previous := p.runtime.Swap(state)
 	p.pending.clear()
@@ -613,7 +636,7 @@ func (p *Plugin) log(level, message string, fields map[string]any) {
 	logger(level, message, fields)
 }
 
-func (p *Plugin) buildRuntime(rawConfig []byte) (*runtimeState, error) {
+func (p *Plugin) buildRuntime(rawConfig []byte, skipDisabledPurgeOnOpen bool) (*runtimeState, error) {
 	cfg, err := config.Parse(rawConfig)
 	if err != nil {
 		return nil, err
@@ -625,7 +648,7 @@ func (p *Plugin) buildRuntime(rawConfig []byte) (*runtimeState, error) {
 		return nil, fmt.Errorf("trusted_proxy.enabled is not supported because CPA v7.2.88 does not provide a verified direct peer address")
 	}
 	if cfg.Audit.LogOriginalText {
-		return nil, fmt.Errorf("audit.log_original_text is not supported; prompts and request bodies are never persisted")
+		return nil, fmt.Errorf("audit.log_original_text is not supported; use the explicit bounded audit.raw_capture feature")
 	}
 	loader := p.loadRules
 	if loader == nil {
@@ -675,15 +698,31 @@ func (p *Plugin) buildRuntime(rawConfig []byte) (*runtimeState, error) {
 				"code":   "audit_directory_unavailable",
 			})
 		}
-		store, _ := audit.Open(audit.Config{
-			Path:                  path,
-			Retention:             time.Duration(cfg.Audit.RetentionDays) * 24 * time.Hour,
-			MaxBytes:              int64(cfg.Audit.MaxDBMB) << 20,
-			QueueSize:             1024,
-			BusyTimeout:           2 * time.Second,
-			CleanupInterval:       time.Hour,
-			BackupBeforeMigration: cfg.Audit.BackupBeforeMigration,
-			MaxMigrationBackups:   cfg.Audit.MaxMigrationBackups,
+		hadAuditArtifacts := false
+		if !cfg.Audit.RawCapture.Enabled {
+			var inspectErr error
+			hadAuditArtifacts, inspectErr = auditDatabaseArtifactsPresent(path)
+			if inspectErr != nil {
+				return nil, fmt.Errorf("inspect disabled raw-capture audit files: %w", inspectErr)
+			}
+		}
+		store, openErr := audit.Open(audit.Config{
+			Path:                    path,
+			Retention:               time.Duration(cfg.Audit.RetentionDays) * 24 * time.Hour,
+			MaxBytes:                int64(cfg.Audit.MaxDBMB) << 20,
+			QueueSize:               1024,
+			BusyTimeout:             2 * time.Second,
+			CleanupInterval:         time.Hour,
+			BackupBeforeMigration:   cfg.Audit.BackupBeforeMigration,
+			MaxMigrationBackups:     cfg.Audit.MaxMigrationBackups,
+			SkipDisabledPurgeOnOpen: skipDisabledPurgeOnOpen,
+			RawCapture: audit.RawCaptureConfig{
+				Enabled:       cfg.Audit.RawCapture.Enabled,
+				OnlyBlocked:   cfg.Audit.RawCapture.OnlyBlocked,
+				MaxBytes:      cfg.Audit.RawCapture.MaxBytes,
+				TTL:           time.Duration(cfg.Audit.RawCapture.TTLHours) * time.Hour,
+				RedactSecrets: cfg.Audit.RawCapture.RedactSecrets,
+			},
 			OnError: func(error) {
 				p.log("error", "cyber-abuse-guard audit storage is degraded", map[string]any{
 					"plugin": ID,
@@ -691,8 +730,17 @@ func (p *Plugin) buildRuntime(rawConfig []byte) (*runtimeState, error) {
 				})
 			},
 		})
+		if !cfg.Audit.RawCapture.Enabled && openErr != nil &&
+			(hadAuditArtifacts || errors.Is(openErr, audit.ErrRawCapturePurge)) {
+			if store != nil {
+				_ = store.Close()
+			}
+			return nil, fmt.Errorf("initialize disabled raw-capture privacy gate: %w", openErr)
+		}
 		// Open intentionally returns a usable degraded store on database
-		// failures, so enforcement remains available.
+		// failures, so enforcement remains available. A proven disabled-capture
+		// purge failure is the exception above: publishing that runtime would hide
+		// retained review text while claiming the feature was disabled.
 		state.audit = store
 	}
 	if cfg.SubjectControl.Persistence {
@@ -700,6 +748,20 @@ func (p *Plugin) buildRuntime(rawConfig []byte) (*runtimeState, error) {
 		state.restoreSubjectPersistence(p)
 	}
 	return state, nil
+}
+
+func auditDatabaseArtifactsPresent(path string) (bool, error) {
+	if strings.TrimSpace(path) == "" {
+		return false, nil
+	}
+	for _, candidate := range []string{path, path + "-wal", path + "-shm"} {
+		if _, err := os.Lstat(candidate); err == nil {
+			return true, nil
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return false, err
+		}
+	}
+	return false, nil
 }
 
 func subjectRuntimeConfig(cfg config.Config) subject.Config {

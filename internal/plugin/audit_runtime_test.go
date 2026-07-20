@@ -1,6 +1,7 @@
 package plugin
 
 import (
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -47,5 +48,14 @@ func TestAuditPathFailureDegradesVisiblyWithoutDisablingEnforcement(t *testing.T
 	}
 	if !found {
 		t.Fatalf("audit degradation was not logged: %#v", logs)
+	}
+
+	response, body := callManagementResponse(t, p, authenticatedManagementRequest(
+		http.MethodGet,
+		managementBasePath+"/raw-captures",
+		nil,
+	))
+	if response.StatusCode != http.StatusServiceUnavailable || bodyErrorCode(body) != "audit_unavailable" {
+		t.Fatalf("degraded disabled-capture response=%+v body=%s", response, body)
 	}
 }

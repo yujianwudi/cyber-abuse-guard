@@ -25,6 +25,7 @@ const (
 	cpaCompatibilityProfileEnv = "CPA_COMPAT_PROFILE"
 	cpaCompatibilityModfileEnv = "CPA_COMPAT_MODFILE"
 	cpaCompatibilityCommitEnv  = "CPA_COMPAT_EXPECTED_COMMIT"
+	cpaCompatibilityOriginEnv  = "CPA_COMPAT_ORIGIN_FILE"
 	cpaPrimaryProfile          = "primary"
 	cpaOfficialOriginURL       = "https://github.com/router-for-me/CLIProxyAPI"
 )
@@ -306,6 +307,24 @@ func prepareLatestCPAModule(t *testing.T) (string, []string, latestResolvedCPAMo
 	if download.Sum != profile.ModuleSum || download.GoModSum != profile.GoModSum {
 		t.Fatalf("downloaded CPA checksums = module %q go.mod %q, want module %q go.mod %q",
 			download.Sum, download.GoModSum, profile.ModuleSum, profile.GoModSum)
+	}
+	if download.Origin == nil {
+		originFile := strings.TrimSpace(os.Getenv(cpaCompatibilityOriginEnv))
+		if originFile != "" {
+			originData, errReadOrigin := os.ReadFile(originFile)
+			if errReadOrigin != nil {
+				t.Fatalf("read isolated CPA Origin metadata: %v", errReadOrigin)
+			}
+			var isolated latestDownloadedCPAModule
+			if errUnmarshal := json.Unmarshal(originData, &isolated); errUnmarshal != nil {
+				t.Fatalf("decode isolated CPA Origin metadata: %v", errUnmarshal)
+			}
+			if isolated.Path != download.Path || isolated.Version != download.Version ||
+				isolated.Sum != download.Sum || isolated.GoModSum != download.GoModSum {
+				t.Fatalf("isolated CPA Origin identity differs from active module download")
+			}
+			download.Origin = isolated.Origin
+		}
 	}
 	if download.Origin == nil {
 		t.Fatal("downloaded CPA module metadata omits Origin")

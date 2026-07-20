@@ -1,8 +1,8 @@
 # Round 6 long-text streaming scanner design
 
 ```text
-current_classifier_policy_version: classifier-policy-v5
-current_classifier_policy_sha256: 0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b
+current_classifier_policy_version: classifier-policy-v6
+current_classifier_policy_sha256: ece497210db938528cb166a34f2ce3013324b792a7eedf276a96fa5d256001d4
 ```
 
 Status: **BLOCKED / PENDING HOST AND INDEPENDENT AUDIT**. This is exact project
@@ -14,8 +14,8 @@ workflow and remain unreleased. See
 [RELEASE_POLICY.md](RELEASE_POLICY.md). Future eligibility is externalized in
 `round6-prerelease-attestation.json` and `formal-release-attestation.json`.
 
-Current classifier identity is `classifier-policy-v5` /
-`0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b`;
+Current classifier identity is `classifier-policy-v6` /
+`ece497210db938528cb166a34f2ce3013324b792a7eedf276a96fa5d256001d4`;
 scanner identity is `streaming-scanner-v1`.
 
 Commit `21ceb57e6b6030e56d7820c9a67a8eecd068c669` passed push and PR CI

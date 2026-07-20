@@ -23,17 +23,20 @@ import (
 )
 
 const (
-	managementBasePath          = "/v0/management/plugins/" + ID
-	maxManagementBody           = 2 << 20
-	maxManagementEnvelope       = 4 << 20
-	maxManagementPathBytes      = 512
-	maxManagementQueryBytes     = 4096
-	maxManagementQueryKeys      = 16
-	maxManagementHeaderBytes    = 32 << 10
-	maxManagementHeaderValues   = 64
-	maxManagementFilterBytes    = 128
-	managementHealthProbePath   = managementBasePath + "/health/probe"
-	managementAuthDocumentation = "CPA v7.2.88 management middleware is authoritative; the plugin additionally rejects callbacks without a management credential header"
+	managementBasePath               = "/v0/management/plugins/" + ID
+	maxManagementBody                = 2 << 20
+	maxManagementEnvelope            = 4 << 20
+	maxManagementPathBytes           = 512
+	maxManagementQueryBytes          = 4096
+	maxManagementQueryKeys           = 16
+	maxManagementHeaderBytes         = 32 << 10
+	maxManagementHeaderValues        = 64
+	maxManagementFilterBytes         = 128
+	defaultManagementRawCaptureLimit = 20
+	maxManagementRawCaptureLimit     = 100
+	maxManagementRawPreviewBytes     = audit.RawCaptureQueryPreviewBudgetBytes
+	managementHealthProbePath        = managementBasePath + "/health/probe"
+	managementAuthDocumentation      = "CPA v7.2.88 management middleware is authoritative; the plugin additionally rejects callbacks without a management credential header"
 )
 
 type managementRoute struct {
@@ -59,6 +62,7 @@ func (p *Plugin) registerManagement(raw []byte) []byte {
 		Routes: []managementRoute{
 			{Method: http.MethodGet, Path: managementBasePath + "/status"},
 			{Method: http.MethodGet, Path: managementBasePath + "/events"},
+			{Method: http.MethodGet, Path: managementBasePath + "/raw-captures"},
 			{Method: http.MethodGet, Path: managementBasePath + "/stats"},
 			{Method: http.MethodPost, Path: managementBasePath + "/test"},
 			{Method: http.MethodPost, Path: managementBasePath + "/subjects/unblock"},
@@ -114,6 +118,11 @@ func (p *Plugin) handleManagement(raw []byte) []byte {
 			return managementError(http.StatusBadRequest, "invalid_request", "events query does not accept a body")
 		}
 		return p.managementEvents(state, request.Query)
+	case request.Method == http.MethodGet && request.Path == managementBasePath+"/raw-captures":
+		if len(request.Body) != 0 {
+			return managementError(http.StatusBadRequest, "invalid_request", "raw capture query does not accept a body")
+		}
+		return p.managementRawCaptures(state, request.Query)
 	case request.Method == http.MethodGet && request.Path == managementBasePath+"/stats":
 		if len(request.Query) != 0 || len(request.Body) != 0 {
 			return managementError(http.StatusBadRequest, "invalid_request", "stats does not accept a query or body")
@@ -288,6 +297,7 @@ func (p *Plugin) managementStatus(state *runtimeState) []byte {
 		"subject_identifier":        identifierStatus,
 		"subject_control":           subjectStatus,
 		"subject_persistence":       persistenceStatus,
+		"raw_capture":               map[string]any{"enabled": false},
 		"management_auth": map[string]any{
 			"verification_authority":           "cpa_host",
 			"plugin_header_presence_guard":     true,
@@ -332,6 +342,15 @@ func (p *Plugin) managementStatus(state *runtimeState) []byte {
 		body["thresholds"] = state.config.Thresholds
 		body["opaque_media_policy"] = state.config.EffectiveOpaqueMediaPolicy()
 		body["opaque_media_policy_explicit"] = state.config.OpaqueMediaPolicy != config.OpaqueMediaPolicyAuto
+		body["raw_capture"] = map[string]any{
+			"enabled":                       state.config.Audit.RawCapture.Enabled,
+			"only_blocked":                  state.config.Audit.RawCapture.OnlyBlocked,
+			"redact_secrets":                state.config.Audit.RawCapture.RedactSecrets,
+			"max_bytes":                     state.config.Audit.RawCapture.MaxBytes,
+			"ttl_hours":                     state.config.Audit.RawCapture.TTLHours,
+			"response_preview_budget_bytes": maxManagementRawPreviewBytes,
+			"query_path":                    managementBasePath + "/raw-captures",
+		}
 	} else {
 		body["enabled"] = false
 		body["subjects"] = 0
@@ -355,6 +374,91 @@ func (p *Plugin) managementEvents(state *runtimeState, values url.Values) []byte
 		return managementError(http.StatusServiceUnavailable, "audit_unavailable", "audit events are temporarily unavailable")
 	}
 	return managementJSONResponse(http.StatusOK, map[string]any{"events": events})
+}
+
+// managementRawCaptures exposes only the separately configured, redacted and
+// truncated previews for blocked requests. CPA's management middleware and
+// the plugin's credential-presence guard protect this route exactly like the
+// existing audit-event routes. When capture is disabled and storage state is
+// known, the response is deliberately empty; an unavailable enabled audit
+// store returns 503 instead. There is no fallback to request bodies or
+// ordinary audit events.
+func (p *Plugin) managementRawCaptures(state *runtimeState, values url.Values) []byte {
+	query, err := rawCaptureQuery(values)
+	if err != nil {
+		return managementError(http.StatusBadRequest, "invalid_query", err.Error())
+	}
+	requestedLimit := query.Limit
+	if requestedLimit <= 0 {
+		requestedLimit = defaultManagementRawCaptureLimit
+	}
+	if !state.config.Audit.RawCapture.Enabled {
+		// audit.enabled=false intentionally leaves any prior database untouched.
+		// When audit is enabled but its database never opened, do not return an
+		// authoritative empty list that could conceal retained captures from an
+		// earlier deployment; expose the degraded storage state instead.
+		if state.config.Audit.Enabled &&
+			(state.audit == nil || state.audit.Status().SchemaVersion == 0) {
+			return managementError(http.StatusServiceUnavailable, "audit_unavailable", "raw request capture purge status is unavailable")
+		}
+		return managementJSONResponse(http.StatusOK, map[string]any{
+			"enabled":                       false,
+			"captures":                      []audit.RawRequestCapture{},
+			"requested_limit":               requestedLimit,
+			"returned_count":                0,
+			"response_truncated":            false,
+			"preview_bytes":                 0,
+			"encoded_preview_bytes":         0,
+			"response_preview_budget_bytes": maxManagementRawPreviewBytes,
+		})
+	}
+	if state.audit == nil {
+		return managementError(http.StatusServiceUnavailable, "audit_unavailable", "raw request captures are temporarily unavailable")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_ = state.audit.Flush(ctx)
+	page, err := state.audit.QueryRawCapturesPage(ctx, query)
+	if err != nil {
+		return managementError(http.StatusServiceUnavailable, "audit_unavailable", "raw request captures are temporarily unavailable")
+	}
+	returned := make([]audit.RawRequestCapture, 0, len(page.Captures))
+	previewBytes := 0
+	encodedPreviewBytes := 0
+	responseTruncated := page.HasMore
+	for _, capture := range page.Captures {
+		encodedBytes := managementEncodedJSONStringBytes(capture.RawPreview)
+		if encodedPreviewBytes+encodedBytes > maxManagementRawPreviewBytes {
+			responseTruncated = true
+			break
+		}
+		returned = append(returned, capture)
+		previewBytes += len(capture.RawPreview)
+		encodedPreviewBytes += encodedBytes
+	}
+	if len(returned) < len(page.Captures) {
+		responseTruncated = true
+	}
+	return managementJSONResponse(http.StatusOK, map[string]any{
+		"enabled":                       true,
+		"captures":                      returned,
+		"requested_limit":               requestedLimit,
+		"returned_count":                len(returned),
+		"response_truncated":            responseTruncated,
+		"preview_bytes":                 previewBytes,
+		"encoded_preview_bytes":         encodedPreviewBytes,
+		"response_preview_budget_bytes": maxManagementRawPreviewBytes,
+	})
+}
+
+func managementEncodedJSONStringBytes(value string) int {
+	encoded, err := json.Marshal(value)
+	if err != nil || len(encoded) < 2 {
+		// json.Marshal cannot fail for a string. Keep a conservative fallback so
+		// a future encoder change cannot disable the response budget.
+		return len(value) * 6
+	}
+	return len(encoded) - 2
 }
 
 func (p *Plugin) managementStats(state *runtimeState) []byte {
@@ -689,6 +793,41 @@ func auditQuery(values url.Values) (audit.Query, error) {
 	return query, nil
 }
 
+func rawCaptureQuery(values url.Values) (audit.RawCaptureQuery, error) {
+	allowed := map[string]struct{}{
+		"event_id": {}, "request_hash": {}, "limit": {},
+	}
+	for key, entries := range values {
+		if _, ok := allowed[key]; !ok {
+			return audit.RawCaptureQuery{}, errors.New("query contains an unsupported parameter")
+		}
+		if len(entries) != 1 {
+			return audit.RawCaptureQuery{}, errors.New("query parameters must appear exactly once")
+		}
+		if len(entries[0]) > maxManagementFilterBytes {
+			return audit.RawCaptureQuery{}, errors.New("query parameter exceeds the size limit")
+		}
+	}
+	query := audit.RawCaptureQuery{
+		EventID:     values.Get("event_id"),
+		RequestHash: values.Get("request_hash"),
+	}
+	if query.EventID != "" && !validEventID(query.EventID) {
+		return audit.RawCaptureQuery{}, errors.New("event_id is invalid")
+	}
+	if query.RequestHash != "" && !validRequestHash(query.RequestHash) {
+		return audit.RawCaptureQuery{}, errors.New("request_hash is invalid")
+	}
+	if raw := values.Get("limit"); raw != "" {
+		value, err := strconv.Atoi(raw)
+		if err != nil || value < 1 || value > maxManagementRawCaptureLimit {
+			return audit.RawCaptureQuery{}, fmt.Errorf("limit must be between 1 and %d", maxManagementRawCaptureLimit)
+		}
+		query.Limit = value
+	}
+	return query, nil
+}
+
 func oneOfString(value string, allowed ...string) bool {
 	for _, candidate := range allowed {
 		if value == candidate {
@@ -719,6 +858,32 @@ func validSubjectHash(value string) bool {
 	}
 	_, err := hex.DecodeString(strings.TrimPrefix(value, prefix))
 	return err == nil
+}
+
+func validRequestHash(value string) bool {
+	const prefix = "sha256:"
+	if !strings.HasPrefix(value, prefix) || len(value) != len(prefix)+64 {
+		return false
+	}
+	_, err := hex.DecodeString(strings.TrimPrefix(value, prefix))
+	return err == nil
+}
+
+func validEventID(value string) bool {
+	if len(value) != 36 || value[8] != '-' || value[13] != '-' || value[18] != '-' || value[23] != '-' {
+		return false
+	}
+	for index := 0; index < len(value); index++ {
+		if index == 8 || index == 13 || index == 18 || index == 23 {
+			continue
+		}
+		character := value[index]
+		if (character >= '0' && character <= '9') || (character >= 'a' && character <= 'f') {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func managementJSONResponse(status int, value any) []byte {

@@ -1,8 +1,8 @@
 # Docker Installation, Staged Rollout, Rollback, and Cleanup
 
 ```text
-current_classifier_policy_version: classifier-policy-v5
-current_classifier_policy_sha256: 0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b
+current_classifier_policy_version: classifier-policy-v6
+current_classifier_policy_sha256: ece497210db938528cb166a34f2ce3013324b792a7eedf276a96fa5d256001d4
 ```
 
 ## Release warning
@@ -59,7 +59,7 @@ Before any isolated Host validation, the owner must independently enforce:
   controls before the request reaches the Router.
 
 The Guard cannot attest to any of those pre-CPA files or configuration values.
-Prompt-keyword scanning is not a substitute. Embedded ruleset `1.0.7` also
+Prompt-keyword scanning is not a substitute. Embedded ruleset `1.0.8` also
 identifies only YAML Cyber Abuse assets; it does not include the Go
 `META-OVERRIDE-001` overlay or the complete classifier/extractor policy.
 
@@ -150,9 +150,9 @@ Inspect `$work/audit/build-metadata.json` and require:
 - `dirty` is `false`;
 - `commit` is a full 40-character release commit;
 - `ruleset_version` and `ruleset_sha256` match the standalone ruleset manifest;
-- `classifier_policy_version` equals `classifier-policy-v5` and
+- `classifier_policy_version` equals `classifier-policy-v6` and
   `classifier_policy_sha256` equals
-`0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b`;
+`ece497210db938528cb166a34f2ce3013324b792a7eedf276a96fa5d256001d4`;
 - `$work/release-evidence-final.md` identifies the same commit, annotated tag,
   rules snapshot, source archive, command-log digest, and artifact hashes.
 - `$work/round6-prerelease-attestation.json` schema v2 binds the exact Host-tested

@@ -486,6 +486,7 @@ func TestManagementRegistrationUsesOnlyExactAuthenticatedRoutes(t *testing.T) {
 	want := [][2]string{
 		{http.MethodGet, managementBasePath + "/status"},
 		{http.MethodGet, managementBasePath + "/events"},
+		{http.MethodGet, managementBasePath + "/raw-captures"},
 		{http.MethodGet, managementBasePath + "/stats"},
 		{http.MethodPost, managementBasePath + "/test"},
 		{http.MethodPost, managementBasePath + "/subjects/unblock"},

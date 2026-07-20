@@ -1,14 +1,49 @@
 # Changelog
 
 ```text
-current_classifier_policy_version: classifier-policy-v5
-current_classifier_policy_sha256: 0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b
+current_classifier_policy_version: classifier-policy-v6
+current_classifier_policy_sha256: ece497210db938528cb166a34f2ce3013324b792a7eedf276a96fa5d256001d4
 ```
+
+## 0.16 — 2026-07-21
+
+Development target: **PLANNED LOCAL RC CORE PACKAGE / NOT A GITHUB RELEASE**. The
+source version is `0.16`, the intended formal tag is `v0.16` (never
+`v0.16.0`), and the current local artifact target is `v0.16-rc.1`.
+
+### v0.16-rc.1 local Linux amd64 core package
+
+- Add an explicit, default-off `audit.raw_capture` review path that persists
+  only redacted and bounded previews for final `block` or subject `cooldown`
+  decisions. Allowed, observe, and audit-only requests are never captured;
+  request headers are never stored.
+- Reduce ordinary-user false positives by constraining weak META score
+  amplification, recognizing defensive risk-control maintenance language, and
+  closing only the narrow refused-attack-then-defensive-maintenance history
+  sequence. Direct execution follow-ups remain blocked.
+- Target Linux amd64 and the pinned CPA v7.2.88 source contract. Windows,
+  macOS, local deployment, and production deployment are outside this package
+  operation.
+- When produced, treat this local RC package only as a handoff artifact. It is not
+  a GitHub Release, GitHub Actions result, formal-release attestation, or new
+  CPA Host validation record. The retained `v0.15-rc.*` workflows and evidence
+  below are historical v0.15 records.
 
 ## 0.15 — 2026-07-18
 
-Release status: **BLOCKED / PENDING HOST AND INDEPENDENT AUDIT**. Exact project
-version is `0.15` and the only formal tag name is `v0.15` (never `v0.15.0`).
+Historical pre-publication status was **BLOCKED / PENDING HOST AND INDEPENDENT
+AUDIT**. Exact project version is `0.15` and the only formal tag name is
+`v0.15` (never `v0.15.0`). That status was superseded by the manual stable
+publication recorded below; it was not converted into independent evidence.
+
+### v0.15 manual stable publication — 2026-07-20
+
+- Publish `v0.15` as non-draft, non-prerelease, latest stable with ten assets.
+- Release Notes disclose that GitHub Actions did not run because of Billing and
+  that the owner built the assets manually after an owner-reported production
+  sandbox pass.
+- No independent Host/audit/evaluation attestation is attached; the manual
+  publication must not be reused as v0.16 evidence.
 
 ### v0.15-rc.4 formal-structure prerelease
 

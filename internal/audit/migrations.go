@@ -15,7 +15,7 @@ import (
 	sqlite3 "github.com/mattn/go-sqlite3"
 )
 
-const currentSchemaVersion = 3
+const currentSchemaVersion = 4
 
 const migrationMetadataSchema = `
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -50,6 +50,28 @@ ALTER TABLE audit_events ADD COLUMN decision TEXT NOT NULL DEFAULT 'legacy_unspe
 ALTER TABLE audit_events ADD COLUMN coverage TEXT NOT NULL DEFAULT 'legacy_unknown';
 ALTER TABLE audit_events ADD COLUMN incomplete_reason TEXT NOT NULL DEFAULT '';
 ALTER TABLE audit_events ADD COLUMN scanner TEXT NOT NULL DEFAULT 'legacy';`
+
+const rawRequestCaptureSchema = `
+CREATE TABLE IF NOT EXISTS raw_request_captures (
+    id             TEXT PRIMARY KEY,
+    event_id       TEXT NOT NULL,
+    timestamp_ns   INTEGER NOT NULL,
+    request_hash   TEXT NOT NULL,
+    subject_hash   TEXT NOT NULL,
+    action         TEXT NOT NULL CHECK (action IN ('block', 'cooldown')),
+    decision       TEXT NOT NULL,
+    truncated      INTEGER NOT NULL CHECK (truncated IN (0, 1)),
+    redacted       INTEGER NOT NULL CHECK (redacted IN (0, 1)),
+    raw_preview    TEXT NOT NULL CHECK (length(CAST(raw_preview AS BLOB)) <= 1048576),
+    raw_sha256     TEXT NOT NULL,
+    FOREIGN KEY (event_id) REFERENCES audit_events(id) ON DELETE CASCADE
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_raw_request_captures_event
+    ON raw_request_captures(event_id);
+CREATE INDEX IF NOT EXISTS idx_raw_request_captures_timestamp
+    ON raw_request_captures(timestamp_ns DESC);
+CREATE INDEX IF NOT EXISTS idx_raw_request_captures_request_timestamp
+    ON raw_request_captures(request_hash, timestamp_ns DESC);`
 
 type rowQueryer interface {
 	QueryRow(query string, args ...any) *sql.Row
@@ -117,6 +139,26 @@ var auditEventIndexContract = []sqliteIndexContract{
 	{name: "idx_audit_events_action_timestamp", columns: []string{"action", "timestamp_ns"}, desc: []bool{false, true}},
 	{name: "idx_audit_events_category_timestamp", columns: []string{"category", "timestamp_ns"}, desc: []bool{false, true}},
 	{name: "idx_audit_events_subject_timestamp", columns: []string{"subject_hash", "timestamp_ns"}, desc: []bool{false, true}},
+}
+
+var rawRequestCaptureColumnContract = []sqliteColumnContract{
+	{name: "id", typeName: "TEXT", primaryKey: 1},
+	{name: "event_id", typeName: "TEXT", notNull: true},
+	{name: "timestamp_ns", typeName: "INTEGER", notNull: true},
+	{name: "request_hash", typeName: "TEXT", notNull: true},
+	{name: "subject_hash", typeName: "TEXT", notNull: true},
+	{name: "action", typeName: "TEXT", notNull: true},
+	{name: "decision", typeName: "TEXT", notNull: true},
+	{name: "truncated", typeName: "INTEGER", notNull: true},
+	{name: "redacted", typeName: "INTEGER", notNull: true},
+	{name: "raw_preview", typeName: "TEXT", notNull: true},
+	{name: "raw_sha256", typeName: "TEXT", notNull: true},
+}
+
+var rawRequestCaptureIndexContract = []sqliteIndexContract{
+	{name: "idx_raw_request_captures_event", columns: []string{"event_id"}, desc: []bool{false}},
+	{name: "idx_raw_request_captures_timestamp", columns: []string{"timestamp_ns"}, desc: []bool{true}},
+	{name: "idx_raw_request_captures_request_timestamp", columns: []string{"request_hash", "timestamp_ns"}, desc: []bool{false, true}},
 }
 
 func migrateDatabase(db *sql.DB, cfg Config, databasePath string) error {
@@ -194,6 +236,11 @@ ON CONFLICT(singleton) DO UPDATE SET version=excluded.version, updated_at_ns=exc
 			description = "add Round6 decision, coverage, incomplete reason, and scanner identity"
 			if _, err := locked.Exec(round6AuditEventColumns); err != nil {
 				return fmt.Errorf("audit: apply schema migration 3: %w", err)
+			}
+		case 4:
+			description = "add bounded redacted block-only raw request captures"
+			if _, err := locked.Exec(rawRequestCaptureSchema); err != nil {
+				return fmt.Errorf("audit: apply schema migration 4: %w", err)
 			}
 		default:
 			return fmt.Errorf("audit: missing schema migration %d", next)
@@ -319,6 +366,25 @@ func validateSchemaContract(db sqliteQueryer, version int) error {
 			name: "idx_subject_state_updated_at", columns: []string{"updated_at_ns"}, desc: []bool{true},
 		}); err != nil {
 			return err
+		}
+	}
+	if version >= 4 {
+		if err := requireSQLiteTable(db, "raw_request_captures", rawRequestCaptureColumnContract); err != nil {
+			return err
+		}
+		if err := requireSQLiteDDLFragments(db, "raw_request_captures",
+			"check(actionin('block','cooldown'))",
+			"check(truncatedin(0,1))",
+			"check(redactedin(0,1))",
+			"check(length(cast(raw_previewasblob))<=1048576)",
+			"foreignkey(event_id)referencesaudit_events(id)ondeletecascade",
+		); err != nil {
+			return err
+		}
+		for _, index := range rawRequestCaptureIndexContract {
+			if err := requireSQLiteIndex(db, index); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

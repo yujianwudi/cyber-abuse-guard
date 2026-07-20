@@ -19,10 +19,11 @@ import (
 )
 
 var (
-	ErrClosed       = errors.New("audit: store is closed")
-	ErrQueueFull    = errors.New("audit: async queue is full")
-	ErrInvalidEvent = errors.New("audit: invalid event")
-	ErrUnavailable  = errors.New("audit: database is unavailable")
+	ErrClosed          = errors.New("audit: store is closed")
+	ErrQueueFull       = errors.New("audit: async queue is full")
+	ErrInvalidEvent    = errors.New("audit: invalid event")
+	ErrUnavailable     = errors.New("audit: database is unavailable")
+	ErrRawCapturePurge = errors.New("audit: raw request capture purge failed")
 )
 
 const schema = `
@@ -66,8 +67,14 @@ type Config struct {
 	CleanupInterval       time.Duration
 	BackupBeforeMigration bool
 	MaxMigrationBackups   int
-	Now                   func() time.Time
-	OnError               func(error)
+	RawCapture            RawCaptureConfig
+	// SkipDisabledPurgeOnOpen is an internal lifecycle coordination switch.
+	// Direct callers and initial plugin registration leave it false. A hot
+	// reconfiguration defers destructive purge until every migration succeeds
+	// and the plugin holds its exclusive runtime swap lock.
+	SkipDisabledPurgeOnOpen bool
+	Now                     func() time.Time
+	OnError                 func(error)
 }
 
 // Query is a parameterized event filter. An empty Query selects recent events;
@@ -113,8 +120,9 @@ type Stats struct {
 }
 
 type workItem struct {
-	event   *Event
-	barrier chan struct{}
+	event      *Event
+	rawCapture *RawRequestCapture
+	barrier    chan struct{}
 }
 
 // Store owns SQLite and a bounded nonblocking writer. Database failures affect
@@ -175,6 +183,15 @@ func Open(cfg Config) (*Store, error) {
 	} else {
 		store.db = db
 		store.schemaVersion.Store(currentSchemaVersion)
+		// A disabled capture setting is also a deletion instruction. Do an
+		// initial purge before the writer starts; plugin hot
+		// reconfiguration repeats it after the previous Store has fully closed so
+		// an older queue cannot repopulate the table after this point.
+		if !cfg.RawCapture.Enabled && !cfg.SkipDisabledPurgeOnOpen {
+			if _, purgeErr := store.purgeRawCaptures(context.Background()); purgeErr != nil {
+				err = fmt.Errorf("%w: %w", ErrRawCapturePurge, purgeErr)
+			}
+		}
 	}
 	store.wg.Add(1)
 	go store.run()
@@ -206,6 +223,18 @@ func withDefaults(cfg Config) Config {
 	if cfg.MaxMigrationBackups <= 0 {
 		cfg.MaxMigrationBackups = 3
 	}
+	if cfg.RawCapture.MaxBytes <= 0 {
+		cfg.RawCapture.MaxBytes = defaultRawCaptureBytes
+	} else if cfg.RawCapture.MaxBytes > maxRawCaptureBytes {
+		cfg.RawCapture.MaxBytes = maxRawCaptureBytes
+	}
+	if cfg.RawCapture.TTL <= 0 {
+		cfg.RawCapture.TTL = 72 * time.Hour
+	}
+	// These switches are immutable safety invariants for direct audit package
+	// callers as well as validated YAML callers.
+	cfg.RawCapture.OnlyBlocked = true
+	cfg.RawCapture.RedactSecrets = true
 	if cfg.Now == nil {
 		cfg.Now = time.Now
 	}
@@ -229,6 +258,11 @@ func openDatabase(cfg Config) (*sql.DB, error) {
 	parameters.Set("_journal_mode", "WAL")
 	parameters.Set("_synchronous", "NORMAL")
 	parameters.Set("_foreign_keys", "on")
+	// A database can still contain captures written while the feature was
+	// enabled under an earlier configuration. Keep secure deletion active even
+	// after capture is disabled so TTL, retention, cascade, and manual deletes
+	// do not silently fall back to leaving sensitive cells in freelist pages.
+	parameters.Set("_secure_delete", "true")
 	dsn := (&url.URL{Scheme: "file", Path: filepath.ToSlash(absPath), RawQuery: parameters.Encode()}).String()
 	db, err := sql.Open("sqlite3", dsn)
 	if err != nil {
@@ -247,6 +281,13 @@ func openDatabase(cfg Config) (*sql.DB, error) {
 	if err := migrateDatabase(db, cfg, absPath); err != nil {
 		db.Close()
 		return nil, err
+	}
+	if cfg.RawCapture.Enabled {
+		cutoff := cfg.Now().UTC().Add(-cfg.RawCapture.TTL).UnixNano()
+		if _, err := db.Exec("DELETE FROM raw_request_captures WHERE timestamp_ns < ?", cutoff); err != nil {
+			db.Close()
+			return nil, fmt.Errorf("audit: startup raw capture TTL cleanup: %w", err)
+		}
 	}
 	if err := secureSQLiteFiles(absPath); err != nil {
 		db.Close()
@@ -345,12 +386,32 @@ func (s *Store) handle(item workItem) {
 		close(item.barrier)
 		return
 	}
-	if item.event == nil {
+	if s.db == nil {
+		if item.event != nil || item.rawCapture != nil {
+			s.failed.Add(1)
+			s.degraded.Store(true)
+		}
 		return
 	}
-	if s.db == nil {
-		s.failed.Add(1)
-		s.degraded.Store(true)
+	if item.event == nil {
+		if item.rawCapture == nil {
+			return
+		}
+		truncated := 0
+		if item.rawCapture.Truncated {
+			truncated = 1
+		}
+		redacted := 0
+		if item.rawCapture.Redacted {
+			redacted = 1
+		}
+		_, err := s.db.ExecContext(s.workerCtx, insertRawCaptureSQL,
+			item.rawCapture.ID, item.rawCapture.EventID, item.rawCapture.Timestamp.UnixNano(),
+			item.rawCapture.RequestHash, item.rawCapture.SubjectHash, item.rawCapture.Action,
+			item.rawCapture.Decision, truncated, redacted, item.rawCapture.RawPreview,
+			item.rawCapture.RawSHA256,
+		)
+		s.finishWrite(err)
 		return
 	}
 	rules, err := json.Marshal(item.event.RuleIDs)
@@ -368,6 +429,10 @@ func (s *Store) handle(item workItem) {
 			item.event.IncompleteReason, item.event.Scanner, item.event.LatencyUS,
 		)
 	}
+	s.finishWrite(err)
+}
+
+func (s *Store) finishWrite(err error) {
 	if err != nil {
 		s.failed.Add(1)
 		s.degraded.Store(true)
@@ -497,7 +562,7 @@ func (s *Store) dropQueued() {
 	for {
 		select {
 		case item := <-s.queue:
-			if item.event != nil {
+			if item.event != nil || item.rawCapture != nil {
 				s.dropped.Add(1)
 			}
 			if item.barrier != nil {

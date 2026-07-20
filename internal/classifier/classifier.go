@@ -1334,16 +1334,23 @@ func (c *Classifier) classifyWithPolicyCaptured(parts []string, mode Mode, thres
 		}
 		if bestOrdinaryIndex >= 0 {
 			winner := &candidates[bestOrdinaryIndex]
-			metaAttachedToOrdinary = true
-			if winner.score < meta.score {
-				winner.score = meta.score
+			mayAmplify := winner.score >= thresholds.BalancedBlock || ordinaryEvidenceSupportsMetaAmplification(winner.evidence)
+			// Persistent instruction injection is independently blockable. If the
+			// ordinary candidate is only a weak incidental match, leave the META
+			// assessment unattached so the standalone control-plane decision below
+			// retains its category-free hard-block semantics.
+			if !meta.controlPlaneBlock || mayAmplify {
+				metaAttachedToOrdinary = true
+				if mayAmplify && winner.score < meta.score {
+					winner.score = meta.score
+				}
+				if winner.ruleID != "" {
+					winner.ruleIDs = append(winner.ruleIDs, winner.ruleID)
+					winner.ruleID = ""
+				}
+				winner.ruleIDs = append(winner.ruleIDs, metaOverrideRuleID)
+				winner.evidence = append(winner.evidence, meta.evidence...)
 			}
-			if winner.ruleID != "" {
-				winner.ruleIDs = append(winner.ruleIDs, winner.ruleID)
-				winner.ruleID = ""
-			}
-			winner.ruleIDs = append(winner.ruleIDs, metaOverrideRuleID)
-			winner.evidence = append(winner.evidence, meta.evidence...)
 		}
 	}
 	// A control-plane decision must not disappear merely because unrelated
@@ -1935,6 +1942,25 @@ func appendCandidateRuleIDs(destination []string, ruleID string, ruleIDs []strin
 	return append(destination, ruleIDs...)
 }
 
+// ordinaryEvidenceSupportsMetaAmplification requires a concrete delivery or
+// execution signal plus an independent risk axis. META language may annotate a
+// weaker ordinary finding, but a lone object/core or a single qualifier must
+// not promote an audit-only candidate into a balanced or hard block.
+func ordinaryEvidenceSupportsMetaAmplification(evidence []Evidence) bool {
+	operational := false
+	riskAxis := false
+	for _, item := range evidence {
+		switch item.Kind {
+		case "operational", "action":
+			// Semantic profiles call the operational/delivery dimension "action".
+			operational = true
+		case "target", "evasion", "scale":
+			riskAxis = true
+		}
+	}
+	return operational && riskAxis
+}
+
 func isCredentialObjectQualifiedFallback(rule compiledRule, signals []bool) bool {
 	return len(signals) > 0 && rule.category == rules.CategoryCredentialTheft &&
 		!signals[rule.intent] && signals[rule.object] &&
@@ -1944,12 +1970,14 @@ func isCredentialObjectQualifiedFallback(rule compiledRule, signals []bool) bool
 }
 
 type streamingRiskAssessment struct {
-	ordinaryScore int
-	hasOrdinary   bool
-	meta          metaOverrideAssessment
+	ordinaryScore          int
+	hasOrdinary            bool
+	qualifiedOrdinaryScore int
+	hasQualifiedOrdinary   bool
+	meta                   metaOverrideAssessment
 }
 
-func (assessment *streamingRiskAssessment) considerOrdinary(score int) {
+func (assessment *streamingRiskAssessment) considerOrdinary(score int, qualified bool) {
 	if assessment == nil {
 		return
 	}
@@ -1957,6 +1985,10 @@ func (assessment *streamingRiskAssessment) considerOrdinary(score int) {
 	if !assessment.hasOrdinary || score > assessment.ordinaryScore {
 		assessment.ordinaryScore = score
 		assessment.hasOrdinary = true
+	}
+	if qualified && (!assessment.hasQualifiedOrdinary || score > assessment.qualifiedOrdinaryScore) {
+		assessment.qualifiedOrdinaryScore = score
+		assessment.hasQualifiedOrdinary = true
 	}
 }
 
@@ -1967,12 +1999,30 @@ func (assessment *streamingRiskAssessment) considerOrdinary(score int) {
 func (assessment streamingRiskAssessment) blocks(mode Mode, thresholds Thresholds) bool {
 	thresholds = validThresholdsOrDefault(thresholds)
 	if assessment.hasOrdinary {
-		score := assessment.ordinaryScore
-		if score >= AuditThreshold && assessment.meta.score > score {
-			score = assessment.meta.score
-		}
-		if actionFor(mode, clampScore(score), thresholds) == ActionBlock {
+		if actionFor(mode, clampScore(assessment.ordinaryScore), thresholds) == ActionBlock {
 			return true
+		}
+	}
+	if assessment.meta.score >= AuditThreshold {
+		amplifiableScore := 0
+		hasAmplifiableOrdinary := false
+		if assessment.hasOrdinary && assessment.ordinaryScore >= thresholds.BalancedBlock {
+			amplifiableScore = assessment.ordinaryScore
+			hasAmplifiableOrdinary = true
+		}
+		if assessment.hasQualifiedOrdinary && assessment.qualifiedOrdinaryScore >= AuditThreshold &&
+			(!hasAmplifiableOrdinary || assessment.qualifiedOrdinaryScore > amplifiableScore) {
+			amplifiableScore = assessment.qualifiedOrdinaryScore
+			hasAmplifiableOrdinary = true
+		}
+		if hasAmplifiableOrdinary {
+			score := amplifiableScore
+			if assessment.meta.score > score {
+				score = assessment.meta.score
+			}
+			if actionFor(mode, clampScore(score), thresholds) == ActionBlock {
+				return true
+			}
 		}
 	}
 	if assessment.meta.score < AuditThreshold {
@@ -2036,7 +2086,7 @@ func (c *Classifier) streamingRiskPotential(facts classificationSignalFacts, pol
 		if qualifiers > 0 && rule.hardFloor > score {
 			score = rule.hardFloor
 		}
-		assessment.considerOrdinary(score)
+		assessment.considerOrdinary(score, operational && qualifiers >= 2)
 	}
 
 	if signalMatched(signals, c.outcomeRequest) {
@@ -2068,7 +2118,8 @@ func (c *Classifier) streamingRiskPotential(facts classificationSignalFacts, pol
 			if objectRule.authorizationProtected && policy.HardBlockEvenIfAuthorized.protects(category) && score < HardThreshold {
 				score = HardThreshold
 			}
-			assessment.considerOrdinary(score)
+			assessment.considerOrdinary(score, providers.hasOperational &&
+				(providers.target >= 0 || providers.evasion >= 0 || providers.scale >= 0))
 		}
 	}
 
@@ -2087,7 +2138,7 @@ func (c *Classifier) streamingRiskPotential(facts classificationSignalFacts, pol
 			text:    "\ue000",
 		}, semanticPolicy)
 		if semanticAssessment.score > 0 {
-			assessment.considerOrdinary(semanticAssessment.score)
+			assessment.considerOrdinary(semanticAssessment.score, ordinaryEvidenceSupportsMetaAmplification(semanticAssessment.evidence))
 		}
 	}
 	assessment.meta = c.assessMetaOverride([][]bool{signals}, "\ue000", ContextFlags{}, false)
@@ -2138,7 +2189,7 @@ func (c *Classifier) streamingRiskPotential(facts classificationSignalFacts, pol
 				if qualifiers >= 2 {
 					score += 5
 				}
-				assessment.considerOrdinary(score)
+				assessment.considerOrdinary(score, true)
 			}
 		}
 	}
@@ -2183,7 +2234,7 @@ func (c *Classifier) streamingImplementationFollowUpPotential(previous, current 
 		if rule.hardFloor > score {
 			score = rule.hardFloor
 		}
-		assessment.considerOrdinary(score)
+		assessment.considerOrdinary(score, qualifiers >= 2)
 	}
 	return assessment
 }

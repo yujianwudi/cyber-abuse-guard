@@ -1,8 +1,8 @@
 # Round 6 known limitations and release blockers
 
 ```text
-current_classifier_policy_version: classifier-policy-v5
-current_classifier_policy_sha256: 0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b
+current_classifier_policy_version: classifier-policy-v6
+current_classifier_policy_sha256: ece497210db938528cb166a34f2ce3013324b792a7eedf276a96fa5d256001d4
 ```
 
 Status: **BLOCKED / PENDING HOST AND INDEPENDENT AUDIT**; a candidate-bound
@@ -16,8 +16,8 @@ production approval. Windows and macOS validation is outside this round. See
 [RELEASE_POLICY.md](RELEASE_POLICY.md). External eligibility is recorded only in
 `round6-prerelease-attestation.json` and `formal-release-attestation.json`.
 
-Current classifier identity is `classifier-policy-v5` /
-`0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b`.
+Current classifier identity is `classifier-policy-v6` /
+`ece497210db938528cb166a34f2ce3013324b792a7eedf276a96fa5d256001d4`.
 
 ## Release blockers
 
@@ -70,7 +70,11 @@ Current classifier identity is `classifier-policy-v5` /
 - Model-visible text above 8 MiB is incomplete: balanced allows with audit; strict blocks.
 - Opaque image/audio/video/document content is not decoded or fetched. Only surrounding model-visible text is classified.
 - Unknown multipart schema, ambiguous roles, unsupported encodings, and unavailable full RPC bodies are incomplete rather than guessed.
-- Audit and status contain fixed enums, counters, digests, and bounded timing only; no prompt windows or offsets are persisted.
+- Ordinary audit and status contain fixed enums, counters, digests, and bounded
+  timing only. The later default-off `audit.raw_capture` operator feature is a
+  documented exception that stores mandatory-redacted, bounded previews only
+  for final blocking decisions (`block`, including subject cooldown); see
+  [Blocked-request review capture](RAW_CAPTURE.md).
 - Dense encoded derived views beyond 128 KiB of encoded source or the 64 KiB
   aggregate retained decoded-text budget remain incomplete. Long plain text is
   streamed, but oversized derived views are not reported as fully covered.

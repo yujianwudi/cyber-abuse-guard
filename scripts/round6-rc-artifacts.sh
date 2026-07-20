@@ -169,6 +169,7 @@ create_rc_audit_bundle() {
     THIRD_PARTY_NOTICES.md
     config.example.yaml
     docs/AUDIT_HANDOFF.md
+    docs/RAW_CAPTURE.md
     docs/DESIGN.md
     docs/THREAT_MODEL.md
     docs/INSTALL_DOCKER.md

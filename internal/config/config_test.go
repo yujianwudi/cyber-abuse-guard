@@ -53,6 +53,7 @@ func TestDefaultMatchesSafeStartupContract(t *testing.T) {
 		Enabled: true, DataDir: "", RetentionDays: 30, MaxDBMB: 256,
 		LogRequestHash: true, LogSubjectHash: true, LogRuleIDs: true,
 		LogCategory: true, PersistWrapperOnly: false, LogOriginalText: false, BackupBeforeMigration: true,
+		RawCapture:          RawCapture{Enabled: false, OnlyBlocked: true, MaxBytes: 8192, TTLHours: 72, RedactSecrets: true},
 		MaxMigrationBackups: 3,
 	}) {
 		t.Fatalf("audit defaults = %#v", got.Audit)
@@ -116,6 +117,36 @@ classifier:
 	}
 	if !reflect.DeepEqual(got.TrustedProxy.CIDRs, []string{"10.0.0.0/8"}) {
 		t.Fatalf("CIDRs = %#v", got.TrustedProxy.CIDRs)
+	}
+}
+
+func TestParseRawCaptureExplicitOptIn(t *testing.T) {
+	t.Parallel()
+	cfg, err := Parse([]byte(`audit:
+  raw_capture:
+    enabled: true
+    only_blocked: true
+    max_bytes: 4096
+    ttl_hours: 24
+    redact_secrets: true
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Audit.RawCapture != (RawCapture{
+		Enabled: true, OnlyBlocked: true, MaxBytes: 4096, TTLHours: 24, RedactSecrets: true,
+	}) {
+		t.Fatalf("raw capture config = %#v", cfg.Audit.RawCapture)
+	}
+
+	// A disabled capture has no sensitive rows to retain, so its dormant TTL
+	// does not make an otherwise-valid shorter event retention impossible.
+	cfg, err = Parse([]byte("audit:\n  retention_days: 1\n"))
+	if err != nil {
+		t.Fatalf("disabled raw capture blocked short audit retention: %v", err)
+	}
+	if cfg.Audit.RawCapture.Enabled {
+		t.Fatal("raw capture unexpectedly enabled")
 	}
 }
 
@@ -258,6 +289,16 @@ func TestValidateThresholdsAndRanges(t *testing.T) {
 		"subject score order":         func(c *Config) { c.SubjectControl.ManualBlockScore = c.SubjectControl.CooldownScore },
 		"retention":                   func(c *Config) { c.Audit.RetentionDays = -1 },
 		"original text logging":       func(c *Config) { c.Audit.LogOriginalText = true },
+		"raw capture without audit":   func(c *Config) { c.Audit.RawCapture.Enabled = true; c.Audit.Enabled = false },
+		"raw capture not block-only":  func(c *Config) { c.Audit.RawCapture.OnlyBlocked = false },
+		"raw capture without redact":  func(c *Config) { c.Audit.RawCapture.RedactSecrets = false },
+		"raw capture bytes zero":      func(c *Config) { c.Audit.RawCapture.MaxBytes = 0 },
+		"raw capture bytes too large": func(c *Config) { c.Audit.RawCapture.MaxBytes = maxRawCaptureBytes + 1 },
+		"raw capture ttl zero":        func(c *Config) { c.Audit.RawCapture.TTLHours = 0 },
+		"raw capture ttl too long": func(c *Config) {
+			c.Audit.RawCapture.Enabled = true
+			c.Audit.RawCapture.TTLHours = c.Audit.RetentionDays*24 + 1
+		},
 		"migration backups":           func(c *Config) { c.Audit.MaxMigrationBackups = 11 },
 		"backup count zero":           func(c *Config) { c.Audit.BackupBeforeMigration = true; c.Audit.MaxMigrationBackups = 0 },
 		"persistence without subject": func(c *Config) { c.SubjectControl.Persistence = true; c.SubjectControl.Enabled = false },

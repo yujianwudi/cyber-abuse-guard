@@ -823,7 +823,7 @@ CANDIDATE_SCRIPT_SHA256 = {
     "round6-candidate-artifacts.sh": "3f45700378adc9fe2f4d5194fa8466020f54b8e3b05f8df634f89e4341515676",
     "release-candidate-contract-test.sh": "61ebbe72f0062c3f5b0ccfc7df4f0ab3b85594b43561cd1926fe87b602d92a90",
 }
-RC_RELEASE_SCRIPT_SHA256 = "b46c0235c8dc8259f7812ebaf36236bae473ea1abd9fca664e0e87b05b43a7ca"
+RC_RELEASE_SCRIPT_SHA256 = "9212b21356763333215ce74e70c1e4f49992a4cc0f84ca78033797848603f96d"
 ACTIVE_RC_WORKFLOW_SHA256 = "5f44b0d6bc20753ef50a4108257840b8a9b3364214305babdfc4461fcc7c64f6"
 RC_RELEASE_WORKFLOW_SHA256 = "5ff480e2bb84bc33da81cc4e9839e4bca50453fc7e77debc1f24dd5b04362107"
 FORMAL_OPERATION_SCRIPTS = (
@@ -898,8 +898,8 @@ ROUND6_DOC_FIXTURE_WRAPPER_SCRIPT_SHA256 = (
     "2b93b63a007ba959ce41a1cb86af21ba133997e01b3b9fa39effdabbcdeb0322"
 )
 ROUND6_DOC_FIXTURE_DEPENDENCY_SHA256 = {
-    "scripts/release-doc-consistency-test.sh": "ce79679b0d502eb5fc8e576b6344e0886c2d070ece189ad986ceae6ed4d06dec",
-    "scripts/release-doc-consistency.sh": "6538eb981feda55b95b68e35b156a42fcbaddf92da5046069e53a8112f221b2c",
+    "scripts/release-doc-consistency-test.sh": "25fe586d622f08b6f4a130d8f80ebde678a67f61c436a3acc190fcfe331eebc6",
+    "scripts/release-doc-consistency.sh": "6d5caa8f21c5d3913b7a3ce0c8a24018e1c6a118359b1120cbf20fc4a1ec1bd5",
 }
 ROUND6_PRIVACY_FIXTURE_SCRIPT = "scripts/release-evidence-privacy-test.sh"
 ROUND6_PRIVACY_FIXTURE_SCRIPT_SHA256 = (
@@ -916,7 +916,7 @@ CPA_PINNED_MODULE_FILES = (
     ("integration/pluginstorecontract/go.mod", "integration/pluginstorecontract/go.sum"),
 )
 CPA_COMPAT_SCRIPT_SHA256 = (
-    "a926338d7552235d3f122897000ec17e323a65547042819e9027b8edeae4a66e"
+    "baa2a3e7f7b3df0b0a5d165b1dcd864ba3310d33249e382fd166644a33951315"
 )
 CPA_COMPAT_FINAL_OUTPUT_CONTRACT = """if [[ "$verify_remote" == 1 ]]; then
   printf 'CPA pinned source/compile compatibility PASS: profile=%s %s@%s\\n' \\

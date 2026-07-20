@@ -398,6 +398,14 @@ type roleClassificationBatch struct {
 	charged bool
 }
 
+type refusedHistoryClosureState uint8
+
+const (
+	refusedHistoryClosureNone refusedHistoryClosureState = iota
+	refusedHistoryClosureUserBlock
+	refusedHistoryClosureAssistantRefused
+)
+
 // ScanSession incrementally classifies one request. It retains at most one
 // configured window plus fixed field summaries and never stores the full
 // request. AddSegment implements extract.ChunkSink.
@@ -441,6 +449,9 @@ type ScanSession struct {
 	previousQuotedReferent        Result
 	hasPreviousQuotedReferent     bool
 	previousQuotedReferentTrusted bool
+	refusedHistoryState           refusedHistoryClosureState
+	refusedHistoryBestBefore      Result
+	refusedHistoryHadBestBefore   bool
 
 	aborted  bool
 	finished bool
@@ -696,6 +707,15 @@ func (s *ScanSession) finishField(field *streamingField) {
 			return
 		}
 	}
+	// Preserve the established "older abuse never ages out" behavior unless
+	// the immediately preceding trusted-user block was closed by a clear
+	// assistant refusal and this exact complete user field is a narrow request
+	// to improve the guard or reduce false positives. The rollback snapshot was
+	// taken before the closed field, so any independent older finding survives.
+	s.maybeApplyRefusedHistoryMaintenance(field)
+	bestBeforeField := s.best
+	hadBestBeforeField := s.hasBest
+	s.maybeArmRefusedHistoryClosure(field)
 	if field.hasBest {
 		segment := extract.Segment{
 			Role: field.role, Provenance: field.provenance, UserAttribution: field.userAttribution,
@@ -777,8 +797,73 @@ func (s *ScanSession) finishField(field *streamingField) {
 	}
 	s.considerAdjacent(s.previous, summary)
 	s.considerRoleSummary(summary, &field.riskFacts)
+	s.rememberLastTrustedUserBlock(field, bestBeforeField, hadBestBeforeField)
 	s.clearPrevious()
 	s.previous = summary
+}
+
+func (s *ScanSession) maybeApplyRefusedHistoryMaintenance(field *streamingField) {
+	if s == nil || s.refusedHistoryState != refusedHistoryClosureAssistantRefused {
+		return
+	}
+	bestBefore := s.refusedHistoryBestBefore
+	hadBestBefore := s.refusedHistoryHadBestBefore
+	s.clearPendingRefusedHistory()
+	text, complete := completeStreamingFieldText(field)
+	if !complete || field.role != extract.RoleUser || field.provenance != extract.ProvenanceContent ||
+		field.userAttribution != extract.UserAttributionTrusted || !field.hasBest ||
+		!safeHistoricalMaintenanceCandidate(field.best) ||
+		!s.classifier.isNarrowSafetyMaintenanceRequest(text) {
+		return
+	}
+	s.best = bestBefore
+	s.hasBest = hadBestBefore
+	s.clearUserCompositionState()
+	s.clearPreviousUserRisk()
+}
+
+func (s *ScanSession) maybeArmRefusedHistoryClosure(field *streamingField) {
+	if s == nil || s.refusedHistoryState != refusedHistoryClosureUserBlock {
+		return
+	}
+	if field == nil || field.role != extract.RoleAssistant || field.provenance != extract.ProvenanceContent {
+		s.clearPendingRefusedHistory()
+		return
+	}
+	text, complete := completeStreamingFieldText(field)
+	if !complete || !isClearNonUserSafetyContent(extract.RoleAssistant, text) {
+		s.clearPendingRefusedHistory()
+		return
+	}
+	s.refusedHistoryState = refusedHistoryClosureAssistantRefused
+}
+
+func (s *ScanSession) rememberLastTrustedUserBlock(field *streamingField, bestBefore Result, hadBestBefore bool) {
+	if s == nil || field == nil || field.role != extract.RoleUser ||
+		field.provenance != extract.ProvenanceContent ||
+		field.userAttribution != extract.UserAttributionTrusted || !field.hasBest ||
+		field.best.Truncated || field.best.Action != ActionBlock {
+		return
+	}
+	s.refusedHistoryState = refusedHistoryClosureUserBlock
+	s.refusedHistoryBestBefore = bestBefore
+	s.refusedHistoryHadBestBefore = hadBestBefore
+}
+
+func (s *ScanSession) clearPendingRefusedHistory() {
+	if s == nil {
+		return
+	}
+	s.refusedHistoryState = refusedHistoryClosureNone
+	s.refusedHistoryBestBefore = Result{}
+	s.refusedHistoryHadBestBefore = false
+}
+
+func completeStreamingFieldText(field *streamingField) (string, bool) {
+	if field == nil || !field.roleComplete || int64(len(field.roleSummary)) != field.totalBytes {
+		return "", false
+	}
+	return string(field.roleSummary), true
 }
 
 func (field *streamingField) captureRoleSummary(text []byte) {
@@ -1503,6 +1588,7 @@ func (s *ScanSession) clearPreviousUserRisk() {
 func (s *ScanSession) clearRoleState() {
 	s.clearUserCompositionState()
 	s.clearPreviousUserRisk()
+	s.clearPendingRefusedHistory()
 	clear(s.isolatedUserRun)
 	s.isolatedUserRun = nil
 	s.isolatedUserRunTrusted = false

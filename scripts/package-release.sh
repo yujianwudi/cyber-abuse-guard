@@ -41,6 +41,7 @@ for required_file in \
   "$root/config.example.yaml" \
   "$root/docs/DESIGN.md" \
   "$root/docs/AUDIT_HANDOFF.md" \
+  "$root/docs/RAW_CAPTURE.md" \
   "$root/docs/THREAT_MODEL.md" \
   "$root/docs/INSTALL_DOCKER.md" \
   "$root/docs/LIMITATIONS.md" \
@@ -81,7 +82,8 @@ install -m 0644 "$root/README.md" "$root/README_CN.md" "$root/LICENSE" \
   "$root/SECURITY.md" \
   "$root/CHANGELOG.md" "$root/THIRD_PARTY_NOTICES.md" \
   "$root/config.example.yaml" "$bundle_stage/"
-install -m 0644 "$root/docs/AUDIT_HANDOFF.md" "$root/docs/DESIGN.md" "$root/docs/THREAT_MODEL.md" \
+install -m 0644 "$root/docs/AUDIT_HANDOFF.md" "$root/docs/RAW_CAPTURE.md" \
+  "$root/docs/DESIGN.md" "$root/docs/THREAT_MODEL.md" \
   "$root/docs/INSTALL_DOCKER.md" "$root/docs/LIMITATIONS.md" \
   "$root/docs/README.md" "$root/docs/RELEASE_POLICY.md" \
   "$root/docs/ROUND6_CONFIG_MIGRATION.md" \

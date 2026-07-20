@@ -61,9 +61,11 @@ func (c *Classifier) ClassifyUntrustedPartsWithPolicy(parts []string, mode Mode,
 // Provider-native tool payloads are always scanned independently, even when an
 // assistant emitted them. Clear assistant refusals and system safety policies
 // are not attributed as user intent. Every other eligible segment is classified
-// independently so older explicit abuse can never be hidden by appending benign
-// history. Unknown roles or provenance use the legacy all-parts classifier as a
-// conservative fallback.
+// independently so older explicit abuse cannot be hidden by appended benign
+// history. The sole exception is an immediately refused trusted-user attack
+// followed by a narrow trusted safety-maintenance request; execution follow-ups
+// reactivate the established block. Unknown roles or provenance use the legacy
+// all-parts classifier as a conservative fallback.
 func (c *Classifier) ClassifySegmentsWithPolicy(segments []extract.Segment, mode Mode, thresholds Thresholds, policy Policy) Result {
 	if len(segments) > maxRoleClassifierSegments {
 		return c.classifyStreamingSegmentsCompat(segments, mode, thresholds, policy)
@@ -100,6 +102,8 @@ func (c *Classifier) ClassifySegmentsWithPolicy(segments []extract.Segment, mode
 		attachBehaviorGraph(&best, "unknown_role_fallback", "")
 		return best
 	}
+	closedHistoryUser, closedHistoryRefusal, hasClosedHistory :=
+		c.refusedHistoricalSafetyMaintenanceTail(segments, mode, thresholds, policy)
 
 	best := c.ClassifyWithPolicy(nil, mode, thresholds, policy)
 	previousUser := ""
@@ -127,7 +131,14 @@ func (c *Classifier) ClassifySegmentsWithPolicy(segments []extract.Segment, mode
 			best = controlCandidate
 		}
 	}
-	for _, segment := range segments {
+	for index, segment := range segments {
+		if hasClosedHistory && index == closedHistoryUser {
+			// This exact trusted-user block is the referent of the immediately
+			// following clear assistant refusal. It is ignored only because the
+			// final trusted-user turn is a narrow safety-maintenance request. Other
+			// historical findings remain independently ranked.
+			continue
+		}
 		classifySegment := shouldClassifyRoleSegment(segment)
 		if classifySegment {
 			candidate := c.classifyWithPolicy(
@@ -161,6 +172,25 @@ func (c *Classifier) ClassifySegmentsWithPolicy(segments []extract.Segment, mode
 					best = candidate
 				}
 			}
+		}
+		if hasClosedHistory && index == closedHistoryRefusal {
+			// A proven refusal closes only its immediately preceding attack turn.
+			// Clear the bounded user-composition state so the safe maintenance tail
+			// cannot be recombined with that closed referent. Independently ranked
+			// older findings in best are intentionally untouched.
+			previousUser = ""
+			hasPreviousUser = false
+			previousUserTrusted = false
+			clear(recentUsers)
+			recentUsers = recentUsers[:0]
+			clear(recentUsersTrusted)
+			recentUsersTrusted = recentUsersTrusted[:0]
+			clear(linkedMetaUsers)
+			linkedMetaUsers = linkedMetaUsers[:0]
+			clear(linkedMetaUsersTrusted)
+			linkedMetaUsersTrusted = linkedMetaUsersTrusted[:0]
+			lastMetaUser = ""
+			lastUserControl = ""
 		}
 		if segment.Role != extract.RoleUser || segment.Provenance != extract.ProvenanceContent {
 			continue
@@ -288,6 +318,86 @@ func (c *Classifier) ClassifySegmentsWithPolicy(segments []extract.Segment, mode
 	best.Truncated = best.Truncated || truncated
 	attachBehaviorGraph(&best, "role_aware", "")
 	return best
+}
+
+// refusedHistoricalSafetyMaintenanceTail recognizes one deliberately narrow
+// conversation closure: a trusted-user attack, an immediately adjacent clear
+// assistant refusal, and a final trusted-user request to improve the guard or
+// reduce false positives. The two candidate classifications prevent wording
+// alone from creating safety credit. Any execution/implementation follow-up,
+// untrusted attribution, non-adjacent refusal, or independent older finding
+// keeps the established conservative behavior.
+func (c *Classifier) refusedHistoricalSafetyMaintenanceTail(
+	segments []extract.Segment,
+	mode Mode,
+	thresholds Thresholds,
+	policy Policy,
+) (historicalUser, refusal int, ok bool) {
+	if c == nil || len(segments) < 3 {
+		return 0, 0, false
+	}
+	historicalUser = len(segments) - 3
+	refusal = len(segments) - 2
+	currentIndex := len(segments) - 1
+	historical := segments[historicalUser]
+	assistant := segments[refusal]
+	current := segments[currentIndex]
+	if !trustedUserContentSegment(historical) || !trustedUserContentSegment(current) ||
+		assistant.Role != extract.RoleAssistant || assistant.Provenance != extract.ProvenanceContent ||
+		len(assistant.Text) > streamRoleSummaryBytes || len(current.Text) > streamRoleSummaryBytes ||
+		!isClearNonUserSafetyContent(extract.RoleAssistant, assistant.Text) ||
+		!c.isNarrowSafetyMaintenanceRequest(current.Text) {
+		return 0, 0, false
+	}
+
+	currentResult := c.classifyWithPolicy([]string{current.Text}, mode, thresholds, policy, false)
+	if !safeHistoricalMaintenanceCandidate(currentResult) {
+		return 0, 0, false
+	}
+	historicalResult := c.classifyWithPolicy([]string{historical.Text}, mode, thresholds, policy, false)
+	if historicalResult.Truncated || historicalResult.Action != ActionBlock {
+		return 0, 0, false
+	}
+	return historicalUser, refusal, true
+}
+
+func trustedUserContentSegment(segment extract.Segment) bool {
+	return segment.Role == extract.RoleUser && segment.Provenance == extract.ProvenanceContent &&
+		segment.UserAttribution == extract.UserAttributionTrusted
+}
+
+func safeHistoricalMaintenanceCandidate(result Result) bool {
+	return !result.Truncated && result.Action == ActionAllow && result.Score < AuditThreshold &&
+		result.Category == "" && (result.Behavior == nil || !result.Behavior.BaseBehavior)
+}
+
+func (c *Classifier) isNarrowSafetyMaintenanceRequest(text string) bool {
+	if c == nil || strings.TrimSpace(text) == "" {
+		return false
+	}
+	normalized := strings.ToLower(roleSafetyPunctuation.Replace(text))
+	falsePositiveReview := containsAnyRolePhrase(normalized,
+		"reduce false positives", "lower false positives", "fewer false positives",
+		"reduce false blocks", "reduce false rejections", "review false positives",
+		"降低误伤", "减少误伤", "降低误拦", "减少误拦", "降低误报", "减少误报", "审查误拦", "检查误拦",
+	)
+	guardMaintenance := containsAnyRolePhrase(normalized,
+		"improve the abuse guard", "improving the abuse guard", "improve abuse guard", "improving abuse guard",
+		"tune the abuse guard", "refine the abuse guard", "improve the risk controls", "tune the risk controls",
+		"完善风控", "优化风控", "改进风控", "调整风控", "完善防护", "优化防护", "改进防护",
+	)
+	if !falsePositiveReview && !guardMaintenance {
+		return false
+	}
+	// These are exact reactivation speech acts for the refused referent. They
+	// must win even when the same turn also contains safety-maintenance wording.
+	if containsUnnegatedRuleIntentPrepared(
+		normalized, quotedReviewSpecificContinuationIntents, quotedReviewSpecificContinuationPatterns,
+	) {
+		return false
+	}
+	activeReferent, _, complete := c.hasRawAffirmativeQuotedReviewFollowUp(text)
+	return complete && !activeReferent && !c.hasAffirmativeImplementationRequest(normalized)
 }
 
 func metaOverrideDefensiveUserSegmentRun(segments []extract.Segment) (string, bool) {

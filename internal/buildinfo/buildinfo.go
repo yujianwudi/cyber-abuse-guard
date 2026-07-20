@@ -7,9 +7,9 @@ import "strings"
 const StreamingScannerIdentity = "streaming-scanner-v1"
 
 var (
-	Version        = "0.15"
+	Version        = "0.16"
 	Commit         = "unknown"
-	RulesetVersion = "1.0.7"
+	RulesetVersion = "1.0.8"
 	RulesetSHA256  = "unknown"
 	Dirty          = "true"
 )

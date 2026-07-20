@@ -1,4 +1,4 @@
-version: "1.0.7"
+version: "1.0.8"
 context_file: contexts.yaml
 semantic_file: semantics.yaml
 rule_files:

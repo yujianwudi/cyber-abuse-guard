@@ -2,12 +2,14 @@ package plugin
 
 import (
 	"crypto/rand"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"mime"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
@@ -19,9 +21,21 @@ import (
 	"github.com/yujianwudi/cyber-abuse-guard/internal/subject"
 )
 
+var fallbackEventIDCounter atomic.Uint64
+
 type modelRouteFailure struct {
 	code   string
 	reason string
+}
+
+// persistedAuditDecision is the privacy-safe join key returned only after the
+// corresponding decision event entered the audit store's bounded queue. Raw
+// request capture uses this exact event id and timestamp, so an event enqueue
+// failure cannot create an intentionally orphaned capture.
+type persistedAuditDecision struct {
+	eventID   string
+	timestamp time.Time
+	action    string
 }
 
 // requestHashMemo defers the full-body digest until a route actually needs a
@@ -121,7 +135,11 @@ func (p *Plugin) route(state *runtimeState, request pluginapi.ModelRouteRequest)
 			p.counters.incompleteInspections.Add(1)
 			p.counters.incompleteBlocked.Add(1)
 			p.counters.coverageIncomplete.Add(1)
-			p.recordUnknownSourceBlock(state, hash, subjectHash, request.Stream, time.Since(started))
+			record := p.recordUnknownSourceBlock(state, hash, subjectHash, request.Stream, time.Since(started))
+			p.recordBlockedRequestCapture(state, record, request.Body, &requestHash, subjectHash, inspectionDecision{
+				Block: true,
+				Code:  "block_unknown_source_format",
+			})
 			p.pending.put(hash, "unknown_source_format")
 			return blockedRouteEnvelope("cyber_abuse_guard_unknown_source_format"), nil
 		}
@@ -308,12 +326,14 @@ func (p *Plugin) route(state *runtimeState, request pluginapi.ModelRouteRequest)
 		p.counters.allowed.Add(1)
 	}
 
+	record := persistedAuditDecision{}
 	if persistDecision {
-		p.recordDecision(state, request, &requestHash, subjectHash, extracted.TextBytesScanned, result, decision, incompleteReasons, subjectReason, time.Since(started))
+		record = p.recordDecision(state, request, &requestHash, subjectHash, extracted.TextBytesScanned, result, decision, incompleteReasons, subjectReason, time.Since(started))
 	}
 	if !decision.Block {
 		return okEnvelope(pluginapi.ModelRouteResponse{Handled: false}), nil
 	}
+	p.recordBlockedRequestCapture(state, record, request.Body, &requestHash, subjectHash, decision)
 
 	category := decision.Category
 	if category == "" {
@@ -568,9 +588,9 @@ func (p *Plugin) recordStreamingCounters(extracted extract.Result, result classi
 	}
 }
 
-func (p *Plugin) recordUnknownSourceBlock(state *runtimeState, requestHash, subjectHash string, stream bool, latency time.Duration) {
+func (p *Plugin) recordUnknownSourceBlock(state *runtimeState, requestHash, subjectHash string, stream bool, latency time.Duration) persistedAuditDecision {
 	if state == nil || state.audit == nil || !state.config.Audit.Enabled {
-		return
+		return persistedAuditDecision{}
 	}
 	event := audit.Event{
 		ID:               newEventID(),
@@ -593,7 +613,10 @@ func (p *Plugin) recordUnknownSourceBlock(state *runtimeState, requestHash, subj
 	if state.config.Audit.LogSubjectHash {
 		event.SubjectHash = subjectHash
 	}
-	p.recordAuditEvent(state, event)
+	if !p.recordAuditEvent(state, event) {
+		return persistedAuditDecision{}
+	}
+	return persistedAuditDecision{eventID: event.ID, timestamp: event.Timestamp, action: event.Action}
 }
 
 func (p *Plugin) recordIncompleteCounters(reasons []extract.IncompleteReason, decision inspectionDecision) {
@@ -689,9 +712,9 @@ func (p *Plugin) recordIncompleteCounters(reasons []extract.IncompleteReason, de
 	}
 }
 
-func (p *Plugin) recordDecision(state *runtimeState, request pluginapi.ModelRouteRequest, requestHash *requestHashMemo, subjectHash string, scanned int, result classifier.Result, decision inspectionDecision, incompleteReasons []extract.IncompleteReason, subjectReason string, latency time.Duration) {
+func (p *Plugin) recordDecision(state *runtimeState, request pluginapi.ModelRouteRequest, requestHash *requestHashMemo, subjectHash string, scanned int, result classifier.Result, decision inspectionDecision, incompleteReasons []extract.IncompleteReason, subjectReason string, latency time.Duration) persistedAuditDecision {
 	if state == nil || state.audit == nil || !state.config.Audit.Enabled || state.config.Mode == config.ModeObserve {
-		return
+		return persistedAuditDecision{}
 	}
 	action := "audit"
 	if decision.Observe {
@@ -734,7 +757,45 @@ func (p *Plugin) recordDecision(state *runtimeState, request pluginapi.ModelRout
 	if state.config.Audit.LogSubjectHash {
 		event.SubjectHash = subjectHash
 	}
-	p.recordAuditEvent(state, event)
+	if !p.recordAuditEvent(state, event) {
+		return persistedAuditDecision{}
+	}
+	return persistedAuditDecision{eventID: event.ID, timestamp: event.Timestamp, action: event.Action}
+}
+
+// recordBlockedRequestCapture is the only router path allowed to hand request
+// bytes to the explicit operator capture store. The caller invokes it only
+// after the final disposition is Block and after the matching audit event was
+// accepted. Headers are deliberately absent from both this signature and the
+// audit input type.
+func (p *Plugin) recordBlockedRequestCapture(state *runtimeState, record persistedAuditDecision, rawRequest []byte, requestHash *requestHashMemo, subjectHash string, decision inspectionDecision) {
+	if state == nil || state.audit == nil || !state.config.Audit.Enabled ||
+		!state.config.Audit.RawCapture.Enabled || !decision.Block || record.eventID == "" {
+		return
+	}
+	captureRequestHash := ""
+	if state.config.Audit.LogRequestHash {
+		captureRequestHash = requestHash.get(p)
+	}
+	if !state.config.Audit.LogSubjectHash {
+		subjectHash = ""
+	}
+	err := state.audit.RecordRawCapture(audit.RawCaptureInput{
+		EventID:     record.eventID,
+		Timestamp:   record.timestamp,
+		RequestHash: captureRequestHash,
+		SubjectHash: subjectHash,
+		Action:      record.action,
+		Decision:    decision.Code,
+		RawRequest:  rawRequest,
+	})
+	if err == nil {
+		return
+	}
+	p.reportAuditQueueFailure(
+		"cyber-abuse-guard blocked-request capture could not be queued; enforcement remains active",
+		"raw_capture_queue_degraded",
+	)
 }
 
 // recordAuditEvent deliberately ignores persistence failure for policy
@@ -742,10 +803,21 @@ func (p *Plugin) recordDecision(state *runtimeState, request pluginapi.ModelRout
 // store must never turn a local block into an upstream request. The audit store
 // exposes detailed counters; this helper adds a privacy-safe, rate-limited host
 // log without including request-derived fields.
-func (p *Plugin) recordAuditEvent(state *runtimeState, event audit.Event) {
+func (p *Plugin) recordAuditEvent(state *runtimeState, event audit.Event) bool {
 	if state == nil || state.audit == nil || state.audit.Record(event) {
-		return
+		return state != nil && state.audit != nil
 	}
+	p.reportAuditQueueFailure(
+		"cyber-abuse-guard audit event could not be queued; enforcement remains active",
+		"audit_queue_degraded",
+	)
+	return false
+}
+
+// reportAuditQueueFailure intentionally excludes errors and request-derived
+// fields. A validation, queue, database, or closing-store failure therefore
+// cannot disclose captured request text through the host log.
+func (p *Plugin) reportAuditQueueFailure(message, code string) {
 	now := time.Now().UnixNano()
 	for {
 		previous := p.lastAuditNotice.Load()
@@ -753,9 +825,9 @@ func (p *Plugin) recordAuditEvent(state *runtimeState, event audit.Event) {
 			return
 		}
 		if p.lastAuditNotice.CompareAndSwap(previous, now) {
-			p.log("warn", "cyber-abuse-guard audit event could not be queued; enforcement remains active", map[string]any{
+			p.log("warn", message, map[string]any{
 				"plugin": ID,
-				"code":   "audit_queue_degraded",
+				"code":   code,
 			})
 			return
 		}
@@ -764,11 +836,16 @@ func (p *Plugin) recordAuditEvent(state *runtimeState, event audit.Event) {
 
 func newEventID() string {
 	var value [16]byte
-	if _, err := rand.Read(value[:]); err == nil {
-		value[6] = (value[6] & 0x0f) | 0x40
-		value[8] = (value[8] & 0x3f) | 0x80
-		encoded := hex.EncodeToString(value[:])
-		return fmt.Sprintf("%s-%s-%s-%s-%s", encoded[0:8], encoded[8:12], encoded[12:16], encoded[16:20], encoded[20:32])
+	if _, err := rand.Read(value[:]); err != nil {
+		// Event IDs are correlation values, not secrets. Preserve the UUID-shaped
+		// management-query contract even if the operating system random source is
+		// temporarily unavailable; nanoseconds plus a process-local counter keep
+		// fallback values distinct for the lifetime of this plugin instance.
+		binary.BigEndian.PutUint64(value[0:8], uint64(time.Now().UnixNano()))
+		binary.BigEndian.PutUint64(value[8:16], fallbackEventIDCounter.Add(1))
 	}
-	return fmt.Sprintf("event-%d", time.Now().UnixNano())
+	value[6] = (value[6] & 0x0f) | 0x40
+	value[8] = (value[8] & 0x3f) | 0x80
+	encoded := hex.EncodeToString(value[:])
+	return fmt.Sprintf("%s-%s-%s-%s-%s", encoded[0:8], encoded[8:12], encoded[12:16], encoded[16:20], encoded[20:32])
 }

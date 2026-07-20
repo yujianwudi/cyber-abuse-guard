@@ -15,6 +15,8 @@ const (
 	exactGuardReleaseTag    = "v0.15"
 	exactGuardRCVersion     = "0.15-rc.4"
 	exactGuardRCReleaseTag  = "v0.15-rc.4"
+	localGuardRCVersion     = "0.16-rc.1"
+	localGuardRCReleaseTag  = "v0.16-rc.1"
 	unsupportedVersionAlias = "0.15.0"
 	guardPluginID           = "cyber-abuse-guard"
 )
@@ -119,6 +121,46 @@ func TestExactGuardV015RC4PluginStoreContract(t *testing.T) {
 
 	t.Logf("CPA %s RC release contract PASS: tag=%s version=%s archive=%s target=%s",
 		profile.Version, exactGuardRCReleaseTag, exactGuardRCVersion, archiveName, libraryName)
+}
+
+func TestLocalGuardV016RC1PluginStoreContract(t *testing.T) {
+	profile := selectedCPACompatibilityProfile(t)
+
+	version, errVersion := pluginstore.ReleaseVersion(pluginstore.Release{TagName: localGuardRCReleaseTag})
+	if errVersion != nil {
+		t.Fatalf("%s ReleaseVersion(%q) error = %v", profile.Version, localGuardRCReleaseTag, errVersion)
+	}
+	if version != localGuardRCVersion {
+		t.Fatalf("%s ReleaseVersion(%q) = %q, want %q", profile.Version, localGuardRCReleaseTag, version, localGuardRCVersion)
+	}
+
+	archiveName := pluginstore.ArchiveName(guardPluginID, version, "linux", "amd64")
+	wantArchiveName := "cyber-abuse-guard_0.16-rc.1_linux_amd64.zip"
+	if archiveName != wantArchiveName {
+		t.Fatalf("%s ArchiveName() = %q, want %q", profile.Version, archiveName, wantArchiveName)
+	}
+
+	libraryName := "cyber-abuse-guard-v0.16-rc.1.so"
+	archiveData := makeReleaseVersionContractArchive(t, libraryName)
+	pluginsDir := t.TempDir()
+	result, errInstall := pluginstore.InstallArchive(archiveData, pluginstore.Plugin{
+		ID:      guardPluginID,
+		Version: version,
+	}, pluginstore.InstallOptions{
+		PluginsDir: pluginsDir,
+		GOOS:       "linux",
+		GOARCH:     "amd64",
+	})
+	if errInstall != nil {
+		t.Fatalf("%s InstallArchive() error = %v", profile.Version, errInstall)
+	}
+	wantTarget := filepath.Join(pluginsDir, "linux", "amd64", libraryName)
+	if result.Version != localGuardRCVersion || result.Path != wantTarget {
+		t.Fatalf("%s InstallArchive() result = %#v, want version=%q path=%q", profile.Version, result, localGuardRCVersion, wantTarget)
+	}
+
+	t.Logf("CPA %s local RC contract PASS: tag=%s version=%s archive=%s target=%s",
+		profile.Version, localGuardRCReleaseTag, localGuardRCVersion, archiveName, libraryName)
 }
 
 func makeReleaseVersionContractArchive(t *testing.T, libraryName string) []byte {
