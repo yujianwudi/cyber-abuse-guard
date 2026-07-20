@@ -9,7 +9,7 @@ current_classifier_policy_sha256: 0e114d98862282d2492fb62e4300297b4746eeaf816533
 [![Go](https://img.shields.io/badge/Go-1.26.4-00ADD8?logo=go&logoColor=white)](go.mod)
 [![Platform](https://img.shields.io/badge/platform-Linux%20amd64-lightgrey)](docs/ROUND6_LIMITATIONS.md)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Prerelease](https://img.shields.io/badge/prerelease-v0.15--rc.4-orange)](https://github.com/yujianwudi/cyber-abuse-guard/releases/tag/v0.15-rc.4)
+[![RC target](https://img.shields.io/badge/RC_target-v0.15--rc.4-orange)](docs/ROUND6_RELEASE_GATE.md)
 [![Formal release](https://img.shields.io/badge/formal_v0.15-BLOCKED-critical)](docs/ROUND6_RELEASE_GATE.md)
 
 **面向 [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)（CPA）的本地、确定性、路由前 Cyber Abuse 请求风控插件。**
