@@ -9,7 +9,7 @@ current_classifier_policy_sha256: 0e114d98862282d2492fb62e4300297b4746eeaf816533
 [![Go](https://img.shields.io/badge/Go-1.26.4-00ADD8?logo=go&logoColor=white)](go.mod)
 [![Platform](https://img.shields.io/badge/platform-Linux%20amd64-lightgrey)](docs/ROUND6_LIMITATIONS.md)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Prerelease](https://img.shields.io/badge/prerelease-v0.15--rc.3-orange)](https://github.com/yujianwudi/cyber-abuse-guard/releases/tag/v0.15-rc.3)
+[![Prerelease](https://img.shields.io/badge/prerelease-v0.15--rc.4-orange)](https://github.com/yujianwudi/cyber-abuse-guard/releases/tag/v0.15-rc.4)
 [![Formal release](https://img.shields.io/badge/formal_v0.15-BLOCKED-critical)](docs/ROUND6_RELEASE_GATE.md)
 
 **A local, deterministic, pre-routing cyber-abuse request guard for
@@ -20,15 +20,18 @@ English | [简体中文](README_CN.md)
 > [!WARNING]
 > Version `0.15` and its formal tag `v0.15` remain
 > **BLOCKED / PENDING HOST AND INDEPENDENT AUDIT**. The
-> [`v0.15-rc.3`](https://github.com/yujianwudi/cyber-abuse-guard/releases/tag/v0.15-rc.3)
+> [`v0.15-rc.4`](https://github.com/yujianwudi/cyber-abuse-guard/releases/tag/v0.15-rc.4)
 > side lane publishes only after exact-main CI, the complete internal Linux
 > quality suite, CPA v7.2.88 source compatibility, RC-versioned integration, and
 > two independent clean-clone rebuilds pass. Its 17 assets follow the formal
 > package structure but carry RC-only evidence and no formal attestation.
-> Therefore RC3 remains **SANDBOX ONLY / SERVER VALIDATION REQUIRED**, not a
+> Therefore RC4 remains **SANDBOX ONLY / SERVER VALIDATION REQUIRED**, not a
 > private clean candidate, formal release, production authorization, real CPA
 > Host PASS, independent audit PASS, or independent evaluation PASS. Windows
 > and macOS remain outside scope.
+> The protected `v0.15-rc.3` tag is retained as a failed, unpublished attempt:
+> run 29728286559 failed before packaging, uploaded no artifact, and created no
+> GitHub Release.
 
 When CPA has loaded and registered the plugin, Router ordering reaches it, and
 the self-executor is ready, the Guard inspects supported model requests before
@@ -41,11 +44,11 @@ classifier.
 | Item | State |
 |---|---|
 | Project version / intended formal tag | `0.15` / exact tag `v0.15` (never `v0.15.0`) |
-| Current RC identity | Annotated `v0.15-rc.3` at the exact post-merge `main` commit/tree; the tag object, CI run, workflow run, and 17 asset hashes are bound in `rc-release-manifest.json` |
+| Current RC identity | Active target `v0.15-rc.4`; its exact post-merge `main` commit/tree, annotated tag object, CI run, workflow run, and 17 asset hashes are bound only by runtime `rc-release-manifest.json` |
 | Last fully verified pre-cleanup main baseline | `6782dfaffd4da3f09604113c7d38675f331dc759`, tree `a8edbe2e6d19fa725fb962cdd6aaad5b416d4b85`; main CI [29630844605](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29630844605) and tag CI [29630926354](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29630926354) passed |
 | Release decision | **BLOCKED / PENDING HOST AND INDEPENDENT AUDIT** |
 | Candidate bytes | Must be clean exact-source Linux amd64 bytes from the private untagged Actions candidate workflow; clean does not mean released |
-| Merge and release | The active RC3 workflow creates a draft, re-downloads and byte-compares all 17 assets, then publishes `prerelease=true` and `latest=false`; formal `v0.15` remains absent and blocked |
+| Merge and release | The active RC4 workflow creates a draft, re-downloads and byte-compares all 17 assets, then publishes `prerelease=true` and `latest=false`; formal `v0.15` remains absent and blocked |
 | RC publication mode | `AUTOMATED / COMPLETE_INTERNAL_LINUX_GATES / TWO-CLEAN-CLONE_REPRODUCIBLE / SANDBOX_ONLY` |
 | RC exact-main CI | Required and bound by run ID plus exact run attempt to the tagged `main` commit; the run URL and attempt are recorded in RC evidence and manifest |
 | Validation platform | Linux amd64 only; emitted numeric GLIBC ABI versions must be `<= 2.34` |
@@ -230,7 +233,7 @@ for implementation or conclusions.
 |---|---|
 | Round 6 implementation PR | [PR #9](https://github.com/yujianwudi/cyber-abuse-guard/pull/9) merged; its PR runner did not start because of the recorded GitHub billing limit, so it is not claimed as a PR-CI PASS |
 | Last fully verified pre-cleanup `main` push CI | [29630844605](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29630844605) **SUCCESS** for `6782dfa` / tree `a8edbe2` |
-| RC3 exact-main CI | Must be a completed successful `push` run of `ci.yml` for the exact tagged `main` commit and is revalidated before checkout |
+| RC4 exact-main CI | Must be a completed successful `push` run of `ci.yml` for the exact tagged `main` commit and is revalidated before checkout |
 | Source-only `v0.15-rc.1` tag CI | [29630926354](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29630926354) **SUCCESS** for `6782dfa` / tree `a8edbe2` |
 | Private untagged clean candidate Actions artifact | **NOT CREATED / PENDING**; must bind one final commit/tree and emit `candidate-manifest.json` |
 | CPA v7.2.88 Host + Mock upstream | **NOT RUN / PENDING** |
@@ -239,7 +242,8 @@ for implementation or conclusions.
 | Annotated `v0.15-dev.round6[.N]` prerelease | Optional and blocked until Host, independent audit, and candidate-level evaluation pass; never a formal release |
 | Public source-only `v0.15-rc.1` prerelease | Exists with no attached assets; not the private candidate, Host evidence, or formal release |
 | Historical asset-bearing `v0.15-rc.2` prerelease | **PUBLIC / PRERELEASE / SANDBOX ONLY**; ten Linux amd64 assets were published by direct owner override with tests skipped |
-| Formal-structure `v0.15-rc.3` prerelease | Exactly 17 Linux amd64 assets; internal gates and reproducibility must pass, while real CPA Host, independent audit/evaluation, formal release, and production authorization remain absent |
+| Protected `v0.15-rc.3` attempt | **FAILED / UNPUBLISHED / ZERO ASSETS**; run [29728286559](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29728286559) passed admission, failed before packaging, skipped publish, and created no Release |
+| Formal-structure `v0.15-rc.4` prerelease | Exactly 17 Linux amd64 assets; internal gates and reproducibility must pass, while real CPA Host, independent audit/evaluation, formal release, and production authorization remain absent |
 | Annotated `v0.15` formal tag and verified draft | Blocked |
 | Protected promotion of the unchanged draft | Blocked |
 

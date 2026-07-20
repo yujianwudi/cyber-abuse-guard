@@ -31,7 +31,7 @@ final PR head + PR CI
   -> protected promotion of that unchanged draft
 ```
 
-An isolated side lane may publish the annotated `v0.15-rc.3` Linux amd64
+An isolated side lane may publish the annotated `v0.15-rc.4` Linux amd64
 formal-structure package after exact-main CI and the complete internal Linux
 gate set succeed. It emits exactly 17 assets: RC-versioned SO and Store ZIP,
 audit bundle, source archive, SBOM, checksums, internal test summary, RC-only
@@ -40,6 +40,12 @@ must reproduce the 11 source-derived assets byte-for-byte before publication.
 The lane is explicitly **not** the private Round 6 candidate or a formal-release
 attestation. It does not alter, satisfy, or bypass the ordered formal chain
 above. Real CPA Host validation remains pending in the owner's server sandbox.
+
+The protected `v0.15-rc.3` tag remains immutable failed evidence. Workflow run
+29728286559 passed admission, failed in the internal gate step before packaging,
+skipped publish, uploaded no Actions artifact, and created no GitHub Release.
+RC4 uses a new exact-main commit, tree, annotated tag object, CI run, workflow
+run, and complete set of generated hashes.
 
 Clean candidate bytes are still **unreleased**. A successful candidate build,
 Host matrix, optional development prerelease, or ordinary CI run cannot convert

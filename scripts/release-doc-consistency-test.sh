@@ -85,8 +85,8 @@ make_fixture() {
         'attested_prerelease_workflow: .github/workflows/attested-prerelease.yml' \
         'rc_workflow: .github/workflows/release-rc.yml' \
         'rc_workflow_archive: docs/archive/workflows/release-rc-v0.15-rc.2.yml' \
-        'rc_artifact_version: 0.15-rc.3' \
-        'rc_status: internal-gates-pass-sandbox-only-not-formal-not-round6-candidate' \
+        'rc_artifact_version: 0.15-rc.4' \
+        'rc_status: internal-gates-required-sandbox-only-not-formal-not-round6-candidate' \
         'host_audit_attestation: round6-prerelease-attestation.json' \
         'formal_gate_attestation: formal-release-attestation.json' \
         'promotion_workflow: .github/workflows/release-promote.yml' \
@@ -216,8 +216,8 @@ policy_keys=(
 )
 policy_values=(
   .github/workflows/release-rc.yml
-  0.15-rc.3
-  internal-gates-pass-sandbox-only-not-formal-not-round6-candidate
+  0.15-rc.4
+  internal-gates-required-sandbox-only-not-formal-not-round6-candidate
   93d74a890a44802f656d7f39a573916b2611896e
   2
   cpa_version,cpa_commit,cpa_host_sha256

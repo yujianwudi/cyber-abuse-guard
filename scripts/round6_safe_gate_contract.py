@@ -222,14 +222,14 @@ SAFE_GATE_COMMANDS = (
 SAFE_WORKFLOW_ENV_LINES = {
     "GO_VERSION: '1.26.4'",
     "VERSION: '0.15'",
-    "RC_VERSION: '0.15-rc.3'",
+    "RC_VERSION: '0.15-rc.4'",
     "CYCLONEDX_GOMOD_VERSION: 'v1.9.0'",
     "GOVULNCHECK_VERSION: 'v1.6.0'",
 }
 SAFE_WORKFLOW_ENV = {
     "GO_VERSION": "1.26.4",
     "VERSION": "0.15",
-    "RC_VERSION": "0.15-rc.3",
+    "RC_VERSION": "0.15-rc.4",
     "CYCLONEDX_GOMOD_VERSION": "v1.9.0",
     "GOVULNCHECK_VERSION": "v1.6.0",
 }
@@ -824,7 +824,7 @@ CANDIDATE_SCRIPT_SHA256 = {
     "release-candidate-contract-test.sh": "61ebbe72f0062c3f5b0ccfc7df4f0ab3b85594b43561cd1926fe87b602d92a90",
 }
 RC_RELEASE_SCRIPT_SHA256 = "b46c0235c8dc8259f7812ebaf36236bae473ea1abd9fca664e0e87b05b43a7ca"
-ACTIVE_RC_WORKFLOW_SHA256 = "dfebd5747bca3bf49d29d711836ca7318013e289d99b12c422e1379711dca69f"
+ACTIVE_RC_WORKFLOW_SHA256 = "5f44b0d6bc20753ef50a4108257840b8a9b3364214305babdfc4461fcc7c64f6"
 RC_RELEASE_WORKFLOW_SHA256 = "5ff480e2bb84bc33da81cc4e9839e4bca50453fc7e77debc1f24dd5b04362107"
 FORMAL_OPERATION_SCRIPTS = (
     "formal-release.sh",
@@ -895,11 +895,11 @@ FROZEN_EVALUATION_STATUS_COMMAND = (
 )
 ROUND6_DOC_FIXTURE_WRAPPER_SCRIPT = "scripts/round6-doc-consistency-fixture-test.sh"
 ROUND6_DOC_FIXTURE_WRAPPER_SCRIPT_SHA256 = (
-    "937cffdd1b722868016a0b3056317874f2a0f97bd630ec46dfd5082336b0012e"
+    "2b93b63a007ba959ce41a1cb86af21ba133997e01b3b9fa39effdabbcdeb0322"
 )
 ROUND6_DOC_FIXTURE_DEPENDENCY_SHA256 = {
-    "scripts/release-doc-consistency-test.sh": "01bff8f68657cfcbf74442457954d36879bb97574a0ca3201e8e2d8e840496e7",
-    "scripts/release-doc-consistency.sh": "bb239cc945f3e09be5839e751170aae25b0e503f197e792e6dd0e53253244018",
+    "scripts/release-doc-consistency-test.sh": "ce79679b0d502eb5fc8e576b6344e0886c2d070ece189ad986ceae6ed4d06dec",
+    "scripts/release-doc-consistency.sh": "6538eb981feda55b95b68e35b156a42fcbaddf92da5046069e53a8112f221b2c",
 }
 ROUND6_PRIVACY_FIXTURE_SCRIPT = "scripts/release-evidence-privacy-test.sh"
 ROUND6_PRIVACY_FIXTURE_SCRIPT_SHA256 = (
@@ -4374,10 +4374,10 @@ def validate_rc_release_workflow(text: str, source: Path) -> None:
     if hashlib.sha256(text.encode("utf-8")).hexdigest() != ACTIVE_RC_WORKFLOW_SHA256:
         raise ContractError("active RC workflow differs from the exact reviewed contract")
     required = (
-        "RC release v0.15-rc.3 - Linux sandbox validation",
+        "RC release v0.15-rc.4 - Linux sandbox validation",
         "expected_tag_object_sha:",
         "ci_run_attempt:",
-        '[[ "$TAG" == v0.15-rc.3 ]]',
+        '[[ "$TAG" == v0.15-rc.4 ]]',
         '[[ "$tag_object_sha" == "$EXPECTED_TAG_OBJECT" ]]',
         '[[ "$(git rev-parse "$TAG^{tag}")" == "$EXPECTED_TAG_OBJECT" ]]',
         "Bind RC admission to successful exact-main push CI",
@@ -4393,15 +4393,15 @@ def validate_rc_release_workflow(text: str, source: Path) -> None:
         "v7.2.88",
         "93d74a890a44802f656d7f39a573916b2611896e",
         "RC_INTERNAL_GATES_PASS / SANDBOX_ONLY / SERVER_VALIDATION_REQUIRED / NOT_FORMAL / NOT_ROUND6_CANDIDATE",
-        "cyber-abuse-guard-v0.15-rc.3.so",
-        "cyber-abuse-guard_0.15-rc.3_linux_amd64.zip",
-        "cyber-abuse-guard-v0.15-rc.3-audit-bundle.zip",
+        "cyber-abuse-guard-v0.15-rc.4.so",
+        "cyber-abuse-guard_0.15-rc.4_linux_amd64.zip",
+        "cyber-abuse-guard-v0.15-rc.4-audit-bundle.zip",
         "rc-release-test-summary.txt.sha256",
         "rc-release-evidence.md.sha256",
-        "cyber-abuse-guard-v0.15-rc.3-source.tar.gz.sha256",
+        "cyber-abuse-guard-v0.15-rc.4-source.tar.gz.sha256",
         "rc-release-manifest.json.sha256",
-        "Create, byte-check, and publish v0.15-rc.3 prerelease",
-        "v0.15-rc.3 - Linux server sandbox validation required",
+        "Create, byte-check, and publish v0.15-rc.4 prerelease",
+        "v0.15-rc.4 - Linux server sandbox validation required",
         ".assets | length == 17",
         "--draft",
         "--prerelease",

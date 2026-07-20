@@ -10,10 +10,10 @@ current_classifier_policy_sha256: 0e114d98862282d2492fb62e4300297b4746eeaf816533
 Release status: **BLOCKED / PENDING HOST AND INDEPENDENT AUDIT**. Exact project
 version is `0.15` and the only formal tag name is `v0.15` (never `v0.15.0`).
 
-### v0.15-rc.3 formal-structure prerelease
+### v0.15-rc.4 formal-structure prerelease
 
 - Add a dedicated active `release-rc.yml` workflow fixed to the annotated
-  exact-main `v0.15-rc.3` tag and its tag-object SHA. Admission requires a
+  exact-main `v0.15-rc.4` tag and its tag-object SHA. Admission requires a
   successful exact-main push CI before checkout and rechecks immutable
   tag/commit/tree/main identity before publication.
 - Run the complete Linux internal quality suite, CPA v7.2.88 source
@@ -29,6 +29,18 @@ version is `0.15` and the only formal tag name is `v0.15` (never `v0.15.0`).
   SERVER_VALIDATION_REQUIRED / NOT_FORMAL / NOT_ROUND6_CANDIDATE`. No real CPA
   Host PASS, independent audit/evaluation PASS, formal attestation, or
   production authorization is generated.
+
+### Historical RC3 failed attempt
+
+The protected annotated `v0.15-rc.3` tag remains immutable at tag object
+`6733a74903c7f2174a24fc53fad601e763e6a4c7`, commit
+`ac1456b74edd73bec5d8a8fb8b87630cb3320d21`, tree
+`5838d9bac6251fd1212cce86c2c608b6d8cbee47`. Workflow run 29728286559
+passed admission but failed in the internal gate step before packaging because
+the candidate contract fixture inherited the outer RC build mode. Publish was
+skipped, no Actions artifact was uploaded, and no GitHub Release (including a
+draft) was created. RC4 isolates that synthetic test matrix from all caller
+release-mode, identity, epoch, sparse-checkout, and version variables.
 
 ### Historical RC2 state
 

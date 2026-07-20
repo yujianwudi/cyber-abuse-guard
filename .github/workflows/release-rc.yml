@@ -1,10 +1,10 @@
-name: RC release v0.15-rc.3 - Linux sandbox validation
+name: RC release v0.15-rc.4 - Linux sandbox validation
 
 on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing annotated RC tag (must be v0.15-rc.3)
+        description: Existing annotated RC tag (must be v0.15-rc.4)
         required: true
         type: string
       expected_tag_object_sha:
@@ -44,7 +44,7 @@ concurrency:
 env:
   GO_VERSION: '1.26.4'
   VERSION: '0.15'
-  RC_VERSION: '0.15-rc.3'
+  RC_VERSION: '0.15-rc.4'
   CYCLONEDX_GOMOD_VERSION: 'v1.9.0'
   GOVULNCHECK_VERSION: 'v1.6.0'
 
@@ -68,7 +68,7 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$AUTHORIZED" == true ]]
-          [[ "$TAG" == v0.15-rc.3 ]]
+          [[ "$TAG" == v0.15-rc.4 ]]
           [[ "$EXPECTED_TAG_OBJECT" =~ ^[0-9a-f]{40}$ ]]
           [[ "$EXPECTED_COMMIT" =~ ^[0-9a-f]{40}$ ]]
           [[ "$EXPECTED_TREE" =~ ^[0-9a-f]{40}$ ]]
@@ -124,16 +124,16 @@ jobs:
             jq -e '
               .[0].draft == true and .[0].prerelease == true and
               ([.[0].assets[].name] - [
-                "cyber-abuse-guard-v0.15-rc.3.so",
-                "cyber-abuse-guard-v0.15-rc.3.so.sha256",
-                "cyber-abuse-guard_0.15-rc.3_linux_amd64.zip",
-                "cyber-abuse-guard-v0.15-rc.3-audit-bundle.zip",
+                "cyber-abuse-guard-v0.15-rc.4.so",
+                "cyber-abuse-guard-v0.15-rc.4.so.sha256",
+                "cyber-abuse-guard_0.15-rc.4_linux_amd64.zip",
+                "cyber-abuse-guard-v0.15-rc.4-audit-bundle.zip",
                 "build-metadata.json", "checksums.txt", "ruleset-manifest.json",
                 "ruleset.sha256", "sbom.cdx.json",
                 "rc-release-test-summary.txt", "rc-release-test-summary.txt.sha256",
                 "rc-release-evidence.md", "rc-release-evidence.md.sha256",
-                "cyber-abuse-guard-v0.15-rc.3-source.tar.gz",
-                "cyber-abuse-guard-v0.15-rc.3-source.tar.gz.sha256",
+                "cyber-abuse-guard-v0.15-rc.4-source.tar.gz",
+                "cyber-abuse-guard-v0.15-rc.4-source.tar.gz.sha256",
                 "rc-release-manifest.json", "rc-release-manifest.json.sha256"
               ] | length == 0)
             ' <<<"$release" >/dev/null
@@ -267,7 +267,7 @@ jobs:
           chmod 0600 "$summary"
           {
             printf '%s\n' \
-              'CPA Cyber Abuse Guard v0.15-rc.3 internal Linux release gates' \
+              'CPA Cyber Abuse Guard v0.15-rc.4 internal Linux release gates' \
               "commit=$RELEASE_RC_EXPECTED_COMMIT" \
               "tree=$RELEASE_RC_EXPECTED_TREE" \
               "exact_main_ci_run=$CI_RUN_ID" \
@@ -315,12 +315,12 @@ jobs:
           expected="$(printf '%s\n' \
             build-metadata.json \
             checksums.txt \
-            cyber-abuse-guard-v0.15-rc.3.so \
-            cyber-abuse-guard-v0.15-rc.3.so.sha256 \
-            cyber-abuse-guard_0.15-rc.3_linux_amd64.zip \
-            cyber-abuse-guard-v0.15-rc.3-audit-bundle.zip \
-            cyber-abuse-guard-v0.15-rc.3-source.tar.gz \
-            cyber-abuse-guard-v0.15-rc.3-source.tar.gz.sha256 \
+            cyber-abuse-guard-v0.15-rc.4.so \
+            cyber-abuse-guard-v0.15-rc.4.so.sha256 \
+            cyber-abuse-guard_0.15-rc.4_linux_amd64.zip \
+            cyber-abuse-guard-v0.15-rc.4-audit-bundle.zip \
+            cyber-abuse-guard-v0.15-rc.4-source.tar.gz \
+            cyber-abuse-guard-v0.15-rc.4-source.tar.gz.sha256 \
             rc-release-evidence.md \
             rc-release-evidence.md.sha256 \
             rc-release-manifest.json \
@@ -336,11 +336,11 @@ jobs:
             [[ -f "dist/$name" && ! -L "dist/$name" ]]
           done <<<"$expected"
           (cd dist && sha256sum -c checksums.txt && \
-            sha256sum -c cyber-abuse-guard-v0.15-rc.3.so.sha256 && \
+            sha256sum -c cyber-abuse-guard-v0.15-rc.4.so.sha256 && \
             sha256sum -c ruleset.sha256 && \
             sha256sum -c rc-release-test-summary.txt.sha256 && \
             sha256sum -c rc-release-evidence.md.sha256 && \
-            sha256sum -c cyber-abuse-guard-v0.15-rc.3-source.tar.gz.sha256 && \
+            sha256sum -c cyber-abuse-guard-v0.15-rc.4-source.tar.gz.sha256 && \
             sha256sum -c rc-release-manifest.json.sha256)
           jq -e \
             --arg tag_object "$EXPECTED_TAG_OBJECT" \
@@ -351,8 +351,8 @@ jobs:
               .schema_version == 2 and
               .status == "RC_INTERNAL_GATES_PASS / SANDBOX_ONLY / SERVER_VALIDATION_REQUIRED / NOT_FORMAL / NOT_ROUND6_CANDIDATE" and
               .packaging_profile == "FORMAL_STRUCTURE / RC EVIDENCE ONLY / NO FORMAL ATTESTATION" and
-              .source_version == "0.15" and .artifact_version == "0.15-rc.3" and
-              .tag == "v0.15-rc.3" and .tag_object == $tag_object and
+              .source_version == "0.15" and .artifact_version == "0.15-rc.4" and
+              .tag == "v0.15-rc.4" and .tag_object == $tag_object and
               .commit == $commit and .tree == $tree and
               .ci_run_id == $ci_run_id and .ci_run_attempt == $ci_run_attempt and
               .cpa.version == "v7.2.88" and
@@ -361,10 +361,10 @@ jobs:
               .cpa.real_host_validation == "NOT_RUN / SERVER_SANDBOX_REQUIRED" and
               .independent_audit == "NOT_PROVIDED" and
               .independent_evaluation == "NOT_PROVIDED" and
-              .artifacts.audit_bundle.name == "cyber-abuse-guard-v0.15-rc.3-audit-bundle.zip" and
+              .artifacts.audit_bundle.name == "cyber-abuse-guard-v0.15-rc.4-audit-bundle.zip" and
               .artifacts.test_summary.name == "rc-release-test-summary.txt" and
               .artifacts.rc_evidence.name == "rc-release-evidence.md" and
-              .artifacts.source_archive.name == "cyber-abuse-guard-v0.15-rc.3-source.tar.gz"
+              .artifacts.source_archive.name == "cyber-abuse-guard-v0.15-rc.4-source.tar.gz"
             ' dist/rc-release-manifest.json >/dev/null
           assert_manifest_hash() {
             local name="$1" filter="$2" expected actual
@@ -373,10 +373,10 @@ jobs:
             actual="$(sha256sum "dist/$name" | awk '{print $1}')"
             [[ "$actual" == "$expected" ]]
           }
-          assert_manifest_hash cyber-abuse-guard-v0.15-rc.3.so .artifacts.so.sha256
-          assert_manifest_hash cyber-abuse-guard-v0.15-rc.3.so.sha256 .artifacts.so.sidecar_sha256
-          assert_manifest_hash cyber-abuse-guard_0.15-rc.3_linux_amd64.zip .artifacts.store_zip.sha256
-          assert_manifest_hash cyber-abuse-guard-v0.15-rc.3-audit-bundle.zip .artifacts.audit_bundle.sha256
+          assert_manifest_hash cyber-abuse-guard-v0.15-rc.4.so .artifacts.so.sha256
+          assert_manifest_hash cyber-abuse-guard-v0.15-rc.4.so.sha256 .artifacts.so.sidecar_sha256
+          assert_manifest_hash cyber-abuse-guard_0.15-rc.4_linux_amd64.zip .artifacts.store_zip.sha256
+          assert_manifest_hash cyber-abuse-guard-v0.15-rc.4-audit-bundle.zip .artifacts.audit_bundle.sha256
           assert_manifest_hash build-metadata.json .artifacts.build_metadata_sha256
           assert_manifest_hash checksums.txt .artifacts.checksums_sha256
           assert_manifest_hash ruleset-manifest.json .artifacts.ruleset_manifest_sha256
@@ -386,19 +386,19 @@ jobs:
           assert_manifest_hash rc-release-test-summary.txt.sha256 .artifacts.test_summary.sidecar_sha256
           assert_manifest_hash rc-release-evidence.md .artifacts.rc_evidence.sha256
           assert_manifest_hash rc-release-evidence.md.sha256 .artifacts.rc_evidence.sidecar_sha256
-          assert_manifest_hash cyber-abuse-guard-v0.15-rc.3-source.tar.gz .artifacts.source_archive.sha256
-          assert_manifest_hash cyber-abuse-guard-v0.15-rc.3-source.tar.gz.sha256 .artifacts.source_archive.sidecar_sha256
+          assert_manifest_hash cyber-abuse-guard-v0.15-rc.4-source.tar.gz .artifacts.source_archive.sha256
+          assert_manifest_hash cyber-abuse-guard-v0.15-rc.4-source.tar.gz.sha256 .artifacts.source_archive.sidecar_sha256
           [[ -z "$(git status --porcelain)" ]]
 
       - name: Upload exact verified RC assets
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: rc-v0.15-rc.3-${{ inputs.expected_commit }}
+          name: rc-v0.15-rc.4-${{ inputs.expected_commit }}
           path: |
-            dist/cyber-abuse-guard-v0.15-rc.3.so
-            dist/cyber-abuse-guard-v0.15-rc.3.so.sha256
-            dist/cyber-abuse-guard_0.15-rc.3_linux_amd64.zip
-            dist/cyber-abuse-guard-v0.15-rc.3-audit-bundle.zip
+            dist/cyber-abuse-guard-v0.15-rc.4.so
+            dist/cyber-abuse-guard-v0.15-rc.4.so.sha256
+            dist/cyber-abuse-guard_0.15-rc.4_linux_amd64.zip
+            dist/cyber-abuse-guard-v0.15-rc.4-audit-bundle.zip
             dist/build-metadata.json
             dist/checksums.txt
             dist/ruleset-manifest.json
@@ -408,8 +408,8 @@ jobs:
             dist/rc-release-test-summary.txt.sha256
             dist/rc-release-evidence.md
             dist/rc-release-evidence.md.sha256
-            dist/cyber-abuse-guard-v0.15-rc.3-source.tar.gz
-            dist/cyber-abuse-guard-v0.15-rc.3-source.tar.gz.sha256
+            dist/cyber-abuse-guard-v0.15-rc.4-source.tar.gz
+            dist/cyber-abuse-guard-v0.15-rc.4-source.tar.gz.sha256
             dist/rc-release-manifest.json
             dist/rc-release-manifest.json.sha256
           if-no-files-found: error
@@ -426,7 +426,7 @@ jobs:
       - name: Download exact verified RC assets
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          name: rc-v0.15-rc.3-${{ inputs.expected_commit }}
+          name: rc-v0.15-rc.4-${{ inputs.expected_commit }}
           path: dist
 
       - name: Reverify transferred RC assets without repository source
@@ -442,12 +442,12 @@ jobs:
           expected="$(printf '%s\n' \
             build-metadata.json \
             checksums.txt \
-            cyber-abuse-guard-v0.15-rc.3.so \
-            cyber-abuse-guard-v0.15-rc.3.so.sha256 \
-            cyber-abuse-guard_0.15-rc.3_linux_amd64.zip \
-            cyber-abuse-guard-v0.15-rc.3-audit-bundle.zip \
-            cyber-abuse-guard-v0.15-rc.3-source.tar.gz \
-            cyber-abuse-guard-v0.15-rc.3-source.tar.gz.sha256 \
+            cyber-abuse-guard-v0.15-rc.4.so \
+            cyber-abuse-guard-v0.15-rc.4.so.sha256 \
+            cyber-abuse-guard_0.15-rc.4_linux_amd64.zip \
+            cyber-abuse-guard-v0.15-rc.4-audit-bundle.zip \
+            cyber-abuse-guard-v0.15-rc.4-source.tar.gz \
+            cyber-abuse-guard-v0.15-rc.4-source.tar.gz.sha256 \
             rc-release-evidence.md \
             rc-release-evidence.md.sha256 \
             rc-release-manifest.json \
@@ -463,11 +463,11 @@ jobs:
             [[ -f "dist/$name" && ! -L "dist/$name" ]]
           done <<<"$expected"
           (cd dist && sha256sum -c checksums.txt && \
-            sha256sum -c cyber-abuse-guard-v0.15-rc.3.so.sha256 && \
+            sha256sum -c cyber-abuse-guard-v0.15-rc.4.so.sha256 && \
             sha256sum -c ruleset.sha256 && \
             sha256sum -c rc-release-test-summary.txt.sha256 && \
             sha256sum -c rc-release-evidence.md.sha256 && \
-            sha256sum -c cyber-abuse-guard-v0.15-rc.3-source.tar.gz.sha256 && \
+            sha256sum -c cyber-abuse-guard-v0.15-rc.4-source.tar.gz.sha256 && \
             sha256sum -c rc-release-manifest.json.sha256)
           jq -e \
             --arg tag_object "$EXPECTED_TAG_OBJECT" \
@@ -479,7 +479,7 @@ jobs:
               .schema_version == 2 and
               .status == "RC_INTERNAL_GATES_PASS / SANDBOX_ONLY / SERVER_VALIDATION_REQUIRED / NOT_FORMAL / NOT_ROUND6_CANDIDATE" and
               .packaging_profile == "FORMAL_STRUCTURE / RC EVIDENCE ONLY / NO FORMAL ATTESTATION" and
-              .artifact_version == "0.15-rc.3" and .tag == "v0.15-rc.3" and
+              .artifact_version == "0.15-rc.4" and .tag == "v0.15-rc.4" and
               .tag_object == $tag_object and .commit == $commit and
               .tree == $tree and
               .ci_run_id == $ci_run_id and .ci_run_attempt == $ci_run_attempt and
@@ -497,10 +497,10 @@ jobs:
             actual="$(sha256sum "dist/$name" | awk '{print $1}')"
             [[ "$actual" == "$expected" ]]
           }
-          assert_manifest_hash cyber-abuse-guard-v0.15-rc.3.so .artifacts.so.sha256
-          assert_manifest_hash cyber-abuse-guard-v0.15-rc.3.so.sha256 .artifacts.so.sidecar_sha256
-          assert_manifest_hash cyber-abuse-guard_0.15-rc.3_linux_amd64.zip .artifacts.store_zip.sha256
-          assert_manifest_hash cyber-abuse-guard-v0.15-rc.3-audit-bundle.zip .artifacts.audit_bundle.sha256
+          assert_manifest_hash cyber-abuse-guard-v0.15-rc.4.so .artifacts.so.sha256
+          assert_manifest_hash cyber-abuse-guard-v0.15-rc.4.so.sha256 .artifacts.so.sidecar_sha256
+          assert_manifest_hash cyber-abuse-guard_0.15-rc.4_linux_amd64.zip .artifacts.store_zip.sha256
+          assert_manifest_hash cyber-abuse-guard-v0.15-rc.4-audit-bundle.zip .artifacts.audit_bundle.sha256
           assert_manifest_hash build-metadata.json .artifacts.build_metadata_sha256
           assert_manifest_hash checksums.txt .artifacts.checksums_sha256
           assert_manifest_hash ruleset-manifest.json .artifacts.ruleset_manifest_sha256
@@ -510,8 +510,8 @@ jobs:
           assert_manifest_hash rc-release-test-summary.txt.sha256 .artifacts.test_summary.sidecar_sha256
           assert_manifest_hash rc-release-evidence.md .artifacts.rc_evidence.sha256
           assert_manifest_hash rc-release-evidence.md.sha256 .artifacts.rc_evidence.sidecar_sha256
-          assert_manifest_hash cyber-abuse-guard-v0.15-rc.3-source.tar.gz .artifacts.source_archive.sha256
-          assert_manifest_hash cyber-abuse-guard-v0.15-rc.3-source.tar.gz.sha256 .artifacts.source_archive.sidecar_sha256
+          assert_manifest_hash cyber-abuse-guard-v0.15-rc.4-source.tar.gz .artifacts.source_archive.sha256
+          assert_manifest_hash cyber-abuse-guard-v0.15-rc.4-source.tar.gz.sha256 .artifacts.source_archive.sidecar_sha256
 
       - name: Recheck immutable tag and main before publication
         env:
@@ -547,7 +547,7 @@ jobs:
             "repos/${GITHUB_REPOSITORY}/git/commits/${EXPECTED_COMMIT}")"
           [[ "$(jq -r '.tree.sha' <<<"$commit_object")" == "$EXPECTED_TREE" ]]
 
-      - name: Create, byte-check, and publish v0.15-rc.3 prerelease
+      - name: Create, byte-check, and publish v0.15-rc.4 prerelease
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ inputs.tag }}
@@ -620,7 +620,7 @@ jobs:
           - Exact-main CI: https://github.com/${GITHUB_REPOSITORY}/actions/runs/$CI_RUN_ID
             (attempt $CI_RUN_ATTEMPT)
           - CPA compatibility target: v7.2.88 (\`93d74a890a44802f656d7f39a573916b2611896e\`)
-          - Store package: \`cyber-abuse-guard_0.15-rc.3_linux_amd64.zip\`
+          - Store package: \`cyber-abuse-guard_0.15-rc.4_linux_amd64.zip\`
           - Packaging: 17-asset formal structure with audit bundle, source archive,
             SBOM, checksums, internal test summary, RC evidence, and exact manifest
           - Internal Linux gates: passed in this release workflow
@@ -629,14 +629,14 @@ jobs:
           not a Round6 Host/audit/evaluation attestation, and not production approval.
           Real CPA Host validation remains required in the server sandbox.
           EOF
-          release_title='v0.15-rc.3 - Linux server sandbox validation required'
+          release_title='v0.15-rc.4 - Linux server sandbox validation required'
           expected_body="$(cat "$notes")"
 
           assets=(
-            dist/cyber-abuse-guard-v0.15-rc.3.so
-            dist/cyber-abuse-guard-v0.15-rc.3.so.sha256
-            dist/cyber-abuse-guard_0.15-rc.3_linux_amd64.zip
-            dist/cyber-abuse-guard-v0.15-rc.3-audit-bundle.zip
+            dist/cyber-abuse-guard-v0.15-rc.4.so
+            dist/cyber-abuse-guard-v0.15-rc.4.so.sha256
+            dist/cyber-abuse-guard_0.15-rc.4_linux_amd64.zip
+            dist/cyber-abuse-guard-v0.15-rc.4-audit-bundle.zip
             dist/build-metadata.json
             dist/checksums.txt
             dist/ruleset-manifest.json
@@ -646,8 +646,8 @@ jobs:
             dist/rc-release-test-summary.txt.sha256
             dist/rc-release-evidence.md
             dist/rc-release-evidence.md.sha256
-            dist/cyber-abuse-guard-v0.15-rc.3-source.tar.gz
-            dist/cyber-abuse-guard-v0.15-rc.3-source.tar.gz.sha256
+            dist/cyber-abuse-guard-v0.15-rc.4-source.tar.gz
+            dist/cyber-abuse-guard-v0.15-rc.4-source.tar.gz.sha256
             dist/rc-release-manifest.json
             dist/rc-release-manifest.json.sha256
           )

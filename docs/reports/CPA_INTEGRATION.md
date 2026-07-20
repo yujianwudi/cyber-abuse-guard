@@ -99,10 +99,12 @@ Store validation, integration compilation, and clean-tree verification. It did
 not run the native Host black-box or pure-C Router fixture targets.
 
 These commit, asset, and CPA v7.2.86 statements are retained only as historical
-baseline evidence. The current RC3 package is fixed to CPA v7.2.88; exact
+baseline evidence. The current RC4 package is fixed to CPA v7.2.88; exact
 tag/commit/tree, current CI, 17 asset hashes, and RC-versioned integration
 results are recorded at runtime in `rc-release-evidence.md` and
 `rc-release-manifest.json` rather than self-recorded in this source file.
+The immutable RC3 attempt (run 29728286559) failed before packaging and produced
+no Actions artifact or GitHub Release; it is not reused as RC4 evidence.
 
 ## Evidence boundary
 
