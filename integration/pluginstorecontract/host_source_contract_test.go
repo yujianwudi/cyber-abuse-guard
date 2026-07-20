@@ -193,13 +193,23 @@ func preparePinnedCPAModule(t *testing.T) (string, []string, resolvedCPAModule) 
 			downloaded.Path, downloaded.Version, downloaded.Sum, downloaded.GoModSum,
 			cpaModulePath, cpaPinnedVersion, cpaPinnedModuleSum, cpaPinnedGoModSum)
 	}
-	if downloaded.Origin == nil || downloaded.Origin.VCS != "git" || downloaded.Origin.Hash != cpaPinnedCommit ||
-		downloaded.Origin.Ref != "refs/tags/"+cpaPinnedVersion {
-		t.Fatalf("resolved CPA origin = %#v, want git commit %s at refs/tags/%s",
-			downloaded.Origin, cpaPinnedCommit, cpaPinnedVersion)
+	if downloaded.Origin != nil {
+		if downloaded.Origin.VCS != "git" || downloaded.Origin.Hash != cpaPinnedCommit ||
+			downloaded.Origin.Ref != "refs/tags/"+cpaPinnedVersion {
+			t.Fatalf("resolved CPA origin = %#v, want git commit %s at refs/tags/%s",
+				downloaded.Origin, cpaPinnedCommit, cpaPinnedVersion)
+		}
+	} else {
+		// Go may omit Origin after serving identical checksum-verified module
+		// bytes from a warm cache. This Store test owns source and packaging
+		// behavior, while scripts/cpa-latest-compat.sh separately enforces the
+		// official Git URL/tag/commit (refreshing an isolated direct cache when
+		// necessary). Do not turn harmless cache metadata loss into a package
+		// failure after both pinned module checksums have already matched.
+		t.Log("pinned CPA Origin omitted by warm module cache; exact checksums matched and remote Origin remains a separate compatibility gate")
 	}
 	t.Logf("pinned CPA module: %s@%s commit=%s sum=%s go_mod_sum=%s",
-		module.Path, module.Version, downloaded.Origin.Hash, module.Sum, module.GoModSum)
+		module.Path, module.Version, cpaPinnedCommit, module.Sum, module.GoModSum)
 	return goBinary, moduleArguments, module
 }
 
