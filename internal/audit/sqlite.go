@@ -50,6 +50,8 @@ CREATE INDEX IF NOT EXISTS idx_audit_events_category_timestamp ON audit_events(c
 CREATE INDEX IF NOT EXISTS idx_audit_events_subject_timestamp ON audit_events(subject_hash, timestamp_ns DESC);
 `
 
+const maxWriteBatchItems = 64
+
 const insertEventSQL = `INSERT INTO audit_events (
     id, timestamp_ns, action, mode, category, risk_score, rule_ids,
     request_hash, subject_hash, model, source_format, stream,
@@ -91,32 +93,56 @@ type Query struct {
 
 // Status contains only operational counters and is safe for management APIs.
 type Status struct {
-	Healthy        bool   `json:"healthy"`
-	Degraded       bool   `json:"degraded"`
-	Closed         bool   `json:"closed"`
-	SchemaVersion  int    `json:"schema_version"`
-	LastError      string `json:"last_error,omitempty"`
-	QueueDepth     int    `json:"queue_depth"`
-	QueueCapacity  int    `json:"queue_capacity"`
-	Enqueued       uint64 `json:"enqueued"`
-	Written        uint64 `json:"written"`
-	Dropped        uint64 `json:"dropped"`
-	Failed         uint64 `json:"failed"`
-	Rejected       uint64 `json:"rejected"`
-	CleanupDeleted uint64 `json:"cleanup_deleted"`
+	Healthy            bool   `json:"healthy"`
+	Degraded           bool   `json:"degraded"`
+	Closed             bool   `json:"closed"`
+	SchemaVersion      int    `json:"schema_version"`
+	LastError          string `json:"last_error,omitempty"`
+	QueueDepth         int    `json:"queue_depth"`
+	QueueCapacity      int    `json:"queue_capacity"`
+	Enqueued           uint64 `json:"enqueued"`
+	Written            uint64 `json:"written"`
+	Dropped            uint64 `json:"dropped"`
+	Failed             uint64 `json:"failed"`
+	Rejected           uint64 `json:"rejected"`
+	RawCaptureEnqueued uint64 `json:"raw_capture_enqueued"`
+	RawCaptureWritten  uint64 `json:"raw_capture_written"`
+	RawCaptureDropped  uint64 `json:"raw_capture_dropped"`
+	RawCaptureFailed   uint64 `json:"raw_capture_failed"`
+	RawCaptureRejected uint64 `json:"raw_capture_rejected"`
+	// RawCaptureQueueHighWater is the maximum number of reserved queue slots
+	// observed by a raw-capture attempt, including a saturated/drop attempt.
+	RawCaptureQueueHighWater uint64 `json:"raw_capture_queue_high_water"`
+	// Prepare latency covers attempts that reached request preview preparation
+	// after admission. Rejected metadata/body preparations are included.
+	RawCapturePrepareCount   uint64 `json:"raw_capture_prepare_count"`
+	RawCapturePrepareTotalUS uint64 `json:"raw_capture_prepare_total_us"`
+	RawCapturePrepareLastUS  uint64 `json:"raw_capture_prepare_last_us"`
+	RawCapturePrepareMaxUS   uint64 `json:"raw_capture_prepare_max_us"`
+	CleanupDeleted           uint64 `json:"cleanup_deleted"`
 }
 
 // Stats combines persisted aggregates with the in-memory fail-open counters.
 type Stats struct {
-	Total          int64            `json:"total"`
-	ByAction       map[string]int64 `json:"by_action"`
-	ByCategory     map[string]int64 `json:"by_category"`
-	Enqueued       uint64           `json:"enqueued"`
-	Written        uint64           `json:"written"`
-	Dropped        uint64           `json:"dropped"`
-	Failed         uint64           `json:"failed"`
-	Rejected       uint64           `json:"rejected"`
-	CleanupDeleted uint64           `json:"cleanup_deleted"`
+	Total                    int64            `json:"total"`
+	ByAction                 map[string]int64 `json:"by_action"`
+	ByCategory               map[string]int64 `json:"by_category"`
+	Enqueued                 uint64           `json:"enqueued"`
+	Written                  uint64           `json:"written"`
+	Dropped                  uint64           `json:"dropped"`
+	Failed                   uint64           `json:"failed"`
+	Rejected                 uint64           `json:"rejected"`
+	RawCaptureEnqueued       uint64           `json:"raw_capture_enqueued"`
+	RawCaptureWritten        uint64           `json:"raw_capture_written"`
+	RawCaptureDropped        uint64           `json:"raw_capture_dropped"`
+	RawCaptureFailed         uint64           `json:"raw_capture_failed"`
+	RawCaptureRejected       uint64           `json:"raw_capture_rejected"`
+	RawCaptureQueueHighWater uint64           `json:"raw_capture_queue_high_water"`
+	RawCapturePrepareCount   uint64           `json:"raw_capture_prepare_count"`
+	RawCapturePrepareTotalUS uint64           `json:"raw_capture_prepare_total_us"`
+	RawCapturePrepareLastUS  uint64           `json:"raw_capture_prepare_last_us"`
+	RawCapturePrepareMaxUS   uint64           `json:"raw_capture_prepare_max_us"`
+	CleanupDeleted           uint64           `json:"cleanup_deleted"`
 }
 
 type workItem struct {
@@ -131,6 +157,7 @@ type Store struct {
 	cfg        Config
 	db         *sql.DB
 	queue      chan workItem
+	queueSlots chan struct{}
 	done       chan struct{}
 	abort      chan struct{}
 	closedDone chan struct{}
@@ -138,22 +165,35 @@ type Store struct {
 	cancelWork context.CancelFunc
 	wg         sync.WaitGroup
 
-	sendMu    sync.RWMutex
-	closed    bool
-	closeOnce sync.Once
-	abortOnce sync.Once
-	closeErr  error
+	sendMu         sync.RWMutex
+	admissionMu    sync.Mutex
+	admissionCount int
+	admissionIdle  chan struct{}
+	closed         bool
+	closeOnce      sync.Once
+	abortOnce      sync.Once
+	closeErr       error
 
-	degraded      atomic.Bool
-	aborted       atomic.Bool
-	lastErr       atomic.Value // string
-	enqueued      atomic.Uint64
-	written       atomic.Uint64
-	dropped       atomic.Uint64
-	failed        atomic.Uint64
-	rejected      atomic.Uint64
-	cleaned       atomic.Uint64
-	schemaVersion atomic.Int64
+	degraded          atomic.Bool
+	aborted           atomic.Bool
+	lastErr           atomic.Value // string
+	enqueued          atomic.Uint64
+	written           atomic.Uint64
+	dropped           atomic.Uint64
+	failed            atomic.Uint64
+	rejected          atomic.Uint64
+	cleaned           atomic.Uint64
+	rawEnqueued       atomic.Uint64
+	rawWritten        atomic.Uint64
+	rawDropped        atomic.Uint64
+	rawFailed         atomic.Uint64
+	rawRejected       atomic.Uint64
+	rawQueueHighWater atomic.Uint64
+	rawPrepareCount   atomic.Uint64
+	rawPrepareTotalUS atomic.Uint64
+	rawPrepareLastUS  atomic.Uint64
+	rawPrepareMaxUS   atomic.Uint64
+	schemaVersion     atomic.Int64
 
 	reportMu   sync.Mutex
 	lastReport time.Time
@@ -168,12 +208,15 @@ func Open(cfg Config) (*Store, error) {
 	store := &Store{
 		cfg:        cfg,
 		queue:      make(chan workItem, cfg.QueueSize),
+		queueSlots: make(chan struct{}, cfg.QueueSize),
 		done:       make(chan struct{}),
 		abort:      make(chan struct{}),
 		closedDone: make(chan struct{}),
 		workerCtx:  workerCtx,
 		cancelWork: cancelWork,
 	}
+	store.admissionIdle = make(chan struct{})
+	close(store.admissionIdle)
 	store.lastErr.Store("")
 
 	db, err := openDatabase(cfg)
@@ -310,19 +353,83 @@ func (s *Store) Enqueue(event Event) error {
 		s.rejected.Add(1)
 		return fmt.Errorf("%w: %v", ErrInvalidEvent, err)
 	}
+	if err := s.reserveAdmission(); err != nil {
+		if errors.Is(err, ErrQueueFull) {
+			s.dropped.Add(1)
+		}
+		return err
+	}
+	s.enqueued.Add(1)
+	s.publishAdmission(workItem{event: &prepared})
+	return nil
+}
+
+// reserveAdmission claims one bounded queue position before any expensive
+// request-derived preparation. The admission generation makes the reservation
+// visible to Flush and Close even before its work item enters the channel.
+func (s *Store) reserveAdmission() error {
 	s.sendMu.RLock()
 	defer s.sendMu.RUnlock()
 	if s.closed {
 		return ErrClosed
 	}
 	select {
-	case s.queue <- workItem{event: &prepared}:
-		s.enqueued.Add(1)
+	case s.queueSlots <- struct{}{}:
+		s.admissionMu.Lock()
+		if s.admissionCount == 0 {
+			s.admissionIdle = make(chan struct{})
+		}
+		s.admissionCount++
+		s.admissionMu.Unlock()
 		return nil
 	default:
-		s.dropped.Add(1)
 		return ErrQueueFull
 	}
+}
+
+func (s *Store) publishAdmission(item workItem) {
+	// Every publisher owns a queueSlots token, so this send cannot exceed the
+	// channel capacity even when other publishers are still preparing work.
+	s.queue <- item
+	s.finishAdmission()
+}
+
+func (s *Store) cancelAdmission() {
+	<-s.queueSlots
+	s.finishAdmission()
+}
+
+func (s *Store) releaseQueueSlot() {
+	<-s.queueSlots
+}
+
+func (s *Store) waitAdmissions(ctx context.Context) error {
+	s.admissionMu.Lock()
+	if s.admissionCount == 0 {
+		s.admissionMu.Unlock()
+		return nil
+	}
+	idle := s.admissionIdle
+	s.admissionMu.Unlock()
+	select {
+	case <-idle:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (s *Store) finishAdmission() {
+	s.admissionMu.Lock()
+	s.admissionCount--
+	if s.admissionCount < 0 {
+		s.admissionMu.Unlock()
+		panic("audit: admission counter became negative")
+	}
+	if s.admissionCount == 0 {
+		close(s.admissionIdle)
+	}
+	s.admissionMu.Unlock()
 }
 
 // Flush waits until every event enqueued before the barrier has been attempted.
@@ -332,18 +439,25 @@ func (s *Store) Flush(ctx context.Context) error {
 		return ErrUnavailable
 	}
 	barrier := make(chan struct{})
-	s.sendMu.RLock()
+	s.sendMu.Lock()
 	if s.closed {
-		s.sendMu.RUnlock()
+		s.sendMu.Unlock()
 		return ErrClosed
 	}
+	// Holding the exclusive lifecycle lock prevents new admissions while all
+	// earlier reservations finish preparation and publish their work items.
+	if err := s.waitAdmissions(ctx); err != nil {
+		s.sendMu.Unlock()
+		return err
+	}
 	select {
-	case s.queue <- workItem{barrier: barrier}:
-		s.sendMu.RUnlock()
+	case s.queueSlots <- struct{}{}:
 	case <-ctx.Done():
-		s.sendMu.RUnlock()
+		s.sendMu.Unlock()
 		return ctx.Err()
 	}
+	s.queue <- workItem{barrier: barrier}
+	s.sendMu.Unlock()
 	select {
 	case <-barrier:
 		return nil
@@ -359,7 +473,8 @@ func (s *Store) run() {
 	for {
 		select {
 		case item := <-s.queue:
-			s.handle(item)
+			s.releaseQueueSlot()
+			s.handleBatch(s.collectWriteBatch(item))
 		case <-ticker.C:
 			if err := s.cleanup(s.workerCtx); err != nil && !errors.Is(err, context.Canceled) {
 				s.degraded.Store(true)
@@ -367,12 +482,17 @@ func (s *Store) run() {
 			}
 		case <-s.done:
 			for {
+				if s.aborted.Load() {
+					s.dropQueued()
+					return
+				}
 				select {
 				case <-s.abort:
 					s.dropQueued()
 					return
 				case item := <-s.queue:
-					s.handle(item)
+					s.releaseQueueSlot()
+					s.handleBatch(s.collectWriteBatch(item))
 				default:
 					return
 				}
@@ -381,22 +501,100 @@ func (s *Store) run() {
 	}
 }
 
-func (s *Store) handle(item workItem) {
-	if item.barrier != nil {
-		close(item.barrier)
+func (s *Store) collectWriteBatch(first workItem) []workItem {
+	batch := make([]workItem, 0, maxWriteBatchItems)
+	batch = append(batch, first)
+	if first.barrier != nil {
+		return batch
+	}
+	for len(batch) < maxWriteBatchItems {
+		select {
+		case item := <-s.queue:
+			s.releaseQueueSlot()
+			batch = append(batch, item)
+			if item.barrier != nil {
+				return batch
+			}
+		default:
+			return batch
+		}
+	}
+	return batch
+}
+
+func (s *Store) handleBatch(batch []workItem) {
+	if len(batch) == 0 {
 		return
 	}
-	if s.db == nil {
-		if item.event != nil || item.rawCapture != nil {
-			s.failed.Add(1)
+	barrier := batch[len(batch)-1].barrier
+	dataItems := batch
+	if barrier != nil {
+		dataItems = batch[:len(batch)-1]
+	}
+
+	anySuccess := false
+	hadFailure := false
+	for index := 0; index < len(dataItems); index++ {
+		item := dataItems[index]
+		if item.event == nil && item.rawCapture == nil {
+			continue
+		}
+		if s.db == nil {
+			hadFailure = true
+			if item.event != nil {
+				s.failed.Add(1)
+			}
+			if item.rawCapture != nil {
+				s.failed.Add(1)
+				s.rawFailed.Add(1)
+			}
+			// Open already retained and reported the concrete database failure.
+			// Do not replace that actionable cause (for example, an unsafe symlink)
+			// with the generic ErrUnavailable on every fail-open queue attempt.
 			s.degraded.Store(true)
+			continue
 		}
-		return
+		if item.event != nil && item.rawCapture != nil {
+			eventItem := workItem{event: item.event}
+			captureItem := workItem{rawCapture: item.rawCapture}
+			eventErr, captureErr := s.writeEventCapturePair(eventItem, captureItem)
+			eventWritten := s.finishWork(eventItem, eventErr)
+			captureWritten := s.finishWork(captureItem, captureErr)
+			anySuccess = anySuccess || eventWritten || captureWritten
+			hadFailure = hadFailure || eventErr != nil || captureErr != nil
+			continue
+		}
+		writeErr := s.writeWork(s.db, item)
+		anySuccess = s.finishWork(item, writeErr) || anySuccess
+		hadFailure = hadFailure || writeErr != nil
 	}
-	if item.event == nil {
-		if item.rawCapture == nil {
-			return
+
+	// SQLite sidecars are secured once per drained batch instead of once per
+	// row. Sparse traffic retains the previous check-after-write behavior, while
+	// bursts avoid repeated Lstat/Chmod calls for every event/capture pair.
+	if anySuccess {
+		if err := secureSQLiteFiles(s.cfg.Path); err != nil {
+			hadFailure = true
+			s.degraded.Store(true)
+			s.lastErr.Store(err.Error())
+			s.report(err)
 		}
+	}
+	if anySuccess && !hadFailure {
+		s.degraded.Store(false)
+		s.lastErr.Store("")
+	}
+	if barrier != nil {
+		close(barrier)
+	}
+}
+
+type contextExecer interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}
+
+func (s *Store) writeWork(execer contextExecer, item workItem) error {
+	if item.rawCapture != nil {
 		truncated := 0
 		if item.rawCapture.Truncated {
 			truncated = 1
@@ -405,14 +603,16 @@ func (s *Store) handle(item workItem) {
 		if item.rawCapture.Redacted {
 			redacted = 1
 		}
-		_, err := s.db.ExecContext(s.workerCtx, insertRawCaptureSQL,
+		_, err := execer.ExecContext(s.workerCtx, insertRawCaptureSQL,
 			item.rawCapture.ID, item.rawCapture.EventID, item.rawCapture.Timestamp.UnixNano(),
 			item.rawCapture.RequestHash, item.rawCapture.SubjectHash, item.rawCapture.Action,
 			item.rawCapture.Decision, truncated, redacted, item.rawCapture.RawPreview,
 			item.rawCapture.RawSHA256,
 		)
-		s.finishWrite(err)
-		return
+		return err
+	}
+	if item.event == nil {
+		return nil
 	}
 	rules, err := json.Marshal(item.event.RuleIDs)
 	if err == nil {
@@ -420,7 +620,7 @@ func (s *Store) handle(item workItem) {
 		if item.event.Stream {
 			stream = 1
 		}
-		_, err = s.db.ExecContext(s.workerCtx, insertEventSQL,
+		_, err = execer.ExecContext(s.workerCtx, insertEventSQL,
 			item.event.ID, item.event.Timestamp.UnixNano(), item.event.Action,
 			item.event.Mode, item.event.Category, item.event.RiskScore, string(rules),
 			item.event.RequestHash, item.event.SubjectHash, item.event.Model,
@@ -429,26 +629,59 @@ func (s *Store) handle(item workItem) {
 			item.event.IncompleteReason, item.event.Scanner, item.event.LatencyUS,
 		)
 	}
-	s.finishWrite(err)
+	return err
 }
 
-func (s *Store) finishWrite(err error) {
+// writeEventCapturePair persists one composite queue item in a SQLite
+// transaction. The audit event remains the durable priority: if
+// capture insertion fails, the event is still committed and the dedicated raw
+// failure counter identifies the missing review preview.
+func (s *Store) writeEventCapturePair(eventItem, captureItem workItem) (eventErr, captureErr error) {
+	tx, err := s.db.BeginTx(s.workerCtx, nil)
+	if err != nil {
+		return err, err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+	if err := s.writeWork(tx, eventItem); err != nil {
+		return err, fmt.Errorf("audit: raw capture skipped after event write failure: %w", err)
+	}
+	if err := s.writeWork(tx, captureItem); err != nil {
+		if commitErr := tx.Commit(); commitErr != nil {
+			committed = true
+			return commitErr, errors.Join(err, commitErr)
+		}
+		committed = true
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		committed = true
+		return err, err
+	}
+	committed = true
+	return nil, nil
+}
+
+func (s *Store) finishWork(item workItem, err error) bool {
 	if err != nil {
 		s.failed.Add(1)
+		if item.rawCapture != nil {
+			s.rawFailed.Add(1)
+		}
 		s.degraded.Store(true)
 		s.lastErr.Store(err.Error())
 		s.report(fmt.Errorf("audit: async SQLite write failed: %w", err))
-		return
+		return false
 	}
 	s.written.Add(1)
-	if err := secureSQLiteFiles(s.cfg.Path); err != nil {
-		s.degraded.Store(true)
-		s.lastErr.Store(err.Error())
-		s.report(err)
-		return
+	if item.rawCapture != nil {
+		s.rawWritten.Add(1)
 	}
-	s.degraded.Store(false)
-	s.lastErr.Store("")
+	return true
 }
 
 // Status returns a lock-free operational snapshot.
@@ -462,19 +695,29 @@ func (s *Store) Status() Status {
 	lastError, _ := s.lastErr.Load().(string)
 	degraded := s.degraded.Load()
 	return Status{
-		Healthy:        !degraded && !closed && s.db != nil,
-		Degraded:       degraded,
-		Closed:         closed,
-		SchemaVersion:  int(s.schemaVersion.Load()),
-		LastError:      lastError,
-		QueueDepth:     len(s.queue),
-		QueueCapacity:  cap(s.queue),
-		Enqueued:       s.enqueued.Load(),
-		Written:        s.written.Load(),
-		Dropped:        s.dropped.Load(),
-		Failed:         s.failed.Load(),
-		Rejected:       s.rejected.Load(),
-		CleanupDeleted: s.cleaned.Load(),
+		Healthy:                  !degraded && !closed && s.db != nil,
+		Degraded:                 degraded,
+		Closed:                   closed,
+		SchemaVersion:            int(s.schemaVersion.Load()),
+		LastError:                lastError,
+		QueueDepth:               len(s.queueSlots),
+		QueueCapacity:            cap(s.queueSlots),
+		Enqueued:                 s.enqueued.Load(),
+		Written:                  s.written.Load(),
+		Dropped:                  s.dropped.Load(),
+		Failed:                   s.failed.Load(),
+		Rejected:                 s.rejected.Load(),
+		RawCaptureEnqueued:       s.rawEnqueued.Load(),
+		RawCaptureWritten:        s.rawWritten.Load(),
+		RawCaptureDropped:        s.rawDropped.Load(),
+		RawCaptureFailed:         s.rawFailed.Load(),
+		RawCaptureRejected:       s.rawRejected.Load(),
+		RawCaptureQueueHighWater: s.rawQueueHighWater.Load(),
+		RawCapturePrepareCount:   s.rawPrepareCount.Load(),
+		RawCapturePrepareTotalUS: s.rawPrepareTotalUS.Load(),
+		RawCapturePrepareLastUS:  s.rawPrepareLastUS.Load(),
+		RawCapturePrepareMaxUS:   s.rawPrepareMaxUS.Load(),
+		CleanupDeleted:           s.cleaned.Load(),
 	}
 }
 
@@ -501,9 +744,13 @@ func (s *Store) CloseContext(ctx context.Context) error {
 	s.closeOnce.Do(func() {
 		s.sendMu.Lock()
 		s.closed = true
-		close(s.done)
 		s.sendMu.Unlock()
 		go func() {
+			// Reservations begun before closed=true may still be redacting or
+			// validating request content. Wait until every one has either published
+			// or canceled before telling the writer that no more work can arrive.
+			_ = s.waitAdmissions(context.Background())
+			close(s.done)
 			s.wg.Wait()
 			s.cancelWork()
 			if s.db != nil {
@@ -562,8 +809,13 @@ func (s *Store) dropQueued() {
 	for {
 		select {
 		case item := <-s.queue:
-			if item.event != nil || item.rawCapture != nil {
+			s.releaseQueueSlot()
+			if item.event != nil {
 				s.dropped.Add(1)
+			}
+			if item.rawCapture != nil {
+				s.dropped.Add(1)
+				s.rawDropped.Add(1)
 			}
 			if item.barrier != nil {
 				close(item.barrier)

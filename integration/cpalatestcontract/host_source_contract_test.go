@@ -51,6 +51,7 @@ var cpaCompatibilityProfiles = map[string]cpaCompatibilityProfile{
 var latestCriticalCPAHostTests = []string{
 	"TestDecodeEnvelopeResultPreservesPluginHTTPStatus",
 	"TestSanitizePluginRequestRemovesNonJSONMetadata",
+	"TestServeManagementHTMLEscapesJSONResponseStrings",
 	"TestHostRouteModelAllowsExplicitExecutorPluginTarget",
 	"TestHostRouteModelClonesPluginMetadata",
 	"TestHostRouteModelContinuesAfterUnhandled",

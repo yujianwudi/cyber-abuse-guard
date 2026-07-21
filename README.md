@@ -5,12 +5,17 @@ current_classifier_policy_version: classifier-policy-v6
 current_classifier_policy_sha256: ece497210db938528cb166a34f2ce3013324b792a7eedf276a96fa5d256001d4
 ```
 
-> **Current development target:** a planned local Linux amd64 `v0.16-rc.1`
-> core package from exact source version `0.16` for the pinned CPA v7.2.88
-> contract. It is not a GitHub Release, GitHub Actions result, production
-> deployment, or new CPA Host attestation. All `v0.15-rc.*` workflows, badges,
-> release states, and Round 6 evidence retained below are historical v0.15
-> records and do not establish v0.16 release evidence.
+> **Current development state:** a local Linux amd64 `v0.16-rc.1` core package
+> has been built from exact source version `0.16` for the pinned CPA v7.2.88
+> contract. Its manifest binds local annotated tag object `4c04e465`, commit
+> `7b2422e`, and tree `d586824e`. It is not a remote tag, GitHub Release,
+> successful GitHub Actions artifact, production deployment, or new CPA Host
+> attestation. Exact-main CI run
+> [`29799561002`](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29799561002)
+> failed in both attempts and produced no Actions artifact. The current P1-P2
+> hardening branch is newer than that local package and has passed the complete
+> local Linux development gate set, but it is not included in those package
+> hashes and has no GitHub Actions, release, or real-Host evidence.
 
 [![Historical CI](https://img.shields.io/badge/historical_CI-v0.15-blue)](https://github.com/yujianwudi/cyber-abuse-guard/actions/workflows/ci.yml)
 [![Go](https://img.shields.io/badge/Go-1.26.4-00ADD8?logo=go&logoColor=white)](go.mod)
@@ -43,11 +48,15 @@ classifier.
 
 | Item | State |
 |---|---|
-| Source version / local RC tag target | `0.16` / exact annotated tag `v0.16-rc.1` (never `v0.16-rc1`) |
-| Package evidence | Artifact-bound and external to the source tree; a delivered local package must carry `local-rc-manifest.json` plus checksums and still claims no GitHub Release, Actions result, or formal attestation |
-| Linux source gates | `make test`, `make round6-vet`, format/module checks, release-document consistency, and 154 safe-gate contract tests pass locally |
+| Source version / local RC identity | `0.16` / local annotated tag `v0.16-rc.1` (never `v0.16-rc1`), tag object `4c04e465ba10815e6ee7261e86807556c2e86102`, commit `7b2422ed30c11d405d05bcb6b46a2527eed6471b`, tree `d586824ed7f273e9f7f49f82d5ea0eb24bdd2da9` |
+| Local package evidence | Generated under ignored local path `dist/v0.16-rc.1`; the delivered `local-rc-manifest.json` and checksums bind the SO (`9d0ee747491dedeb83f3b3e98137d879dbaba5818e7a6922f9cf1f61d407e685`) and CPA Store ZIP (`86e9eba5265d5f2bb737ec41d5ed8ada51bf352b3833c2d985d3f754963540f7`) |
+| Local package source gates (`7b2422e`) | `make test`, `make round6-vet`, format/module checks, release-document consistency, and 154 safe-gate contract tests are recorded as passing in the local manifest; later hardening changes require fresh evidence |
+| Post-package P1-P2 hardening | Branch `fix/p1-p2-hardening-v016`; complete local Linux test/race/vet/script/safe-gate/benchmark and CPA v7.2.88 source-overlay checks pass as development self-checks, but are not included in the package hashes |
+| Exact-main GitHub CI | **FAILED — run 29799561002, two attempts, zero Actions artifacts.** Attempt 1 failed in `fuzz-smoke` because `FuzzExtractText` exceeded its context deadline. Attempt 2 passed that step, then failed in `operational-script-security` when the Round 6 document-consistency fixture rejected a document mutation |
+| GitHub publication | No remote `v0.16-rc.1` tag and no corresponding GitHub Release |
 | CPA compatibility | Pinned v7.2.88 module, checksums, compile probes, registration, role-aware routing, and Store contracts pass; the final repeated direct Git Origin refresh timed out and is not called a remote PASS |
 | v0.16 workflows | Existing candidate/RC/formal workflows are historical v0.15 machinery and have **NOT BEEN MIGRATED** to v0.16 |
+| Static analysis governance | `.github/workflows/codeql.yml` performs minimal-permission Go analysis on Ubuntu within the reviewed sparse source boundary; CodeQL results do not authorize a release |
 | Validation platform | Linux amd64 only; emitted numeric GLIBC ABI versions must be `<= 2.34` |
 | Out of scope | Windows, macOS, musl/Alpine, local deployment, production validation |
 | CPA Host matrix | Active validation and the supported release target are pinned to CPA v7.2.88 (`93d74a890a44802f656d7f39a573916b2611896e`); owner-operated isolated Host + Mock-upstream evidence is **NOT RUN / PENDING** |
@@ -244,10 +253,11 @@ for implementation or conclusions.
 **disabled by default**, requires ordinary audit storage, and is hard-limited
 to blocking decisions (`block` or subject `cooldown`). It does not record
 allowed, observed, or audit-only requests. Each stored preview is best-effort
-secret-redacted first, then truncated on a valid UTF-8 boundary; the defaults
-are 8 KiB per capture and a 72-hour TTL. Redaction is not a complete DLP
-guarantee, so the SQLite data directory and CPA Management Key must be treated
-as sensitive production secrets.
+secret-redacted over a bounded `max_bytes + 64 KiB` prefix/overlap, then
+truncated on a valid UTF-8 boundary; SHA-256 still covers the complete request.
+The defaults are 8 KiB per capture and a 72-hour TTL. Redaction is not a
+complete DLP guarantee, so the SQLite data directory and CPA Management Key
+must be treated as sensitive production secrets.
 
 Enable it explicitly:
 
@@ -271,9 +281,15 @@ curl -H "X-Management-Key: $CPA_MANAGEMENT_KEY" \
   "http://127.0.0.1:8317/v0/management/plugins/cyber-abuse-guard/raw-captures?limit=20"
 ```
 
-The management response applies a fixed 8 MiB budget to JSON-encoded preview
-content. A requested `limit` of 100 is still valid, but the endpoint may return
-fewer rows; check `response_truncated` and `returned_count`.
+CPA v7.2.88 HTML-escapes the legacy `raw_preview` string. That field remains
+available for compatibility but is explicitly deprecated. New consumers should
+use the canonical `raw_preview_b64` field when byte-stable review text is
+required. Base64 is transport encoding, not encryption or redaction: decoded
+content remains sensitive and must be rendered as plain text only, never through
+`innerHTML` or another HTML-capable renderer. The management response applies a
+fixed 8 MiB budget to the complete Host-visible JSON body. A requested `limit`
+of 100 is still valid, but the endpoint may return fewer rows; check
+`response_truncated`, `returned_count`, and `cpa_host_response_bytes`.
 
 When a live disable transition succeeds while audit storage remains enabled,
 the endpoint returns an empty list only after the capture table is purged and

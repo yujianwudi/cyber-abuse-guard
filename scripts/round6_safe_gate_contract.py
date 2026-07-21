@@ -79,6 +79,7 @@ SHELL_OPERATORS = {"&&", "||", ";", "|", "&"}
 SAFE_DYNAMIC_TOOL_VARIABLES = {"go_bin", "cyclonedx"}
 ACTIVE_WORKFLOW_PATHS = (
     ".github/workflows/ci.yml",
+    ".github/workflows/codeql.yml",
     ".github/workflows/candidate.yml",
     ".github/workflows/attested-prerelease.yml",
     ".github/workflows/release-rc.yml",
@@ -826,6 +827,7 @@ CANDIDATE_SCRIPT_SHA256 = {
 RC_RELEASE_SCRIPT_SHA256 = "9212b21356763333215ce74e70c1e4f49992a4cc0f84ca78033797848603f96d"
 ACTIVE_RC_WORKFLOW_SHA256 = "5f44b0d6bc20753ef50a4108257840b8a9b3364214305babdfc4461fcc7c64f6"
 RC_RELEASE_WORKFLOW_SHA256 = "5ff480e2bb84bc33da81cc4e9839e4bca50453fc7e77debc1f24dd5b04362107"
+CODEQL_WORKFLOW_SHA256 = "413aa0e5c1cf363bdf424b390132a4d1715f84dc11a68a209da7c1ba93015249"
 FORMAL_OPERATION_SCRIPTS = (
     "formal-release.sh",
     "generate-release-evidence.sh",
@@ -895,7 +897,7 @@ FROZEN_EVALUATION_STATUS_COMMAND = (
 )
 ROUND6_DOC_FIXTURE_WRAPPER_SCRIPT = "scripts/round6-doc-consistency-fixture-test.sh"
 ROUND6_DOC_FIXTURE_WRAPPER_SCRIPT_SHA256 = (
-    "2b93b63a007ba959ce41a1cb86af21ba133997e01b3b9fa39effdabbcdeb0322"
+    "1f6cc93ecb3bb1a2a14409020111ef353d305ba130e5448fce2c3208b9ebaafc"
 )
 ROUND6_DOC_FIXTURE_DEPENDENCY_SHA256 = {
     "scripts/release-doc-consistency-test.sh": "25fe586d622f08b6f4a130d8f80ebde678a67f61c436a3acc190fcfe331eebc6",
@@ -1992,6 +1994,14 @@ def exact_string_mapping(
             )
         )
     return tuple(values)
+
+
+def validate_codeql_workflow(text: str, source: Path) -> None:
+    validate_workflow_safety(text, source)
+    if hashlib.sha256(text.encode("utf-8")).hexdigest() != CODEQL_WORKFLOW_SHA256:
+        raise ContractError(
+            "CodeQL workflow differs from the exact reviewed trigger, permission, action, and build contract"
+        )
 
 
 def validate_candidate_workflow(text: str, source: Path) -> None:
@@ -4630,6 +4640,23 @@ def validate_round6_makefile_contract(text: str, source: Path) -> None:
             "round6-module-verify must tidy-diff only the two included integration modules: "
             f"{source}"
         )
+    fuzz_smoke_commands = tuple(
+        " ".join(line.split())
+        for line in recipes.get("fuzz-smoke", "").splitlines()
+        if line.strip()
+    )
+    expected_fuzz_smoke_commands = (
+        "@listed=\"$$($(GO) test ./internal/extract -list='^(FuzzExtractText|FuzzExtractRequestMediaMemberOrder|FuzzExtractRequestScalarMediaCarrierPermutation|FuzzExtractRequestContentType|FuzzExtractRequestMultipart|FuzzExtractRequestMultipartUnknownFieldEvidenceOrder|FuzzRound6JSONStringChunkDecoderMatchesStdlib)$$')\" || exit $$?; for fuzz_name in FuzzExtractText FuzzExtractRequestMediaMemberOrder FuzzExtractRequestScalarMediaCarrierPermutation FuzzExtractRequestContentType FuzzExtractRequestMultipart FuzzExtractRequestMultipartUnknownFieldEvidenceOrder FuzzRound6JSONStringChunkDecoderMatchesStdlib; do printf '%s\\n' \"$$listed\" | grep -Fxq \"$$fuzz_name\" || { echo \"required extract fuzz seed target $$fuzz_name is missing\" >&2; exit 1; }; done",
+        "$(GO) test ./internal/extract -run='^(FuzzExtractText|FuzzExtractRequestMediaMemberOrder|FuzzExtractRequestScalarMediaCarrierPermutation|FuzzExtractRequestContentType|FuzzExtractRequestMultipart|FuzzExtractRequestMultipartUnknownFieldEvidenceOrder|FuzzRound6JSONStringChunkDecoderMatchesStdlib)$$' -count=1",
+        "@listed=\"$$($(GO) test ./internal/classifier -list='^(FuzzClassifier|FuzzRound6StreamingChunkAndRoleBoundaries|FuzzMetaOverrideClausePermutation|FuzzMetaOverrideEncodingAndPartSplit|FuzzDefensiveQuotedSampleBoundary)$$')\" || exit $$?; for fuzz_name in FuzzClassifier FuzzRound6StreamingChunkAndRoleBoundaries FuzzMetaOverrideClausePermutation FuzzMetaOverrideEncodingAndPartSplit FuzzDefensiveQuotedSampleBoundary; do printf '%s\\n' \"$$listed\" | grep -Fxq \"$$fuzz_name\" || { echo \"required classifier fuzz seed target $$fuzz_name is missing\" >&2; exit 1; }; done",
+        "$(GO) test ./internal/classifier -run='^(FuzzClassifier|FuzzRound6StreamingChunkAndRoleBoundaries|FuzzMetaOverrideClausePermutation|FuzzMetaOverrideEncodingAndPartSplit|FuzzDefensiveQuotedSampleBoundary)$$' -count=1",
+        "@$(GO) test ./internal/config -list='^FuzzConfigParser$$' | grep -Fxq 'FuzzConfigParser' || { echo 'required config fuzz seed target FuzzConfigParser is missing' >&2; exit 1; }",
+        "$(GO) test ./internal/config -run='^FuzzConfigParser$$' -count=1",
+    )
+    if fuzz_smoke_commands != expected_fuzz_smoke_commands:
+        raise ContractError(
+            f"fuzz-smoke must fail closed over the exact deterministic seed target set: {source}"
+        )
     if dependencies.get("round6-benchmark") != {"benchmark"}:
         raise ContractError(
             f"round6-benchmark must retain the reviewed benchmark dependency: {source}"
@@ -4640,8 +4667,18 @@ def validate_round6_makefile_contract(text: str, source: Path) -> None:
         if line.strip()
     )
     expected = (
+        "@$(GO) test ./internal/extract -list='^TestRound6LongTextScaleAcceptance$$' | grep -Fxq 'TestRound6LongTextScaleAcceptance' || { echo 'required Round6 long-text scale acceptance test is missing' >&2; exit 1; }",
+        "$(GO) test ./internal/extract -count=1 -v -run='^TestRound6LongTextScaleAcceptance$$'",
         "@$(GO) test ./internal/extract -list='^BenchmarkRound6ScanLongJSON$$' | grep -Fxq 'BenchmarkRound6ScanLongJSON' || { echo 'required Round6 long-JSON benchmark is missing' >&2; exit 1; }",
         "$(GO) test ./internal/extract -run='^$$' -bench='^BenchmarkRound6ScanLongJSON$$' -benchmem -benchtime=1x -count=1",
+        "@$(GO) test ./internal/audit -list='^TestRawCapturePerformanceAcceptance$$' | grep -Fxq 'TestRawCapturePerformanceAcceptance' || { echo 'required raw-capture performance acceptance test is missing' >&2; exit 1; }",
+        "$(GO) test ./internal/audit -count=1 -v -run='^TestRawCapturePerformanceAcceptance$$'",
+        "@listed=\"$$($(GO) test ./internal/audit -list='^(BenchmarkPrepareRawCapture|BenchmarkRecordRawCaptureQueue|BenchmarkEnqueueEventWithRawCapture)$$')\" || exit $$?; for benchmark_name in BenchmarkPrepareRawCapture BenchmarkRecordRawCaptureQueue BenchmarkEnqueueEventWithRawCapture; do printf '%s\\n' \"$$listed\" | grep -Fxq \"$$benchmark_name\" || { echo \"required raw-capture benchmark $$benchmark_name is missing\" >&2; exit 1; }; done",
+        "$(GO) test ./internal/audit -run='^$$' -bench='^(BenchmarkPrepareRawCapture|BenchmarkRecordRawCaptureQueue|BenchmarkEnqueueEventWithRawCapture)$$' -benchmem -benchtime=1x -count=1",
+        "@$(GO) test -tags=$(TEST_TAGS) ./internal/plugin -list='^TestRawCaptureManagementResponsePerformanceAcceptance$$' | grep -Fxq 'TestRawCaptureManagementResponsePerformanceAcceptance' || { echo 'required raw-capture management performance acceptance test is missing' >&2; exit 1; }",
+        "$(GO) test -tags=$(TEST_TAGS) ./internal/plugin -count=1 -v -run='^TestRawCaptureManagementResponsePerformanceAcceptance$$'",
+        "@$(GO) test -tags=$(TEST_TAGS) ./internal/plugin -list='^BenchmarkRawCaptureManagementResponseBudget$$' | grep -Fxq 'BenchmarkRawCaptureManagementResponseBudget' || { echo 'required raw-capture management response benchmark is missing' >&2; exit 1; }",
+        "$(GO) test -tags=$(TEST_TAGS) ./internal/plugin -run='^$$' -bench='^BenchmarkRawCaptureManagementResponseBudget$$' -benchmem -benchtime=1x -count=1",
         "@$(GO) test -tags=$(TEST_TAGS) ./internal/plugin -list='^TestFourRepositoryFullRoutePerformanceAcceptance$$' | grep -Fxq 'TestFourRepositoryFullRoutePerformanceAcceptance' || { echo 'required Round6 full-route performance acceptance test is missing' >&2; exit 1; }",
         "$(GO) test -tags=$(TEST_TAGS) ./internal/plugin -count=1 -v -run='^TestFourRepositoryFullRoutePerformanceAcceptance$$'",
         "@listed=\"$$($(GO) test -tags=$(TEST_TAGS) ./internal/plugin -list='^(BenchmarkFourRepositoryModelRoute|BenchmarkFourRepositoryParallelCleanSubjectEnabled|BenchmarkBalancedAuditOnWrapperOnly17166ModelRoute)$$')\" || exit $$?; for benchmark_name in BenchmarkFourRepositoryModelRoute BenchmarkFourRepositoryParallelCleanSubjectEnabled BenchmarkBalancedAuditOnWrapperOnly17166ModelRoute; do printf '%s\\n' \"$$listed\" | grep -Fxq \"$$benchmark_name\" || { echo \"required Round6 full-route benchmark $$benchmark_name is missing\" >&2; exit 1; }; done",
@@ -4900,7 +4937,7 @@ def validate_workflow_layout(root: Path) -> None:
         expected_directory_paths
     ):
         raise ContractError(
-            "workflow directory must contain exactly the six reviewed entrypoints and its README: "
+            "workflow directory must contain exactly the seven reviewed entrypoints and its README: "
             + ", ".join(expected_directory_paths)
         )
 
@@ -4940,6 +4977,8 @@ def audit(root: Path, entrypoints: list[Path]) -> tuple[set[str], set[str]]:
             name = entrypoint.name.lower()
             if name == "candidate.yml":
                 validate_candidate_workflow(text, entrypoint)
+            elif name == "codeql.yml":
+                validate_codeql_workflow(text, entrypoint)
             elif name == "attested-prerelease.yml":
                 validate_blocked_prerelease_workflow(text, entrypoint)
             elif name == "release-rc.yml":

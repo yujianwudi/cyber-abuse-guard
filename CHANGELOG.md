@@ -5,12 +5,39 @@ current_classifier_policy_version: classifier-policy-v6
 current_classifier_policy_sha256: ece497210db938528cb166a34f2ce3013324b792a7eedf276a96fa5d256001d4
 ```
 
+## Unreleased - post-v0.16-rc.1 P1-P2 hardening
+
+- Admit a blocking audit event and its optional raw-capture preview as one
+  bounded composite work item. The writer uses one SQLite transaction, keeps
+  the ordinary event when preview insertion fails, and exposes dedicated
+  capture counters, queue high-water, and preparation latency.
+- Reserve queue capacity before capture hashing/redaction. Redaction now scans
+  only `max_bytes + 64 KiB` while SHA-256 still covers the complete request;
+  saturated queues therefore reject without full-body capture work.
+- Preserve the legacy `raw_preview` field while adding canonical
+  `raw_preview_b64` for the pinned CPA v7.2.88 HTML-sanitizing transport. The
+  response publishes an exact predicted Host-body size, an 8 MiB full-response
+  budget, schema/deprecation metadata, and a mandatory text-only rendering
+  contract.
+- Replace repeated full-response management encoding with one-pass per-record
+  size accounting. Add raw-capture preparation/composite/queue-full benchmarks
+  and a worst-case management-response acceptance gate.
+- Make deterministic fuzz-seed smoke testing fail closed over all 13 reviewed
+  targets, retain time-based fuzzing in the separate CI job, and fail closed if
+  long-text or raw-capture performance tests/benchmarks are renamed or removed.
+- Add a minimal-permission Linux Go CodeQL workflow in `build-mode: none`, pin
+  every action by commit SHA, and freeze its trigger/permission/step contract in
+  the repository safe gate.
+- P0 remains unresolved: client-controlled assistant history can still affect
+  the historical refusal-maintenance exception. This hardening is not v0.16
+  release authorization.
+
 ## 0.16 — 2026-07-21
 
-Development status: **LOCAL RC SOURCE / PACKAGE EVIDENCE EXTERNAL TO SOURCE /
-NOT A GITHUB RELEASE**. The
-source version is `0.16`, the intended formal tag is `v0.16` (never
-`v0.16.0`), and the current local artifact target is `v0.16-rc.1`.
+Development status: **LOCAL RC PACKAGE CREATED / EXACT-MAIN GITHUB CI FAILED /
+NO REMOTE TAG OR GITHUB RELEASE**. The source version is `0.16`, the intended
+formal tag is `v0.16` (never `v0.16.0`), and the current local artifact is
+`v0.16-rc.1`.
 
 ### v0.16-rc.1 local Linux amd64 core package
 
@@ -25,10 +52,19 @@ source version is `0.16`, the intended formal tag is `v0.16` (never
 - Target Linux amd64 and the pinned CPA v7.2.88 source contract. Windows,
   macOS, local deployment, and production deployment are outside this package
   operation.
-- Treat any locally produced RC package only as a handoff artifact. It is not
-  a GitHub Release, GitHub Actions result, formal-release attestation, or new
-  CPA Host validation record. The retained `v0.15-rc.*` workflows and evidence
-  below are historical v0.15 records.
+- Bind the local package manifest to annotated tag object `4c04e465`, commit
+  `7b2422e`, and tree `d586824e`. The Linux SO SHA-256 is
+  `9d0ee747491dedeb83f3b3e98137d879dbaba5818e7a6922f9cf1f61d407e685`; the CPA
+  Store ZIP SHA-256 is
+  `86e9eba5265d5f2bb737ec41d5ed8ada51bf352b3833c2d985d3f754963540f7`.
+- Record exact-main CI run `29799561002` as two failed attempts with zero
+  Actions artifacts: attempt 1 timed out in `FuzzExtractText`; attempt 2 passed
+  that fuzz step and later failed the Round 6 document-consistency fixture in
+  `operational-script-security`.
+- Treat the local RC package only as a handoff artifact. It is not a GitHub
+  Release, successful GitHub Actions artifact, formal-release attestation, or
+  new CPA Host validation record. The retained `v0.15-rc.*` workflows and
+  evidence below are historical v0.15 records.
 
 ## 0.15 — 2026-07-18
 

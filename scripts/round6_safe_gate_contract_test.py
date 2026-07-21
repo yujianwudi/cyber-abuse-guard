@@ -30,6 +30,7 @@ from round6_safe_gate_contract import (
     validate_candidate_script,
     validate_candidate_workflow,
     validate_ci_workflow,
+    validate_codeql_workflow,
     validate_cpa_compat_script,
     validate_cpa_module_pins,
     validate_consumed_boundary_files,
@@ -841,6 +842,38 @@ jobs:
         source = Path(__file__).parent.parent / "Makefile"
         validate_round6_makefile_contract(source.read_text(encoding="utf-8"), source)
 
+    def test_fuzz_smoke_requires_exact_fail_closed_seed_targets(self):
+        source = Path(__file__).parent.parent / "Makefile"
+        original = source.read_text(encoding="utf-8")
+        mutations = (
+            original.replace(
+                "FuzzRound6StreamingChunkAndRoleBoundaries",
+                "FuzzMissingStreamingChunkAndRoleBoundaries",
+                1,
+            ),
+            original.replace(
+                "$(GO) test ./internal/config -run='^FuzzConfigParser$$' -count=1",
+                "$(GO) test ./internal/config -run='^$$' -fuzz='^FuzzConfigParser$$' -fuzztime=5s",
+                1,
+            ),
+        )
+        for text in mutations:
+            self.assertNotEqual(text, original)
+            with self.assertRaisesRegex(ContractError, "fuzz-smoke must fail closed"):
+                validate_round6_makefile_contract(text, source)
+
+    def test_round6_benchmark_requires_scale_acceptance_presence_gate(self):
+        source = Path(__file__).parent.parent / "Makefile"
+        original = source.read_text(encoding="utf-8")
+        text = original.replace(
+            "-list='^TestRound6LongTextScaleAcceptance$$'",
+            "-list='^TestMissingRound6LongTextScaleAcceptance$$'",
+            1,
+        )
+        self.assertNotEqual(text, original)
+        with self.assertRaisesRegex(ContractError, "acceptance plus extract/full-route benchmarks"):
+            validate_round6_makefile_contract(text, source)
+
     def test_round6_benchmark_wrong_package_fails(self):
         source = Path(__file__).parent.parent / "Makefile"
         original = source.read_text(encoding="utf-8")
@@ -994,6 +1027,10 @@ jobs:
         source = Path(__file__).parent.parent / ACTIVE_RC_WORKFLOW_PATH
         return source.read_text(encoding="utf-8")
 
+    def codeql_workflow(self) -> str:
+        source = Path(__file__).parent.parent / ".github/workflows/codeql.yml"
+        return source.read_text(encoding="utf-8")
+
     def workflow_layout_fixture(self) -> Path:
         source_root = Path(__file__).resolve().parent.parent
         temporary = tempfile.TemporaryDirectory()
@@ -1010,7 +1047,7 @@ jobs:
             target.write_bytes(source.read_bytes())
         return root
 
-    def test_workflow_layout_has_exact_six_active_entrypoints_and_archived_rc(self):
+    def test_workflow_layout_has_exact_seven_active_entrypoints_and_archived_rc(self):
         root = Path(__file__).resolve().parent.parent
         validate_workflow_layout(root)
         entrypoints = default_entrypoints(root)
@@ -1028,14 +1065,14 @@ jobs:
         root = self.workflow_layout_fixture()
         extra = root / ".github/workflows/unreviewed.yml"
         extra.write_text("name: Unreviewed\n", encoding="utf-8")
-        with self.assertRaisesRegex(ContractError, "exactly the six reviewed entrypoints"):
+        with self.assertRaisesRegex(ContractError, "exactly the seven reviewed entrypoints"):
             validate_workflow_layout(root)
         extra.unlink()
 
         missing = root / ACTIVE_WORKFLOW_PATHS[1]
         missing_bytes = missing.read_bytes()
         missing.unlink()
-        with self.assertRaisesRegex(ContractError, "exactly the six reviewed entrypoints"):
+        with self.assertRaisesRegex(ContractError, "exactly the seven reviewed entrypoints"):
             validate_workflow_layout(root)
         missing.write_bytes(missing_bytes)
 
@@ -1062,6 +1099,25 @@ jobs:
             validate_blocked_prerelease_workflow(
                 attested, Path("attested-prerelease.yml")
             )
+
+    def test_codeql_workflow_is_exact_and_rejects_permission_trigger_or_action_drift(self):
+        source = Path(__file__).parent.parent / ".github/workflows/codeql.yml"
+        original = self.codeql_workflow()
+        validate_codeql_workflow(original, source)
+        mutations = (
+            original.replace("  contents: read\n", "  contents: write\n", 1),
+            original.replace("  pull_request:\n", "  pull_request_target:\n", 1),
+            original.replace(
+                "github/codeql-action/analyze@7188fc363630916deb702c7fdcf4e481b751f97a",
+                "github/codeql-action/analyze@" + "0" * 40,
+                1,
+            ),
+            original.replace("      security-events: write\n", "      security-events: read\n", 1),
+        )
+        for workflow in mutations:
+            self.assertNotEqual(workflow, original)
+            with self.assertRaisesRegex(ContractError, "CodeQL workflow differs"):
+                validate_codeql_workflow(workflow, source)
 
     def test_candidate_workflow_full_contract_passes(self):
         validate_candidate_workflow(

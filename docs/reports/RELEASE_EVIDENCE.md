@@ -741,7 +741,57 @@ decision: BLOCKED FOR HANDOFF / RELEASE FAIL
 artifact_status: LOCAL RC CORE PACKAGE / NOT A GITHUB RELEASE
 source_version: 0.16
 local_rc_artifact_version: 0.16-rc.1
+local_tag_object: 4c04e465ba10815e6ee7261e86807556c2e86102
+commit: 7b2422ed30c11d405d05bcb6b46a2527eed6471b
+tree: d586824ed7f273e9f7f49f82d5ea0eb24bdd2da9
 cpa_contract: v7.2.88
 ruleset_sha256: 1d908c8c631bc6f72e7ec6b098bea49c4923580766859393d0be48c8c00c6d7d
+so_sha256: 9d0ee747491dedeb83f3b3e98137d879dbaba5818e7a6922f9cf1f61d407e685
+store_zip_sha256: 86e9eba5265d5f2bb737ec41d5ed8ada51bf352b3833c2d985d3f754963540f7
+github_actions_run: 29799561002
+github_actions_attempt_1: FAILED / fuzz-smoke / FuzzExtractText context deadline exceeded
+github_actions_attempt_2: FAILED / operational-script-security / document consistency fixture
+github_actions_artifacts: 0
+remote_v0.16-rc.1_tag: NOT CREATED
 github_release_evidence: NOT CREATED
+real_host_attestation: NOT RUN
 ```
+
+The local manifest and checksum files are package evidence only. They do not
+convert either failed CI attempt into a PASS and do not authorize pushing the
+local tag or creating a prerelease. The retained v0.15 workflows remain
+version-locked historical machinery; no executable v0.16 publication path is
+claimed here.
+
+## Post-package P1-P2 hardening working-tree status
+
+The raw-capture admission, CPA management-response, fuzz-gate, and CodeQL
+hardening performed after the local `v0.16-rc.1` package is development work.
+It is not included in the package hashes above and has no tag-, package-, or
+artifact-bound release evidence.
+
+```text
+development_base: 7b2422ed30c11d405d05bcb6b46a2527eed6471b
+development_branch: fix/p1-p2-hardening-v016
+working_tree_identity: DEVELOPMENT BRANCH / NOT ARTIFACT-BOUND
+linux_targeted_long_json_acceptance: DEVELOPMENT SELF-CHECK PASS
+linux_targeted_raw_capture_acceptance: DEVELOPMENT SELF-CHECK PASS
+linux_full_post_hardening_gate_set: DEVELOPMENT SELF-CHECK PASS
+safe_gate_contract_tests: 157 PASS
+deterministic_fuzz_seed_targets: 13/13 PASS
+cpa_v7.2.88_raw_capture_host_source_overlay: DEVELOPMENT SELF-CHECK PASS
+github_actions_exact_working_tree: NOT AVAILABLE
+cpa_v7.2.88_real_host_attestation: NOT RUN
+p0_assistant_history_bypass: UNRESOLVED / RELEASE BLOCKER
+publication_authorization: NO
+```
+
+The complete Linux self-check observed 457,790,105 ns/op, 3,355,125 B/op,
+and 43 allocs/op for near-8 MiB preparation; 454,296,686 ns/op, 3,360,418
+B/op, and 68 allocs/op for composite admission; 46 ns/op with zero allocation
+for queue-full rejection; and 54,596,462 ns/op, 8,529,000 B/op, and 1,329
+allocs/op for the worst-case management response. The P2 Text, KeyRich, and
+SemanticRich long-JSON fixtures also passed their fixed 1 MiB, Near-8 MiB, and
+per-byte scaling limits. These are development self-checks only. They must not
+be copied into a release attestation as CI, formal benchmark, CPA Host, or
+production evidence.

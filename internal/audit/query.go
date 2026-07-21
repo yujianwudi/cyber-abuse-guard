@@ -60,14 +60,24 @@ func (s *Store) Query(ctx context.Context, query Query) ([]Event, error) {
 func (s *Store) Stats(ctx context.Context) (Stats, error) {
 	status := s.Status()
 	stats := Stats{
-		ByAction:       make(map[string]int64),
-		ByCategory:     make(map[string]int64),
-		Enqueued:       status.Enqueued,
-		Written:        status.Written,
-		Dropped:        status.Dropped,
-		Failed:         status.Failed,
-		Rejected:       status.Rejected,
-		CleanupDeleted: status.CleanupDeleted,
+		ByAction:                 make(map[string]int64),
+		ByCategory:               make(map[string]int64),
+		Enqueued:                 status.Enqueued,
+		Written:                  status.Written,
+		Dropped:                  status.Dropped,
+		Failed:                   status.Failed,
+		Rejected:                 status.Rejected,
+		RawCaptureEnqueued:       status.RawCaptureEnqueued,
+		RawCaptureWritten:        status.RawCaptureWritten,
+		RawCaptureDropped:        status.RawCaptureDropped,
+		RawCaptureFailed:         status.RawCaptureFailed,
+		RawCaptureRejected:       status.RawCaptureRejected,
+		RawCaptureQueueHighWater: status.RawCaptureQueueHighWater,
+		RawCapturePrepareCount:   status.RawCapturePrepareCount,
+		RawCapturePrepareTotalUS: status.RawCapturePrepareTotalUS,
+		RawCapturePrepareLastUS:  status.RawCapturePrepareLastUS,
+		RawCapturePrepareMaxUS:   status.RawCapturePrepareMaxUS,
+		CleanupDeleted:           status.CleanupDeleted,
 	}
 	if s == nil || s.db == nil {
 		return stats, ErrUnavailable

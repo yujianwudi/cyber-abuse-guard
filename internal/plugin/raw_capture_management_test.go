@@ -1,10 +1,13 @@
 package plugin
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"html"
 	"net/http"
 	"net/url"
 	"path/filepath"
@@ -45,6 +48,15 @@ func TestRawCaptureManagementRequiresCredentialAndStaysEmptyWhenDisabled(t *test
 		ReturnedCount              int              `json:"returned_count"`
 		ResponseTruncated          bool             `json:"response_truncated"`
 		ResponsePreviewBudgetBytes int              `json:"response_preview_budget_bytes"`
+		CPAHostResponseBudgetBytes int              `json:"cpa_host_response_budget_bytes"`
+		CPAHostResponseBytes       int              `json:"cpa_host_response_bytes"`
+		RawPreviewTransport        string           `json:"raw_preview_transport"`
+		RawPreviewB64Encoding      string           `json:"raw_preview_b64_encoding"`
+		RawPreviewRendering        string           `json:"raw_preview_rendering"`
+		RawPreviewDeprecated       bool             `json:"raw_preview_deprecated"`
+		EncodedBytesDeprecated     bool             `json:"encoded_preview_bytes_deprecated"`
+		PreferredPreviewField      string           `json:"preferred_preview_field"`
+		ResponseSchemaVersion      int              `json:"raw_capture_response_schema_version"`
 	}
 	if err := json.Unmarshal(body, &result); err != nil {
 		t.Fatal(err)
@@ -52,7 +64,16 @@ func TestRawCaptureManagementRequiresCredentialAndStaysEmptyWhenDisabled(t *test
 	if result.Enabled || len(result.Captures) != 0 || result.ReturnedCount != 0 || result.ResponseTruncated {
 		t.Fatalf("disabled raw capture response=%s, want enabled=false and empty captures", body)
 	}
-	if result.RequestedLimit != defaultManagementRawCaptureLimit || result.ResponsePreviewBudgetBytes != maxManagementRawPreviewBytes {
+	if result.RequestedLimit != defaultManagementRawCaptureLimit ||
+		result.ResponsePreviewBudgetBytes != maxManagementRawPreviewBytes ||
+		result.CPAHostResponseBudgetBytes != maxManagementRawPreviewBytes ||
+		result.CPAHostResponseBytes <= 0 ||
+		result.RawPreviewTransport != managementRawPreviewTransport ||
+		result.RawPreviewB64Encoding != managementRawPreviewB64Encoding ||
+		result.RawPreviewRendering != managementRawPreviewRendering ||
+		!result.RawPreviewDeprecated || !result.EncodedBytesDeprecated ||
+		result.PreferredPreviewField != "raw_preview_b64" ||
+		result.ResponseSchemaVersion != managementRawCaptureSchema {
 		t.Fatalf("disabled raw capture bounds=%+v", result)
 	}
 }
@@ -63,8 +84,9 @@ func TestRawCaptureManagementBoundsEncodedPreviewResponse(t *testing.T) {
 	dataDir := filepath.ToSlash(t.TempDir())
 	register(t, p, "mode: balanced\naudit:\n  enabled: true\n  data_dir: \""+dataDir+"\"\n  retention_days: 30\n  raw_capture:\n    enabled: true\n    only_blocked: true\n    redact_secrets: true\n    max_bytes: 1048576\n    ttl_hours: 72\n")
 	state := p.runtime.Load()
-	rawRequest := []byte(strings.Repeat("<", 1<<20))
-	for index := 0; index < 10; index++ {
+	pattern := []byte(`&'"<script>alert(1)</script>`)
+	rawRequest := bytes.Repeat(pattern, (1<<20+len(pattern)-1)/len(pattern))[:1<<20]
+	for index := 0; index < 4; index++ {
 		timestamp := time.Now().UTC().Add(time.Duration(index) * time.Nanosecond)
 		eventID := newEventID()
 		requestHash := audit.HashRequest(append(rawRequest, byte(index)))
@@ -79,18 +101,16 @@ func TestRawCaptureManagementBoundsEncodedPreviewResponse(t *testing.T) {
 			Coverage:    "complete",
 			Scanner:     "streaming-scanner-v1",
 		}
-		if !state.audit.Record(event) {
-			t.Fatal("audit event was not queued")
-		}
-		if err := state.audit.RecordRawCapture(audit.RawCaptureInput{
+		accepted, err := state.audit.EnqueueEventWithRawCapture(event, audit.RawCaptureInput{
 			EventID:     eventID,
 			Timestamp:   timestamp,
 			RequestHash: requestHash,
 			Action:      "block",
 			Decision:    "block_malicious_text",
 			RawRequest:  rawRequest,
-		}); err != nil {
-			t.Fatal(err)
+		})
+		if err != nil || !accepted {
+			t.Fatalf("composite raw capture admission accepted=%t err=%v", accepted, err)
 		}
 	}
 	if err := state.audit.Flush(context.Background()); err != nil {
@@ -116,25 +136,151 @@ func TestRawCaptureManagementBoundsEncodedPreviewResponse(t *testing.T) {
 		t.Fatalf("bounded raw capture status=%d body=%s", response.StatusCode, body)
 	}
 	var result struct {
-		Captures                   []audit.RawRequestCapture `json:"captures"`
-		RequestedLimit             int                       `json:"requested_limit"`
-		ReturnedCount              int                       `json:"returned_count"`
-		ResponseTruncated          bool                      `json:"response_truncated"`
-		PreviewBytes               int                       `json:"preview_bytes"`
-		EncodedPreviewBytes        int                       `json:"encoded_preview_bytes"`
-		ResponsePreviewBudgetBytes int                       `json:"response_preview_budget_bytes"`
+		Captures                   []managementRawCapture `json:"captures"`
+		RequestedLimit             int                    `json:"requested_limit"`
+		ReturnedCount              int                    `json:"returned_count"`
+		ResponseTruncated          bool                   `json:"response_truncated"`
+		PreviewBytes               int                    `json:"preview_bytes"`
+		EncodedPreviewBytes        int                    `json:"encoded_preview_bytes"`
+		CPAHostEncodedPreviewBytes int                    `json:"cpa_host_encoded_preview_bytes"`
+		ResponsePreviewBudgetBytes int                    `json:"response_preview_budget_bytes"`
+		CPAHostResponseBudgetBytes int                    `json:"cpa_host_response_budget_bytes"`
+		CPAHostResponseBytes       int                    `json:"cpa_host_response_bytes"`
+		RawPreviewTransport        string                 `json:"raw_preview_transport"`
+		RawPreviewB64Encoding      string                 `json:"raw_preview_b64_encoding"`
+		RawPreviewRendering        string                 `json:"raw_preview_rendering"`
+		RawPreviewDeprecated       bool                   `json:"raw_preview_deprecated"`
+		EncodedBytesDeprecated     bool                   `json:"encoded_preview_bytes_deprecated"`
+		PreferredPreviewField      string                 `json:"preferred_preview_field"`
+		ResponseSchemaVersion      int                    `json:"raw_capture_response_schema_version"`
 	}
 	if err := json.Unmarshal(body, &result); err != nil {
 		t.Fatal(err)
 	}
-	if result.RequestedLimit != 100 || result.ReturnedCount != 1 || len(result.Captures) != 1 || !result.ResponseTruncated {
-		t.Fatalf("bounded raw capture metadata=%+v", result)
+	if result.RequestedLimit != 100 || result.ReturnedCount <= 0 ||
+		result.ReturnedCount != len(result.Captures) || result.ReturnedCount >= 4 || !result.ResponseTruncated {
+		t.Fatalf("bounded raw capture metadata: requested=%d returned=%d captures=%d truncated=%t",
+			result.RequestedLimit, result.ReturnedCount, len(result.Captures), result.ResponseTruncated)
 	}
-	if result.PreviewBytes != 1<<20 || result.EncodedPreviewBytes <= result.PreviewBytes || result.EncodedPreviewBytes > maxManagementRawPreviewBytes {
-		t.Fatalf("bounded raw capture bytes=%+v", result)
+	if result.PreviewBytes != result.ReturnedCount*(1<<20) ||
+		result.EncodedPreviewBytes <= result.PreviewBytes || result.EncodedPreviewBytes > maxManagementRawPreviewBytes {
+		t.Fatalf("bounded raw capture bytes: returned=%d preview=%d encoded=%d",
+			result.ReturnedCount, result.PreviewBytes, result.EncodedPreviewBytes)
 	}
-	if result.ResponsePreviewBudgetBytes != maxManagementRawPreviewBytes || result.Captures[0].RawPreview == "" {
-		t.Fatalf("bounded raw capture response=%+v", result)
+	if result.CPAHostEncodedPreviewBytes <= result.EncodedPreviewBytes || result.CPAHostEncodedPreviewBytes > maxManagementRawPreviewBytes {
+		t.Fatalf("CPA Host bounded raw capture bytes: encoded=%d host_encoded=%d",
+			result.EncodedPreviewBytes, result.CPAHostEncodedPreviewBytes)
+	}
+	if result.ResponsePreviewBudgetBytes != maxManagementRawPreviewBytes ||
+		result.CPAHostResponseBudgetBytes != maxManagementRawPreviewBytes ||
+		result.CPAHostResponseBytes <= 0 || result.CPAHostResponseBytes > maxManagementRawPreviewBytes ||
+		result.RawPreviewTransport != managementRawPreviewTransport ||
+		result.RawPreviewB64Encoding != managementRawPreviewB64Encoding ||
+		result.RawPreviewRendering != managementRawPreviewRendering ||
+		!result.RawPreviewDeprecated || !result.EncodedBytesDeprecated ||
+		result.PreferredPreviewField != "raw_preview_b64" ||
+		result.ResponseSchemaVersion != managementRawCaptureSchema ||
+		result.Captures[0].RawPreview == "" || result.Captures[0].RawPreviewB64 == "" {
+		t.Fatalf("bounded raw capture contract mismatch: host_bytes=%d transport=%q encoding=%q rendering=%q schema=%d",
+			result.CPAHostResponseBytes, result.RawPreviewTransport, result.RawPreviewB64Encoding,
+			result.RawPreviewRendering, result.ResponseSchemaVersion)
+	}
+	decodedPreview, err := base64.StdEncoding.DecodeString(result.Captures[0].RawPreviewB64)
+	if err != nil || string(decodedPreview) != result.Captures[0].RawPreview {
+		t.Fatalf("raw_preview_b64 did not preserve preview: err=%v decoded_bytes=%d", err, len(decodedPreview))
+	}
+	if !bytes.Contains(decodedPreview, []byte("<script>")) {
+		t.Fatal("canonical preview fixture did not retain the inert HTML canary")
+	}
+	if response.Headers.Get("Cache-Control") != "no-store" {
+		t.Fatalf("raw capture Cache-Control=%q, want no-store", response.Headers.Get("Cache-Control"))
+	}
+	hostBody, ok := managementCPAHostSanitizeJSON(body)
+	if !ok || len(hostBody) > maxManagementRawPreviewBytes || len(hostBody) != result.CPAHostResponseBytes {
+		t.Fatalf("CPA Host body bytes=%d ok=%t, budget=%d", len(hostBody), ok, maxManagementRawPreviewBytes)
+	}
+	var hostResult struct {
+		Captures []managementRawCapture `json:"captures"`
+	}
+	if err := json.Unmarshal(hostBody, &hostResult); err != nil || len(hostResult.Captures) != result.ReturnedCount {
+		t.Fatalf("decode CPA Host body: captures=%d err=%v", len(hostResult.Captures), err)
+	}
+	if hostResult.Captures[0].RawPreview != html.EscapeString(result.Captures[0].RawPreview) {
+		t.Fatalf("CPA Host raw_preview bytes=%d, want HTML-escaped transport bytes=%d",
+			len(hostResult.Captures[0].RawPreview), len(html.EscapeString(result.Captures[0].RawPreview)))
+	}
+	if hostResult.Captures[0].RawPreviewB64 != result.Captures[0].RawPreviewB64 {
+		t.Fatal("CPA Host changed canonical raw_preview_b64")
+	}
+}
+
+func TestManagementRawCaptureSizePredictionMatchesCPAHostSanitizer(t *testing.T) {
+	for _, value := range []string{
+		`plain`,
+		`&'"<script>alert(1)</script>\\line\n`,
+		"control:\x00\t\n unicode:\u2028雪",
+	} {
+		encoded, err := json.Marshal(value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got, want := managementEncodedJSONStringBytes(value), len(encoded)-2; got != want {
+			t.Fatalf("plugin JSON string bytes=%d, want %d for %q", got, want, value)
+		}
+		var buffer bytes.Buffer
+		encoder := json.NewEncoder(&buffer)
+		encoder.SetEscapeHTML(false)
+		if err := encoder.Encode(html.EscapeString(value)); err != nil {
+			t.Fatal(err)
+		}
+		wantHost := len(bytes.TrimSuffix(buffer.Bytes(), []byte("\n"))) - 2
+		if got := managementCPAHostEncodedJSONStringBytes(value); got != wantHost {
+			t.Fatalf("CPA Host JSON string bytes=%d, want %d for %q", got, wantHost, value)
+		}
+	}
+
+	capture := managementRawCapture{
+		RawRequestCapture: audit.RawRequestCapture{
+			ID:          "capture-size-contract",
+			EventID:     "event-size-contract",
+			Timestamp:   time.Date(2026, 7, 21, 12, 0, 0, 123, time.UTC),
+			RequestHash: "sha256:" + strings.Repeat("a", 64),
+			SubjectHash: "hmac-sha256:" + strings.Repeat("b", 64),
+			Action:      "block",
+			Decision:    "block_malicious_text",
+			Truncated:   true,
+			Redacted:    true,
+			RawPreview:  `&'"<script>alert(1)</script>`,
+			RawSHA256:   "sha256:" + strings.Repeat("c", 64),
+		},
+	}
+	capture.RawPreviewB64 = base64.StdEncoding.EncodeToString([]byte(capture.RawPreview))
+	captureBody, err := json.Marshal(capture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hostCaptureBody, ok := managementCPAHostSanitizeJSON(captureBody)
+	if !ok {
+		t.Fatal("CPA Host sanitizer rejected capture fixture")
+	}
+	predictedCaptureBytes, err := managementRawCaptureCPAHostJSONBytes(capture)
+	if err != nil || predictedCaptureBytes != len(hostCaptureBody) {
+		t.Fatalf("predicted capture bytes=%d actual=%d err=%v", predictedCaptureBytes, len(hostCaptureBody), err)
+	}
+
+	response, err := managementBoundRawCaptureResponse(audit.RawCapturePage{
+		Captures: []audit.RawRequestCapture{capture.RawRequestCapture},
+	}, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	responseBody, err := json.Marshal(response)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hostResponseBody, ok := managementCPAHostSanitizeJSON(responseBody)
+	if !ok || response.CPAHostResponseBytes != len(hostResponseBody) {
+		t.Fatalf("predicted Host response bytes=%d actual=%d ok=%t", response.CPAHostResponseBytes, len(hostResponseBody), ok)
 	}
 }
 

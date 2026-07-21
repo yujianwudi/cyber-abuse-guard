@@ -1,4 +1,4 @@
-# Test Report — v0.16 local RC source gates plus historical v0.15 evidence
+# Test Report — v0.16 P1-P2 self-check, local RC baseline, and historical v0.15 evidence
 
 ```text
 current_classifier_policy_version: classifier-policy-v6
@@ -7,25 +7,28 @@ current_classifier_policy_sha256: ece497210db938528cb166a34f2ce3013324b792a7eedf
 
 Last updated: 2026-07-21 (Asia/Shanghai)
 
-## v0.16-rc.1 current local source status
+## v0.16-rc.1 local package baseline
 
 Exact source version is `0.16`; the local Linux amd64 RC target is the exact
-annotated tag `v0.16-rc.1`. This source snapshot does not claim a GitHub
-Release, GitHub Actions run, real CPA Host load, production deployment,
-independent audit, or formal attestation.
+annotated tag `v0.16-rc.1`. A local package exists, but the tag has not been
+pushed and no GitHub Release exists. This section describes the package baseline
+at `7b2422e`, not the newer P1-P2 hardening branch. It does not claim
+a successful GitHub Actions run, Actions artifact, real CPA Host load,
+production deployment, independent audit, or formal attestation.
 
-| Current v0.16 evidence | Result |
+| Local package baseline evidence | Result |
 |---|---|
 | Classifier identity | `classifier-policy-v6` / `ece497210db938528cb166a34f2ce3013324b792a7eedf276a96fa5d256001d4` |
 | Ruleset | `1.0.8` / `1d908c8c631bc6f72e7ec6b098bea49c4923580766859393d0be48c8c00c6d7d` |
 | Audit schema | v4 with default-off `raw_request_captures` |
-| Linux safe tests | **PASS** — `make test`, including audit, config, extract, plugin and classifier |
-| Linux vet / format / modules | **PASS** — `make round6-vet`, `round6-format-check`, `round6-module-verify` |
-| Release-document and safe-gate contracts | **PASS** — document consistency and 154 Python contract tests |
+| Linux safe tests at package time | **PASS** — `make test`, including audit, config, extract, plugin and classifier |
+| Linux vet / format / modules at package time | **PASS** — `make round6-vet`, `round6-format-check`, `round6-module-verify` |
+| Local release-document and safe-gate contracts | **PASS at local package time** — release-document consistency and 154 Python contract tests are recorded in `local-rc-manifest.json`; this does not override the remote CI failures below |
 | CPA v7.2.88 local source contract | **PASS** — pinned module/checksums, compile probes, registration, role-aware routing, integration compile and Store contracts |
 | CPA official Git Origin repeat check | **NETWORK BLOCKED / NOT A PASS** — isolated direct refresh timed out after 60 seconds; an earlier direct Origin result identified the official repository, tag and commit, but the final repeated remote refresh was not completed |
-| Local RC package | Artifact-bound result is external to this source report; require the delivered `local-rc-manifest.json` and checksum files |
-| GitHub v0.16 evidence | **NOT CREATED** |
+| Local RC package | **CREATED / LOCAL ONLY** — manifest binds tag object `4c04e465ba10815e6ee7261e86807556c2e86102`, commit `7b2422ed30c11d405d05bcb6b46a2527eed6471b`, tree `d586824ed7f273e9f7f49f82d5ea0eb24bdd2da9`; SO SHA-256 `9d0ee747491dedeb83f3b3e98137d879dbaba5818e7a6922f9cf1f61d407e685`; Store ZIP SHA-256 `86e9eba5265d5f2bb737ec41d5ed8ada51bf352b3833c2d985d3f754963540f7` |
+| Exact-main GitHub CI | **FAILED — run 29799561002, two attempts, zero Actions artifacts.** Attempt 1 failed in `fuzz-smoke` with `FuzzExtractText: context deadline exceeded`; attempt 2 passed fuzz-smoke and failed in `operational-script-security` when `round6-doc-consistency-fixture-test.sh` rejected a document mutation. Reproducibility was skipped both times |
+| GitHub v0.16 publication | **NOT CREATED** — no remote `v0.16-rc.1` tag and no corresponding GitHub Release |
 
 The raw-capture privacy review additionally verifies that a live disable must
 drain and purge before runtime swap, and that cold startup rejects a disabled
@@ -33,6 +36,30 @@ runtime when an existing audit database cannot be opened/purged. If audit is
 enabled but a new empty store is unavailable, enforcement may remain degraded,
 while the raw-capture management endpoint returns HTTP 503 instead of an
 authoritative empty list.
+
+## Post-package P1-P2 development-branch self-check
+
+The current P1-P2 changes are not present in the local `v0.16-rc.1` package,
+its manifest, or its checksums. All results in this section are
+**DEVELOPMENT SELF-CHECK / NOT RELEASE EVIDENCE**.
+
+| Current working-tree check | Result |
+|---|---|
+| Source identity | Branch `fix/p1-p2-hardening-v016`, based on `7b2422ed30c11d405d05bcb6b46a2527eed6471b`; no artifact binding |
+| P2 long-JSON Text scaling | **SELF-CHECK PASS**, including Near-8 MiB `ns/byte <= 2.5x` 1 MiB gate — 1 MiB: 20.0 ms, 342,036 B/op, 45 allocs/op; Near-8 MiB: 155.7 ms, 341,997 B/op, 45 allocs/op |
+| P2 long-JSON KeyRich scaling | **SELF-CHECK PASS**, including slope gate — 1 MiB: 4.89 ms, 372,029 B/op, 17,205 allocs/op; Near-8 MiB: 41.8 ms, 2,409,686 B/op, 137,464 allocs/op |
+| P2 long-JSON SemanticRich scaling | **SELF-CHECK PASS**, including slope gate — 1 MiB: 4.33 ms, 160,400 B/op, 5,473 allocs/op; Near-8 MiB: 32.9 ms, 717,366 B/op, 43,553 allocs/op |
+| Near-8 MiB raw-capture prepare acceptance | **SELF-CHECK PASS** — threshold <= 1.2 s, <= 4 MiB/op, <= 160 allocs/op; observed 457,790,105 ns/op, 3,355,125 B/op, 43 allocs/op |
+| Near-8 MiB composite admission acceptance | **SELF-CHECK PASS** — threshold <= 1.5 s, <= 5 MiB/op, <= 200 allocs/op; observed 454,296,686 ns/op, 3,360,418 B/op, 68 allocs/op |
+| Queue-full early rejection acceptance | **SELF-CHECK PASS** — threshold <= 50 us and zero allocation; observed 46 ns/op, 0 B/op, 0 allocs/op |
+| Worst-case raw-capture management-response acceptance | **SELF-CHECK PASS** — threshold <= 500 ms, <= 16 MiB/op, <= 1,600 allocs/op; observed 54,596,462 ns/op, 8,529,000 B/op, 1,329 allocs/op |
+| p50 / p95 / p99 / peak RSS | **NOT MEASURED / UNAVAILABLE** — the targeted `testing.Benchmark` acceptance checks do not collect these metrics |
+| Full post-hardening Linux test, race, vet, script, 157-test safe-gate, 13-target fuzz seed, complete `round6-benchmark`, and CPA v7.2.88 Host source-overlay set | **DEVELOPMENT SELF-CHECK PASS** |
+| Exact-working-tree GitHub Actions / package / real CPA Host | **NOT AVAILABLE / NOT RUN** |
+| P0 client-controlled assistant-history bypass | **UNRESOLVED / RELEASE BLOCKER** |
+
+Passing these development checks does not retroactively repair exact-main run
+`29799561002`, authorize a tag or release, or prove production performance.
 
 ## Historical Round 6 v0.15 test status
 
@@ -558,6 +585,9 @@ local_rc_artifact_version: 0.16-rc.1
 platform: linux-amd64
 cpa_contract: v7.2.88
 ruleset_sha256: 1d908c8c631bc6f72e7ec6b098bea49c4923580766859393d0be48c8c00c6d7d
-verification_status: SOURCE GATES PASS / PACKAGE STATUS IS EXTERNAL ARTIFACT EVIDENCE
-github_actions_evidence: NOT CREATED
+verification_status: LOCAL PACKAGE SOURCE GATES PASS / REMOTE EXACT-MAIN CI FAILED
+local_package_status: CREATED / CHECKSUM-BOUND / LOCAL ONLY
+github_actions_run: 29799561002 / ATTEMPT_1_FAILED / ATTEMPT_2_FAILED
+github_actions_artifacts: 0
+github_release_evidence: NOT CREATED
 ```

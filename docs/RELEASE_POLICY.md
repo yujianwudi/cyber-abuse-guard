@@ -54,6 +54,16 @@ built for Linux amd64 handoff, but it does not create or imply a GitHub
 Release, GitHub Actions result, formal attestation, production authorization,
 or fresh CPA Host validation.
 
+Current external evidence for exact-main commit
+`7b2422ed30c11d405d05bcb6b46a2527eed6471b` is fail-closed: CI run
+[`29799561002`](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29799561002)
+failed twice and produced zero Actions artifacts. Attempt 1 failed in
+`fuzz-smoke`; attempt 2 passed that step and later failed the Round 6 document
+consistency fixture. A local annotated `v0.16-rc.1` tag and checksum-bound
+package exist, but the tag is not present on GitHub and no corresponding
+Release exists. Local package evidence cannot satisfy a successful exact-main
+CI or publication gate.
+
 The workflow fields, `rc_artifact_version`, and `rc_status` intentionally
 preserve the previously reviewed v0.15 release machinery as historical
 records. Those workflows have not been migrated to v0.16 and must not be used

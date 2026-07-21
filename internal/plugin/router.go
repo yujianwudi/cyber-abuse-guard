@@ -28,16 +28,6 @@ type modelRouteFailure struct {
 	reason string
 }
 
-// persistedAuditDecision is the privacy-safe join key returned only after the
-// corresponding decision event entered the audit store's bounded queue. Raw
-// request capture uses this exact event id and timestamp, so an event enqueue
-// failure cannot create an intentionally orphaned capture.
-type persistedAuditDecision struct {
-	eventID   string
-	timestamp time.Time
-	action    string
-}
-
 // requestHashMemo defers the full-body digest until a route actually needs a
 // subject idempotency key, a pending block correlation key, or a persisted
 // audit field. It is local to one router callback and is never shared.
@@ -135,11 +125,7 @@ func (p *Plugin) route(state *runtimeState, request pluginapi.ModelRouteRequest)
 			p.counters.incompleteInspections.Add(1)
 			p.counters.incompleteBlocked.Add(1)
 			p.counters.coverageIncomplete.Add(1)
-			record := p.recordUnknownSourceBlock(state, hash, subjectHash, request.Stream, time.Since(started))
-			p.recordBlockedRequestCapture(state, record, request.Body, &requestHash, subjectHash, inspectionDecision{
-				Block: true,
-				Code:  "block_unknown_source_format",
-			})
+			p.recordUnknownSourceBlock(state, hash, subjectHash, request.Stream, request.Body, time.Since(started))
 			p.pending.put(hash, "unknown_source_format")
 			return blockedRouteEnvelope("cyber_abuse_guard_unknown_source_format"), nil
 		}
@@ -326,15 +312,12 @@ func (p *Plugin) route(state *runtimeState, request pluginapi.ModelRouteRequest)
 		p.counters.allowed.Add(1)
 	}
 
-	record := persistedAuditDecision{}
 	if persistDecision {
-		record = p.recordDecision(state, request, &requestHash, subjectHash, extracted.TextBytesScanned, result, decision, incompleteReasons, subjectReason, time.Since(started))
+		p.recordDecision(state, request, &requestHash, subjectHash, extracted.TextBytesScanned, result, decision, incompleteReasons, subjectReason, request.Body, time.Since(started))
 	}
 	if !decision.Block {
 		return okEnvelope(pluginapi.ModelRouteResponse{Handled: false}), nil
 	}
-	p.recordBlockedRequestCapture(state, record, request.Body, &requestHash, subjectHash, decision)
-
 	category := decision.Category
 	if category == "" {
 		category = string(result.Category)
@@ -588,9 +571,9 @@ func (p *Plugin) recordStreamingCounters(extracted extract.Result, result classi
 	}
 }
 
-func (p *Plugin) recordUnknownSourceBlock(state *runtimeState, requestHash, subjectHash string, stream bool, latency time.Duration) persistedAuditDecision {
+func (p *Plugin) recordUnknownSourceBlock(state *runtimeState, requestHash, subjectHash string, stream bool, rawRequest []byte, latency time.Duration) {
 	if state == nil || state.audit == nil || !state.config.Audit.Enabled {
-		return persistedAuditDecision{}
+		return
 	}
 	event := audit.Event{
 		ID:               newEventID(),
@@ -613,10 +596,11 @@ func (p *Plugin) recordUnknownSourceBlock(state *runtimeState, requestHash, subj
 	if state.config.Audit.LogSubjectHash {
 		event.SubjectHash = subjectHash
 	}
-	if !p.recordAuditEvent(state, event) {
-		return persistedAuditDecision{}
+	if state.config.Audit.RawCapture.Enabled {
+		p.recordAuditEventWithRawCapture(state, event, rawRequest)
+	} else {
+		p.recordAuditEvent(state, event)
 	}
-	return persistedAuditDecision{eventID: event.ID, timestamp: event.Timestamp, action: event.Action}
 }
 
 func (p *Plugin) recordIncompleteCounters(reasons []extract.IncompleteReason, decision inspectionDecision) {
@@ -712,9 +696,9 @@ func (p *Plugin) recordIncompleteCounters(reasons []extract.IncompleteReason, de
 	}
 }
 
-func (p *Plugin) recordDecision(state *runtimeState, request pluginapi.ModelRouteRequest, requestHash *requestHashMemo, subjectHash string, scanned int, result classifier.Result, decision inspectionDecision, incompleteReasons []extract.IncompleteReason, subjectReason string, latency time.Duration) persistedAuditDecision {
+func (p *Plugin) recordDecision(state *runtimeState, request pluginapi.ModelRouteRequest, requestHash *requestHashMemo, subjectHash string, scanned int, result classifier.Result, decision inspectionDecision, incompleteReasons []extract.IncompleteReason, subjectReason string, rawRequest []byte, latency time.Duration) {
 	if state == nil || state.audit == nil || !state.config.Audit.Enabled || state.config.Mode == config.ModeObserve {
-		return persistedAuditDecision{}
+		return
 	}
 	action := "audit"
 	if decision.Observe {
@@ -757,44 +741,39 @@ func (p *Plugin) recordDecision(state *runtimeState, request pluginapi.ModelRout
 	if state.config.Audit.LogSubjectHash {
 		event.SubjectHash = subjectHash
 	}
-	if !p.recordAuditEvent(state, event) {
-		return persistedAuditDecision{}
+	if decision.Block && state.config.Audit.RawCapture.Enabled {
+		p.recordAuditEventWithRawCapture(state, event, rawRequest)
+	} else {
+		p.recordAuditEvent(state, event)
 	}
-	return persistedAuditDecision{eventID: event.ID, timestamp: event.Timestamp, action: event.Action}
 }
 
-// recordBlockedRequestCapture is the only router path allowed to hand request
-// bytes to the explicit operator capture store. The caller invokes it only
-// after the final disposition is Block and after the matching audit event was
-// accepted. Headers are deliberately absent from both this signature and the
-// audit input type.
-func (p *Plugin) recordBlockedRequestCapture(state *runtimeState, record persistedAuditDecision, rawRequest []byte, requestHash *requestHashMemo, subjectHash string, decision inspectionDecision) {
-	if state == nil || state.audit == nil || !state.config.Audit.Enabled ||
-		!state.config.Audit.RawCapture.Enabled || !decision.Block || record.eventID == "" {
+func (p *Plugin) recordAuditEventWithRawCapture(state *runtimeState, event audit.Event, rawRequest []byte) {
+	if state == nil || state.audit == nil {
 		return
 	}
-	captureRequestHash := ""
-	if state.config.Audit.LogRequestHash {
-		captureRequestHash = requestHash.get(p)
-	}
-	if !state.config.Audit.LogSubjectHash {
-		subjectHash = ""
-	}
-	err := state.audit.RecordRawCapture(audit.RawCaptureInput{
-		EventID:     record.eventID,
-		Timestamp:   record.timestamp,
-		RequestHash: captureRequestHash,
-		SubjectHash: subjectHash,
-		Action:      record.action,
-		Decision:    decision.Code,
+	accepted, err := state.audit.EnqueueEventWithRawCapture(event, audit.RawCaptureInput{
+		EventID:     event.ID,
+		Timestamp:   event.Timestamp,
+		RequestHash: event.RequestHash,
+		SubjectHash: event.SubjectHash,
+		Action:      event.Action,
+		Decision:    event.Decision,
 		RawRequest:  rawRequest,
 	})
 	if err == nil {
 		return
 	}
+	if accepted {
+		p.reportAuditQueueFailure(
+			"cyber-abuse-guard blocked-request capture could not be queued; the audit event remains active",
+			"raw_capture_queue_degraded",
+		)
+		return
+	}
 	p.reportAuditQueueFailure(
-		"cyber-abuse-guard blocked-request capture could not be queued; enforcement remains active",
-		"raw_capture_queue_degraded",
+		"cyber-abuse-guard audit event and blocked-request capture could not be queued; enforcement remains active",
+		"audit_queue_degraded",
 	)
 }
 
