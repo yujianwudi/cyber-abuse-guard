@@ -1113,6 +1113,18 @@ jobs:
                 1,
             ),
             original.replace("      security-events: write\n", "      security-events: read\n", 1),
+            original.replace(
+                "actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16",
+                "actions/setup-go@" + "0" * 40,
+                1,
+            ),
+            original.replace("          build-mode: manual\n", "          build-mode: none\n", 1),
+            original.replace(
+                "        run: go build -mod=readonly -tags=sqlite_omit_load_extension "
+                "./cmd/cyber-abuse-guard ./internal/... ./rules\n",
+                "        run: go build ./...\n",
+                1,
+            ),
         )
         for workflow in mutations:
             self.assertNotEqual(workflow, original)
@@ -1711,6 +1723,29 @@ jobs:
                 self.blocked_workflow(trigger="push"), Path("round6-prerelease.yml")
             )
 
+    def test_workflow_dispatch_rejects_more_than_ten_inputs(self):
+        original = self.blocked_workflow()
+        extra_inputs = (
+            "      extra_input_one:\n"
+            "        description: GitHub platform limit regression one\n"
+            "        required: true\n"
+            "        type: string\n"
+            "      extra_input_two:\n"
+            "        description: GitHub platform limit regression two\n"
+            "        required: true\n"
+            "        type: string\n"
+        )
+        workflow = original.replace(
+            "      authorize_blocked_prerelease:\n",
+            extra_inputs + "      authorize_blocked_prerelease:\n",
+            1,
+        )
+        self.assertNotEqual(workflow, original)
+        with self.assertRaisesRegex(ContractError, "platform limit of 10"):
+            validate_blocked_prerelease_workflow(
+                workflow, Path("round6-prerelease.yml")
+            )
+
     def test_blocked_prerelease_latest_true_fails(self):
         with self.assertRaisesRegex(ContractError, "exact reviewed text"):
             validate_blocked_prerelease_workflow(
@@ -1756,17 +1791,19 @@ jobs:
 
     def test_blocked_prerelease_requires_consumed_independent_evaluation(self):
         original = self.blocked_workflow()
-        for input_name in (
+        for field_name in (
             "independent_evaluation_validation",
             "independent_evaluation_id",
             "independent_evaluation_sha256",
         ):
-            with self.subTest(input_name=input_name):
+            with self.subTest(field_name=field_name):
                 workflow = original.replace(
-                    f"      {input_name}:\n", f"      removed_{input_name}:\n", 1
+                    f'              "{field_name}"',
+                    f'              "removed_{field_name}"',
+                    1,
                 )
                 self.assertNotEqual(workflow, original)
-                with self.assertRaisesRegex(ContractError, input_name):
+                with self.assertRaisesRegex(ContractError, "exact reviewed"):
                     validate_blocked_prerelease_workflow(
                         workflow, Path("round6-prerelease.yml")
                     )
@@ -1774,10 +1811,10 @@ jobs:
     def test_blocked_prerelease_evaluation_pass_id_and_hash_gates_are_locked(self):
         original = self.blocked_workflow()
         protected_lines = (
-            '          [[ "$INDEPENDENT_EVALUATION" == PASS ]]\n',
-            '          [[ "$INDEPENDENT_EVALUATION_ID" =~ ^evaluation-v(1[1-9]|[2-9][0-9]|[1-9][0-9]{2,})$ ]]\n',
-            '          [[ "$INDEPENDENT_EVALUATION_SHA256" =~ ^[0-9a-f]{64}$ ]]\n',
-            "      inputs.independent_evaluation_validation == 'PASS' &&\n",
+            '            .independent_evaluation_validation == "PASS" and\n',
+            '            (.independent_evaluation_id | test("^evaluation-v(1[1-9]|[2-9][0-9]|[1-9][0-9]{2,})$")) and\n',
+            '            (.independent_evaluation_sha256 | test("^[0-9a-f]{64}$"))\n',
+            "      fromJSON(inputs.external_attestations_json).independent_evaluation_validation == 'PASS' &&\n",
         )
         for protected_line in protected_lines:
             with self.subTest(protected_line=protected_line.strip()):
@@ -1820,39 +1857,70 @@ jobs:
 
     def test_blocked_prerelease_missing_host_inputs_fail(self):
         original = self.blocked_workflow()
-        for input_name in (
-            "host_validation",
-            "host_evidence_sha256",
-        ):
-            with self.subTest(input_name=input_name):
+        missing_input = original.replace(
+            "      external_attestations_json:\n",
+            "      removed_external_attestations_json:\n",
+            1,
+        )
+        self.assertNotEqual(missing_input, original)
+        with self.assertRaisesRegex(ContractError, "external_attestations_json"):
+            validate_blocked_prerelease_workflow(
+                missing_input, Path("round6-prerelease.yml")
+            )
+        for field_name in ("host_validation", "host_evidence_sha256"):
+            with self.subTest(field_name=field_name):
                 workflow = original.replace(
-                    f"      {input_name}:\n", f"      removed_{input_name}:\n", 1
+                    f'              "{field_name}"',
+                    f'              "removed_{field_name}"',
+                    1,
                 )
                 self.assertNotEqual(workflow, original)
-                with self.assertRaisesRegex(ContractError, input_name):
+                with self.assertRaisesRegex(ContractError, "exact reviewed"):
                     validate_blocked_prerelease_workflow(
                         workflow, Path("round6-prerelease.yml")
                     )
 
+    def test_blocked_prerelease_external_json_shape_and_types_are_locked(self):
+        original = self.blocked_workflow()
+        mutations = (
+            original.replace(
+                '            type == "object" and\n',
+                '            type != "object" and\n',
+                1,
+            ),
+            original.replace(
+                '            (keys == [\n',
+                '            (keys | length >= 7) and ([\n',
+                1,
+            ),
+            original.replace(
+                '            ([.[] | type] | all(. == "string")) and\n',
+                '            true and\n',
+                1,
+            ),
+        )
+        for workflow in mutations:
+            self.assertNotEqual(workflow, original)
+            with self.assertRaisesRegex(ContractError, "exact reviewed"):
+                validate_blocked_prerelease_workflow(
+                    workflow, Path("round6-prerelease.yml")
+                )
+
     def test_blocked_prerelease_rejects_legacy_host_blockers(self):
         original = self.blocked_workflow()
         legacy_input = original.replace(
-            "      independent_audit_validation:\n",
+            "      external_attestations_json:\n",
             "      host_v7282_validation:\n"
             "        description: Legacy Host blocker must not return\n"
             "        required: true\n"
-            "        type: choice\n"
-            "        default: BLOCKED\n"
-            "        options:\n"
-            "          - BLOCKED\n"
-            "          - PASS\n"
-            "      independent_audit_validation:\n",
+            "        type: string\n"
+            "      external_attestations_json:\n",
             1,
         )
         legacy_gate = original.replace(
-            "      inputs.host_validation == 'PASS' &&\n",
-            "      inputs.host_validation == 'PASS' &&\n"
-            "      inputs.host_v7282_validation == 'PASS' &&\n",
+            "      fromJSON(inputs.external_attestations_json).host_validation == 'PASS' &&\n",
+            "      fromJSON(inputs.external_attestations_json).host_validation == 'PASS' &&\n"
+            "      fromJSON(inputs.external_attestations_json).host_v7282_validation == 'PASS' &&\n",
             1,
         )
         for workflow in (legacy_input, legacy_gate):
@@ -1884,8 +1952,8 @@ jobs:
 
     def test_blocked_prerelease_admission_comment_spoof_fails(self):
         workflow = self.blocked_workflow().replace(
-            '          [[ "$HOST_VALIDATION" == PASS ]]\n',
-            '          # [[ "$HOST_VALIDATION" == PASS ]]\n          true\n',
+            '            .host_validation == "PASS" and\n',
+            '            # .host_validation == "PASS" and\n            true and\n',
         )
         with self.assertRaisesRegex(ContractError, "exact reviewed"):
             validate_blocked_prerelease_workflow(workflow, Path("round6-prerelease.yml"))
@@ -1934,10 +2002,10 @@ jobs:
 
     def test_blocked_prerelease_if_expression_spoof_fails(self):
         workflow = self.blocked_workflow().replace(
-            "    if: >-\n      inputs.host_validation == 'PASS' &&\n      inputs.independent_audit_validation == 'PASS' &&\n      inputs.independent_evaluation_validation == 'PASS' &&\n      inputs.authorize_blocked_prerelease == true\n",
+            "    if: >-\n      fromJSON(inputs.external_attestations_json).host_validation == 'PASS' &&\n      fromJSON(inputs.external_attestations_json).independent_audit_validation == 'PASS' &&\n      fromJSON(inputs.external_attestations_json).independent_evaluation_validation == 'PASS' &&\n      inputs.authorize_blocked_prerelease == true\n",
             "    if: ${{ true }}\n"
-            "    # inputs.host_validation == 'PASS' &&\n"
-            "    # inputs.independent_audit_validation == 'PASS' && inputs.independent_evaluation_validation == 'PASS' &&\n"
+            "    # fromJSON(inputs.external_attestations_json).host_validation == 'PASS' &&\n"
+            "    # fromJSON(inputs.external_attestations_json).independent_audit_validation == 'PASS' && fromJSON(inputs.external_attestations_json).independent_evaluation_validation == 'PASS' &&\n"
             "    # inputs.authorize_blocked_prerelease == true\n",
         )
         with self.assertRaisesRegex(ContractError, "missing explicit gate"):
@@ -1946,7 +2014,9 @@ jobs:
     def test_blocked_prerelease_missing_host_gate_fails(self):
         original = self.blocked_workflow()
         workflow = original.replace(
-            "      inputs.host_validation == 'PASS' &&\n", "", 1
+            "      fromJSON(inputs.external_attestations_json).host_validation == 'PASS' &&\n",
+            "",
+            1,
         )
         self.assertNotEqual(workflow, original)
         with self.assertRaisesRegex(ContractError, "missing explicit gate"):

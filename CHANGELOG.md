@@ -25,9 +25,13 @@ current_classifier_policy_sha256: ece497210db938528cb166a34f2ce3013324b792a7eedf
 - Make deterministic fuzz-seed smoke testing fail closed over all 13 reviewed
   targets, retain time-based fuzzing in the separate CI job, and fail closed if
   long-text or raw-capture performance tests/benchmarks are renamed or removed.
-- Add a minimal-permission Linux Go CodeQL workflow in `build-mode: none`, pin
-  every action by commit SHA, and freeze its trigger/permission/step contract in
-  the repository safe gate.
+- Add a minimal-permission Linux Go CodeQL workflow, pin every action by commit
+  SHA, and freeze its trigger/permission/step contract in the repository safe
+  gate. After GitHub rejected Go `build-mode: none`, switch to pinned Go 1.26.4
+  and an exact read-only manual build for CodeQL tracing.
+- Keep the attested-prerelease manual dispatcher within GitHub's ten-input
+  limit by validating one exact-key Host/audit/evaluation JSON object, and add a
+  repository safe-gate regression that rejects future input-count overflow.
 - P0 remains unresolved: client-controlled assistant history can still affect
   the historical refusal-maintenance exception. This hardening is not v0.16
   release authorization.

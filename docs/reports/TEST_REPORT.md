@@ -55,6 +55,7 @@ its manifest, or its checksums. All results in this section are
 | Worst-case raw-capture management-response acceptance | **SELF-CHECK PASS** — threshold <= 500 ms, <= 16 MiB/op, <= 1,600 allocs/op; observed 54,596,462 ns/op, 8,529,000 B/op, 1,329 allocs/op |
 | p50 / p95 / p99 / peak RSS | **NOT MEASURED / UNAVAILABLE** — the targeted `testing.Benchmark` acceptance checks do not collect these metrics |
 | Full post-hardening Linux test, race, vet, script, 157-test safe-gate, 13-target fuzz seed, complete `round6-benchmark`, and CPA v7.2.88 Host source-overlay set | **DEVELOPMENT SELF-CHECK PASS** |
+| Workflow-governance follow-up | **DEVELOPMENT SELF-CHECK PASS** - 159 safe-gate mutation tests, the seven-entrypoint repository safe gate, actionlint v1.7.7 on the attested-prerelease and CodeQL workflows, release-document consistency, and `git diff --check` |
 | Exact-working-tree GitHub Actions / package / real CPA Host | **NOT AVAILABLE / NOT RUN** |
 | P0 client-controlled assistant-history bypass | **UNRESOLVED / RELEASE BLOCKER** |
 

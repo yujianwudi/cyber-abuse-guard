@@ -77,6 +77,7 @@ SCRIPT_REFERENCE = re.compile(
 )
 SHELL_OPERATORS = {"&&", "||", ";", "|", "&"}
 SAFE_DYNAMIC_TOOL_VARIABLES = {"go_bin", "cyclonedx"}
+WORKFLOW_DISPATCH_INPUT_LIMIT = 10
 ACTIVE_WORKFLOW_PATHS = (
     ".github/workflows/ci.yml",
     ".github/workflows/codeql.yml",
@@ -100,21 +101,15 @@ BLOCKED_PRERELEASE_INPUT_ORDER = (
     "candidate_run_id",
     "expected_so_sha256",
     "expected_store_zip_sha256",
-    "host_validation",
-    "host_evidence_sha256",
-    "independent_audit_validation",
-    "independent_audit_sha256",
-    "independent_evaluation_validation",
-    "independent_evaluation_id",
-    "independent_evaluation_sha256",
+    "external_attestations_json",
     "authorize_blocked_prerelease",
 )
 BLOCKED_PRERELEASE_INPUTS = set(BLOCKED_PRERELEASE_INPUT_ORDER)
 BLOCKED_PRERELEASE_IF_LINES = (
     "if: >-",
-    "inputs.host_validation == 'PASS' &&",
-    "inputs.independent_audit_validation == 'PASS' &&",
-    "inputs.independent_evaluation_validation == 'PASS' &&",
+    "fromJSON(inputs.external_attestations_json).host_validation == 'PASS' &&",
+    "fromJSON(inputs.external_attestations_json).independent_audit_validation == 'PASS' &&",
+    "fromJSON(inputs.external_attestations_json).independent_evaluation_validation == 'PASS' &&",
     "inputs.authorize_blocked_prerelease == true",
 )
 ADMISSION_INPUT_ENV = (
@@ -129,13 +124,7 @@ ADMISSION_INPUT_ENV = (
     "DISPATCH_SHA: ${{ github.sha }}",
     "WORKFLOW_REF: ${{ github.workflow_ref }}",
     "WORKFLOW_SHA: ${{ github.workflow_sha }}",
-    "HOST_VALIDATION: ${{ inputs.host_validation }}",
-    "HOST_EVIDENCE_SHA256: ${{ inputs.host_evidence_sha256 }}",
-    "INDEPENDENT_AUDIT: ${{ inputs.independent_audit_validation }}",
-    "INDEPENDENT_AUDIT_SHA256: ${{ inputs.independent_audit_sha256 }}",
-    "INDEPENDENT_EVALUATION: ${{ inputs.independent_evaluation_validation }}",
-    "INDEPENDENT_EVALUATION_ID: ${{ inputs.independent_evaluation_id }}",
-    "INDEPENDENT_EVALUATION_SHA256: ${{ inputs.independent_evaluation_sha256 }}",
+    "EXTERNAL_ATTESTATIONS_JSON: ${{ inputs.external_attestations_json }}",
     "AUTHORIZED: ${{ inputs.authorize_blocked_prerelease }}",
 )
 ADMISSION_INPUT_COMMANDS = (
@@ -150,14 +139,27 @@ ADMISSION_INPUT_COMMANDS = (
     '[[ "$DISPATCH_SHA" == "$EXPECTED_COMMIT" ]]',
     '[[ "$WORKFLOW_SHA" == "$EXPECTED_COMMIT" ]]',
     '[[ "$WORKFLOW_REF" == "${GITHUB_REPOSITORY}/.github/workflows/attested-prerelease.yml@refs/tags/$TAG" ]]',
-    '[[ "$HOST_VALIDATION" == PASS ]]',
-    '[[ "$INDEPENDENT_AUDIT" == PASS ]]',
-    '[[ "$INDEPENDENT_EVALUATION" == PASS ]]',
     '[[ "$AUTHORIZED" == true ]]',
-    '[[ "$HOST_EVIDENCE_SHA256" =~ ^[0-9a-f]{64}$ ]]',
-    '[[ "$INDEPENDENT_AUDIT_SHA256" =~ ^[0-9a-f]{64}$ ]]',
-    '[[ "$INDEPENDENT_EVALUATION_ID" =~ ^evaluation-v(1[1-9]|[2-9][0-9]|[1-9][0-9]{2,})$ ]]',
-    '[[ "$INDEPENDENT_EVALUATION_SHA256" =~ ^[0-9a-f]{64}$ ]]',
+    "jq -e '",
+    '  type == "object" and',
+    "  (keys == [",
+    '    "host_evidence_sha256",',
+    '    "host_validation",',
+    '    "independent_audit_sha256",',
+    '    "independent_audit_validation",',
+    '    "independent_evaluation_id",',
+    '    "independent_evaluation_sha256",',
+    '    "independent_evaluation_validation"',
+    "  ]) and",
+    '  ([.[] | type] | all(. == "string")) and',
+    '  .host_validation == "PASS" and',
+    '  (.host_evidence_sha256 | test("^[0-9a-f]{64}$")) and',
+    '  .independent_audit_validation == "PASS" and',
+    '  (.independent_audit_sha256 | test("^[0-9a-f]{64}$")) and',
+    '  .independent_evaluation_validation == "PASS" and',
+    '  (.independent_evaluation_id | test("^evaluation-v(1[1-9]|[2-9][0-9]|[1-9][0-9]{2,})$")) and',
+    '  (.independent_evaluation_sha256 | test("^[0-9a-f]{64}$"))',
+    "' <<<\"$EXTERNAL_ATTESTATIONS_JSON\" >/dev/null",
 )
 ADMISSION_CI_ENV = (
     "CI_RUN_ID: ${{ inputs.ci_run_id }}",
@@ -531,7 +533,7 @@ ROUND6_REPRODUCIBILITY_CHECKSUMS_CONTRACT = (
     '  for relative in "$so" "$so.sha256" "$store_zip" build-metadata.json checksums.txt \\',
 )
 BLOCKED_STEP_RUN_SHA256 = {
-    ("admission", 0): "3c9f96e89952dd96c6fed357bde683cbc0302cc0e2de941547c504c3285de369",
+    ("admission", 0): "e687f6dfcf81b226a179502e0e078696ab8da5ed66797f30fe7cf19e59b83013",
     ("admission", 1): "7f1817ec7b567df4be63fafd9ee2b2347ac37e01982e41ee3338f64c79cae81a",
     ("admission", 2): "26030928c867d579089d1e69fcba37ff65433ca93697835abdda4f6365f2e4e5",
     ("verify", 1): "739ebd378c0da4e32117344b43258da8bb85a61590c8966c47dce26274df75cc",
@@ -577,13 +579,7 @@ BLOCKED_STEP_ENV = {
         ("DISPATCH_SHA", "${{ github.sha }}"),
         ("WORKFLOW_REF", "${{ github.workflow_ref }}"),
         ("WORKFLOW_SHA", "${{ github.workflow_sha }}"),
-        ("HOST_VALIDATION", "${{ inputs.host_validation }}"),
-        ("HOST_EVIDENCE_SHA256", "${{ inputs.host_evidence_sha256 }}"),
-        ("INDEPENDENT_AUDIT", "${{ inputs.independent_audit_validation }}"),
-        ("INDEPENDENT_AUDIT_SHA256", "${{ inputs.independent_audit_sha256 }}"),
-        ("INDEPENDENT_EVALUATION", "${{ inputs.independent_evaluation_validation }}"),
-        ("INDEPENDENT_EVALUATION_ID", "${{ inputs.independent_evaluation_id }}"),
-        ("INDEPENDENT_EVALUATION_SHA256", "${{ inputs.independent_evaluation_sha256 }}"),
+        ("EXTERNAL_ATTESTATIONS_JSON", "${{ inputs.external_attestations_json }}"),
         ("AUTHORIZED", "${{ inputs.authorize_blocked_prerelease }}"),
     ),
     ("admission", 1): (
@@ -639,10 +635,10 @@ BLOCKED_STEP_ENV = {
         ("TAG", "${{ inputs.tag }}"),
         ("CI_RUN_ID", "${{ inputs.ci_run_id }}"),
         ("CANDIDATE_RUN_ID", "${{ inputs.candidate_run_id }}"),
-        ("HOST_EVIDENCE_SHA256", "${{ inputs.host_evidence_sha256 }}"),
-        ("INDEPENDENT_AUDIT_SHA256", "${{ inputs.independent_audit_sha256 }}"),
-        ("INDEPENDENT_EVALUATION_ID", "${{ inputs.independent_evaluation_id }}"),
-        ("INDEPENDENT_EVALUATION_SHA256", "${{ inputs.independent_evaluation_sha256 }}"),
+        ("HOST_EVIDENCE_SHA256", "${{ fromJSON(inputs.external_attestations_json).host_evidence_sha256 }}"),
+        ("INDEPENDENT_AUDIT_SHA256", "${{ fromJSON(inputs.external_attestations_json).independent_audit_sha256 }}"),
+        ("INDEPENDENT_EVALUATION_ID", "${{ fromJSON(inputs.external_attestations_json).independent_evaluation_id }}"),
+        ("INDEPENDENT_EVALUATION_SHA256", "${{ fromJSON(inputs.external_attestations_json).independent_evaluation_sha256 }}"),
         ("WORKFLOW_SHA", "${{ github.workflow_sha }}"),
     ),
     ("publish", 3): (
@@ -654,10 +650,10 @@ BLOCKED_STEP_ENV = {
         ("EXPECTED_STORE_ZIP_SHA256", "${{ inputs.expected_store_zip_sha256 }}"),
         ("CI_RUN_ID", "${{ inputs.ci_run_id }}"),
         ("CANDIDATE_RUN_ID", "${{ inputs.candidate_run_id }}"),
-        ("HOST_EVIDENCE_SHA256", "${{ inputs.host_evidence_sha256 }}"),
-        ("INDEPENDENT_AUDIT_SHA256", "${{ inputs.independent_audit_sha256 }}"),
-        ("INDEPENDENT_EVALUATION_ID", "${{ inputs.independent_evaluation_id }}"),
-        ("INDEPENDENT_EVALUATION_SHA256", "${{ inputs.independent_evaluation_sha256 }}"),
+        ("HOST_EVIDENCE_SHA256", "${{ fromJSON(inputs.external_attestations_json).host_evidence_sha256 }}"),
+        ("INDEPENDENT_AUDIT_SHA256", "${{ fromJSON(inputs.external_attestations_json).independent_audit_sha256 }}"),
+        ("INDEPENDENT_EVALUATION_ID", "${{ fromJSON(inputs.external_attestations_json).independent_evaluation_id }}"),
+        ("INDEPENDENT_EVALUATION_SHA256", "${{ fromJSON(inputs.external_attestations_json).independent_evaluation_sha256 }}"),
     ),
 }
 
@@ -827,7 +823,7 @@ CANDIDATE_SCRIPT_SHA256 = {
 RC_RELEASE_SCRIPT_SHA256 = "9212b21356763333215ce74e70c1e4f49992a4cc0f84ca78033797848603f96d"
 ACTIVE_RC_WORKFLOW_SHA256 = "5f44b0d6bc20753ef50a4108257840b8a9b3364214305babdfc4461fcc7c64f6"
 RC_RELEASE_WORKFLOW_SHA256 = "5ff480e2bb84bc33da81cc4e9839e4bca50453fc7e77debc1f24dd5b04362107"
-CODEQL_WORKFLOW_SHA256 = "413aa0e5c1cf363bdf424b390132a4d1715f84dc11a68a209da7c1ba93015249"
+CODEQL_WORKFLOW_SHA256 = "b8ded98477d51dbdf6c37edf62eb3934764f488bfb6a0ea95ce687139a8e9309"
 FORMAL_OPERATION_SCRIPTS = (
     "formal-release.sh",
     "generate-release-evidence.sh",
@@ -1132,6 +1128,22 @@ def validate_workflow_semantic_safety(document: MappingNode, source: Path) -> No
     root = yaml_mapping(document, source, "workflow")
     if "defaults" in root:
         raise ContractError(f"workflow may not override the reviewed run shell: {source}")
+    on_node = root.get("on")
+    if on_node is not None:
+        triggers = yaml_mapping(on_node, source, "on")
+        dispatch_node = triggers.get("workflow_dispatch")
+        if isinstance(dispatch_node, MappingNode):
+            dispatch = yaml_mapping(dispatch_node, source, "on.workflow_dispatch")
+            inputs_node = dispatch.get("inputs")
+            if inputs_node is not None:
+                input_names = yaml_mapping_keys(
+                    inputs_node, source, "on.workflow_dispatch.inputs"
+                )
+                if len(input_names) > WORKFLOW_DISPATCH_INPUT_LIMIT:
+                    raise ContractError(
+                        "workflow_dispatch inputs exceed GitHub platform limit of "
+                        f"{WORKFLOW_DISPATCH_INPUT_LIMIT}: {source}"
+                    )
     top_env = root.get("env")
     if top_env is not None:
         env_values = yaml_mapping(top_env, source, "env")
@@ -1998,6 +2010,18 @@ def exact_string_mapping(
 
 def validate_codeql_workflow(text: str, source: Path) -> None:
     validate_workflow_safety(text, source)
+    required_manual_build_lines = (
+        "uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0",
+        "go-version: ${{ env.GO_VERSION }}",
+        "build-mode: manual",
+        "run: go build -mod=readonly -tags=sqlite_omit_load_extension "
+        "./cmd/cyber-abuse-guard ./internal/... ./rules",
+    )
+    if any(text.count(line) != 1 for line in required_manual_build_lines):
+        raise ContractError(
+            "CodeQL workflow differs from the exact reviewed setup-go pin, "
+            "manual build mode, or Go build command"
+        )
     if hashlib.sha256(text.encode("utf-8")).hexdigest() != CODEQL_WORKFLOW_SHA256:
         raise ContractError(
             "CodeQL workflow differs from the exact reviewed trigger, permission, action, and build contract"
@@ -3369,16 +3393,9 @@ def validate_blocked_prerelease_structure(
         source,
         "on.workflow_dispatch.inputs",
     )
-    choice_inputs = {
-        "host_validation",
-        "independent_audit_validation",
-        "independent_evaluation_validation",
-    }
     for input_name, input_node in inputs.items():
         path = f"on.workflow_dispatch.inputs.{input_name}"
-        if input_name in choice_inputs:
-            expected_keys = ("description", "required", "type", "default", "options")
-        elif input_name == "authorize_blocked_prerelease":
+        if input_name == "authorize_blocked_prerelease":
             expected_keys = ("description", "required", "type", "default")
         else:
             expected_keys = ("description", "required", "type")
@@ -3391,16 +3408,7 @@ def validate_blocked_prerelease_structure(
             f"{path}.required",
             tag="tag:yaml.org,2002:bool",
         )
-        if input_name in choice_inputs:
-            require_yaml_scalar(values["type"], "choice", source, f"{path}.type")
-            require_yaml_scalar(values["default"], "BLOCKED", source, f"{path}.default")
-            options = yaml_sequence(values["options"], source, f"{path}.options")
-            if [yaml_scalar(value, source, f"{path}.options") for value in options] != [
-                "BLOCKED",
-                "PASS",
-            ]:
-                raise ContractError(f"workflow {path}.options must remain BLOCKED then PASS")
-        elif input_name == "authorize_blocked_prerelease":
+        if input_name == "authorize_blocked_prerelease":
             require_yaml_scalar(values["type"], "boolean", source, f"{path}.type")
             require_yaml_scalar(
                 values["default"],
@@ -3502,9 +3510,9 @@ def validate_blocked_prerelease_structure(
                 f"{job_path}.environment",
             )
             expected_publish_if = (
-                "inputs.host_validation == 'PASS' && "
-                "inputs.independent_audit_validation == 'PASS' && "
-                "inputs.independent_evaluation_validation == 'PASS' && "
+                "fromJSON(inputs.external_attestations_json).host_validation == 'PASS' && "
+                "fromJSON(inputs.external_attestations_json).independent_audit_validation == 'PASS' && "
+                "fromJSON(inputs.external_attestations_json).independent_evaluation_validation == 'PASS' && "
                 "inputs.authorize_blocked_prerelease == true"
             )
             if yaml_scalar(job["if"], source, f"{job_path}.if") != expected_publish_if:

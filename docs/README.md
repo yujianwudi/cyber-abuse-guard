@@ -53,6 +53,13 @@ evidence.
 
 - [Release admission policy](RELEASE_POLICY.md)
 - [Round 6 CI, candidate, and release gate](ROUND6_RELEASE_GATE.md)
+- [Repository governance and desired `main` protection](REPOSITORY_GOVERNANCE.md)
+- [Contribution guide](../CONTRIBUTING.md)
+- [Security policy](../SECURITY.md)
+
+The repository-governance document records desired GitHub settings, not proof
+that they are already enabled. The `main` controls are applied and API-verified
+only after the current hardening pull request and all named checks are green.
 
 Current GitHub Actions entry points are intentionally limited to:
 

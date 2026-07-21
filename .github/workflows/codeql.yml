@@ -18,6 +18,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  GO_VERSION: '1.26.4'
+
 jobs:
   analyze:
     name: Analyze Go on Linux
@@ -68,11 +71,20 @@ jobs:
           python3 -B scripts/round6_safe_gate_contract.py --root .
           ./scripts/release-doc-consistency.sh
 
+      - name: Set up pinned Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
       - name: Initialize CodeQL
         uses: github/codeql-action/init@7188fc363630916deb702c7fdcf4e481b751f97a # v4
         with:
           languages: go
-          build-mode: none
+          build-mode: manual
+
+      - name: Build reviewed Go source for CodeQL
+        run: go build -mod=readonly -tags=sqlite_omit_load_extension ./cmd/cyber-abuse-guard ./internal/... ./rules
 
       - name: Analyze Go
         uses: github/codeql-action/analyze@7188fc363630916deb702c7fdcf4e481b751f97a # v4
