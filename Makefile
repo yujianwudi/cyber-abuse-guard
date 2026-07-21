@@ -136,18 +136,18 @@ race:
 	GO=$(GO) TEST_TAGS=$(TEST_TAGS) bash ./scripts/go-safe-development-test.sh race
 
 fuzz-smoke:
-	$(GO) test ./internal/extract -run='^$$' -fuzz='^FuzzExtractText$$' -fuzztime=5s
-	$(GO) test ./internal/extract -run='^$$' -fuzz='^FuzzExtractRequestMediaMemberOrder$$' -fuzztime=5s
-	$(GO) test ./internal/extract -run='^$$' -fuzz='^FuzzExtractRequestScalarMediaCarrierPermutation$$' -fuzztime=5s
-	$(GO) test ./internal/extract -run='^$$' -fuzz='^FuzzExtractRequestContentType$$' -fuzztime=5s
-	$(GO) test ./internal/extract -run='^$$' -fuzz='^FuzzExtractRequestMultipart$$' -fuzztime=5s
-	$(GO) test ./internal/extract -run='^$$' -fuzz='^FuzzExtractRequestMultipartUnknownFieldEvidenceOrder$$' -fuzztime=5s
-	$(GO) test ./internal/extract -run='^$$' -fuzz='^FuzzRound6JSONStringChunkDecoderMatchesStdlib$$' -fuzztime=5s
-	$(GO) test ./internal/classifier -run='^$$' -fuzz='^FuzzClassifier$$' -fuzztime=5s
-	$(GO) test ./internal/classifier -run='^$$' -fuzz='^FuzzMetaOverrideClausePermutation$$' -fuzztime=5s
-	$(GO) test ./internal/classifier -run='^$$' -fuzz='^FuzzMetaOverrideEncodingAndPartSplit$$' -fuzztime=5s
-	$(GO) test ./internal/classifier -run='^$$' -fuzz='^FuzzDefensiveQuotedSampleBoundary$$' -fuzztime=5s
-	$(GO) test ./internal/config -run='^$$' -fuzz='^FuzzConfigParser$$' -fuzztime=5s
+	@listed="$$($(GO) test ./internal/extract -list='^(FuzzExtractText|FuzzExtractRequestMediaMemberOrder|FuzzExtractRequestScalarMediaCarrierPermutation|FuzzExtractRequestContentType|FuzzExtractRequestMultipart|FuzzExtractRequestMultipartUnknownFieldEvidenceOrder|FuzzRound6JSONStringChunkDecoderMatchesStdlib)$$')" || exit $$?; \
+	for fuzz_name in FuzzExtractText FuzzExtractRequestMediaMemberOrder FuzzExtractRequestScalarMediaCarrierPermutation FuzzExtractRequestContentType FuzzExtractRequestMultipart FuzzExtractRequestMultipartUnknownFieldEvidenceOrder FuzzRound6JSONStringChunkDecoderMatchesStdlib; do \
+		printf '%s\n' "$$listed" | grep -Fxq "$$fuzz_name" || { echo "required extract fuzz seed target $$fuzz_name is missing" >&2; exit 1; }; \
+	done
+	$(GO) test ./internal/extract -run='^(FuzzExtractText|FuzzExtractRequestMediaMemberOrder|FuzzExtractRequestScalarMediaCarrierPermutation|FuzzExtractRequestContentType|FuzzExtractRequestMultipart|FuzzExtractRequestMultipartUnknownFieldEvidenceOrder|FuzzRound6JSONStringChunkDecoderMatchesStdlib)$$' -count=1
+	@listed="$$($(GO) test ./internal/classifier -list='^(FuzzClassifier|FuzzRound6StreamingChunkAndRoleBoundaries|FuzzMetaOverrideClausePermutation|FuzzMetaOverrideEncodingAndPartSplit|FuzzDefensiveQuotedSampleBoundary)$$')" || exit $$?; \
+	for fuzz_name in FuzzClassifier FuzzRound6StreamingChunkAndRoleBoundaries FuzzMetaOverrideClausePermutation FuzzMetaOverrideEncodingAndPartSplit FuzzDefensiveQuotedSampleBoundary; do \
+		printf '%s\n' "$$listed" | grep -Fxq "$$fuzz_name" || { echo "required classifier fuzz seed target $$fuzz_name is missing" >&2; exit 1; }; \
+	done
+	$(GO) test ./internal/classifier -run='^(FuzzClassifier|FuzzRound6StreamingChunkAndRoleBoundaries|FuzzMetaOverrideClausePermutation|FuzzMetaOverrideEncodingAndPartSplit|FuzzDefensiveQuotedSampleBoundary)$$' -count=1
+	@$(GO) test ./internal/config -list='^FuzzConfigParser$$' | grep -Fxq 'FuzzConfigParser' || { echo 'required config fuzz seed target FuzzConfigParser is missing' >&2; exit 1; }
+	$(GO) test ./internal/config -run='^FuzzConfigParser$$' -count=1
 
 script-test:
 	bash -n ./scripts/go-safe-development-test.sh
@@ -226,12 +226,45 @@ benchmark:
 		-benchmem -benchtime=3x
 
 round6-benchmark: benchmark
+	@$(GO) test ./internal/extract -list='^TestRound6LongTextScaleAcceptance$$' | \
+		grep -Fxq 'TestRound6LongTextScaleAcceptance' || { \
+			echo 'required Round6 long-text scale acceptance test is missing' >&2; exit 1; \
+		}
+	$(GO) test ./internal/extract -count=1 -v \
+		-run='^TestRound6LongTextScaleAcceptance$$'
 	@$(GO) test ./internal/extract -list='^BenchmarkRound6ScanLongJSON$$' | \
 		grep -Fxq 'BenchmarkRound6ScanLongJSON' || { \
 			echo 'required Round6 long-JSON benchmark is missing' >&2; exit 1; \
 		}
 	$(GO) test ./internal/extract -run='^$$' \
 		-bench='^BenchmarkRound6ScanLongJSON$$' -benchmem -benchtime=1x -count=1
+	@$(GO) test ./internal/audit -list='^TestRawCapturePerformanceAcceptance$$' | \
+		grep -Fxq 'TestRawCapturePerformanceAcceptance' || { \
+			echo 'required raw-capture performance acceptance test is missing' >&2; exit 1; \
+		}
+	$(GO) test ./internal/audit -count=1 -v \
+		-run='^TestRawCapturePerformanceAcceptance$$'
+	@listed="$$($(GO) test ./internal/audit -list='^(BenchmarkPrepareRawCapture|BenchmarkRecordRawCaptureQueue|BenchmarkEnqueueEventWithRawCapture)$$')" || exit $$?; \
+	for benchmark_name in BenchmarkPrepareRawCapture BenchmarkRecordRawCaptureQueue BenchmarkEnqueueEventWithRawCapture; do \
+		printf '%s\n' "$$listed" | grep -Fxq "$$benchmark_name" || { echo "required raw-capture benchmark $$benchmark_name is missing" >&2; exit 1; }; \
+	done
+	$(GO) test ./internal/audit -run='^$$' \
+		-bench='^(BenchmarkPrepareRawCapture|BenchmarkRecordRawCaptureQueue|BenchmarkEnqueueEventWithRawCapture)$$' \
+		-benchmem -benchtime=1x -count=1
+	@$(GO) test -tags=$(TEST_TAGS) ./internal/plugin \
+		-list='^TestRawCaptureManagementResponsePerformanceAcceptance$$' | \
+		grep -Fxq 'TestRawCaptureManagementResponsePerformanceAcceptance' || { \
+			echo 'required raw-capture management performance acceptance test is missing' >&2; exit 1; \
+		}
+	$(GO) test -tags=$(TEST_TAGS) ./internal/plugin -count=1 -v \
+		-run='^TestRawCaptureManagementResponsePerformanceAcceptance$$'
+	@$(GO) test -tags=$(TEST_TAGS) ./internal/plugin \
+		-list='^BenchmarkRawCaptureManagementResponseBudget$$' | \
+		grep -Fxq 'BenchmarkRawCaptureManagementResponseBudget' || { \
+			echo 'required raw-capture management response benchmark is missing' >&2; exit 1; \
+		}
+	$(GO) test -tags=$(TEST_TAGS) ./internal/plugin -run='^$$' \
+		-bench='^BenchmarkRawCaptureManagementResponseBudget$$' -benchmem -benchtime=1x -count=1
 	@$(GO) test -tags=$(TEST_TAGS) ./internal/plugin \
 		-list='^TestFourRepositoryFullRoutePerformanceAcceptance$$' | \
 		grep -Fxq 'TestFourRepositoryFullRoutePerformanceAcceptance' || { \

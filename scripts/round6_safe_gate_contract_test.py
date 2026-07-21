@@ -30,6 +30,7 @@ from round6_safe_gate_contract import (
     validate_candidate_script,
     validate_candidate_workflow,
     validate_ci_workflow,
+    validate_codeql_workflow,
     validate_cpa_compat_script,
     validate_cpa_module_pins,
     validate_consumed_boundary_files,
@@ -841,6 +842,38 @@ jobs:
         source = Path(__file__).parent.parent / "Makefile"
         validate_round6_makefile_contract(source.read_text(encoding="utf-8"), source)
 
+    def test_fuzz_smoke_requires_exact_fail_closed_seed_targets(self):
+        source = Path(__file__).parent.parent / "Makefile"
+        original = source.read_text(encoding="utf-8")
+        mutations = (
+            original.replace(
+                "FuzzRound6StreamingChunkAndRoleBoundaries",
+                "FuzzMissingStreamingChunkAndRoleBoundaries",
+                1,
+            ),
+            original.replace(
+                "$(GO) test ./internal/config -run='^FuzzConfigParser$$' -count=1",
+                "$(GO) test ./internal/config -run='^$$' -fuzz='^FuzzConfigParser$$' -fuzztime=5s",
+                1,
+            ),
+        )
+        for text in mutations:
+            self.assertNotEqual(text, original)
+            with self.assertRaisesRegex(ContractError, "fuzz-smoke must fail closed"):
+                validate_round6_makefile_contract(text, source)
+
+    def test_round6_benchmark_requires_scale_acceptance_presence_gate(self):
+        source = Path(__file__).parent.parent / "Makefile"
+        original = source.read_text(encoding="utf-8")
+        text = original.replace(
+            "-list='^TestRound6LongTextScaleAcceptance$$'",
+            "-list='^TestMissingRound6LongTextScaleAcceptance$$'",
+            1,
+        )
+        self.assertNotEqual(text, original)
+        with self.assertRaisesRegex(ContractError, "acceptance plus extract/full-route benchmarks"):
+            validate_round6_makefile_contract(text, source)
+
     def test_round6_benchmark_wrong_package_fails(self):
         source = Path(__file__).parent.parent / "Makefile"
         original = source.read_text(encoding="utf-8")
@@ -994,6 +1027,10 @@ jobs:
         source = Path(__file__).parent.parent / ACTIVE_RC_WORKFLOW_PATH
         return source.read_text(encoding="utf-8")
 
+    def codeql_workflow(self) -> str:
+        source = Path(__file__).parent.parent / ".github/workflows/codeql.yml"
+        return source.read_text(encoding="utf-8")
+
     def workflow_layout_fixture(self) -> Path:
         source_root = Path(__file__).resolve().parent.parent
         temporary = tempfile.TemporaryDirectory()
@@ -1010,7 +1047,7 @@ jobs:
             target.write_bytes(source.read_bytes())
         return root
 
-    def test_workflow_layout_has_exact_six_active_entrypoints_and_archived_rc(self):
+    def test_workflow_layout_has_exact_seven_active_entrypoints_and_archived_rc(self):
         root = Path(__file__).resolve().parent.parent
         validate_workflow_layout(root)
         entrypoints = default_entrypoints(root)
@@ -1028,14 +1065,14 @@ jobs:
         root = self.workflow_layout_fixture()
         extra = root / ".github/workflows/unreviewed.yml"
         extra.write_text("name: Unreviewed\n", encoding="utf-8")
-        with self.assertRaisesRegex(ContractError, "exactly the six reviewed entrypoints"):
+        with self.assertRaisesRegex(ContractError, "exactly the seven reviewed entrypoints"):
             validate_workflow_layout(root)
         extra.unlink()
 
         missing = root / ACTIVE_WORKFLOW_PATHS[1]
         missing_bytes = missing.read_bytes()
         missing.unlink()
-        with self.assertRaisesRegex(ContractError, "exactly the six reviewed entrypoints"):
+        with self.assertRaisesRegex(ContractError, "exactly the seven reviewed entrypoints"):
             validate_workflow_layout(root)
         missing.write_bytes(missing_bytes)
 
@@ -1062,6 +1099,37 @@ jobs:
             validate_blocked_prerelease_workflow(
                 attested, Path("attested-prerelease.yml")
             )
+
+    def test_codeql_workflow_is_exact_and_rejects_permission_trigger_or_action_drift(self):
+        source = Path(__file__).parent.parent / ".github/workflows/codeql.yml"
+        original = self.codeql_workflow()
+        validate_codeql_workflow(original, source)
+        mutations = (
+            original.replace("  contents: read\n", "  contents: write\n", 1),
+            original.replace("  pull_request:\n", "  pull_request_target:\n", 1),
+            original.replace(
+                "github/codeql-action/analyze@7188fc363630916deb702c7fdcf4e481b751f97a",
+                "github/codeql-action/analyze@" + "0" * 40,
+                1,
+            ),
+            original.replace("      security-events: write\n", "      security-events: read\n", 1),
+            original.replace(
+                "actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16",
+                "actions/setup-go@" + "0" * 40,
+                1,
+            ),
+            original.replace("          build-mode: manual\n", "          build-mode: none\n", 1),
+            original.replace(
+                "        run: go build -mod=readonly -tags=sqlite_omit_load_extension "
+                "./cmd/cyber-abuse-guard ./internal/... ./rules\n",
+                "        run: go build ./...\n",
+                1,
+            ),
+        )
+        for workflow in mutations:
+            self.assertNotEqual(workflow, original)
+            with self.assertRaisesRegex(ContractError, "CodeQL workflow differs"):
+                validate_codeql_workflow(workflow, source)
 
     def test_candidate_workflow_full_contract_passes(self):
         validate_candidate_workflow(
@@ -1655,6 +1723,26 @@ jobs:
                 self.blocked_workflow(trigger="push"), Path("round6-prerelease.yml")
             )
 
+    def test_workflow_dispatch_rejects_more_than_twenty_five_inputs(self):
+        original = self.blocked_workflow()
+        extra_inputs = "".join(
+            f"      extra_input_{index:02d}:\n"
+            f"        description: GitHub platform limit regression {index:02d}\n"
+            "        required: true\n"
+            "        type: string\n"
+            for index in range(1, 18)
+        )
+        workflow = original.replace(
+            "      authorize_blocked_prerelease:\n",
+            extra_inputs + "      authorize_blocked_prerelease:\n",
+            1,
+        )
+        self.assertNotEqual(workflow, original)
+        with self.assertRaisesRegex(ContractError, "platform limit of 25"):
+            validate_blocked_prerelease_workflow(
+                workflow, Path("round6-prerelease.yml")
+            )
+
     def test_blocked_prerelease_latest_true_fails(self):
         with self.assertRaisesRegex(ContractError, "exact reviewed text"):
             validate_blocked_prerelease_workflow(
@@ -1700,17 +1788,19 @@ jobs:
 
     def test_blocked_prerelease_requires_consumed_independent_evaluation(self):
         original = self.blocked_workflow()
-        for input_name in (
+        for field_name in (
             "independent_evaluation_validation",
             "independent_evaluation_id",
             "independent_evaluation_sha256",
         ):
-            with self.subTest(input_name=input_name):
+            with self.subTest(field_name=field_name):
                 workflow = original.replace(
-                    f"      {input_name}:\n", f"      removed_{input_name}:\n", 1
+                    f'              "{field_name}"',
+                    f'              "removed_{field_name}"',
+                    1,
                 )
                 self.assertNotEqual(workflow, original)
-                with self.assertRaisesRegex(ContractError, input_name):
+                with self.assertRaisesRegex(ContractError, "exact reviewed"):
                     validate_blocked_prerelease_workflow(
                         workflow, Path("round6-prerelease.yml")
                     )
@@ -1718,10 +1808,10 @@ jobs:
     def test_blocked_prerelease_evaluation_pass_id_and_hash_gates_are_locked(self):
         original = self.blocked_workflow()
         protected_lines = (
-            '          [[ "$INDEPENDENT_EVALUATION" == PASS ]]\n',
-            '          [[ "$INDEPENDENT_EVALUATION_ID" =~ ^evaluation-v(1[1-9]|[2-9][0-9]|[1-9][0-9]{2,})$ ]]\n',
-            '          [[ "$INDEPENDENT_EVALUATION_SHA256" =~ ^[0-9a-f]{64}$ ]]\n',
-            "      inputs.independent_evaluation_validation == 'PASS' &&\n",
+            '            .independent_evaluation_validation == "PASS" and\n',
+            '            (.independent_evaluation_id | test("^evaluation-v(1[1-9]|[2-9][0-9]|[1-9][0-9]{2,})$")) and\n',
+            '            (.independent_evaluation_sha256 | test("^[0-9a-f]{64}$"))\n',
+            "      fromJSON(inputs.external_attestations_json).independent_evaluation_validation == 'PASS' &&\n",
         )
         for protected_line in protected_lines:
             with self.subTest(protected_line=protected_line.strip()):
@@ -1764,39 +1854,70 @@ jobs:
 
     def test_blocked_prerelease_missing_host_inputs_fail(self):
         original = self.blocked_workflow()
-        for input_name in (
-            "host_validation",
-            "host_evidence_sha256",
-        ):
-            with self.subTest(input_name=input_name):
+        missing_input = original.replace(
+            "      external_attestations_json:\n",
+            "      removed_external_attestations_json:\n",
+            1,
+        )
+        self.assertNotEqual(missing_input, original)
+        with self.assertRaisesRegex(ContractError, "external_attestations_json"):
+            validate_blocked_prerelease_workflow(
+                missing_input, Path("round6-prerelease.yml")
+            )
+        for field_name in ("host_validation", "host_evidence_sha256"):
+            with self.subTest(field_name=field_name):
                 workflow = original.replace(
-                    f"      {input_name}:\n", f"      removed_{input_name}:\n", 1
+                    f'              "{field_name}"',
+                    f'              "removed_{field_name}"',
+                    1,
                 )
                 self.assertNotEqual(workflow, original)
-                with self.assertRaisesRegex(ContractError, input_name):
+                with self.assertRaisesRegex(ContractError, "exact reviewed"):
                     validate_blocked_prerelease_workflow(
                         workflow, Path("round6-prerelease.yml")
                     )
 
+    def test_blocked_prerelease_external_json_shape_and_types_are_locked(self):
+        original = self.blocked_workflow()
+        mutations = (
+            original.replace(
+                '            type == "object" and\n',
+                '            type != "object" and\n',
+                1,
+            ),
+            original.replace(
+                '            (keys == [\n',
+                '            (keys | length >= 7) and ([\n',
+                1,
+            ),
+            original.replace(
+                '            ([.[] | type] | all(. == "string")) and\n',
+                '            true and\n',
+                1,
+            ),
+        )
+        for workflow in mutations:
+            self.assertNotEqual(workflow, original)
+            with self.assertRaisesRegex(ContractError, "exact reviewed"):
+                validate_blocked_prerelease_workflow(
+                    workflow, Path("round6-prerelease.yml")
+                )
+
     def test_blocked_prerelease_rejects_legacy_host_blockers(self):
         original = self.blocked_workflow()
         legacy_input = original.replace(
-            "      independent_audit_validation:\n",
+            "      external_attestations_json:\n",
             "      host_v7282_validation:\n"
             "        description: Legacy Host blocker must not return\n"
             "        required: true\n"
-            "        type: choice\n"
-            "        default: BLOCKED\n"
-            "        options:\n"
-            "          - BLOCKED\n"
-            "          - PASS\n"
-            "      independent_audit_validation:\n",
+            "        type: string\n"
+            "      external_attestations_json:\n",
             1,
         )
         legacy_gate = original.replace(
-            "      inputs.host_validation == 'PASS' &&\n",
-            "      inputs.host_validation == 'PASS' &&\n"
-            "      inputs.host_v7282_validation == 'PASS' &&\n",
+            "      fromJSON(inputs.external_attestations_json).host_validation == 'PASS' &&\n",
+            "      fromJSON(inputs.external_attestations_json).host_validation == 'PASS' &&\n"
+            "      fromJSON(inputs.external_attestations_json).host_v7282_validation == 'PASS' &&\n",
             1,
         )
         for workflow in (legacy_input, legacy_gate):
@@ -1828,8 +1949,8 @@ jobs:
 
     def test_blocked_prerelease_admission_comment_spoof_fails(self):
         workflow = self.blocked_workflow().replace(
-            '          [[ "$HOST_VALIDATION" == PASS ]]\n',
-            '          # [[ "$HOST_VALIDATION" == PASS ]]\n          true\n',
+            '            .host_validation == "PASS" and\n',
+            '            # .host_validation == "PASS" and\n            true and\n',
         )
         with self.assertRaisesRegex(ContractError, "exact reviewed"):
             validate_blocked_prerelease_workflow(workflow, Path("round6-prerelease.yml"))
@@ -1878,10 +1999,10 @@ jobs:
 
     def test_blocked_prerelease_if_expression_spoof_fails(self):
         workflow = self.blocked_workflow().replace(
-            "    if: >-\n      inputs.host_validation == 'PASS' &&\n      inputs.independent_audit_validation == 'PASS' &&\n      inputs.independent_evaluation_validation == 'PASS' &&\n      inputs.authorize_blocked_prerelease == true\n",
+            "    if: >-\n      fromJSON(inputs.external_attestations_json).host_validation == 'PASS' &&\n      fromJSON(inputs.external_attestations_json).independent_audit_validation == 'PASS' &&\n      fromJSON(inputs.external_attestations_json).independent_evaluation_validation == 'PASS' &&\n      inputs.authorize_blocked_prerelease == true\n",
             "    if: ${{ true }}\n"
-            "    # inputs.host_validation == 'PASS' &&\n"
-            "    # inputs.independent_audit_validation == 'PASS' && inputs.independent_evaluation_validation == 'PASS' &&\n"
+            "    # fromJSON(inputs.external_attestations_json).host_validation == 'PASS' &&\n"
+            "    # fromJSON(inputs.external_attestations_json).independent_audit_validation == 'PASS' && fromJSON(inputs.external_attestations_json).independent_evaluation_validation == 'PASS' &&\n"
             "    # inputs.authorize_blocked_prerelease == true\n",
         )
         with self.assertRaisesRegex(ContractError, "missing explicit gate"):
@@ -1890,7 +2011,9 @@ jobs:
     def test_blocked_prerelease_missing_host_gate_fails(self):
         original = self.blocked_workflow()
         workflow = original.replace(
-            "      inputs.host_validation == 'PASS' &&\n", "", 1
+            "      fromJSON(inputs.external_attestations_json).host_validation == 'PASS' &&\n",
+            "",
+            1,
         )
         self.assertNotEqual(workflow, original)
         with self.assertRaisesRegex(ContractError, "missing explicit gate"):

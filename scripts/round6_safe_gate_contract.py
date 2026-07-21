@@ -77,8 +77,10 @@ SCRIPT_REFERENCE = re.compile(
 )
 SHELL_OPERATORS = {"&&", "||", ";", "|", "&"}
 SAFE_DYNAMIC_TOOL_VARIABLES = {"go_bin", "cyclonedx"}
+GITHUB_WORKFLOW_DISPATCH_INPUT_LIMIT = 25
 ACTIVE_WORKFLOW_PATHS = (
     ".github/workflows/ci.yml",
+    ".github/workflows/codeql.yml",
     ".github/workflows/candidate.yml",
     ".github/workflows/attested-prerelease.yml",
     ".github/workflows/release-rc.yml",
@@ -99,21 +101,15 @@ BLOCKED_PRERELEASE_INPUT_ORDER = (
     "candidate_run_id",
     "expected_so_sha256",
     "expected_store_zip_sha256",
-    "host_validation",
-    "host_evidence_sha256",
-    "independent_audit_validation",
-    "independent_audit_sha256",
-    "independent_evaluation_validation",
-    "independent_evaluation_id",
-    "independent_evaluation_sha256",
+    "external_attestations_json",
     "authorize_blocked_prerelease",
 )
 BLOCKED_PRERELEASE_INPUTS = set(BLOCKED_PRERELEASE_INPUT_ORDER)
 BLOCKED_PRERELEASE_IF_LINES = (
     "if: >-",
-    "inputs.host_validation == 'PASS' &&",
-    "inputs.independent_audit_validation == 'PASS' &&",
-    "inputs.independent_evaluation_validation == 'PASS' &&",
+    "fromJSON(inputs.external_attestations_json).host_validation == 'PASS' &&",
+    "fromJSON(inputs.external_attestations_json).independent_audit_validation == 'PASS' &&",
+    "fromJSON(inputs.external_attestations_json).independent_evaluation_validation == 'PASS' &&",
     "inputs.authorize_blocked_prerelease == true",
 )
 ADMISSION_INPUT_ENV = (
@@ -128,13 +124,7 @@ ADMISSION_INPUT_ENV = (
     "DISPATCH_SHA: ${{ github.sha }}",
     "WORKFLOW_REF: ${{ github.workflow_ref }}",
     "WORKFLOW_SHA: ${{ github.workflow_sha }}",
-    "HOST_VALIDATION: ${{ inputs.host_validation }}",
-    "HOST_EVIDENCE_SHA256: ${{ inputs.host_evidence_sha256 }}",
-    "INDEPENDENT_AUDIT: ${{ inputs.independent_audit_validation }}",
-    "INDEPENDENT_AUDIT_SHA256: ${{ inputs.independent_audit_sha256 }}",
-    "INDEPENDENT_EVALUATION: ${{ inputs.independent_evaluation_validation }}",
-    "INDEPENDENT_EVALUATION_ID: ${{ inputs.independent_evaluation_id }}",
-    "INDEPENDENT_EVALUATION_SHA256: ${{ inputs.independent_evaluation_sha256 }}",
+    "EXTERNAL_ATTESTATIONS_JSON: ${{ inputs.external_attestations_json }}",
     "AUTHORIZED: ${{ inputs.authorize_blocked_prerelease }}",
 )
 ADMISSION_INPUT_COMMANDS = (
@@ -149,14 +139,27 @@ ADMISSION_INPUT_COMMANDS = (
     '[[ "$DISPATCH_SHA" == "$EXPECTED_COMMIT" ]]',
     '[[ "$WORKFLOW_SHA" == "$EXPECTED_COMMIT" ]]',
     '[[ "$WORKFLOW_REF" == "${GITHUB_REPOSITORY}/.github/workflows/attested-prerelease.yml@refs/tags/$TAG" ]]',
-    '[[ "$HOST_VALIDATION" == PASS ]]',
-    '[[ "$INDEPENDENT_AUDIT" == PASS ]]',
-    '[[ "$INDEPENDENT_EVALUATION" == PASS ]]',
     '[[ "$AUTHORIZED" == true ]]',
-    '[[ "$HOST_EVIDENCE_SHA256" =~ ^[0-9a-f]{64}$ ]]',
-    '[[ "$INDEPENDENT_AUDIT_SHA256" =~ ^[0-9a-f]{64}$ ]]',
-    '[[ "$INDEPENDENT_EVALUATION_ID" =~ ^evaluation-v(1[1-9]|[2-9][0-9]|[1-9][0-9]{2,})$ ]]',
-    '[[ "$INDEPENDENT_EVALUATION_SHA256" =~ ^[0-9a-f]{64}$ ]]',
+    "jq -e '",
+    '  type == "object" and',
+    "  (keys == [",
+    '    "host_evidence_sha256",',
+    '    "host_validation",',
+    '    "independent_audit_sha256",',
+    '    "independent_audit_validation",',
+    '    "independent_evaluation_id",',
+    '    "independent_evaluation_sha256",',
+    '    "independent_evaluation_validation"',
+    "  ]) and",
+    '  ([.[] | type] | all(. == "string")) and',
+    '  .host_validation == "PASS" and',
+    '  (.host_evidence_sha256 | test("^[0-9a-f]{64}$")) and',
+    '  .independent_audit_validation == "PASS" and',
+    '  (.independent_audit_sha256 | test("^[0-9a-f]{64}$")) and',
+    '  .independent_evaluation_validation == "PASS" and',
+    '  (.independent_evaluation_id | test("^evaluation-v(1[1-9]|[2-9][0-9]|[1-9][0-9]{2,})$")) and',
+    '  (.independent_evaluation_sha256 | test("^[0-9a-f]{64}$"))',
+    "' <<<\"$EXTERNAL_ATTESTATIONS_JSON\" >/dev/null",
 )
 ADMISSION_CI_ENV = (
     "CI_RUN_ID: ${{ inputs.ci_run_id }}",
@@ -530,7 +533,7 @@ ROUND6_REPRODUCIBILITY_CHECKSUMS_CONTRACT = (
     '  for relative in "$so" "$so.sha256" "$store_zip" build-metadata.json checksums.txt \\',
 )
 BLOCKED_STEP_RUN_SHA256 = {
-    ("admission", 0): "3c9f96e89952dd96c6fed357bde683cbc0302cc0e2de941547c504c3285de369",
+    ("admission", 0): "e687f6dfcf81b226a179502e0e078696ab8da5ed66797f30fe7cf19e59b83013",
     ("admission", 1): "7f1817ec7b567df4be63fafd9ee2b2347ac37e01982e41ee3338f64c79cae81a",
     ("admission", 2): "26030928c867d579089d1e69fcba37ff65433ca93697835abdda4f6365f2e4e5",
     ("verify", 1): "739ebd378c0da4e32117344b43258da8bb85a61590c8966c47dce26274df75cc",
@@ -576,13 +579,7 @@ BLOCKED_STEP_ENV = {
         ("DISPATCH_SHA", "${{ github.sha }}"),
         ("WORKFLOW_REF", "${{ github.workflow_ref }}"),
         ("WORKFLOW_SHA", "${{ github.workflow_sha }}"),
-        ("HOST_VALIDATION", "${{ inputs.host_validation }}"),
-        ("HOST_EVIDENCE_SHA256", "${{ inputs.host_evidence_sha256 }}"),
-        ("INDEPENDENT_AUDIT", "${{ inputs.independent_audit_validation }}"),
-        ("INDEPENDENT_AUDIT_SHA256", "${{ inputs.independent_audit_sha256 }}"),
-        ("INDEPENDENT_EVALUATION", "${{ inputs.independent_evaluation_validation }}"),
-        ("INDEPENDENT_EVALUATION_ID", "${{ inputs.independent_evaluation_id }}"),
-        ("INDEPENDENT_EVALUATION_SHA256", "${{ inputs.independent_evaluation_sha256 }}"),
+        ("EXTERNAL_ATTESTATIONS_JSON", "${{ inputs.external_attestations_json }}"),
         ("AUTHORIZED", "${{ inputs.authorize_blocked_prerelease }}"),
     ),
     ("admission", 1): (
@@ -638,10 +635,10 @@ BLOCKED_STEP_ENV = {
         ("TAG", "${{ inputs.tag }}"),
         ("CI_RUN_ID", "${{ inputs.ci_run_id }}"),
         ("CANDIDATE_RUN_ID", "${{ inputs.candidate_run_id }}"),
-        ("HOST_EVIDENCE_SHA256", "${{ inputs.host_evidence_sha256 }}"),
-        ("INDEPENDENT_AUDIT_SHA256", "${{ inputs.independent_audit_sha256 }}"),
-        ("INDEPENDENT_EVALUATION_ID", "${{ inputs.independent_evaluation_id }}"),
-        ("INDEPENDENT_EVALUATION_SHA256", "${{ inputs.independent_evaluation_sha256 }}"),
+        ("HOST_EVIDENCE_SHA256", "${{ fromJSON(inputs.external_attestations_json).host_evidence_sha256 }}"),
+        ("INDEPENDENT_AUDIT_SHA256", "${{ fromJSON(inputs.external_attestations_json).independent_audit_sha256 }}"),
+        ("INDEPENDENT_EVALUATION_ID", "${{ fromJSON(inputs.external_attestations_json).independent_evaluation_id }}"),
+        ("INDEPENDENT_EVALUATION_SHA256", "${{ fromJSON(inputs.external_attestations_json).independent_evaluation_sha256 }}"),
         ("WORKFLOW_SHA", "${{ github.workflow_sha }}"),
     ),
     ("publish", 3): (
@@ -653,10 +650,10 @@ BLOCKED_STEP_ENV = {
         ("EXPECTED_STORE_ZIP_SHA256", "${{ inputs.expected_store_zip_sha256 }}"),
         ("CI_RUN_ID", "${{ inputs.ci_run_id }}"),
         ("CANDIDATE_RUN_ID", "${{ inputs.candidate_run_id }}"),
-        ("HOST_EVIDENCE_SHA256", "${{ inputs.host_evidence_sha256 }}"),
-        ("INDEPENDENT_AUDIT_SHA256", "${{ inputs.independent_audit_sha256 }}"),
-        ("INDEPENDENT_EVALUATION_ID", "${{ inputs.independent_evaluation_id }}"),
-        ("INDEPENDENT_EVALUATION_SHA256", "${{ inputs.independent_evaluation_sha256 }}"),
+        ("HOST_EVIDENCE_SHA256", "${{ fromJSON(inputs.external_attestations_json).host_evidence_sha256 }}"),
+        ("INDEPENDENT_AUDIT_SHA256", "${{ fromJSON(inputs.external_attestations_json).independent_audit_sha256 }}"),
+        ("INDEPENDENT_EVALUATION_ID", "${{ fromJSON(inputs.external_attestations_json).independent_evaluation_id }}"),
+        ("INDEPENDENT_EVALUATION_SHA256", "${{ fromJSON(inputs.external_attestations_json).independent_evaluation_sha256 }}"),
     ),
 }
 
@@ -826,6 +823,7 @@ CANDIDATE_SCRIPT_SHA256 = {
 RC_RELEASE_SCRIPT_SHA256 = "9212b21356763333215ce74e70c1e4f49992a4cc0f84ca78033797848603f96d"
 ACTIVE_RC_WORKFLOW_SHA256 = "5f44b0d6bc20753ef50a4108257840b8a9b3364214305babdfc4461fcc7c64f6"
 RC_RELEASE_WORKFLOW_SHA256 = "5ff480e2bb84bc33da81cc4e9839e4bca50453fc7e77debc1f24dd5b04362107"
+CODEQL_WORKFLOW_SHA256 = "b8ded98477d51dbdf6c37edf62eb3934764f488bfb6a0ea95ce687139a8e9309"
 FORMAL_OPERATION_SCRIPTS = (
     "formal-release.sh",
     "generate-release-evidence.sh",
@@ -895,7 +893,7 @@ FROZEN_EVALUATION_STATUS_COMMAND = (
 )
 ROUND6_DOC_FIXTURE_WRAPPER_SCRIPT = "scripts/round6-doc-consistency-fixture-test.sh"
 ROUND6_DOC_FIXTURE_WRAPPER_SCRIPT_SHA256 = (
-    "2b93b63a007ba959ce41a1cb86af21ba133997e01b3b9fa39effdabbcdeb0322"
+    "1f6cc93ecb3bb1a2a14409020111ef353d305ba130e5448fce2c3208b9ebaafc"
 )
 ROUND6_DOC_FIXTURE_DEPENDENCY_SHA256 = {
     "scripts/release-doc-consistency-test.sh": "25fe586d622f08b6f4a130d8f80ebde678a67f61c436a3acc190fcfe331eebc6",
@@ -1130,6 +1128,22 @@ def validate_workflow_semantic_safety(document: MappingNode, source: Path) -> No
     root = yaml_mapping(document, source, "workflow")
     if "defaults" in root:
         raise ContractError(f"workflow may not override the reviewed run shell: {source}")
+    on_node = root.get("on")
+    if on_node is not None:
+        triggers = yaml_mapping(on_node, source, "on")
+        dispatch_node = triggers.get("workflow_dispatch")
+        if isinstance(dispatch_node, MappingNode):
+            dispatch = yaml_mapping(dispatch_node, source, "on.workflow_dispatch")
+            inputs_node = dispatch.get("inputs")
+            if inputs_node is not None:
+                input_names = yaml_mapping_keys(
+                    inputs_node, source, "on.workflow_dispatch.inputs"
+                )
+                if len(input_names) > GITHUB_WORKFLOW_DISPATCH_INPUT_LIMIT:
+                    raise ContractError(
+                        "workflow_dispatch inputs exceed GitHub platform limit of "
+                        f"{GITHUB_WORKFLOW_DISPATCH_INPUT_LIMIT}: {source}"
+                    )
     top_env = root.get("env")
     if top_env is not None:
         env_values = yaml_mapping(top_env, source, "env")
@@ -1992,6 +2006,26 @@ def exact_string_mapping(
             )
         )
     return tuple(values)
+
+
+def validate_codeql_workflow(text: str, source: Path) -> None:
+    validate_workflow_safety(text, source)
+    required_manual_build_lines = (
+        "uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0",
+        "go-version: ${{ env.GO_VERSION }}",
+        "build-mode: manual",
+        "run: go build -mod=readonly -tags=sqlite_omit_load_extension "
+        "./cmd/cyber-abuse-guard ./internal/... ./rules",
+    )
+    if any(text.count(line) != 1 for line in required_manual_build_lines):
+        raise ContractError(
+            "CodeQL workflow differs from the exact reviewed setup-go pin, "
+            "manual build mode, or Go build command"
+        )
+    if hashlib.sha256(text.encode("utf-8")).hexdigest() != CODEQL_WORKFLOW_SHA256:
+        raise ContractError(
+            "CodeQL workflow differs from the exact reviewed trigger, permission, action, and build contract"
+        )
 
 
 def validate_candidate_workflow(text: str, source: Path) -> None:
@@ -3359,16 +3393,9 @@ def validate_blocked_prerelease_structure(
         source,
         "on.workflow_dispatch.inputs",
     )
-    choice_inputs = {
-        "host_validation",
-        "independent_audit_validation",
-        "independent_evaluation_validation",
-    }
     for input_name, input_node in inputs.items():
         path = f"on.workflow_dispatch.inputs.{input_name}"
-        if input_name in choice_inputs:
-            expected_keys = ("description", "required", "type", "default", "options")
-        elif input_name == "authorize_blocked_prerelease":
+        if input_name == "authorize_blocked_prerelease":
             expected_keys = ("description", "required", "type", "default")
         else:
             expected_keys = ("description", "required", "type")
@@ -3381,16 +3408,7 @@ def validate_blocked_prerelease_structure(
             f"{path}.required",
             tag="tag:yaml.org,2002:bool",
         )
-        if input_name in choice_inputs:
-            require_yaml_scalar(values["type"], "choice", source, f"{path}.type")
-            require_yaml_scalar(values["default"], "BLOCKED", source, f"{path}.default")
-            options = yaml_sequence(values["options"], source, f"{path}.options")
-            if [yaml_scalar(value, source, f"{path}.options") for value in options] != [
-                "BLOCKED",
-                "PASS",
-            ]:
-                raise ContractError(f"workflow {path}.options must remain BLOCKED then PASS")
-        elif input_name == "authorize_blocked_prerelease":
+        if input_name == "authorize_blocked_prerelease":
             require_yaml_scalar(values["type"], "boolean", source, f"{path}.type")
             require_yaml_scalar(
                 values["default"],
@@ -3492,9 +3510,9 @@ def validate_blocked_prerelease_structure(
                 f"{job_path}.environment",
             )
             expected_publish_if = (
-                "inputs.host_validation == 'PASS' && "
-                "inputs.independent_audit_validation == 'PASS' && "
-                "inputs.independent_evaluation_validation == 'PASS' && "
+                "fromJSON(inputs.external_attestations_json).host_validation == 'PASS' && "
+                "fromJSON(inputs.external_attestations_json).independent_audit_validation == 'PASS' && "
+                "fromJSON(inputs.external_attestations_json).independent_evaluation_validation == 'PASS' && "
                 "inputs.authorize_blocked_prerelease == true"
             )
             if yaml_scalar(job["if"], source, f"{job_path}.if") != expected_publish_if:
@@ -4630,6 +4648,23 @@ def validate_round6_makefile_contract(text: str, source: Path) -> None:
             "round6-module-verify must tidy-diff only the two included integration modules: "
             f"{source}"
         )
+    fuzz_smoke_commands = tuple(
+        " ".join(line.split())
+        for line in recipes.get("fuzz-smoke", "").splitlines()
+        if line.strip()
+    )
+    expected_fuzz_smoke_commands = (
+        "@listed=\"$$($(GO) test ./internal/extract -list='^(FuzzExtractText|FuzzExtractRequestMediaMemberOrder|FuzzExtractRequestScalarMediaCarrierPermutation|FuzzExtractRequestContentType|FuzzExtractRequestMultipart|FuzzExtractRequestMultipartUnknownFieldEvidenceOrder|FuzzRound6JSONStringChunkDecoderMatchesStdlib)$$')\" || exit $$?; for fuzz_name in FuzzExtractText FuzzExtractRequestMediaMemberOrder FuzzExtractRequestScalarMediaCarrierPermutation FuzzExtractRequestContentType FuzzExtractRequestMultipart FuzzExtractRequestMultipartUnknownFieldEvidenceOrder FuzzRound6JSONStringChunkDecoderMatchesStdlib; do printf '%s\\n' \"$$listed\" | grep -Fxq \"$$fuzz_name\" || { echo \"required extract fuzz seed target $$fuzz_name is missing\" >&2; exit 1; }; done",
+        "$(GO) test ./internal/extract -run='^(FuzzExtractText|FuzzExtractRequestMediaMemberOrder|FuzzExtractRequestScalarMediaCarrierPermutation|FuzzExtractRequestContentType|FuzzExtractRequestMultipart|FuzzExtractRequestMultipartUnknownFieldEvidenceOrder|FuzzRound6JSONStringChunkDecoderMatchesStdlib)$$' -count=1",
+        "@listed=\"$$($(GO) test ./internal/classifier -list='^(FuzzClassifier|FuzzRound6StreamingChunkAndRoleBoundaries|FuzzMetaOverrideClausePermutation|FuzzMetaOverrideEncodingAndPartSplit|FuzzDefensiveQuotedSampleBoundary)$$')\" || exit $$?; for fuzz_name in FuzzClassifier FuzzRound6StreamingChunkAndRoleBoundaries FuzzMetaOverrideClausePermutation FuzzMetaOverrideEncodingAndPartSplit FuzzDefensiveQuotedSampleBoundary; do printf '%s\\n' \"$$listed\" | grep -Fxq \"$$fuzz_name\" || { echo \"required classifier fuzz seed target $$fuzz_name is missing\" >&2; exit 1; }; done",
+        "$(GO) test ./internal/classifier -run='^(FuzzClassifier|FuzzRound6StreamingChunkAndRoleBoundaries|FuzzMetaOverrideClausePermutation|FuzzMetaOverrideEncodingAndPartSplit|FuzzDefensiveQuotedSampleBoundary)$$' -count=1",
+        "@$(GO) test ./internal/config -list='^FuzzConfigParser$$' | grep -Fxq 'FuzzConfigParser' || { echo 'required config fuzz seed target FuzzConfigParser is missing' >&2; exit 1; }",
+        "$(GO) test ./internal/config -run='^FuzzConfigParser$$' -count=1",
+    )
+    if fuzz_smoke_commands != expected_fuzz_smoke_commands:
+        raise ContractError(
+            f"fuzz-smoke must fail closed over the exact deterministic seed target set: {source}"
+        )
     if dependencies.get("round6-benchmark") != {"benchmark"}:
         raise ContractError(
             f"round6-benchmark must retain the reviewed benchmark dependency: {source}"
@@ -4640,8 +4675,18 @@ def validate_round6_makefile_contract(text: str, source: Path) -> None:
         if line.strip()
     )
     expected = (
+        "@$(GO) test ./internal/extract -list='^TestRound6LongTextScaleAcceptance$$' | grep -Fxq 'TestRound6LongTextScaleAcceptance' || { echo 'required Round6 long-text scale acceptance test is missing' >&2; exit 1; }",
+        "$(GO) test ./internal/extract -count=1 -v -run='^TestRound6LongTextScaleAcceptance$$'",
         "@$(GO) test ./internal/extract -list='^BenchmarkRound6ScanLongJSON$$' | grep -Fxq 'BenchmarkRound6ScanLongJSON' || { echo 'required Round6 long-JSON benchmark is missing' >&2; exit 1; }",
         "$(GO) test ./internal/extract -run='^$$' -bench='^BenchmarkRound6ScanLongJSON$$' -benchmem -benchtime=1x -count=1",
+        "@$(GO) test ./internal/audit -list='^TestRawCapturePerformanceAcceptance$$' | grep -Fxq 'TestRawCapturePerformanceAcceptance' || { echo 'required raw-capture performance acceptance test is missing' >&2; exit 1; }",
+        "$(GO) test ./internal/audit -count=1 -v -run='^TestRawCapturePerformanceAcceptance$$'",
+        "@listed=\"$$($(GO) test ./internal/audit -list='^(BenchmarkPrepareRawCapture|BenchmarkRecordRawCaptureQueue|BenchmarkEnqueueEventWithRawCapture)$$')\" || exit $$?; for benchmark_name in BenchmarkPrepareRawCapture BenchmarkRecordRawCaptureQueue BenchmarkEnqueueEventWithRawCapture; do printf '%s\\n' \"$$listed\" | grep -Fxq \"$$benchmark_name\" || { echo \"required raw-capture benchmark $$benchmark_name is missing\" >&2; exit 1; }; done",
+        "$(GO) test ./internal/audit -run='^$$' -bench='^(BenchmarkPrepareRawCapture|BenchmarkRecordRawCaptureQueue|BenchmarkEnqueueEventWithRawCapture)$$' -benchmem -benchtime=1x -count=1",
+        "@$(GO) test -tags=$(TEST_TAGS) ./internal/plugin -list='^TestRawCaptureManagementResponsePerformanceAcceptance$$' | grep -Fxq 'TestRawCaptureManagementResponsePerformanceAcceptance' || { echo 'required raw-capture management performance acceptance test is missing' >&2; exit 1; }",
+        "$(GO) test -tags=$(TEST_TAGS) ./internal/plugin -count=1 -v -run='^TestRawCaptureManagementResponsePerformanceAcceptance$$'",
+        "@$(GO) test -tags=$(TEST_TAGS) ./internal/plugin -list='^BenchmarkRawCaptureManagementResponseBudget$$' | grep -Fxq 'BenchmarkRawCaptureManagementResponseBudget' || { echo 'required raw-capture management response benchmark is missing' >&2; exit 1; }",
+        "$(GO) test -tags=$(TEST_TAGS) ./internal/plugin -run='^$$' -bench='^BenchmarkRawCaptureManagementResponseBudget$$' -benchmem -benchtime=1x -count=1",
         "@$(GO) test -tags=$(TEST_TAGS) ./internal/plugin -list='^TestFourRepositoryFullRoutePerformanceAcceptance$$' | grep -Fxq 'TestFourRepositoryFullRoutePerformanceAcceptance' || { echo 'required Round6 full-route performance acceptance test is missing' >&2; exit 1; }",
         "$(GO) test -tags=$(TEST_TAGS) ./internal/plugin -count=1 -v -run='^TestFourRepositoryFullRoutePerformanceAcceptance$$'",
         "@listed=\"$$($(GO) test -tags=$(TEST_TAGS) ./internal/plugin -list='^(BenchmarkFourRepositoryModelRoute|BenchmarkFourRepositoryParallelCleanSubjectEnabled|BenchmarkBalancedAuditOnWrapperOnly17166ModelRoute)$$')\" || exit $$?; for benchmark_name in BenchmarkFourRepositoryModelRoute BenchmarkFourRepositoryParallelCleanSubjectEnabled BenchmarkBalancedAuditOnWrapperOnly17166ModelRoute; do printf '%s\\n' \"$$listed\" | grep -Fxq \"$$benchmark_name\" || { echo \"required Round6 full-route benchmark $$benchmark_name is missing\" >&2; exit 1; }; done",
@@ -4900,7 +4945,7 @@ def validate_workflow_layout(root: Path) -> None:
         expected_directory_paths
     ):
         raise ContractError(
-            "workflow directory must contain exactly the six reviewed entrypoints and its README: "
+            "workflow directory must contain exactly the seven reviewed entrypoints and its README: "
             + ", ".join(expected_directory_paths)
         )
 
@@ -4940,6 +4985,8 @@ def audit(root: Path, entrypoints: list[Path]) -> tuple[set[str], set[str]]:
             name = entrypoint.name.lower()
             if name == "candidate.yml":
                 validate_candidate_workflow(text, entrypoint)
+            elif name == "codeql.yml":
+                validate_codeql_workflow(text, entrypoint)
             elif name == "attested-prerelease.yml":
                 validate_blocked_prerelease_workflow(text, entrypoint)
             elif name == "release-rc.yml":

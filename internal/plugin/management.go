@@ -3,16 +3,19 @@ package plugin
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"io"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
 	"github.com/yujianwudi/cyber-abuse-guard/internal/audit"
@@ -35,6 +38,10 @@ const (
 	defaultManagementRawCaptureLimit = 20
 	maxManagementRawCaptureLimit     = 100
 	maxManagementRawPreviewBytes     = audit.RawCaptureQueryPreviewBudgetBytes
+	managementRawPreviewTransport    = "cpa-v7.2.88-html-escaped-utf8"
+	managementRawPreviewB64Encoding  = "base64-standard-utf8"
+	managementRawPreviewRendering    = "text-only-never-html"
+	managementRawCaptureSchema       = 2
 	managementHealthProbePath        = managementBasePath + "/health/probe"
 	managementAuthDocumentation      = "CPA v7.2.88 management middleware is authoritative; the plugin additionally rejects callbacks without a management credential header"
 )
@@ -44,6 +51,36 @@ type managementRoute struct {
 	Path        string `json:"Path"`
 	Menu        string `json:"Menu,omitempty"`
 	Description string `json:"Description,omitempty"`
+}
+
+// managementRawCapture preserves the readable preview for existing operators
+// and adds a canonical transport-safe representation. CPA v7.2.88 HTML-escapes
+// every JSON string returned by ServeManagementHTTP, so raw_preview_b64 is the
+// only byte-stable representation across the plugin/Host boundary.
+type managementRawCapture struct {
+	audit.RawRequestCapture
+	RawPreviewB64 string `json:"raw_preview_b64"`
+}
+
+type managementRawCaptureResponse struct {
+	Enabled                    bool                   `json:"enabled"`
+	Captures                   []managementRawCapture `json:"captures"`
+	RequestedLimit             int                    `json:"requested_limit"`
+	ReturnedCount              int                    `json:"returned_count"`
+	ResponseTruncated          bool                   `json:"response_truncated"`
+	PreviewBytes               int                    `json:"preview_bytes"`
+	EncodedPreviewBytes        int                    `json:"encoded_preview_bytes"`
+	CPAHostEncodedPreviewBytes int                    `json:"cpa_host_encoded_preview_bytes"`
+	ResponsePreviewBudgetBytes int                    `json:"response_preview_budget_bytes"`
+	CPAHostResponseBudgetBytes int                    `json:"cpa_host_response_budget_bytes"`
+	CPAHostResponseBytes       int                    `json:"cpa_host_response_bytes"`
+	RawPreviewTransport        string                 `json:"raw_preview_transport"`
+	RawPreviewB64Encoding      string                 `json:"raw_preview_b64_encoding"`
+	RawPreviewRendering        string                 `json:"raw_preview_rendering"`
+	RawPreviewDeprecated       bool                   `json:"raw_preview_deprecated"`
+	EncodedBytesDeprecated     bool                   `json:"encoded_preview_bytes_deprecated"`
+	PreferredPreviewField      string                 `json:"preferred_preview_field"`
+	ResponseSchemaVersion      int                    `json:"raw_capture_response_schema_version"`
 }
 
 type managementRegistration struct {
@@ -401,16 +438,9 @@ func (p *Plugin) managementRawCaptures(state *runtimeState, values url.Values) [
 			(state.audit == nil || state.audit.Status().SchemaVersion == 0) {
 			return managementError(http.StatusServiceUnavailable, "audit_unavailable", "raw request capture purge status is unavailable")
 		}
-		return managementJSONResponse(http.StatusOK, map[string]any{
-			"enabled":                       false,
-			"captures":                      []audit.RawRequestCapture{},
-			"requested_limit":               requestedLimit,
-			"returned_count":                0,
-			"response_truncated":            false,
-			"preview_bytes":                 0,
-			"encoded_preview_bytes":         0,
-			"response_preview_budget_bytes": maxManagementRawPreviewBytes,
-		})
+		return managementRawCaptureResponseEnvelope(
+			managementRawCaptureResponseDefaults(false, requestedLimit),
+		)
 	}
 	if state.audit == nil {
 		return managementError(http.StatusServiceUnavailable, "audit_unavailable", "raw request captures are temporarily unavailable")
@@ -422,43 +452,288 @@ func (p *Plugin) managementRawCaptures(state *runtimeState, values url.Values) [
 	if err != nil {
 		return managementError(http.StatusServiceUnavailable, "audit_unavailable", "raw request captures are temporarily unavailable")
 	}
-	returned := make([]audit.RawRequestCapture, 0, len(page.Captures))
+	response, err := managementBoundRawCaptureResponse(page, requestedLimit)
+	if err != nil {
+		return managementError(http.StatusInternalServerError, "encode_error", "raw capture response metadata exceeds the response budget")
+	}
+	body, err := json.Marshal(response)
+	if err != nil {
+		return managementError(http.StatusInternalServerError, "encode_error", "failed to encode raw capture response")
+	}
+	return managementJSONBodyResponse(http.StatusOK, body)
+}
+
+func managementRawCaptureResponseDefaults(enabled bool, requestedLimit int) managementRawCaptureResponse {
+	return managementRawCaptureResponse{
+		Enabled:                    enabled,
+		Captures:                   []managementRawCapture{},
+		RequestedLimit:             requestedLimit,
+		ResponsePreviewBudgetBytes: maxManagementRawPreviewBytes,
+		CPAHostResponseBudgetBytes: maxManagementRawPreviewBytes,
+		RawPreviewTransport:        managementRawPreviewTransport,
+		RawPreviewB64Encoding:      managementRawPreviewB64Encoding,
+		RawPreviewRendering:        managementRawPreviewRendering,
+		RawPreviewDeprecated:       true,
+		EncodedBytesDeprecated:     true,
+		PreferredPreviewField:      "raw_preview_b64",
+		ResponseSchemaVersion:      managementRawCaptureSchema,
+	}
+}
+
+// managementBoundRawCaptureResponse selects the largest newest-first prefix
+// whose complete CPA v7.2.88 Host-visible JSON body fits the fixed response
+// budget. Each sensitive row is counted once; only the small metadata envelope
+// is re-encoded while the prefix grows.
+func managementBoundRawCaptureResponse(page audit.RawCapturePage, requestedLimit int) (managementRawCaptureResponse, error) {
+	best := managementRawCaptureResponseDefaults(true, requestedLimit)
+	best.ResponseTruncated = page.HasMore || len(page.Captures) != 0
+	hostBytes, err := managementCPAHostResponseBytes(best, 0)
+	if err != nil || hostBytes > maxManagementRawPreviewBytes {
+		return managementRawCaptureResponse{}, errors.New("raw capture response metadata exceeds budget")
+	}
+	best.CPAHostResponseBytes = hostBytes
+
+	returned := make([]managementRawCapture, 0, len(page.Captures))
 	previewBytes := 0
 	encodedPreviewBytes := 0
-	responseTruncated := page.HasMore
+	hostEncodedPreviewBytes := 0
+	hostCaptureObjectBytes := 0
 	for _, capture := range page.Captures {
-		encodedBytes := managementEncodedJSONStringBytes(capture.RawPreview)
-		if encodedPreviewBytes+encodedBytes > maxManagementRawPreviewBytes {
-			responseTruncated = true
+		item := managementRawCapture{
+			RawRequestCapture: capture,
+			RawPreviewB64:     base64.StdEncoding.EncodeToString([]byte(capture.RawPreview)),
+		}
+		itemHostBytes, encodeErr := managementRawCaptureCPAHostJSONBytes(item)
+		if encodeErr != nil {
+			return managementRawCaptureResponse{}, encodeErr
+		}
+		candidateCaptures := append(returned, item)
+		candidatePreviewBytes := previewBytes + len(capture.RawPreview)
+		candidateEncodedPreviewBytes := encodedPreviewBytes + managementEncodedJSONStringBytes(capture.RawPreview)
+		candidateHostEncodedPreviewBytes := hostEncodedPreviewBytes +
+			managementCPAHostEncodedJSONStringBytes(capture.RawPreview) +
+			managementCPAHostEncodedJSONStringBytes(item.RawPreviewB64)
+		candidateHostCaptureObjectBytes := hostCaptureObjectBytes + itemHostBytes
+		candidate := managementRawCaptureResponseDefaults(true, requestedLimit)
+		candidate.Captures = candidateCaptures
+		candidate.ReturnedCount = len(candidateCaptures)
+		candidate.ResponseTruncated = page.HasMore || len(candidateCaptures) < len(page.Captures)
+		candidate.PreviewBytes = candidatePreviewBytes
+		candidate.EncodedPreviewBytes = candidateEncodedPreviewBytes
+		candidate.CPAHostEncodedPreviewBytes = candidateHostEncodedPreviewBytes
+		candidateHostBytes, sizeErr := managementCPAHostResponseBytes(candidate, candidateHostCaptureObjectBytes)
+		if sizeErr != nil {
+			return managementRawCaptureResponse{}, sizeErr
+		}
+		if candidateHostBytes > maxManagementRawPreviewBytes {
 			break
 		}
-		returned = append(returned, capture)
-		previewBytes += len(capture.RawPreview)
-		encodedPreviewBytes += encodedBytes
+		candidate.CPAHostResponseBytes = candidateHostBytes
+		best = candidate
+		returned = candidateCaptures
+		previewBytes = candidatePreviewBytes
+		encodedPreviewBytes = candidateEncodedPreviewBytes
+		hostEncodedPreviewBytes = candidateHostEncodedPreviewBytes
+		hostCaptureObjectBytes = candidateHostCaptureObjectBytes
 	}
-	if len(returned) < len(page.Captures) {
-		responseTruncated = true
-	}
-	return managementJSONResponse(http.StatusOK, map[string]any{
-		"enabled":                       true,
-		"captures":                      returned,
-		"requested_limit":               requestedLimit,
-		"returned_count":                len(returned),
-		"response_truncated":            responseTruncated,
-		"preview_bytes":                 previewBytes,
-		"encoded_preview_bytes":         encodedPreviewBytes,
-		"response_preview_budget_bytes": maxManagementRawPreviewBytes,
-	})
+	return best, nil
 }
 
 func managementEncodedJSONStringBytes(value string) int {
-	encoded, err := json.Marshal(value)
-	if err != nil || len(encoded) < 2 {
-		// json.Marshal cannot fail for a string. Keep a conservative fallback so
-		// a future encoder change cannot disable the response budget.
-		return len(value) * 6
+	encodedBytes := 0
+	for len(value) != 0 {
+		runeValue, size := utf8.DecodeRuneInString(value)
+		value = value[size:]
+		switch {
+		case runeValue == utf8.RuneError && size == 1:
+			encodedBytes += utf8.RuneLen(utf8.RuneError)
+		case runeValue == '"' || runeValue == '\\':
+			encodedBytes += 2
+		case runeValue == '\b' || runeValue == '\f' || runeValue == '\n' || runeValue == '\r' || runeValue == '\t':
+			encodedBytes += 2
+		case runeValue < 0x20 || runeValue == '\u2028' || runeValue == '\u2029':
+			encodedBytes += 6
+		case runeValue == '<' || runeValue == '>' || runeValue == '&':
+			// json.Marshal uses HTML-safe escaping by default.
+			encodedBytes += 6
+		default:
+			encodedBytes += size
+		}
 	}
-	return len(encoded) - 2
+	return encodedBytes
+}
+
+func managementCPAHostEncodedJSONStringBytes(value string) int {
+	encodedBytes := 0
+	for len(value) != 0 {
+		runeValue, size := utf8.DecodeRuneInString(value)
+		value = value[size:]
+		switch {
+		case runeValue == utf8.RuneError && size == 1:
+			encodedBytes += utf8.RuneLen(utf8.RuneError)
+		case runeValue == '&' || runeValue == '\'' || runeValue == '"':
+			// html.EscapeString emits &amp;, &#39;, and &#34; respectively.
+			encodedBytes += 5
+		case runeValue == '<' || runeValue == '>':
+			encodedBytes += 4
+		case runeValue == '\\':
+			encodedBytes += 2
+		case runeValue == '\b' || runeValue == '\f' || runeValue == '\n' || runeValue == '\r' || runeValue == '\t':
+			encodedBytes += 2
+		case runeValue < 0x20 || runeValue == '\u2028' || runeValue == '\u2029':
+			encodedBytes += 6
+		default:
+			encodedBytes += size
+		}
+	}
+	return encodedBytes
+}
+
+func managementRawCaptureResponseEnvelope(response managementRawCaptureResponse) []byte {
+	hostCaptureObjectBytes := 0
+	for _, capture := range response.Captures {
+		captureBytes, err := managementRawCaptureCPAHostJSONBytes(capture)
+		if err != nil {
+			return managementError(http.StatusInternalServerError, "encode_error", "failed to encode raw capture response")
+		}
+		hostCaptureObjectBytes += captureBytes
+	}
+	hostBytes, err := managementCPAHostResponseBytes(response, hostCaptureObjectBytes)
+	if err != nil || hostBytes > maxManagementRawPreviewBytes {
+		return managementError(http.StatusInternalServerError, "encode_error", "failed to encode raw capture response")
+	}
+	response.CPAHostResponseBytes = hostBytes
+	body, err := json.Marshal(response)
+	if err != nil {
+		return managementError(http.StatusInternalServerError, "encode_error", "failed to encode raw capture response")
+	}
+	return managementJSONBodyResponse(http.StatusOK, body)
+}
+
+func managementRawCaptureCPAHostJSONBytes(capture managementRawCapture) (int, error) {
+	fields := 0
+	total := 2 // object braces
+	addField := func(key string, valueBytes int) {
+		if fields != 0 {
+			total++
+		}
+		fields++
+		total += len(key) + 2 + 1 + valueBytes
+	}
+	addString := func(key, value string) {
+		addField(key, managementCPAHostEncodedJSONStringBytes(value)+2)
+	}
+	addBool := func(key string, value bool) {
+		if value {
+			addField(key, len("true"))
+			return
+		}
+		addField(key, len("false"))
+	}
+
+	addString("id", capture.ID)
+	addString("event_id", capture.EventID)
+	timestamp, err := capture.Timestamp.MarshalJSON()
+	if err != nil {
+		return 0, err
+	}
+	addField("timestamp", len(timestamp))
+	if capture.RequestHash != "" {
+		addString("request_hash", capture.RequestHash)
+	}
+	if capture.SubjectHash != "" {
+		addString("subject_hash", capture.SubjectHash)
+	}
+	addString("action", capture.Action)
+	addString("decision", capture.Decision)
+	addBool("truncated", capture.Truncated)
+	addBool("redacted", capture.Redacted)
+	addString("raw_preview", capture.RawPreview)
+	addString("raw_sha256", capture.RawSHA256)
+	addString("raw_preview_b64", capture.RawPreviewB64)
+	return total, nil
+}
+
+func managementCPAHostResponseBytes(response managementRawCaptureResponse, hostCaptureObjectBytes int) (int, error) {
+	if response.ReturnedCount < 0 {
+		return 0, errors.New("negative raw capture response count")
+	}
+	metadata := response
+	metadata.Captures = []managementRawCapture{}
+	guess := response.CPAHostResponseBytes
+	for attempts := 0; attempts < 8; attempts++ {
+		metadata.CPAHostResponseBytes = guess
+		_, metadataHostBytes, err := managementRawCaptureResponseBodies(metadata)
+		if err != nil {
+			return 0, err
+		}
+		total := metadataHostBytes + hostCaptureObjectBytes
+		if response.ReturnedCount > 1 {
+			total += response.ReturnedCount - 1
+		}
+		if total == guess {
+			return total, nil
+		}
+		guess = total
+	}
+	return 0, errors.New("raw capture response size did not converge")
+}
+
+func managementRawCaptureResponseBodies(response managementRawCaptureResponse) ([]byte, int, error) {
+	body, err := json.Marshal(response)
+	if err != nil {
+		return nil, 0, err
+	}
+	hostBody, ok := managementCPAHostSanitizeJSON(body)
+	if !ok {
+		return nil, 0, errors.New("CPA Host JSON sanitizer rejected the raw capture response")
+	}
+	return body, len(hostBody), nil
+}
+
+// managementCPAHostSanitizeJSON mirrors CPA v7.2.88
+// internal/htmlsanitize.JSONBody. The compatibility contract module compares
+// this prediction with the real Host ServeManagementHTTP behavior.
+func managementCPAHostSanitizeJSON(body []byte) ([]byte, bool) {
+	decoder := json.NewDecoder(bytes.NewReader(bytes.TrimSpace(body)))
+	decoder.UseNumber()
+	var value any
+	if err := decoder.Decode(&value); err != nil {
+		return body, false
+	}
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		return body, false
+	}
+
+	var buffer bytes.Buffer
+	encoder := json.NewEncoder(&buffer)
+	encoder.SetEscapeHTML(false)
+	if err := encoder.Encode(managementCPAHostEscapeJSONValue(value)); err != nil {
+		return body, false
+	}
+	return bytes.TrimSuffix(buffer.Bytes(), []byte("\n")), true
+}
+
+func managementCPAHostEscapeJSONValue(value any) any {
+	switch typed := value.(type) {
+	case string:
+		return html.EscapeString(typed)
+	case []any:
+		result := make([]any, len(typed))
+		for index, item := range typed {
+			result[index] = managementCPAHostEscapeJSONValue(item)
+		}
+		return result
+	case map[string]any:
+		result := make(map[string]any, len(typed))
+		for key, item := range typed {
+			result[key] = managementCPAHostEscapeJSONValue(item)
+		}
+		return result
+	default:
+		return value
+	}
 }
 
 func (p *Plugin) managementStats(state *runtimeState) []byte {
@@ -891,6 +1166,10 @@ func managementJSONResponse(status int, value any) []byte {
 	if err != nil {
 		return managementError(http.StatusInternalServerError, "encode_error", "failed to encode management response")
 	}
+	return managementJSONBodyResponse(status, body)
+}
+
+func managementJSONBodyResponse(status int, body []byte) []byte {
 	return okEnvelope(pluginapi.ManagementResponse{
 		StatusCode: status,
 		Headers: http.Header{

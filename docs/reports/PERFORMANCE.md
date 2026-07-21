@@ -1,26 +1,25 @@
-# Performance Report — post-v10 development handoff
+# Performance Report — historical evidence and v0.16 development acceptance
 
 ```text
 current_classifier_policy_version: classifier-policy-v6
 current_classifier_policy_sha256: ece497210db938528cb166a34f2ce3013324b792a7eedf276a96fa5d256001d4
 ```
 
-Last updated: 2026-07-14 (Asia/Shanghai)
+Last updated: 2026-07-21 (Asia/Shanghai)
 
 ## Status
 
-**DEVELOPMENT SELF-CHECK / NOT FINAL EVIDENCE.** The measurements below compare
-the actual starting baseline `a121a444cb0d82cba4e27754914a1f88258e1d7b`
-(`a121a44`) with committed classifier redesign state
-`a1be19f2f5a5317cf979d608f89289ac7cfa2a71` (`a1be19f`) on the same Windows
-machine and command. Reliability microbenchmarks were also run on the shared
-worktree, but that worktree was not yet a frozen clean commit.
+**DEVELOPMENT SELF-CHECK / NOT RELEASE EVIDENCE.** The current section records
+the complete local Linux P1-P2 gate and benchmark run on branch
+`fix/p1-p2-hardening-v016`, based on
+`7b2422ed30c11d405d05bcb6b46a2527eed6471b`. It is not bound to a package,
+GitHub Actions artifact, GitHub Release, or real CPA Host attestation.
 
-These numbers are useful regression evidence only. They are not GitHub CI
-evidence, not a real CPA Host result, not a formal release benchmark, and not a
-blind quality result. Methodologically valid evaluation v10 remains
-the frozen, first-and-only authoritative `FAIL`; that blind set is consumed and
-was not rerun.
+The later sections retain older classifier and reliability measurements as
+historical regression context. They are not current v0.16 evidence, a formal
+release benchmark, or a blind quality result. Methodologically valid evaluation
+v10 remains the frozen, first-and-only authoritative `FAIL`; that blind set is
+consumed and was not rerun.
 
 The WSL command `make cpa-router-fixture-blackbox`, the now-removed legacy
 target `cpa-v7272-host-blackbox`, and
@@ -32,7 +31,70 @@ left no fixture process. Their results are excluded from this report:
 LOCAL MIS-EXECUTION RECORDED / EXCLUDED; NOT AUTHORITATIVE
 ```
 
-## Classifier before/after reference
+## Current v0.16 P1-P2 performance self-check
+
+Environment and scope:
+
+- Date: 2026-07-21 (Asia/Shanghai).
+- Platform: WSL Ubuntu-26.04, Linux amd64.
+- Toolchain: Go 1.26.4 with `GOTOOLCHAIN=local`.
+- Source: P1-P2 development branch based on `7b2422e`; not artifact-bound.
+- Evidence class: **DEVELOPMENT SELF-CHECK / NOT RELEASE EVIDENCE**.
+
+The acceptance checks below were produced by the complete
+`make round6-benchmark` target with the existing Linux toolchain. The same
+frozen code also passed `make test`, `make round6-vet`,
+`make round6-format-check`, `make round6-module-verify`,
+`make round6-script-test`, deterministic 13-target `make fuzz-smoke`, audit and
+raw-capture race tests, and the pinned CPA v7.2.88 raw-capture Host source
+overlay.
+
+- `go test ./internal/extract -count=1 -v -run='^TestRound6LongTextScaleAcceptance$'`
+- `go test ./internal/audit -count=1 -v -run='^TestRawCapturePerformanceAcceptance$'`
+- `go test -tags=sqlite_omit_load_extension ./internal/plugin -count=1 -v -run='^TestRawCaptureManagementResponsePerformanceAcceptance$'`
+
+### P2 long-JSON scaling
+
+The Near-8 MiB body size is `8 MiB - 4 KiB`. Every fixture also enforces a
+CPU-slope gate: its Near-8 MiB `ns/byte` must be no more than 2.5 times its
+1 MiB `ns/byte`.
+
+| Fixture | 1 MiB threshold and observation | Near-8 MiB threshold and observation | Self-check |
+|---|---|---|---|
+| Text | <= 150 ms, <= 512 KiB/op, <= 64 allocs/op; observed 20.0 ms, 342,036 B/op, 45 allocs/op | <= 1.2 s, <= 512 KiB/op, <= 64 allocs/op; observed 155.7 ms, 341,997 B/op, 45 allocs/op | **PASS**, including slope |
+| KeyRich | <= 150 ms, <= 768 KiB/op, <= 25,000 allocs/op; observed 4.89 ms, 372,029 B/op, 17,205 allocs/op | <= 1.2 s, <= 3 MiB/op, <= 160,000 allocs/op; observed 41.8 ms, 2,409,686 B/op, 137,464 allocs/op | **PASS**, including slope |
+| SemanticRich | <= 150 ms, <= 512 KiB/op, <= 10,000 allocs/op; observed 4.33 ms, 160,400 B/op, 5,473 allocs/op | <= 1.2 s, <= 1 MiB/op, <= 60,000 allocs/op; observed 32.9 ms, 717,366 B/op, 43,553 allocs/op | **PASS**, including slope |
+
+### P1 raw-capture and management response
+
+| Acceptance case | Frozen threshold | Observed result | Self-check |
+|---|---|---|---|
+| Near-8 MiB prepare (`8 MiB - 64 KiB` request) | latency <= 1.2 s; <= 4 MiB/op; <= 160 allocs/op | 457,790,105 ns/op; 3,355,125 B/op; 43 allocs/op | **PASS** |
+| Near-8 MiB composite event + capture admission | latency <= 1.5 s; <= 5 MiB/op; <= 200 allocs/op | 454,296,686 ns/op; 3,360,418 B/op; 68 allocs/op | **PASS** |
+| Queue-full rejection before body preparation | latency <= 50 us; exactly 0 B/op and 0 allocs/op | 46 ns/op; 0 B/op; 0 allocs/op | **PASS** |
+| Management response, eight 1 MiB worst-case HTML fixtures, bounded to complete 8 MiB CPA Host body | latency <= 500 ms; <= 16 MiB/op; <= 1,600 allocs/op | 54,596,462 ns/op; 8,529,000 B/op; 1,329 allocs/op | **PASS** |
+
+These `testing.Benchmark` acceptance samples report aggregate `ns/op`,
+`B/op`, and `allocs/op`. They do **not** collect or prove p50, p95, p99, peak
+RSS, end-to-end CPA Host latency, request throughput, or concurrent-load
+behavior; those values are **UNAVAILABLE / NOT MEASURED** and must not be
+inferred from `ns/op`. A release candidate still needs an exact-commit run with
+the pinned CPA v7.2.88 Host and a separately instrumented tail-latency/RSS test
+if those metrics are made release gates.
+
+Exact-main GitHub CI run
+[`29799561002`](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29799561002)
+predates this P1-P2 working tree and failed in both attempts before benchmark
+and artifact stages completed. It supplies no current v0.16 performance
+evidence or Actions artifact.
+
+The remaining release-level comparisons are **NOT RUN**: ordinary allowed
+requests with capture disabled/enabled, final blocked requests through the real
+Host, 1 MiB and Host-limit end-to-end routes, `limit=20` versus `limit=100`
+management pages, and concurrent load. Sensitive request text must not appear
+in benchmark logs or public Actions artifacts.
+
+## Historical classifier before/after reference
 
 Environment:
 
@@ -64,7 +126,7 @@ Interpretation:
 - no scan, decode, part, history, carrier, or taxonomy coverage was reduced to
   obtain these measurements.
 
-## Implementation-freeze development rerun
+## Historical implementation-freeze development rerun
 
 The full local WSL/Linux amd64 rerun used review-closure commit `8814dbf` with Go
 1.26.4 and classifier-policy SHA-256
@@ -102,7 +164,7 @@ The CI acceptance sample recorded p50 84.275 us, p95 150.672 us, p99 182.349
 us; candidate-rich 81.051285 ms/op; near-budget 14.665888 ms/op and 297,256
 B/op.
 
-## Subject and pending-cache reference
+## Historical subject and pending-cache reference
 
 The shared reliability work replaces linear pending-cache eviction with ordered
 O(1) refresh/eviction and makes subject scoring idempotent per domain-separated
@@ -128,7 +190,7 @@ WSL/ext4 development ranges with Go 1.26.4 independently showed:
 These microbenchmarks isolate data-structure operations. They do not predict
 end-to-end CPA throughput or tail latency.
 
-## Required final rerun
+## Historical pre-v0.16 rerun instruction
 
 Leo should rerun on the proposed frozen commit and record raw output, runner
 identity, variance, and artifact/commit identity:
@@ -149,7 +211,7 @@ If the final tree changes classifier, extractor, rules, pending-cache, subject,
 audit-event, or build dependencies, these development numbers must be treated as
 stale and rerun. Do not weaken coverage or resource boundaries to improve them.
 
-## Evidence block
+## Historical evidence block
 
 ```text
 starting_baseline: a121a444cb0d82cba4e27754914a1f88258e1d7b

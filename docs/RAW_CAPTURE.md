@@ -24,13 +24,17 @@ unbounded copy of every prompt.
   (`block`, including subject `cooldown`).
   `only_blocked: false` is rejected.
 - Redaction: mandatory. `redact_secrets: false` is rejected.
-- Processing: common secret forms are replaced first; the resulting preview is
+- Processing: queue capacity is reserved before request-derived capture work.
+  SHA-256 still covers the complete original request, while secret redaction is
+  bounded to `max_bytes + 64 KiB` of prefix/overlap; the resulting preview is
   then truncated on a valid UTF-8 boundary.
 - Per-record bound: `max_bytes`, default 8192, allowed range 1..1048576.
 - Lifetime: `ttl_hours`, default 72 and allowed range 1..87600. When capture is
   enabled it may not exceed `audit.retention_days * 24`.
-- Storage: a separate audit-store record correlated to the ordinary block
-  event. Ordinary audit events remain metadata-only.
+- Storage: the ordinary block event and optional preview enter the shared queue
+  as one composite work item and are written in one SQLite transaction. If the
+  preview insert fails, the metadata-only audit event remains the durable
+  priority and dedicated capture-failure counters expose the missing preview.
 - Legacy switch: `audit.log_original_text: true` remains invalid. There is no
   unrestricted full-request logging mode.
 
@@ -90,7 +94,11 @@ curl -H "X-Management-Key: $CPA_MANAGEMENT_KEY" \
   "http://127.0.0.1:8317/v0/management/plugins/cyber-abuse-guard/raw-captures?event_id=01234567-89ab-4def-8123-456789abcdef"
 ```
 
-The response is JSON and is always sent with `Cache-Control: no-store`:
+The response is JSON and is always sent with `Cache-Control: no-store`.
+The payload below is illustrative: IDs, hashes, preview text, and every displayed
+byte-count value are examples rather than an exact encoding of the placeholder
+strings. In each live response, `cpa_host_response_bytes` is the exact predicted
+size of that complete CPA Host-visible body:
 
 ```json
 {
@@ -100,7 +108,17 @@ The response is JSON and is always sent with `Cache-Control: no-store`:
   "response_truncated": false,
   "preview_bytes": 55,
   "encoded_preview_bytes": 63,
+  "cpa_host_encoded_preview_bytes": 151,
   "response_preview_budget_bytes": 8388608,
+  "cpa_host_response_budget_bytes": 8388608,
+  "cpa_host_response_bytes": 1189,
+  "raw_preview_transport": "cpa-v7.2.88-html-escaped-utf8",
+  "raw_preview_b64_encoding": "base64-standard-utf8",
+  "raw_preview_rendering": "text-only-never-html",
+  "raw_preview_deprecated": true,
+  "encoded_preview_bytes_deprecated": true,
+  "preferred_preview_field": "raw_preview_b64",
+  "raw_capture_response_schema_version": 2,
   "captures": [
     {
       "id": "capture-id",
@@ -113,10 +131,33 @@ The response is JSON and is always sent with `Cache-Control: no-store`:
       "truncated": false,
       "redacted": true,
       "raw_preview": "{\"messages\":[{\"content\":\"...\"}]}",
+      "raw_preview_b64": "eyJtZXNzYWdlcyI6W3siY29udGVudCI6Ii4uLiJ9XX0=",
       "raw_sha256": "sha256:..."
     }
   ]
 }
+```
+
+CPA v7.2.88 HTML-escapes every JSON string after the plugin returns. The legacy
+`raw_preview` field is therefore retained for existing clients but is explicitly
+deprecated by `raw_preview_deprecated: true`; it may not be byte-identical to
+the stored redacted preview. `raw_preview_b64` is the canonical
+transport-stable field identified by `preferred_preview_field`. It contains the
+standard-Base64 encoding of the UTF-8 preview text. Base64 is not encryption,
+access control, or additional redaction: after decoding it remains sensitive
+user content.
+
+Decode only into a mode-0600 file or a UI text node such as `textContent`.
+Render it as plain text only. Never pass decoded bytes to `innerHTML`, an HTML
+template, Markdown-with-HTML renderer, shell, or code interpreter. For a CLI
+review:
+
+```bash
+umask 077
+curl -fsS -H "X-Management-Key: $CPA_MANAGEMENT_KEY" \
+  "http://127.0.0.1:8317/v0/management/plugins/cyber-abuse-guard/raw-captures?event_id=01234567-89ab-4def-8123-456789abcdef" \
+  | jq -r '.captures[0].raw_preview_b64' \
+  | base64 --decode > reviewed-request.txt
 ```
 
 The audit scanner enforces a fixed cumulative 8 MiB raw-preview budget and
@@ -124,17 +165,21 @@ scans at most one additional sentinel row, independent of both the accepted
 query limit and the current `max_bytes` setting. This remains safe after a
 configuration downgrade when the database still contains older 1 MiB rows: a
 `limit=100` query cannot first materialize roughly 100 MiB of previews. The
-management encoder separately enforces an 8 MiB budget over the JSON-encoded
-`raw_preview` strings. The maximum single preview still fits that encoded
-budget, so at least the newest matching record can be returned.
+management encoder separately enforces an 8 MiB budget over the complete
+CPA-v7.2.88 Host-visible JSON body, including both preview fields and response
+metadata. The maximum single 1 MiB preview fits this budget even for the
+reviewed worst-case HTML-escaping fixture.
 
 `returned_count` is the number of records in `captures`.
 `response_truncated: true` means the requested result may contain more records
 than were returned under the response budget or bounded fetch. `preview_bytes`
-counts the returned UTF-8 preview bytes; `encoded_preview_bytes` counts their
-JSON-encoded content bytes and is the value compared with
-`response_preview_budget_bytes`. Callers must not assume that
-`returned_count == requested_limit`.
+counts the returned UTF-8 preview bytes. `encoded_preview_bytes` is the legacy
+plugin-JSON size for `raw_preview` only and is deprecated.
+`cpa_host_encoded_preview_bytes` counts the Host-encoded string content for
+both `raw_preview` and `raw_preview_b64`; it is not the complete response size.
+`cpa_host_response_bytes` is the exact predicted complete Host body and is the
+value constrained by `cpa_host_response_budget_bytes`. Callers must not assume
+that `returned_count == requested_limit`.
 
 `subject_hash` can be empty when subject correlation is unavailable or
 disabled. `redacted` reports whether a replacement was actually made;
@@ -163,7 +208,9 @@ WAL/SHM files. A live reconfiguration from audit enabled to audit disabled does
 perform the purge gate before the new runtime is published.
 
 When capture is disabled and either audit is intentionally disabled or its
-enabled store completed the startup/transition purge gate, the response is:
+enabled store completed the startup/transition purge gate, the response has the
+following shape. As above, the displayed `cpa_host_response_bytes` value is
+illustrative; the live field is exact for the live body:
 
 ```json
 {
@@ -173,7 +220,17 @@ enabled store completed the startup/transition purge gate, the response is:
   "response_truncated": false,
   "preview_bytes": 0,
   "encoded_preview_bytes": 0,
+  "cpa_host_encoded_preview_bytes": 0,
   "response_preview_budget_bytes": 8388608,
+  "cpa_host_response_budget_bytes": 8388608,
+  "cpa_host_response_bytes": 636,
+  "raw_preview_transport": "cpa-v7.2.88-html-escaped-utf8",
+  "raw_preview_b64_encoding": "base64-standard-utf8",
+  "raw_preview_rendering": "text-only-never-html",
+  "raw_preview_deprecated": true,
+  "encoded_preview_bytes_deprecated": true,
+  "preferred_preview_field": "raw_preview_b64",
+  "raw_capture_response_schema_version": 2,
   "captures": []
 }
 ```
@@ -196,3 +253,10 @@ controlled review system. Do not paste captured content into public issues,
 GitHub Actions logs, chat rooms, or classifier test fixtures. If a capture
 reveals a false positive, reduce it with a synthetic, repository-neutral
 regression rather than copying customer text into the source tree.
+
+`/status` and `/stats` expose dedicated
+`raw_capture_enqueued/written/dropped/failed/rejected` counters, the shared
+queue high-water observed by capture attempts, and preparation
+count/total/last/max latency in microseconds. Queue-full attempts do not
+increment the preparation count because they are rejected before request-body
+capture work begins.

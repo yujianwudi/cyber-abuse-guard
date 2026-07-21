@@ -206,9 +206,21 @@ v0.15-dev.round6.N
 
 `.github/workflows/attested-prerelease.yml` binds that tag to the exact
 candidate `main` commit/tree, successful main push CI run, successful clean-candidate run,
-candidate SO SHA-256, the v7.2.88 Host-record hash, and independent-audit hash.
+candidate SO and Store ZIP SHA-256 values, the v7.2.88 Host-record hash, and
+independent-audit hash.
 It rebuilds the same clean exact-source bytes, proves reproducibility, and
 rechecks the SO hash before and after Actions artifact transfer.
+
+GitHub currently allows at most 25 top-level `workflow_dispatch` inputs. The
+repository keeps this manual dispatcher at exactly nine inputs and carries the
+Host, audit, and evaluation decisions and evidence in one required
+`external_attestations_json` object. That object must contain exactly
+`host_validation`, `host_evidence_sha256`, `independent_audit_validation`,
+`independent_audit_sha256`, `independent_evaluation_validation`,
+`independent_evaluation_id`, and `independent_evaluation_sha256`. Admission
+requires every value to be a string, all three decisions to be `PASS`, both
+evidence hashes and the evaluation hash to be lowercase SHA-256 values, and the
+evaluation identity to be `evaluation-v11` or later.
 
 The prerelease attaches schema-v2 `round6-prerelease-attestation.json` and its
 SHA-256 sidecar. That external record binds the candidate workflow, source

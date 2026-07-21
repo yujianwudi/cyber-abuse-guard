@@ -17,6 +17,10 @@ const (
 	maxRawCaptureBytes     = 1 << 20
 	defaultRawCaptureLimit = 20
 	maxRawCaptureLimit     = 100
+	// Redaction inspects a bounded tail beyond the stored preview so labels,
+	// delimiters, and secret values split at max_bytes are still visible to the
+	// best-effort rules without running every regexp over a near-8 MiB request.
+	rawCaptureRedactionOverlapBytes = 64 << 10
 
 	// RawCaptureQueryPreviewBudgetBytes is a hard scan-time bound shared by the
 	// audit store and management API. It is intentionally independent from the
@@ -131,7 +135,7 @@ var rawCaptureRedactors = []rawCaptureRedactor{
 		replacement: `[REDACTED-JWT]`,
 	},
 	{
-		expression:  regexp.MustCompile(`(?s)-----BEGIN (?:[A-Z0-9 ]+ )?PRIVATE KEY-----.*?-----END (?:[A-Z0-9 ]+ )?PRIVATE KEY-----`),
+		expression:  regexp.MustCompile(`(?s)-----BEGIN (?:[A-Z0-9 ]+ )?PRIVATE KEY-----.*?(?:-----END (?:[A-Z0-9 ]+ )?PRIVATE KEY-----|$)`),
 		replacement: `-----BEGIN PRIVATE KEY-----[REDACTED]-----END PRIVATE KEY-----`,
 	},
 }
@@ -151,23 +155,153 @@ func (s *Store) RecordRawCapture(input RawCaptureInput) error {
 	if !s.cfg.RawCapture.Enabled {
 		return ErrRawCaptureDisabled
 	}
-	prepared, err := prepareRawCapture(input, s.cfg.RawCapture, s.cfg.Now())
+	// Reserve bounded capacity before converting, redacting, hashing, or
+	// truncating the request body. A saturated writer therefore rejects a large
+	// blocked request in constant time instead of repeating full-body work that
+	// cannot be persisted.
+	if err := s.reserveAdmission(); err != nil {
+		s.observeRawCaptureAdmission(err)
+		if errors.Is(err, ErrQueueFull) {
+			s.dropped.Add(1)
+			s.rawDropped.Add(1)
+		}
+		return err
+	}
+	admissionOwned := true
+	defer func() {
+		if admissionOwned {
+			s.cancelAdmission()
+		}
+	}()
+	s.observeRawCaptureAdmission(nil)
+	prepared, err := s.prepareRawCaptureObserved(input)
 	if err != nil {
 		s.rejected.Add(1)
+		s.rawRejected.Add(1)
 		return fmt.Errorf("%w: %v", ErrInvalidRawCapture, err)
 	}
-	s.sendMu.RLock()
-	defer s.sendMu.RUnlock()
-	if s.closed {
-		return ErrClosed
+	s.enqueued.Add(1)
+	s.rawEnqueued.Add(1)
+	admissionOwned = false
+	s.publishAdmission(workItem{rawCapture: &prepared})
+	return nil
+}
+
+// EnqueueEventWithRawCapture atomically admits one ordinary blocking event and
+// its optional review preview as a single queue work item. The event and capture
+// cannot be interleaved by another producer and the worker writes them in one
+// SQLite transaction. The bool reports whether the ordinary event was accepted;
+// on capture validation failure the event is still queued by itself.
+func (s *Store) EnqueueEventWithRawCapture(event Event, input RawCaptureInput) (bool, error) {
+	if s == nil {
+		return false, ErrUnavailable
 	}
-	select {
-	case s.queue <- workItem{rawCapture: &prepared}:
+	if !s.cfg.RawCapture.Enabled {
+		return false, ErrRawCaptureDisabled
+	}
+	preparedEvent, err := prepareEvent(event, s.cfg.Now())
+	if err != nil {
+		s.rejected.Add(1)
+		return false, fmt.Errorf("%w: %v", ErrInvalidEvent, err)
+	}
+	if err := s.reserveAdmission(); err != nil {
+		s.observeRawCaptureAdmission(err)
+		if errors.Is(err, ErrQueueFull) {
+			// Two logical records were rejected by one composite admission.
+			s.dropped.Add(2)
+			s.rawDropped.Add(1)
+		}
+		return false, err
+	}
+	admissionOwned := true
+	defer func() {
+		if admissionOwned {
+			s.cancelAdmission()
+		}
+	}()
+	s.observeRawCaptureAdmission(nil)
+	if err := validateRawCapturePair(preparedEvent, input); err != nil {
+		s.rejected.Add(1)
+		s.rawRejected.Add(1)
 		s.enqueued.Add(1)
-		return nil
-	default:
-		s.dropped.Add(1)
-		return ErrQueueFull
+		admissionOwned = false
+		s.publishAdmission(workItem{event: &preparedEvent})
+		return true, fmt.Errorf("%w: %v", ErrInvalidRawCapture, err)
+	}
+	preparedCapture, err := s.prepareRawCaptureObserved(input)
+	if err != nil {
+		s.rejected.Add(1)
+		s.rawRejected.Add(1)
+		s.enqueued.Add(1)
+		admissionOwned = false
+		s.publishAdmission(workItem{event: &preparedEvent})
+		return true, fmt.Errorf("%w: %v", ErrInvalidRawCapture, err)
+	}
+	s.enqueued.Add(2)
+	s.rawEnqueued.Add(1)
+	admissionOwned = false
+	s.publishAdmission(workItem{event: &preparedEvent, rawCapture: &preparedCapture})
+	return true, nil
+}
+
+func validateRawCapturePair(event Event, input RawCaptureInput) error {
+	if event.ID != input.EventID {
+		return errors.New("raw capture event_id does not match its audit event")
+	}
+	if event.Action != input.Action {
+		return errors.New("raw capture action does not match its audit event")
+	}
+	if event.Decision != input.Decision {
+		return errors.New("raw capture decision does not match its audit event")
+	}
+	if input.Timestamp.IsZero() || !event.Timestamp.Equal(input.Timestamp) {
+		return errors.New("raw capture timestamp does not match its audit event")
+	}
+	if event.RequestHash != input.RequestHash {
+		return errors.New("raw capture request_hash does not match its audit event")
+	}
+	if event.SubjectHash != input.SubjectHash {
+		return errors.New("raw capture subject_hash does not match its audit event")
+	}
+	return nil
+}
+
+func (s *Store) prepareRawCaptureObserved(input RawCaptureInput) (RawRequestCapture, error) {
+	started := time.Now()
+	prepared, err := prepareRawCapture(input, s.cfg.RawCapture, s.cfg.Now())
+	elapsedUS := uint64(time.Since(started).Microseconds())
+	if elapsedUS == 0 {
+		elapsedUS = 1
+	}
+	s.rawPrepareCount.Add(1)
+	s.rawPrepareTotalUS.Add(elapsedUS)
+	s.rawPrepareLastUS.Store(elapsedUS)
+	for {
+		current := s.rawPrepareMaxUS.Load()
+		if elapsedUS <= current || s.rawPrepareMaxUS.CompareAndSwap(current, elapsedUS) {
+			break
+		}
+	}
+	return prepared, err
+}
+
+func (s *Store) observeRawCaptureAdmission(admissionErr error) {
+	depth := len(s.queueSlots)
+	if errors.Is(admissionErr, ErrQueueFull) {
+		// A full-channel select is the authoritative saturation observation. The
+		// writer may release a token before this goroutine samples len(), so using
+		// the capacity here preserves the promised saturated-attempt high-water.
+		depth = cap(s.queueSlots)
+	}
+	s.observeRawCaptureQueueDepth(uint64(depth))
+}
+
+func (s *Store) observeRawCaptureQueueDepth(depth uint64) {
+	for {
+		current := s.rawQueueHighWater.Load()
+		if depth <= current || s.rawQueueHighWater.CompareAndSwap(current, depth) {
+			return
+		}
 	}
 }
 
@@ -359,9 +493,11 @@ func prepareRawCapture(input RawCaptureInput, cfg RawCaptureConfig, now time.Tim
 		return RawRequestCapture{}, errors.New("invalid raw capture timestamp")
 	}
 
-	preview := strings.ToValidUTF8(string(input.RawRequest), "\uFFFD")
+	previewInput, beyondRedactionWindow := rawCaptureRedactionWindow(input.RawRequest, cfg.MaxBytes)
+	preview := strings.ToValidUTF8(string(previewInput), "\uFFFD")
 	preview, redacted := redactRawCapture(preview)
 	preview, truncated := truncateUTF8(preview, cfg.MaxBytes)
+	truncated = truncated || beyondRedactionWindow
 	sum := sha256.Sum256(input.RawRequest)
 	return RawRequestCapture{
 		ID:          id,
@@ -376,6 +512,14 @@ func prepareRawCapture(input RawCaptureInput, cfg RawCaptureConfig, now time.Tim
 		RawPreview:  preview,
 		RawSHA256:   "sha256:" + hex.EncodeToString(sum[:]),
 	}, nil
+}
+
+func rawCaptureRedactionWindow(raw []byte, maxBytes int) ([]byte, bool) {
+	windowBytes := maxBytes + rawCaptureRedactionOverlapBytes
+	if len(raw) <= windowBytes {
+		return raw, false
+	}
+	return raw[:windowBytes], true
 }
 
 func redactRawCapture(value string) (string, bool) {
