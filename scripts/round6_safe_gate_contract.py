@@ -77,7 +77,7 @@ SCRIPT_REFERENCE = re.compile(
 )
 SHELL_OPERATORS = {"&&", "||", ";", "|", "&"}
 SAFE_DYNAMIC_TOOL_VARIABLES = {"go_bin", "cyclonedx"}
-WORKFLOW_DISPATCH_INPUT_LIMIT = 10
+GITHUB_WORKFLOW_DISPATCH_INPUT_LIMIT = 25
 ACTIVE_WORKFLOW_PATHS = (
     ".github/workflows/ci.yml",
     ".github/workflows/codeql.yml",
@@ -1139,10 +1139,10 @@ def validate_workflow_semantic_safety(document: MappingNode, source: Path) -> No
                 input_names = yaml_mapping_keys(
                     inputs_node, source, "on.workflow_dispatch.inputs"
                 )
-                if len(input_names) > WORKFLOW_DISPATCH_INPUT_LIMIT:
+                if len(input_names) > GITHUB_WORKFLOW_DISPATCH_INPUT_LIMIT:
                     raise ContractError(
                         "workflow_dispatch inputs exceed GitHub platform limit of "
-                        f"{WORKFLOW_DISPATCH_INPUT_LIMIT}: {source}"
+                        f"{GITHUB_WORKFLOW_DISPATCH_INPUT_LIMIT}: {source}"
                     )
     top_env = root.get("env")
     if top_env is not None:

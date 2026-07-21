@@ -1723,17 +1723,14 @@ jobs:
                 self.blocked_workflow(trigger="push"), Path("round6-prerelease.yml")
             )
 
-    def test_workflow_dispatch_rejects_more_than_ten_inputs(self):
+    def test_workflow_dispatch_rejects_more_than_twenty_five_inputs(self):
         original = self.blocked_workflow()
-        extra_inputs = (
-            "      extra_input_one:\n"
-            "        description: GitHub platform limit regression one\n"
+        extra_inputs = "".join(
+            f"      extra_input_{index:02d}:\n"
+            f"        description: GitHub platform limit regression {index:02d}\n"
             "        required: true\n"
             "        type: string\n"
-            "      extra_input_two:\n"
-            "        description: GitHub platform limit regression two\n"
-            "        required: true\n"
-            "        type: string\n"
+            for index in range(1, 18)
         )
         workflow = original.replace(
             "      authorize_blocked_prerelease:\n",
@@ -1741,7 +1738,7 @@ jobs:
             1,
         )
         self.assertNotEqual(workflow, original)
-        with self.assertRaisesRegex(ContractError, "platform limit of 10"):
+        with self.assertRaisesRegex(ContractError, "platform limit of 25"):
             validate_blocked_prerelease_workflow(
                 workflow, Path("round6-prerelease.yml")
             )
