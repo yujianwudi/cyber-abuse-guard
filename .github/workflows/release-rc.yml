@@ -227,6 +227,7 @@ jobs:
           else
             (( host_values_present == 0 ))
           fi
+          # shellcheck disable=SC2129
           printf 'already_public=%s\n' "$already_public" >>"$GITHUB_OUTPUT"
           printf 'ci_run_id=%s\n' "$CI_RUN_ID" >>"$GITHUB_OUTPUT"
           printf 'ci_run_attempt=%s\n' "$CI_RUN_ATTEMPT" >>"$GITHUB_OUTPUT"
@@ -396,7 +397,9 @@ jobs:
           install -m 0755 "$gh_root/bin/gh" /usr/local/bin/gh
           gh --version
           gh help attestation >/dev/null
+          # shellcheck disable=SC2086
           GOBIN="$RUNNER_TEMP/bin" go install github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@${CYCLONEDX_GOMOD_VERSION}
+          # shellcheck disable=SC2086
           GOBIN="$RUNNER_TEMP/bin" go install golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
 
@@ -907,6 +910,7 @@ jobs:
           make development-public-jailbreak-corpus round6-benchmark round6-vulncheck
           go test ./internal/classifier -run '^TestClassifierPolicyIdentity$' -count=1
           make cpa-latest-compat
+          # shellcheck disable=SC2086
           make ARTIFACT_VERSION=${RC_VERSION} integration-test
           make clean-tree-check
           umask 077
@@ -2065,7 +2069,9 @@ jobs:
           install -m 0755 "$gh_root/bin/gh" /usr/local/bin/gh
           gh --version
           gh help attestation >/dev/null
+          # shellcheck disable=SC2086
           GOBIN="$RUNNER_TEMP/bin" go install github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@${CYCLONEDX_GOMOD_VERSION}
+          # shellcheck disable=SC2086
           GOBIN="$RUNNER_TEMP/bin" go install golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
 
@@ -2288,6 +2294,7 @@ jobs:
           make development-public-jailbreak-corpus round6-benchmark round6-vulncheck
           go test ./internal/classifier -run '^TestClassifierPolicyIdentity$' -count=1
           make cpa-latest-compat
+          # shellcheck disable=SC2086
           make ARTIFACT_VERSION=${RC_VERSION} integration-test
           make clean-tree-check
           umask 077

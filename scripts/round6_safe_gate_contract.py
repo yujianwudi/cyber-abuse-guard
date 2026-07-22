@@ -77,7 +77,7 @@ SCRIPT_REFERENCE = re.compile(
 )
 SHELL_OPERATORS = {"&&", "||", ";", "|", "&"}
 SAFE_DYNAMIC_TOOL_VARIABLES = {"go_bin", "cyclonedx"}
-GITHUB_WORKFLOW_DISPATCH_INPUT_LIMIT = 10
+REPOSITORY_WORKFLOW_DISPATCH_INPUT_LIMIT = 10
 ACTIVE_WORKFLOW_PATHS = (
     ".github/workflows/ci.yml",
     ".github/workflows/codeql.yml",
@@ -602,7 +602,7 @@ BLOCKED_STEP_RUN_SHA256 = {
     ("admission", 2): "26030928c867d579089d1e69fcba37ff65433ca93697835abdda4f6365f2e4e5",
     ("verify", 1): "739ebd378c0da4e32117344b43258da8bb85a61590c8966c47dce26274df75cc",
     ("verify", 2): "3427df1bdbbcd38976514b679706f45fe6331981e750168beffd9bfdd1efdea1",
-    ("verify", 4): "378f0a3b53f59937e4646b34b7b69f16c839ffb03edf54331fea149479f9c8b9",
+    ("verify", 4): "5e3a856d2482d7781379962364756c3c536e214b21c3fa92e75f5148e31e4168",
     ("verify", 6): "86252b49e4b21673adafab187e650b9a051cb28dd78c5d7a91d4d52ad951586d",
     ("verify", 7): "feb84636bac16fb6245913190b0803f0644ee094423c531ad4e59c752e6bc9fd",
     ("verify", 8): "fa50af5a75fcdd76f7a5c0900c3f983b2ee285220229e1746c35671713cba7b7",
@@ -610,7 +610,7 @@ BLOCKED_STEP_RUN_SHA256 = {
     ("verify", 10): "d6bd0b9f43ef190a6545893891fe514928b3e354a438f357602e2d3a89565bd0",
     ("verify", 11): "72ba08821693dcb100be3d4dcfaac32d485191186d46fa22119ae7a7b60990b9",
     ("verify", 12): "25116143b78146e257b7eb89c5466266132755433249c07664c0cdbf01944c7d",
-    ("publish", 1): "0a7843683f8d1ddb518c7c67b8aa921110545efcd33dcb502cf4b72a80030fe8",
+    ("publish", 1): "cb81f05abebca1df12d9075de1009a6a92874b850d1c2628f31ebcb1127209b5",
     ("publish", 3): "c9054c7b8a4a819a778420abf66f71138c77f5c2ffe975c2830f56cf66a5cf7d",
 }
 BLOCKED_STEP_RUN_STYLE = {
@@ -799,7 +799,7 @@ CANDIDATE_STEP_RUN_SHA256 = {
     ("admission", 1): "7f1817ec7b567df4be63fafd9ee2b2347ac37e01982e41ee3338f64c79cae81a",
     ("build", 1): "739ebd378c0da4e32117344b43258da8bb85a61590c8966c47dce26274df75cc",
     ("build", 2): "8966c407a8e05f9a88182c2130b24b907e58dd1d874d55fe4f86c9bfedef6457",
-    ("build", 4): "e94a8d7e6ec6ca9c30a512aa4f6bd8eb93dd3412b406ea2f64a7d2b91e75022f",
+    ("build", 4): "2f78c328a7b32ffa36c614f564c4aad5665013494e5838bb8b34fbc7a4d792bd",
     ("build", 5): "43a1e2b51527edd141c9b4c53ac0c11775f0b8b9948054e5d2f329221a555e60",
     ("build", 6): "f99bfc855f5afa25f227afce3800b41093b1858f9ae4b8027378ebf530470cf8",
     ("build", 7): "d6bd0b9f43ef190a6545893891fe514928b3e354a438f357602e2d3a89565bd0",
@@ -959,7 +959,7 @@ RC_SOURCE_ARCHIVE_TRANSIENT_GUARD_BLOCK = f'''  if grep -Eiq "$backup_binary_arc
     rm -f -- "$temporary"
     release_die "RC source archive contains a forbidden backup, binary, archive, profile, test executable, or temporary classifier candidate"
   fi'''
-ACTIVE_RC_WORKFLOW_SHA256 = "27b3b144adc41970b0a75bba6a87ee43faf9a6cb012a6f2bbb95e75062512d1a"
+ACTIVE_RC_WORKFLOW_SHA256 = "531037c3e7451b346da53646e849d81fa15544f162cefa5061e801122f090dec"
 RC_RELEASE_WORKFLOW_SHA256 = "5ff480e2bb84bc33da81cc4e9839e4bca50453fc7e77debc1f24dd5b04362107"
 RC_RELEASE_INPUT_ORDER = (
     "tag",
@@ -1039,7 +1039,7 @@ FORMAL_AUDIT_REPORT_PATH = "docs/reports/PUBLIC_JAILBREAK_REPOSITORY_REVIEW.md"
 FORMAL_RELEASE_STEP_RUN_SHA256 = {
     ("admission", 0): "c3ef443605630fdbd7379bb31e66ad8f36e154186ce61e77e1682bbdfb6ec996",
     ("build-and-verify", 2): "5bc38a90928a7309be0be55b3834ebf28c2eee7c2fd290ef19bf6d3a8dd3857d",
-    ("build-and-verify", 3): "3177c58474d2bd9ee7246a79c02d77fc4afac7b26e13f3193cd456f9cadbb2dd",
+    ("build-and-verify", 3): "c3eb4a5705894448699eb404ef51cd796e735b8fd254324a66fc621d9571c1dd",
     ("build-and-verify", 4): "e2194c0fb1cc2681adff35d6c0a12e10540e17bb7495597ac1f3ccb992bbc53f",
     ("build-and-verify", 5): "309ed57fdbbe52e7410bc297e108cc94e42beda8790584ab20fae58107b01b2b",
     ("build-and-verify", 7): "2ecb4e3db81c81773248547deb2121bd998a7c1aeae69036485603c1760c53e2",
@@ -1050,7 +1050,7 @@ FORMAL_RELEASE_STEP_RUN_SHA256 = {
     ("publish", 2): "1574a0d0ac458f3e12ab6052955d1027955a8cfad76f5773547da4d4bcb85fb2",
 }
 PROMOTE_STEP_RUN_SHA256 = {
-    ("verify", 0): "23790f44480f0b622850f051f03c2d50fe343e5bbed41b8bdf7a94ac3f4a9af1",
+    ("verify", 0): "e316073ae7610d5b15008f467ed0921eebc9bc926b1ae37790b23fd39adb9356",
     ("verify", 2): "81f3c306c6e57ff95c598cb10fcc9c9bd185361a1bb753ab98de0e4e4a8df813",
     ("promote", 0): "d04544c3a61f3bae7810179742dbd326ae291aa02791347eb4f2ebb5dfccd4b1",
 }
@@ -1121,7 +1121,7 @@ ROUND8_HOST_REVIEWED_SCRIPT_SHA256 = {
     "scripts/round8_docker_sandbox.py": "30585beb793b7d35d842adce962fdc111eb76ef6a5ec963b6ab52470bbc64301",
 }
 ROUND6_SAFE_GATE_TEST_SCRIPT = "scripts/round6_safe_gate_contract_test.py"
-ROUND6_SAFE_GATE_TEST_SHA256 = "9826dda8253ed098267ed9cfb646354523d0f7b013a54ff394a56e516cad7ba2"
+ROUND6_SAFE_GATE_TEST_SHA256 = "17fe7f9a5d04862699221a562b524116ab3989d8a72a1e7359b8416a62b4fd39"
 GENERATE_RELEASE_EVIDENCE_SCRIPT_SHA256 = "d51fe316a686c1b4dd629f6a7b63f4159b882095811fcdea3311255527bd5da1"
 
 
@@ -1345,10 +1345,10 @@ def validate_workflow_semantic_safety(document: MappingNode, source: Path) -> No
                 input_names = yaml_mapping_keys(
                     inputs_node, source, "on.workflow_dispatch.inputs"
                 )
-                if len(input_names) > GITHUB_WORKFLOW_DISPATCH_INPUT_LIMIT:
+                if len(input_names) > REPOSITORY_WORKFLOW_DISPATCH_INPUT_LIMIT:
                     raise ContractError(
-                        "workflow_dispatch inputs exceed GitHub platform limit of "
-                        f"{GITHUB_WORKFLOW_DISPATCH_INPUT_LIMIT}: {source}"
+                        "workflow_dispatch inputs exceed repository-reviewed limit of "
+                        f"{REPOSITORY_WORKFLOW_DISPATCH_INPUT_LIMIT}: {source}"
                     )
     top_env = root.get("env")
     if top_env is not None:
@@ -5178,8 +5178,10 @@ def validate_rc_release_workflow(text: str, source: Path) -> None:
         source,
         "on.workflow_dispatch.inputs",
     )
-    if len(inputs) > GITHUB_WORKFLOW_DISPATCH_INPUT_LIMIT:
-        raise ContractError("active RC workflow exceeds the GitHub workflow_dispatch input limit")
+    if len(inputs) > REPOSITORY_WORKFLOW_DISPATCH_INPUT_LIMIT:
+        raise ContractError(
+            "active RC workflow exceeds the repository-reviewed workflow_dispatch input limit"
+        )
     for input_name, input_node in inputs.items():
         path = f"on.workflow_dispatch.inputs.{input_name}"
         if input_name == "publish_rc_release":

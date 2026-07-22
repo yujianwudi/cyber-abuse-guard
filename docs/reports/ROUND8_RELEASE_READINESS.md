@@ -14,7 +14,7 @@ attestation, independent audit, production authorization, or Release record.
 
 ```text
 source_version: 0.16
-candidate_tag: v0.16-rc.2
+candidate_tag: v0.16-rc.2 / NOT CREATED
 platform: linux-amd64
 release_kind: prerelease
 latest: false

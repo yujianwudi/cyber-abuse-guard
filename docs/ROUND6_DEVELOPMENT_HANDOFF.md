@@ -5,12 +5,17 @@ current_classifier_policy_version: classifier-policy-v7
 current_classifier_policy_sha256: ea8c4dcfacacc6478f86fd2ca5de96d667ae98f2fc6ff0c83d8e6092e9f6a82d
 ```
 
-Status: **BLOCKED / PENDING HOST AND INDEPENDENT AUDIT**
+The identity above is the repository's current Round 8 identity. The remainder
+of this file is a retained historical v0.15/Round 6 handoff; its
+`classifier-policy-v5` values are intentionally historical and are not current
+Round 8 evidence.
+
+Historical status: **BLOCKED / PENDING HOST AND INDEPENDENT AUDIT**
 
 Target project version: exact `0.15`; intended formal tag: exact `v0.15`
 (never `v0.15.0`).
 
-This is the current Round 6 source handoff. It is not a deployment approval,
+This is the retained historical Round 6 source handoff. It is not a deployment approval,
 Host validation report, independent audit approval, merge record, or Release
 record.
 
@@ -83,8 +88,8 @@ performance number from them is promoted by this handoff.
 | Final v0.15 candidate tree | **PENDING - post-merge `main` push CI, build metadata, and candidate manifest must agree** |
 | Candidate artifact hashes | **PENDING - private untagged clean-candidate Actions run only** |
 | Scanner identity | streaming-scanner-v1 |
-| Classifier policy | classifier-policy-v5 |
-| Classifier policy SHA-256 | 0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b |
+| Historical v0.15 classifier policy | classifier-policy-v5 |
+| Historical v0.15 classifier policy SHA-256 | 0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b |
 | YAML ruleset | 1.0.7 |
 | YAML ruleset SHA-256 | 7bef8b0854b4d75dd5d807e1c33e93b708af4e9e29d0d2b59a18b9031c4da134 |
 | Audit schema | v3 |
@@ -548,8 +553,8 @@ Candidate tree: PENDING POST-MERGE MAIN CI / BUILD METADATA / CANDIDATE MANIFEST
 Candidate artifact: PRIVATE UNTAGGED CLEAN ACTIONS ARTIFACT / NOT CREATED / PENDING
 Platform: Linux amd64 only
 Streaming scanner identity: streaming-scanner-v1
-Classifier policy: classifier-policy-v5
-Classifier policy SHA-256: 0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b
+Historical v0.15 classifier policy: classifier-policy-v5
+Historical v0.15 classifier policy SHA-256: 0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b
 CPA v7.2.95 Host result: NOT RUN / PENDING
 Long-text Linux size ladder result: PENDING FINAL PR / POST-MERGE MAIN LINUX CI
 Cross-window result: PENDING FINAL PR / POST-MERGE MAIN LINUX CI

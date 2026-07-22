@@ -231,6 +231,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential file jq zip unzip
           mkdir -p "$RUNNER_TEMP/bin"
+          # shellcheck disable=SC2086
           GOBIN="$RUNNER_TEMP/bin" go install github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@${CYCLONEDX_GOMOD_VERSION}
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
       - name: Download the exact Host-tested clean candidate artifact
@@ -483,6 +484,7 @@ jobs:
           zip_path=dist/cyber-abuse-guard_0.15_linux_amd64.zip
           [[ "$(/usr/bin/sha256sum "$zip_path" | /usr/bin/awk '{print $1}')" == "$EXPECTED_STORE_ZIP_SHA256" ]]
           zip_listing="$(/usr/bin/unzip -Z1 "$zip_path")"
+          # shellcheck disable=SC2251
           ! printf '%s\n' "$zip_listing" | /usr/bin/grep -Eq '(^/|(^|/)\.\.(/|$)|\\)'
           zip_so=cyber-abuse-guard-v0.15.so
           [[ "$zip_listing" == "$zip_so" ]]

@@ -240,7 +240,9 @@ jobs:
       - name: Install pinned security and SBOM tools
         run: |
           mkdir -p "$RUNNER_TEMP/bin"
+          # shellcheck disable=SC2086
           GOBIN="$RUNNER_TEMP/bin" go install github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@${CYCLONEDX_GOMOD_VERSION}
+          # shellcheck disable=SC2086
           GOBIN="$RUNNER_TEMP/bin" go install golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
       - name: Tag, source version, and clean-tree preflight

@@ -866,7 +866,7 @@ for the exact merged commit and candidate bytes.
 
 ```text
 source_version: 0.16
-candidate_tag: v0.16-rc.2
+candidate_tag: v0.16-rc.2 / NOT CREATED
 ruleset_version: 1.0.9
 ruleset_sha256: a3de344d3f6dc8eea86d946a823996494d4d297c41efcc6346a6ef757f263a7d
 round8_classifier_policy_version: classifier-policy-v7

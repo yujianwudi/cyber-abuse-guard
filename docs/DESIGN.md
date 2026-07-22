@@ -753,9 +753,9 @@ evidence and does not authorize the Round 8 prerelease:
 the final PR head passes PR CI, merges to `main`, and the exact resulting main
 commit/tree passes push CI without producing a release; the private untagged
 candidate workflow is then dispatched from `refs/heads/main` and produces clean
-SO/Store ZIP bytes plus `candidate-manifest.json`; the CPA v7.2.95 Host record
-and the independent audit bind that SO SHA-256. Attestation schema v2 records
-the Host identity and evidence hash as `cpa_version`, `cpa_commit`, and
+SO/Store ZIP bytes plus `candidate-manifest.json`; the CPA v7.2.88 Host record
+and the independent audit bind that SO SHA-256. Historical attestation schema v2
+records the Host identity and evidence hash as `cpa_version`, `cpa_commit`, and
 `cpa_host_sha256`; an
 annotated development prerelease is optional; the annotated formal `v0.15` tag
 and verified draft remain separate; and protected promotion may publish only

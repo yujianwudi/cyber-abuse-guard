@@ -298,8 +298,9 @@ findings are user-originated only if all contributing user-like fields are
 trusted. A role-attribution failure clears every tentative trust bit.
 
 Commit `21ceb57e6b6030e56d7820c9a67a8eecd068c669` passed push and PR CI as
-an earlier classifier-policy-v3 checkpoint. It does not verify the current v5
-identity or the final v0.15 candidate. Automated review is development feedback only.
+an earlier classifier-policy-v3 checkpoint. It does not verify the historical
+v0.15 classifier-policy-v5 identity, the current v7 identity, or either final
+candidate. Automated review is development feedback only.
 The final PR head must have no unresolved, non-outdated actionable review
 threads before merge; no independent approval is claimed.
 

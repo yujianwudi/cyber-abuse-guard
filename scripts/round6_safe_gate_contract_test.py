@@ -2284,7 +2284,7 @@ jobs:
         original = self.blocked_workflow()
         extra_inputs = "".join(
             f"      extra_input_{index:02d}:\n"
-            f"        description: GitHub platform limit regression {index:02d}\n"
+            f"        description: Repository-reviewed input cap regression {index:02d}\n"
             "        required: true\n"
             "        type: string\n"
             for index in range(1, 18)
@@ -2295,7 +2295,7 @@ jobs:
             1,
         )
         self.assertNotEqual(workflow, original)
-        with self.assertRaisesRegex(ContractError, "platform limit of 10"):
+        with self.assertRaisesRegex(ContractError, "repository-reviewed limit of 10"):
             validate_blocked_prerelease_workflow(
                 workflow, Path("round6-prerelease.yml")
             )

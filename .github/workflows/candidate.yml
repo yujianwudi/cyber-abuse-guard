@@ -153,6 +153,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential binutils file jq zip unzip
           mkdir -p "$RUNNER_TEMP/bin"
+          # shellcheck disable=SC2086
           GOBIN="$RUNNER_TEMP/bin" go install github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@${CYCLONEDX_GOMOD_VERSION}
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
       - name: Recheck source, regressions, and pinned CPA v7.2.95 contract

@@ -34,14 +34,14 @@ confirmed that Go does not support `build-mode: none`. The active workflow now
 uses the reviewed pinned manual build instead of treating that failed mode as
 valid evidence.
 
-GitHub accepts at most 10 top-level `workflow_dispatch` inputs. This
-repository intentionally keeps the attested-prerelease interface at eight
-identity/authorization inputs plus one `external_attestations_json` string so
-the external evidence is admitted as one exact-schema object. Admission rejects
-non-object JSON, extra or missing keys, non-string evidence values, non-PASS
-decisions, malformed hashes, and evaluation identities older than
-`evaluation-v11`; the repository safe gate also rejects any manual workflow
-that exceeds GitHub's current platform limit.
+GitHub currently accepts at most 25 top-level `workflow_dispatch` inputs. This
+repository deliberately retains a stricter reviewed cap of 10 and keeps the
+attested-prerelease interface at eight identity/authorization inputs plus one
+`external_attestations_json` string so the external evidence is admitted as one
+exact-schema object. Admission rejects non-object JSON, extra or missing keys,
+non-string evidence values, non-PASS decisions, malformed hashes, and evaluation
+identities older than `evaluation-v11`; the repository safe gate also rejects
+any manual workflow that exceeds the repository's 10-input cap.
 
 The nine inputs are `tag`, `expected_commit`, `expected_tree`, `ci_run_id`,
 `candidate_run_id`, `expected_so_sha256`, `expected_store_zip_sha256`,

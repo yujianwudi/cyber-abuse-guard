@@ -130,13 +130,14 @@ optional alternative and cannot erase the active choice. An alternative arm
 remains alternative through later `and`-joined cancellations in that same arm;
 it cannot leak a cancellation back across the `or` boundary.
 
-Local Linux development evidence currently passes targeted OpenAI Chat and
+The historical v0.15 Linux development snapshot passed targeted OpenAI Chat and
 Responses routes, the long-text size/position ladder, classifier and plugin
-race, full `make unit-test`, and `make round6-script-test`. The safe-gate suite
-contains 170 tests. These results are not a candidate artifact, CPA v7.2.95 Host
-+ Mock record, independent audit, external evaluation, tag, or Release approval.
+race, full `make unit-test`, and `make round6-script-test`. Its safe-gate suite
+contained 152 tests. These results are not a candidate artifact, CPA v7.2.88
+Host + Mock record, independent audit, external evaluation, tag, or Release
+approval.
 
-当前策略与构建身份：
+历史 v0.15 策略与构建身份：
 
 ```text
 project_version: 0.15
