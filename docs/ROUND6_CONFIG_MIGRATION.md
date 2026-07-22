@@ -1,8 +1,8 @@
 # Round 6 configuration migration
 
 ```text
-current_classifier_policy_version: classifier-policy-v6
-current_classifier_policy_sha256: ece497210db938528cb166a34f2ce3013324b792a7eedf276a96fa5d256001d4
+current_classifier_policy_version: classifier-policy-v7
+current_classifier_policy_sha256: ea8c4dcfacacc6478f86fd2ca5de96d667ae98f2fc6ff0c83d8e6092e9f6a82d
 ```
 
 Status: **BLOCKED / PENDING HOST AND INDEPENDENT AUDIT**. Configuration

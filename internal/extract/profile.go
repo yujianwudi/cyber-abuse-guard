@@ -11,6 +11,7 @@ const (
 	SourceProfileOpenAI
 	SourceProfileOpenAIResponse
 	SourceProfileInteractions
+	SourceProfileCodexAlphaSearch
 	SourceProfileOpenAIImage
 	SourceProfileOpenAIVideo
 	SourceProfileClaude
@@ -33,7 +34,7 @@ const (
 )
 
 // classifyMultipartField is intentionally schema-bound and static. Only fields
-// proven by the CPA v7.2.88 openai-image path are classified in this round;
+// proven by the CPA v7.2.95 openai-image path are classified in this round;
 // every other multipart schema remains incomplete rather than being guessed.
 func classifyMultipartField(profile SourceProfile, name string) multipartFieldClass {
 	if profile != SourceProfileOpenAIImage {

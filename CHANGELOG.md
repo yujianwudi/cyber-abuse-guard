@@ -1,11 +1,55 @@
 # Changelog
 
 ```text
-current_classifier_policy_version: classifier-policy-v6
-current_classifier_policy_sha256: ece497210db938528cb166a34f2ce3013324b792a7eedf276a96fa5d256001d4
+current_classifier_policy_version: classifier-policy-v7
+current_classifier_policy_sha256: ea8c4dcfacacc6478f86fd2ca5de96d667ae98f2fc6ff0c83d8e6092e9f6a82d
 ```
 
-## Unreleased - post-v0.16-rc.1 P1-P2 hardening
+Source-tree status updated: 2026-07-22 (Asia/Shanghai)
+
+## Unreleased - v0.16-rc.2 Round 8 candidate
+
+- Rebuild Balanced blocking around active directive units and occurrence-owned
+  evidence so unrelated history, assistant/tool content, tool schemas, code,
+  logs, quotes, and separate fields cannot silently complete one harmful
+  predicate.
+- Tighten `EVADE-002`, `CRED-001/002`, `MAL-002`, and `DISRUPT-001`; weak
+  development vocabulary cannot trigger a hard floor without a coherent active
+  action, harmful object, target/outcome, and operational relationship.
+- Add privacy-safe decision explanations, TTL capture deduplication by an
+  internal exact request-body SHA-256, redaction metadata, and audit schema v5
+  while keeping raw capture disabled, blocked-only, and independent of logged
+  `request_hash` by default.
+- Advance the YAML ruleset to `1.0.9` and the classifier contract to
+  `classifier-policy-v7`; exact SHA-256 values are bound by the final clean
+  release commit and release-document gate.
+- Pin CPA `v7.2.95` (`f71ec0eb6776854457892452cf28c47f0d658251`) as
+  the only current target. Source/compile checks use that exact tag, module
+  Origins, and sums without
+  claiming moving-latest compatibility.
+- Migrate the Linux-only RC workflow to a two-stage `v0.16-rc.2` contract.
+  Stage 1 produces a private 17-asset Host-test candidate and cannot create a
+  Release. Stage 2 requires strict SHA-bound CPA v7.2.95 counted-Mock
+  Host evidence, reproduces all 19 final assets, and may publish only a
+  non-latest prerelease while the stable latest release remains exactly
+  `v0.15`. A GitHub-hosted supply-chain job pulls the two Docker Official Images
+  only by reviewed index/platform/config digests and relays a GitHub-attested
+  bundle; the protected rootless Host verifies and loads it, then builds with
+  `--pull=false` and never contacts Docker Hub or a registry mirror. The Host may
+  contact only the official CPA Git/package/module sources required by the
+  reviewed Dockerfile, never a model Provider or production service. Counted-Mock is not real Provider or
+  production validation; independent audit/evaluation remain required,
+  production approval has not been granted, and no stable `v0.16` exists.
+- Harden the release-document mutation wrapper by pinning the reviewed fixture
+  and gate bytes, requiring the wrapper's embedded dependency pins to agree with
+  the safe-gate contract, and adding a negative regression for pin drift.
+- Reconcile current release reports with the Round 8 identity and pending gate
+  state: Host-evidence assembler contract tests are not Host execution evidence,
+  older P1-P2 benchmarks remain historical, local Linux race/allocation and
+  benchmark results remain development self-checks, and exact-main CI, Host,
+  tag, and publication results are not predeclared as PASS.
+
+## Historical - post-v0.16-rc.1 P1-P2 hardening
 
 - Admit a blocking audit event and its optional raw-capture preview as one
   bounded composite work item. The writer uses one SQLite transaction, keeps

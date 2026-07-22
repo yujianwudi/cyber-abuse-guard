@@ -56,8 +56,8 @@ const insertEventSQL = `INSERT INTO audit_events (
     id, timestamp_ns, action, mode, category, risk_score, rule_ids,
     request_hash, subject_hash, model, source_format, stream,
     text_bytes_scanned, classifier, decision, coverage, incomplete_reason,
-    scanner, latency_us
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    scanner, latency_us, decision_explanation
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 // Config controls SQLite durability and bounded background work.
 type Config struct {
@@ -110,6 +110,10 @@ type Status struct {
 	RawCaptureDropped  uint64 `json:"raw_capture_dropped"`
 	RawCaptureFailed   uint64 `json:"raw_capture_failed"`
 	RawCaptureRejected uint64 `json:"raw_capture_rejected"`
+	// RawCaptureDeduplicated counts previews intentionally not persisted because
+	// the same complete-request raw_sha256 already had a live capture in the
+	// configured TTL. It does not require or expose request_hash.
+	RawCaptureDeduplicated uint64 `json:"raw_capture_deduplicated"`
 	// RawCaptureQueueHighWater is the maximum number of reserved queue slots
 	// observed by a raw-capture attempt, including a saturated/drop attempt.
 	RawCaptureQueueHighWater uint64 `json:"raw_capture_queue_high_water"`
@@ -124,7 +128,21 @@ type Status struct {
 
 // Stats combines persisted aggregates with the in-memory fail-open counters.
 type Stats struct {
-	Total                    int64            `json:"total"`
+	Total          int64 `json:"total"`
+	Events         int64 `json:"events"`
+	UniqueRequests int64 `json:"unique_requests"`
+	RepeatEvents   int64 `json:"repeat_events"`
+	UnhashedEvents int64 `json:"unhashed_events"`
+	// RetryWindowSeconds is the fixed Unix-epoch-aligned window used by the
+	// decision/rule retry aggregates below. The compatibility request-hash
+	// fields above retain their original all-time semantics.
+	RetryWindowSeconds int64 `json:"retry_window_seconds"`
+	// UniqueDecisionRuleWindows counts distinct request_hash + decision +
+	// canonical rule-ID-set + retry-window tuples. Unhashed events are excluded.
+	UniqueDecisionRuleWindows int64 `json:"unique_decision_rule_windows"`
+	// WindowRepeatEvents counts hashed events after the first event in each
+	// distinct decision/rule retry window.
+	WindowRepeatEvents       int64            `json:"window_repeat_events"`
 	ByAction                 map[string]int64 `json:"by_action"`
 	ByCategory               map[string]int64 `json:"by_category"`
 	Enqueued                 uint64           `json:"enqueued"`
@@ -137,6 +155,7 @@ type Stats struct {
 	RawCaptureDropped        uint64           `json:"raw_capture_dropped"`
 	RawCaptureFailed         uint64           `json:"raw_capture_failed"`
 	RawCaptureRejected       uint64           `json:"raw_capture_rejected"`
+	RawCaptureDeduplicated   uint64           `json:"raw_capture_deduplicated"`
 	RawCaptureQueueHighWater uint64           `json:"raw_capture_queue_high_water"`
 	RawCapturePrepareCount   uint64           `json:"raw_capture_prepare_count"`
 	RawCapturePrepareTotalUS uint64           `json:"raw_capture_prepare_total_us"`
@@ -158,6 +177,7 @@ type Store struct {
 	db         *sql.DB
 	queue      chan workItem
 	queueSlots chan struct{}
+	statsSlots chan struct{}
 	done       chan struct{}
 	abort      chan struct{}
 	closedDone chan struct{}
@@ -188,6 +208,7 @@ type Store struct {
 	rawDropped        atomic.Uint64
 	rawFailed         atomic.Uint64
 	rawRejected       atomic.Uint64
+	rawDeduplicated   atomic.Uint64
 	rawQueueHighWater atomic.Uint64
 	rawPrepareCount   atomic.Uint64
 	rawPrepareTotalUS atomic.Uint64
@@ -209,6 +230,7 @@ func Open(cfg Config) (*Store, error) {
 		cfg:        cfg,
 		queue:      make(chan workItem, cfg.QueueSize),
 		queueSlots: make(chan struct{}, cfg.QueueSize),
+		statsSlots: make(chan struct{}, statsConcurrentLimit),
 		done:       make(chan struct{}),
 		abort:      make(chan struct{}),
 		closedDone: make(chan struct{}),
@@ -595,6 +617,12 @@ type contextExecer interface {
 
 func (s *Store) writeWork(execer contextExecer, item workItem) error {
 	if item.rawCapture != nil {
+		if err := validateRawRequestCapture(*item.rawCapture); err != nil {
+			return err
+		}
+		if item.rawCapture.RawSHA256 == "" {
+			return errors.New("audit: new raw capture requires raw_sha256")
+		}
 		truncated := 0
 		if item.rawCapture.Truncated {
 			truncated = 1
@@ -603,12 +631,28 @@ func (s *Store) writeWork(execer contextExecer, item workItem) error {
 		if item.rawCapture.Redacted {
 			redacted = 1
 		}
-		_, err := execer.ExecContext(s.workerCtx, insertRawCaptureSQL,
+		if item.rawCapture.RawSHA256 != "" {
+			cutoff := item.rawCapture.Timestamp.Add(-s.cfg.RawCapture.TTL).UnixNano()
+			if _, err := execer.ExecContext(s.workerCtx,
+				"DELETE FROM raw_request_captures WHERE raw_sha256 = ? AND timestamp_ns <= ?",
+				item.rawCapture.RawSHA256, cutoff); err != nil {
+				return err
+			}
+		}
+		result, err := execer.ExecContext(s.workerCtx, insertRawCaptureSQL,
 			item.rawCapture.ID, item.rawCapture.EventID, item.rawCapture.Timestamp.UnixNano(),
 			item.rawCapture.RequestHash, item.rawCapture.SubjectHash, item.rawCapture.Action,
 			item.rawCapture.Decision, truncated, redacted, item.rawCapture.RawPreview,
-			item.rawCapture.RawSHA256,
+			item.rawCapture.RawSHA256, item.rawCapture.RedactionPatternHits,
+			item.rawCapture.RedactionVersion,
 		)
+		if err == nil {
+			written, rowsErr := result.RowsAffected()
+			if rowsErr != nil {
+				return rowsErr
+			}
+			item.rawCapture.deduplicated = written == 0
+		}
 		return err
 	}
 	if item.event == nil {
@@ -616,6 +660,10 @@ func (s *Store) writeWork(execer contextExecer, item workItem) error {
 	}
 	rules, err := json.Marshal(item.event.RuleIDs)
 	if err == nil {
+		explanation, explanationErr := marshalDecisionExplanation(item.event.DecisionExplanation)
+		if explanationErr != nil {
+			return explanationErr
+		}
 		stream := 0
 		if item.event.Stream {
 			stream = 1
@@ -627,6 +675,7 @@ func (s *Store) writeWork(execer contextExecer, item workItem) error {
 			item.event.SourceFormat, stream, item.event.TextBytesScanned,
 			item.event.Classifier, item.event.Decision, item.event.Coverage,
 			item.event.IncompleteReason, item.event.Scanner, item.event.LatencyUS,
+			explanation,
 		)
 	}
 	return err
@@ -677,6 +726,10 @@ func (s *Store) finishWork(item workItem, err error) bool {
 		s.report(fmt.Errorf("audit: async SQLite write failed: %w", err))
 		return false
 	}
+	if item.rawCapture != nil && item.rawCapture.deduplicated {
+		s.rawDeduplicated.Add(1)
+		return false
+	}
 	s.written.Add(1)
 	if item.rawCapture != nil {
 		s.rawWritten.Add(1)
@@ -712,6 +765,7 @@ func (s *Store) Status() Status {
 		RawCaptureDropped:        s.rawDropped.Load(),
 		RawCaptureFailed:         s.rawFailed.Load(),
 		RawCaptureRejected:       s.rawRejected.Load(),
+		RawCaptureDeduplicated:   s.rawDeduplicated.Load(),
 		RawCaptureQueueHighWater: s.rawQueueHighWater.Load(),
 		RawCapturePrepareCount:   s.rawPrepareCount.Load(),
 		RawCapturePrepareTotalUS: s.rawPrepareTotalUS.Load(),

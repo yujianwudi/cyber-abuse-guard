@@ -74,7 +74,9 @@ jobs:
       - name: Install pinned security and SBOM tools
         run: |
           mkdir -p "$RUNNER_TEMP/bin"
+          # shellcheck disable=SC2086
           GOBIN="$RUNNER_TEMP/bin" go install github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@${CYCLONEDX_GOMOD_VERSION}
+          # shellcheck disable=SC2086
           GOBIN="$RUNNER_TEMP/bin" go install golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
       - name: format
@@ -146,8 +148,8 @@ jobs:
             printf 'artifact_path=%s artifact_bytes=%s ' "$artifact" "$(stat -c %s "$artifact")"
             sha256sum "$artifact"
           done
-          echo 'integration_summary=local pinned CPA v7.2.88 source/fail-open and build checks completed; isolated Host validation pending'
-          echo 'cpa_pinned_identity=v7.2.88@93d74a890a44802f656d7f39a573916b2611896e'
+          echo 'integration_summary=CPA v7.2.95 source/fail-open and build checks completed; isolated counted-Mock Host validation pending'
+          echo 'cpa_primary_identity=v7.2.95@f71ec0eb6776854457892452cf28c47f0d658251'
       - name: clean-tree-check
         run: make clean-tree-check
       - name: Upload development verification artifacts
@@ -164,8 +166,9 @@ jobs:
             dist/ruleset.sha256
             dist/sbom.cdx.json
           if-no-files-found: error
-      - name: CPA v7.2.88 pinned source/compile compatibility
+      - name: CPA v7.2.95 source/compile contract
         env:
+          CPA_COMPAT_PROFILE: "primary"
           CPA_COMPAT_VERIFY_REMOTE: "1"
         run: bash ./scripts/cpa-latest-compat.sh
 
@@ -222,6 +225,7 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y build-essential binutils file jq zip unzip
           mkdir -p "$RUNNER_TEMP/bin"
+          # shellcheck disable=SC2086
           GOBIN="$RUNNER_TEMP/bin" go install github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@${CYCLONEDX_GOMOD_VERSION}
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
       - name: Compare two clean-clone Round6-safe development builds

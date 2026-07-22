@@ -11,8 +11,8 @@ if (($# != 1)); then
   release_die "usage: verify-external-release-attestation.sh ATTESTATION"
 fi
 checksum="${attestation}.sha256"
-pinned_cpa_version='v7.2.88'
-pinned_cpa_commit='93d74a890a44802f656d7f39a573916b2611896e'
+pinned_cpa_version='v7.2.95'
+pinned_cpa_commit='f71ec0eb6776854457892452cf28c47f0d658251'
 
 require_identity() {
   local name="$1"

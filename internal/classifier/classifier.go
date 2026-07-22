@@ -147,20 +147,22 @@ const (
 
 // Result intentionally has no field capable of carrying prompt fragments.
 type Result struct {
-	PolicyVersion     string            `json:"policy_version"`
-	PolicySHA256      string            `json:"policy_sha256"`
-	RuleSetVersion    string            `json:"ruleset_version"`
-	Score             int               `json:"score"`
-	Category          rules.Category    `json:"category,omitempty"`
-	Action            Action            `json:"action"`
-	RuleIDs           []string          `json:"rule_ids,omitempty"`
-	Context           ContextFlags      `json:"context"`
-	Evidence          []Evidence        `json:"evidence,omitempty"`
-	Behavior          *BehaviorGraph    `json:"behavior,omitempty"`
-	FindingOrigin     FindingOrigin     `json:"finding_origin,omitempty"`
-	Coverage          Coverage          `json:"coverage,omitempty,omitzero"`
-	FindingConfidence FindingConfidence `json:"finding_confidence,omitempty"`
-	Truncated         bool              `json:"truncated,omitempty"`
+	PolicyVersion       string               `json:"policy_version"`
+	PolicySHA256        string               `json:"policy_sha256"`
+	RuleSetVersion      string               `json:"ruleset_version"`
+	Score               int                  `json:"score"`
+	Category            rules.Category       `json:"category,omitempty"`
+	Action              Action               `json:"action"`
+	RuleIDs             []string             `json:"rule_ids,omitempty"`
+	Context             ContextFlags         `json:"context"`
+	Evidence            []Evidence           `json:"evidence,omitempty"`
+	EvidenceOccurrences []EvidenceOccurrence `json:"evidence_occurrences,omitempty"`
+	DecisionExplanation *DecisionExplanation `json:"decision_explanation,omitempty"`
+	Behavior            *BehaviorGraph       `json:"behavior,omitempty"`
+	FindingOrigin       FindingOrigin        `json:"finding_origin,omitempty"`
+	Coverage            Coverage             `json:"coverage,omitempty,omitzero"`
+	FindingConfidence   FindingConfidence    `json:"finding_confidence,omitempty"`
+	Truncated           bool                 `json:"truncated,omitempty"`
 }
 
 // classificationSignalFacts is the privacy-safe, bounded semantic summary
@@ -175,6 +177,7 @@ type classificationSignalFacts struct {
 	matchedSemanticIntents   []bool
 	unnegatedSemanticIntents []bool
 	semanticAgencies         []bool
+	semanticCoreEvidence     []uint8
 	harmConflict             bool
 }
 
@@ -380,6 +383,7 @@ func New(set *rules.RuleSet) (*Classifier, error) {
 			continue
 		}
 		compiled := compiledSemanticProfile{
+			index:        uint8(len(c.semanticProfiles)),
 			category:     category,
 			intentStarts: append(normalizedTermValues(profile.Harm), normalizedTermValues(profile.Action)...),
 		}
@@ -520,7 +524,6 @@ func (c *Classifier) classifyWithPolicyCaptured(parts []string, mode Mode, thres
 	}
 	thresholds = validThresholdsOrDefault(thresholds)
 	signals := make([]bool, c.signalCount)
-	coLocatedCores := make([]bool, len(c.rules))
 	var previousSignals, currentSignals, scratchSignals []bool
 	var previousRunes, currentRunes, scratchRunes []rune
 	var previousRunesUsed, currentRunesUsed, scratchRunesUsed int
@@ -549,7 +552,13 @@ func (c *Classifier) classifyWithPolicyCaptured(parts []string, mode Mode, thres
 	adjacentReversalCandidates := 0
 	adjacentReversalTerminal := false
 	inertQuotedSafetyReview := false
+	quotedOrInertSuppressed := false
+	var currentDirectives analyzedDirectives
+	directivesReady := false
 	finishResult := func(result Result) Result {
+		if directivesReady && currentDirectives.occurrenceBudgetExhausted {
+			result.Truncated = true
+		}
 		best := result
 		if !inertQuotedSafetyReview && hasAdjacentReversal && roleResultBetter(bestAdjacentReversal, best) {
 			best = bestAdjacentReversal
@@ -558,10 +567,15 @@ func (c *Classifier) classifyWithPolicyCaptured(parts []string, mode Mode, thres
 			best = bestReactivatedQuotedReferent
 		}
 		best.Truncated = best.Truncated || result.Truncated
+		ensureResultDecisionExplanation(&best)
+		if quotedOrInertSuppressed {
+			markQuotedOrInertSuppressed(&best)
+		}
 		return best
 	}
 	partCount := 0
 	currentPartIndex := -1
+	previousRawPart := ""
 	remainingBytes := maxClassifierInputBytes
 	truncated := false
 	resetMetaTail := func() {
@@ -626,10 +640,22 @@ func (c *Classifier) classifyWithPolicyCaptured(parts []string, mode Mode, thres
 			truncated = true
 		}
 		remainingBytes -= consumedBytes
+		reusedPreviousPart := partCount > 0 && part == previousRawPart && len(currentRunes) != 0
 		if scratchRunes == nil {
 			scratchRunes = takeNormalizedRuneBuffer()
 		}
-		views := normalizePartsInto([]string{part}, scratchRunes, &normalizerScratch)
+		var views normalizedViews
+		if reusedPreviousPart {
+			if cap(scratchRunes) < len(currentRunes) {
+				scratchRunes = make([]rune, len(currentRunes))
+			} else {
+				scratchRunes = scratchRunes[:len(currentRunes)]
+			}
+			copy(scratchRunes, currentRunes)
+			views = normalizedViews{standardRunes: scratchRunes, storageUsed: len(scratchRunes)}
+		} else {
+			views = normalizePartsInto([]string{part}, scratchRunes, &normalizerScratch)
+		}
 		bufferUsed := views.storageUsed
 		if scratchRunesUsed > bufferUsed {
 			bufferUsed = scratchRunesUsed
@@ -642,14 +668,18 @@ func (c *Classifier) classifyWithPolicyCaptured(parts []string, mode Mode, thres
 		}
 		if scratchSignals == nil {
 			scratchSignals = make([]bool, c.signalCount)
-		} else {
+		} else if !reusedPreviousPart {
 			clear(scratchSignals)
 		}
-		if compactScratch == nil && c.compactMatcher != nil {
-			compactScratch = make([]bool, c.compactMatcher.maxPatternLength)
+		if reusedPreviousPart {
+			copy(scratchSignals, currentSignals)
+		} else {
+			if compactScratch == nil && c.compactMatcher != nil {
+				compactScratch = make([]bool, c.compactMatcher.maxPatternLength)
+			}
+			c.standardMatcher.match(views.standardRunes, scratchSignals)
+			c.compactMatcher.matchCompactWithScratch(views.standardRunes, scratchSignals, compactScratch)
 		}
-		c.standardMatcher.match(views.standardRunes, scratchSignals)
-		c.compactMatcher.matchCompactWithScratch(views.standardRunes, scratchSignals, compactScratch)
 		if partCount > 0 && !adjacentReversalTerminal {
 			corePotential := adjacentRuleCorePotential(c.rules, currentSignals, scratchSignals)
 			if corePotential && runesMayContainNegation(currentRunes) {
@@ -677,14 +707,14 @@ func (c *Classifier) classifyWithPolicyCaptured(parts []string, mode Mode, thres
 						// Candidate-budget exhaustion has the same fail-active semantics as
 						// the rune cap above and must not masquerade as incomplete inspection.
 					} else {
-						previousText := string(currentRunes)
-						joinedText := previousText + "\n" + string(views.standardRunes)
-						candidatePolicy := policy
-						candidatePolicy.Allow = ContextPolicy{}
-						candidate = c.classifyWithPolicy([]string{joinedText}, mode, thresholds, candidatePolicy, structuredToolPayload)
-						if candidate.Score >= thresholds.HardBlock {
-							adjacentReversalTerminal = true
-						}
+						// adjacentNegationNeedsReconstruction has already proved that the
+						// most recent intent-bearing clause is an active negation reversal,
+						// while the next part supplies the matching harmful object. Re-running
+						// ordinary directive admission over the joined text can reinterpret
+						// the reversal as a plain prohibition and discard that proof. Preserve
+						// the bounded proof as the fail-active candidate directly.
+						candidate = c.adjacentNegationOverflowResult(rule, mode, thresholds, structuredToolPayload)
+						adjacentReversalTerminal = true
 					}
 					if !hasAdjacentReversal || roleResultBetter(candidate, bestAdjacentReversal) {
 						bestAdjacentReversal = candidate
@@ -757,10 +787,7 @@ func (c *Classifier) classifyWithPolicyCaptured(parts []string, mode Mode, thres
 				signals[signalID] = true
 			}
 		}
-		for ruleIndex, rule := range c.rules {
-			coLocatedCores[ruleIndex] = coLocatedCores[ruleIndex] || (scratchSignals[rule.intent] && scratchSignals[rule.object])
-		}
-
+		previousRawPart = part
 		previousSignals, currentSignals, scratchSignals = currentSignals, scratchSignals, previousSignals
 		previousRunes, currentRunes, scratchRunes = currentRunes, views.standardRunes, previousRunes
 		previousRunesUsed, currentRunesUsed, scratchRunesUsed = currentRunesUsed, bufferUsed, previousRunesUsed
@@ -768,8 +795,6 @@ func (c *Classifier) classifyWithPolicyCaptured(parts []string, mode Mode, thres
 		partCount++
 	}
 	finalizeMetaTail()
-	var currentDirectives analyzedDirectives
-	directivesReady := false
 	currentText := string(currentRunes)
 	previousQuotedReferent := ""
 	previousInertQuotedSafetyReview := false
@@ -787,6 +812,8 @@ func (c *Classifier) classifyWithPolicyCaptured(parts []string, mode Mode, thres
 	}
 	inertQuotedSafetyReview = !truncated && c.isInertQuotedSafetyReview(currentText) &&
 		c.priorPartsAllowInertQuotedSafetyReview(parts, currentPartIndex, mode, thresholds, policy)
+	quotedOrInertSuppressed = inertQuotedSafetyReview ||
+		(previousInertQuotedSafetyReview && !quotedReviewImplementationFollowUp)
 	if capture != nil {
 		capture.harmConflict = false
 		if cap(capture.signals) < c.signalCount {
@@ -813,6 +840,12 @@ func (c *Classifier) classifyWithPolicyCaptured(parts []string, mode Mode, thres
 				clear(*destination)
 			}
 		}
+		if cap(capture.semanticCoreEvidence) < len(c.semanticProfiles) {
+			capture.semanticCoreEvidence = make([]uint8, len(c.semanticProfiles))
+		} else {
+			capture.semanticCoreEvidence = capture.semanticCoreEvidence[:len(c.semanticProfiles)]
+			clear(capture.semanticCoreEvidence)
+		}
 		if partCount > 0 {
 			copy(capture.signals, currentSignals)
 			capture.harmConflict = hasExplicitHarmConflict(currentText)
@@ -835,6 +868,7 @@ func (c *Classifier) classifyWithPolicyCaptured(parts []string, mode Mode, thres
 			for profileIndex, profile := range c.semanticProfiles {
 				dimensions := c.semanticDimensions(profile, [][]bool{currentSignals})
 				capture.semanticAgencies[profileIndex] = dimensions.harm || dimensions.action || dimensions.outcome
+				capture.semanticCoreEvidence[profileIndex] = round8SemanticCoreEvidenceBits(profile.category, currentText)
 				if (dimensions.harm || dimensions.action) && containsRuleIntent(currentText, profile.intentStarts) {
 					capture.matchedSemanticIntents[profileIndex] = true
 					if len(currentText) > maxCompactIntentProofBytes || containsUnnegatedRuleIntentPrepared(currentText, profile.intentStarts, profile.intentPatterns) {
@@ -872,54 +906,100 @@ func (c *Classifier) classifyWithPolicyCaptured(parts []string, mode Mode, thres
 	}
 
 	type candidate struct {
-		score    int
-		category rules.Category
-		ruleID   string
-		ruleIDs  []string
-		evidence []Evidence
+		score       int
+		category    rules.Category
+		ruleID      string
+		ruleIDs     []string
+		evidence    []Evidence
+		occurrences []EvidenceOccurrence
+		explanation DecisionExplanation
 	}
 	candidates := make([]candidate, 0, 8)
 	var categoryHasCandidate [8]bool
 	previousFollowUpEligible := partCount > 1 && !previousInertQuotedSafetyReview && followUpEligible(previousRunes)
+	var previousDirectives analyzedDirectives
+	previousDirectivesReady := false
 	previousHarmConflict := false
 	previousHarmConflictReady := false
 	for ruleIndex, rule := range c.rules {
 		if inertQuotedSafetyReview {
 			break
 		}
+		targetedRound8Rule := isRound8TargetedRule(rule.id)
 		intent := signals[rule.intent]
 		object := signals[rule.object]
 		current := currentSignals
+		if (current[rule.intent] || current[rule.object]) && !directivesReady {
+			currentDirectives = c.analyzeDirectives(currentRunes, policy)
+			directivesReady = true
+		}
+		directiveMatch := ruleDirectiveMatch{}
+		if targetedRound8Rule && directivesReady {
+			directiveMatch = c.bestRuleDirectiveMatch(ruleIndex, rule, currentDirectives)
+		} else if !targetedRound8Rule {
+			// Round 8 physical occurrence ownership is intentionally limited to
+			// the five broad-vocabulary production-FP rules. Mature narrow rules
+			// retain their established whole-field signal path, including a later
+			// unnegated intent after an earlier prohibition. Applying the physical
+			// window winner to every rule both lost that recall and multiplied the
+			// hot-path occurrence work by the full ruleset size.
+			mask := ruleDimensionMaskForSignalSet(rule, current)
+			core := current[rule.intent] && current[rule.object] &&
+				directivesReady && !c.ruleCoreIsOnlyNegated(currentDirectives, ruleIndex, rule) &&
+				!isLegitimateCategoryWorkflow(rule.category, currentText)
+			directiveMatch = ruleDirectiveMatch{
+				found:                 mask != 0,
+				coreComplete:          core,
+				corePredicateComplete: core,
+				activeDirective:       core,
+				scopeCoherent:         true,
+				dimensionMask:         mask,
+				text:                  currentText,
+				clauseCount:           1,
+			}
+		}
 		objectQualifiedFallback := isCredentialObjectQualifiedFallback(rule, current) &&
-			!isLegitimateCategoryWorkflow(rule.category, currentText)
-		if (!intent || !object) && !objectQualifiedFallback {
+			directiveMatch.has(ruleDimensionObject) && !isLegitimateCategoryWorkflow(rule.category, directiveMatch.text)
+		disruptionServiceObjectFallback := rule.id == "DISRUPT-001" && directiveMatch.coreComplete
+		if (!intent || !object) && !(directiveMatch.coreComplete && directiveMatch.derivedIntent) &&
+			!objectQualifiedFallback && !disruptionServiceObjectFallback {
 			continue
 		}
-		currentCore := current[rule.intent] && current[rule.object]
+		currentCore := directiveMatch.coreComplete
 		if currentCore {
-			if !directivesReady {
-				currentDirectives = c.analyzeDirectives(currentRunes, policy)
-				directivesReady = true
-			}
-			currentCore = !c.ruleCoreIsOnlyNegated(currentDirectives, ruleIndex, rule)
-			if currentCore && isLegitimateCategoryWorkflow(rule.category, currentText) {
-				currentCore = false
-			}
+			currentCore = directiveMatch.activeDirective
 		}
 		priorStrongCore := false
 		var priorCoreSignals []bool
 		if partCount > 1 {
 			prior := previousSignals
 			if previousFollowUpEligible && prior[rule.intent] && prior[rule.object] && (rule.baseScore >= BalancedThreshold || prior[rule.target] || prior[rule.evasion] || prior[rule.scale]) {
-				priorStrongCore = true
-				priorCoreSignals = prior
+				if !previousDirectivesReady {
+					previousDirectives = c.analyzeDirectives(previousRunes, policy)
+					previousDirectivesReady = true
+				}
+				priorMatch := c.bestRuleDirectiveMatch(ruleIndex, rule, previousDirectives)
+				priorEligible := priorMatch.coreComplete && priorMatch.activeDirective && priorMatch.scopeCoherent
+				if isRound8TargetedRule(rule.id) {
+					priorEligible = priorMatch.hardFloorEligible
+				}
+				if priorEligible {
+					priorStrongCore = true
+					priorCoreSignals = prior
+				}
 			}
 		}
 		implementationFollowUp := current[c.implementationRequest] && priorStrongCore
 		if !currentCore && !implementationFollowUp && !objectQualifiedFallback {
 			continue
 		}
-		coreCoLocated := coLocatedCores[ruleIndex]
+		if isRound8TargetedRule(rule.id) && !directiveMatch.corePredicateComplete && !implementationFollowUp {
+			// Round 8 rules must not leak a named audit finding from a partial
+			// generic-vocabulary core. Their complete hostile relationship is the
+			// admission predicate, not merely a balanced-score cap.
+			continue
+		}
+		coreCoLocated := directiveMatch.scopeCoherent && directiveMatch.coreComplete
 		score := rule.baseScore
 		evidence := []Evidence{{ID: rule.id + ":object", Kind: "object"}}
 		if objectQualifiedFallback {
@@ -934,15 +1014,16 @@ func (c *Classifier) classifyWithPolicyCaptured(parts []string, mode Mode, thres
 		if !objectQualifiedFallback && !coreCoLocated {
 			score -= 20
 		}
+		corePredicateScore := score
 		qualifiers := 0
 		// A same-turn request for code, commands, an execution plan, or a
 		// practical workflow is operational evidence too. Previously this signal
 		// was used only for a later follow-up, which let explicit abuse phrased as
 		// "give me a plan to ..." remain below the balanced threshold.
-		operational := signalMatched(current, rule.independentOperational) || current[c.implementationRequest] || implementationFollowUp
-		target := signalMatched(current, rule.independentTarget)
-		evasion := signalMatched(current, rule.independentEvasion)
-		scale := signalMatched(current, rule.independentScale)
+		operational := directiveMatch.has(ruleDimensionOperational) || current[c.implementationRequest] || implementationFollowUp
+		target := directiveMatch.has(ruleDimensionTarget)
+		evasion := directiveMatch.has(ruleDimensionEvasion)
+		scale := directiveMatch.has(ruleDimensionScale)
 		if implementationFollowUp && priorCoreSignals != nil {
 			target = target || signalMatched(priorCoreSignals, rule.independentTarget)
 			evasion = evasion || signalMatched(priorCoreSignals, rule.independentEvasion)
@@ -971,8 +1052,45 @@ func (c *Classifier) classifyWithPolicyCaptured(parts []string, mode Mode, thres
 		if qualifiers >= 2 {
 			score += 5
 		}
-		if qualifiers > 0 && rule.hardFloor > score {
+		strongQualifiers := 0
+		if targetedRound8Rule {
+			strongQualifiers = strongRuleQualifierCount(rule.id, directiveMatch)
+		}
+		hardFloorEligible := qualifiers > 0
+		hardFloorReason := hardFloorReasonNone
+		balancedEligible := true
+		if targetedRound8Rule {
+			// The five production false-positive rules use unusually broad
+			// development vocabulary and therefore require the stronger Round 8
+			// ownership/core predicate. Other mature rules keep their existing
+			// curated one-qualifier floor so the established malicious matrix does
+			// not lose recall merely because its rule vocabulary is already narrow.
+			// A prior Round 8 core reaches priorStrongCore only after ownership,
+			// active-scope, and hard-floor admission have all succeeded. One fresh
+			// implementation qualifier is therefore enough for an explicit adjacent
+			// follow-up; requiring two new qualifiers discarded the already-owned
+			// target/theft relationship from the prior directive.
+			directMatchEligible := directiveMatch.hardFloorEligible
+			followUpEligible := implementationFollowUp && qualifiers >= 1
+			hardFloorEligible = directMatchEligible || followUpEligible
+			balancedEligible = round8RuleBalancedEligible(rule.id, directiveMatch, strongQualifiers) ||
+				followUpEligible
+			switch {
+			case directMatchEligible:
+				hardFloorReason = directiveMatch.hardFloorReason
+			case followUpEligible:
+				hardFloorReason = hardFloorReasonImplementationFollowUpToOwnedPriorCore
+			}
+		} else if hardFloorEligible {
+			hardFloorReason = hardFloorReasonCompleteCoreWithIndependentQualifier
+		}
+		hardFloorApplied := false
+		if hardFloorEligible && rule.hardFloor > score {
 			score = rule.hardFloor
+			hardFloorApplied = true
+		}
+		if !balancedEligible && score >= thresholds.BalancedBlock {
+			score = thresholds.BalancedBlock - 1
 		}
 		effectiveContext := context
 		priorTargetConflict := implementationFollowUp && priorCoreSignals != nil && signalMatched(priorCoreSignals, rule.target)
@@ -1021,15 +1139,54 @@ func (c *Classifier) classifyWithPolicyCaptured(parts []string, mode Mode, thres
 				Authorized: effectiveContext.Authorized,
 			}
 		}
-		score = applyContextDeductions(score, effectiveContext, authorizationProtected)
+		scoreBeforeContext := score
+		baselineContextScore := applyContextDeductions(scoreBeforeContext, context, authorizationProtected)
+		score = applyContextDeductions(scoreBeforeContext, effectiveContext, authorizationProtected)
+		contextAdjustment := baselineContextScore - scoreBeforeContext
+		contradictionAdjustment := score - baselineContextScore
 		strongOperationalAbuse := operational && (target || evasion || scale)
 		genuineSafetyContext := effectiveContext.Defensive || effectiveContext.Remediation || effectiveContext.StaticAnalysis || effectiveContext.IncidentResponse || effectiveContext.HighLevel
 		protectedOperationalAbuse := authorizationProtected && operational && !genuineSafetyContext
 		unmitigatedOperationalAbuse := strongOperationalAbuse && effectiveContext == (ContextFlags{})
-		if rule.hardFloor > score && (unmitigatedOperationalAbuse || protectedOperationalAbuse) {
+		if hardFloorEligible && rule.hardFloor > score && (unmitigatedOperationalAbuse || protectedOperationalAbuse) {
 			score = rule.hardFloor
+			hardFloorApplied = true
 		}
-		candidates = append(candidates, candidate{score: score, category: rule.category, ruleID: rule.id, evidence: evidence})
+		if !balancedEligible && score >= thresholds.BalancedBlock {
+			score = thresholds.BalancedBlock - 1
+		}
+		explanation := DecisionExplanation{
+			WinningRuleID:         rule.id,
+			WinningCategory:       string(rule.category),
+			CorePredicateComplete: directiveMatch.corePredicateComplete || implementationFollowUp,
+			EvidenceDimensionMask: directiveMatch.dimensionMask,
+			EvidenceSegmentCount:  1,
+			CurrentTurnEvidence:   false,
+			ContextAdjustment:     contextAdjustment,
+			HardFloorApplied:      hardFloorApplied,
+			ScoreBreakdown: ScoreBreakdown{
+				CorePredicateScore:      corePredicateScore,
+				QualifierScore:          qualifierScoreForRuleMatch(operational, target, evasion, scale, qualifiers),
+				ScopeCoherenceScore:     0,
+				OwnershipScore:          0,
+				ActiveDirectiveScore:    0,
+				ContextAdjustment:       contextAdjustment,
+				ContradictionAdjustment: contradictionAdjustment,
+				FinalScore:              score,
+			},
+		}
+		if hardFloorApplied {
+			explanation.HardFloorReason = hardFloorReason
+		}
+		var occurrences []EvidenceOccurrence
+		if targetedRound8Rule {
+			occurrences = evidenceOccurrencesForMatch(rule.id, directiveMatch)
+		}
+		explanation.EvidenceOccurrenceCount = len(occurrences)
+		candidates = append(candidates, candidate{
+			score: score, category: rule.category, ruleID: rule.id, evidence: evidence,
+			occurrences: occurrences, explanation: explanation,
+		})
 		categoryHasCandidate[categoryPriority(rule.category)] = true
 	}
 
@@ -1056,7 +1213,14 @@ func (c *Classifier) classifyWithPolicyCaptured(parts []string, mode Mode, thres
 				continue
 			}
 			objectRule := c.rules[providers.object]
+			if isRound8TargetedRule(objectRule.id) && !round8ComposedRuleCorePredicate(
+				objectRule.id, currentText, providers.hasOperational,
+				providers.target >= 0, providers.evasion >= 0, providers.scale >= 0,
+			) {
+				continue
+			}
 			score := 45
+			corePredicateScore := score
 			evidence := []Evidence{
 				{ID: objectRule.id + ":object", Kind: "object"},
 				{ID: objectRule.id + ":outcome", Kind: "intent"},
@@ -1081,6 +1245,7 @@ func (c *Classifier) classifyWithPolicyCaptured(parts []string, mode Mode, thres
 			if providers.qualifierCount() >= 2 {
 				score += 5
 			}
+			qualifierScore := score - corePredicateScore
 
 			effectiveContext := context
 			if hasExplicitHarmConflict(currentText) {
@@ -1088,16 +1253,43 @@ func (c *Classifier) classifyWithPolicyCaptured(parts []string, mode Mode, thres
 				effectiveContext.CTFOrLab = false
 			}
 			authorizationProtected := objectRule.authorizationProtected && policy.HardBlockEvenIfAuthorized.protects(category)
+			scoreBeforeContext := score
 			score = applyContextDeductions(score, effectiveContext, authorizationProtected)
+			contextAdjustment := score - scoreBeforeContext
 			genuineSafetyContext := effectiveContext.Defensive || effectiveContext.Remediation || effectiveContext.StaticAnalysis || effectiveContext.IncidentResponse || effectiveContext.HighLevel
+			hardFloorApplied := false
 			if authorizationProtected && !genuineSafetyContext && score < HardThreshold {
 				score = HardThreshold
+				hardFloorApplied = true
+			}
+			score = clampScore(score)
+			occurrences := syntheticEvidenceOccurrences(evidence, objectRule.id)
+			explanation := DecisionExplanation{
+				WinningRuleID:           objectRule.id,
+				WinningCategory:         string(category),
+				CorePredicateComplete:   true,
+				EvidenceDimensionMask:   occurrenceDimensionMask(occurrences),
+				EvidenceOccurrenceCount: len(occurrences),
+				EvidenceSegmentCount:    1,
+				ContextAdjustment:       contextAdjustment,
+				HardFloorApplied:        hardFloorApplied,
+				ScoreBreakdown: ScoreBreakdown{
+					CorePredicateScore: corePredicateScore,
+					QualifierScore:     qualifierScore,
+					ContextAdjustment:  contextAdjustment,
+					FinalScore:         score,
+				},
+			}
+			if hardFloorApplied {
+				explanation.HardFloorReason = hardFloorReasonOutcomeCompleteCoreWithTwoQualifiers
 			}
 			candidates = append(candidates, candidate{
-				score:    clampScore(score),
-				category: category,
-				ruleIDs:  uniqueSorted(ruleIDs),
-				evidence: evidence,
+				score:       score,
+				category:    category,
+				ruleIDs:     uniqueSorted(ruleIDs),
+				evidence:    evidence,
+				occurrences: occurrences,
+				explanation: explanation,
 			})
 			categoryHasCandidate[categoryPriority(category)] = true
 		}
@@ -1119,14 +1311,19 @@ func (c *Classifier) classifyWithPolicyCaptured(parts []string, mode Mode, thres
 				semanticSignals = append(semanticSignals, previousSignals)
 			}
 		}
-		semanticPotential := false
-		for _, profile := range c.semanticProfiles {
-			if semanticDimensionsPotential(c.semanticDimensions(profile, semanticSignals)) {
-				semanticPotential = true
-				break
+		var semanticPotentialProfiles uint64
+		semanticPotentialOverflow := false
+		for profileIndex, profile := range c.semanticProfiles {
+			if !semanticProfilePotential(profile, semanticSignals) {
+				continue
+			}
+			if profileIndex < 64 {
+				semanticPotentialProfiles |= uint64(1) << profileIndex
+			} else {
+				semanticPotentialOverflow = true
 			}
 		}
-		if semanticPotential {
+		if semanticPotentialProfiles != 0 || semanticPotentialOverflow {
 			if !directivesReady {
 				currentDirectives = c.analyzeDirectives(currentRunes, policy)
 				directivesReady = true
@@ -1142,24 +1339,33 @@ func (c *Classifier) classifyWithPolicyCaptured(parts []string, mode Mode, thres
 				})
 			}
 			for profileIndex, profile := range c.semanticProfiles {
+				if profileIndex < 64 && semanticPotentialProfiles&(uint64(1)<<profileIndex) == 0 {
+					continue
+				}
+				if profileIndex >= 64 && !semanticProfilePotential(profile, semanticSignals) {
+					continue
+				}
 				bestSemantic := semanticAssessment{}
 				if profileIndex < len(currentDirectives.overflowSemantic) {
 					bestSemantic = currentDirectives.overflowSemantic[profileIndex]
 				}
-				for _, window := range windows {
-					assessment := c.assessSemanticWindow(profile, window, policy)
-					if assessment.score > bestSemantic.score {
+				for windowIndex := range windows {
+					prepareSemanticSignalWindowCategory(&windows[windowIndex], profile.category)
+					assessment := c.assessSemanticWindow(profile, windows[windowIndex], policy)
+					if semanticAssessmentBetter(assessment, bestSemantic) {
 						bestSemantic = assessment
 					}
 				}
+				bestSemantic = constrainSemanticAssessment(bestSemantic, thresholds)
 				if bestSemantic.score < AuditThreshold {
 					continue
 				}
 				candidates = append(candidates, candidate{
-					score:    bestSemantic.score,
-					category: profile.category,
-					ruleID:   profile.id(),
-					evidence: bestSemantic.evidence,
+					score:       bestSemantic.score,
+					category:    profile.category,
+					ruleID:      profile.id(),
+					evidence:    bestSemantic.evidence,
+					explanation: bestSemantic.explanation,
 				})
 			}
 		}
@@ -1225,10 +1431,25 @@ func (c *Classifier) classifyWithPolicyCaptured(parts []string, mode Mode, thres
 		targetProvider := composition.target
 		evasionProvider := composition.evasion
 		scaleProvider := composition.scale
-
 		intentRule := c.rules[intentProvider]
 		objectRule := c.rules[objectProvider]
+		for _, coreRuleID := range []string{intentRule.id, objectRule.id} {
+			if !isRound8TargetedRule(coreRuleID) {
+				continue
+			}
+			if !round8ComposedRuleCorePredicate(
+				coreRuleID, currentText, operationalProvider >= 0,
+				targetProvider >= 0, evasionProvider >= 0, scaleProvider >= 0,
+			) {
+				intentProvider = -1
+				break
+			}
+		}
+		if intentProvider < 0 {
+			continue
+		}
 		score := 45
+		corePredicateScore := score
 		qualifiers := 0
 		evidence := []Evidence{
 			{ID: intentRule.id + ":intent", Kind: "intent"},
@@ -1249,6 +1470,7 @@ func (c *Classifier) classifyWithPolicyCaptured(parts []string, mode Mode, thres
 		if qualifiers >= 2 {
 			score += 5
 		}
+		qualifierScore := score - corePredicateScore
 		score = clampScore(score)
 
 		effectiveContext := context
@@ -1297,16 +1519,39 @@ func (c *Classifier) classifyWithPolicyCaptured(parts []string, mode Mode, thres
 			}
 		}
 		authorizationProtected := composedRule.authorizationProtected && policy.HardBlockEvenIfAuthorized.protects(category)
+		scoreBeforeContext := score
 		score = applyContextDeductions(score, effectiveContext, authorizationProtected)
+		contextAdjustment := score - scoreBeforeContext
 		genuineSafetyContext := effectiveContext.Defensive || effectiveContext.Remediation || effectiveContext.StaticAnalysis || effectiveContext.IncidentResponse || effectiveContext.HighLevel
+		hardFloorApplied := false
 		if authorizationProtected && !genuineSafetyContext && score < HardThreshold {
 			score = HardThreshold
+			hardFloorApplied = true
+		}
+		explanation := DecisionExplanation{
+			WinningRuleID:           "COMPOSED-" + string(category),
+			WinningCategory:         string(category),
+			CorePredicateComplete:   true,
+			EvidenceOccurrenceCount: len(evidence),
+			EvidenceSegmentCount:    1,
+			ContextAdjustment:       contextAdjustment,
+			HardFloorApplied:        hardFloorApplied,
+			ScoreBreakdown: ScoreBreakdown{
+				CorePredicateScore: corePredicateScore,
+				QualifierScore:     qualifierScore,
+				ContextAdjustment:  contextAdjustment,
+				FinalScore:         score,
+			},
+		}
+		if hardFloorApplied {
+			explanation.HardFloorReason = hardFloorReasonComposedCompleteCoreWithTwoQualifiers
 		}
 		candidates = append(candidates, candidate{
-			score:    score,
-			category: category,
-			ruleIDs:  []string{intentRule.id, objectRule.id},
-			evidence: evidence,
+			score:       score,
+			category:    category,
+			ruleIDs:     []string{intentRule.id, objectRule.id},
+			evidence:    evidence,
+			explanation: explanation,
 		})
 	}
 
@@ -1334,7 +1579,8 @@ func (c *Classifier) classifyWithPolicyCaptured(parts []string, mode Mode, thres
 		}
 		if bestOrdinaryIndex >= 0 {
 			winner := &candidates[bestOrdinaryIndex]
-			mayAmplify := winner.score >= thresholds.BalancedBlock || ordinaryEvidenceSupportsMetaAmplification(winner.evidence)
+			mayAmplify := winner.explanation.CorePredicateComplete &&
+				(winner.score >= thresholds.BalancedBlock || ordinaryEvidenceSupportsMetaAmplification(winner.evidence))
 			// Persistent instruction injection is independently blockable. If the
 			// ordinary candidate is only a weak incidental match, leave the META
 			// assessment unattached so the standalone control-plane decision below
@@ -1363,6 +1609,20 @@ func (c *Classifier) classifyWithPolicyCaptured(parts []string, mode Mode, thres
 				result.Score = meta.score
 				if result.Score < thresholds.HardBlock {
 					result.Score = thresholds.HardBlock
+				}
+				hardFloorApplied := result.Score > meta.score
+				result.DecisionExplanation = &DecisionExplanation{
+					WinningRuleID:         metaOverrideRuleID,
+					CorePredicateComplete: true,
+					EvidenceSegmentCount:  1,
+					HardFloorApplied:      hardFloorApplied,
+					ScoreBreakdown: ScoreBreakdown{
+						CorePredicateScore: result.Score,
+						FinalScore:         result.Score,
+					},
+				}
+				if hardFloorApplied {
+					result.DecisionExplanation.HardFloorReason = hardFloorReasonPersistentControlPlaneBlockThreshold
 				}
 			} else {
 				result.Score = metaControlAuditScore(meta.score, thresholds)
@@ -1399,11 +1659,28 @@ func (c *Classifier) classifyWithPolicyCaptured(parts []string, mode Mode, thres
 		if candidates[i].category != candidates[j].category {
 			return categoryPriority(candidates[i].category) < categoryPriority(candidates[j].category)
 		}
+		leftSpecificity := round8CandidateSpecificity(candidates[i].ruleID, candidates[i].ruleIDs)
+		rightSpecificity := round8CandidateSpecificity(candidates[j].ruleID, candidates[j].ruleIDs)
+		if leftSpecificity != rightSpecificity {
+			return leftSpecificity > rightSpecificity
+		}
 		return candidateSortID(candidates[i].ruleID, candidates[i].ruleIDs) < candidateSortID(candidates[j].ruleID, candidates[j].ruleIDs)
 	})
 	best := candidates[0]
 	result.Score = clampScore(best.score)
 	result.Category = best.category
+	result.EvidenceOccurrences = append(result.EvidenceOccurrences, best.occurrences...)
+	if best.explanation.WinningRuleID != "" || best.explanation.WinningCategory != "" {
+		explanation := best.explanation
+		explanation.ScoreBreakdown.FinalScore = result.Score
+		result.DecisionExplanation = &explanation
+		if explanation.WinningRuleID != "" {
+			// The winning identifier is part of the persisted decision contract,
+			// including synthetic COMPOSED-/SEMANTIC- winners. Keep it in RuleIDs
+			// so classifier -> plugin -> audit validation cannot reject the event.
+			result.RuleIDs = append(result.RuleIDs, explanation.WinningRuleID)
+		}
+	}
 	result.RuleIDs = appendCandidateRuleIDs(result.RuleIDs, best.ruleID, best.ruleIDs)
 	result.Evidence = append(result.Evidence, best.evidence...)
 	for _, other := range candidates[1:] {
@@ -1423,6 +1700,33 @@ func (c *Classifier) classifyWithPolicyCaptured(parts []string, mode Mode, thres
 	}
 	attachBehaviorGraph(&result, "parts", carrier)
 	return finishResult(result)
+}
+
+func markQuotedOrInertSuppressed(result *Result) {
+	if result == nil {
+		return
+	}
+	if result.DecisionExplanation == nil {
+		result.DecisionExplanation = &DecisionExplanation{
+			ScoreBreakdown: ScoreBreakdown{FinalScore: result.Score},
+		}
+	}
+	result.DecisionExplanation.QuotedOrInertSuppressed = true
+}
+
+func round8CandidateSpecificity(ruleID string, ruleIDs []string) int {
+	if isRound8TargetedRule(ruleID) {
+		return 2
+	}
+	for _, candidate := range ruleIDs {
+		if isRound8TargetedRule(candidate) {
+			return 2
+		}
+	}
+	if strings.HasPrefix(ruleID, "SEMANTIC-") {
+		return 0
+	}
+	return 1
 }
 
 func adjacentRuleCorePotential(rules []compiledRule, previous, current []bool) bool {
@@ -1533,10 +1837,24 @@ func (c *Classifier) adjacentNegationNeedsReconstruction(previousRunes []rune, p
 				if descriptiveNegationClause(clause.text) {
 					break
 				}
-				return rule, true
+				if adjacentClauseReactivatesNegatedIntent(previousRunes, analysis, index, rule) {
+					return rule, true
+				}
+				// This helper exists only to preserve an intent-owning negation
+				// reversal across an adjacent part boundary. A negation in an
+				// unrelated earlier clause must not turn a later affirmative OAuth,
+				// credential-management, or other ordinary workflow into a hard
+				// block merely because the next part supplies a matching noun.
+				if runesMayContainNegation(clause.runes) {
+					return rule, true
+				}
+				break
 			}
 			if !found && startsWithRuleIntent(clause.text, rule.intentStarts) {
-				return rule, true
+				if runesMayContainNegation(clause.runes) {
+					return rule, true
+				}
+				break
 			}
 			if !found && runesMayContainNegation(clause.runes) {
 				// The matcher proved that this clause owns the intent, but literal
@@ -1554,6 +1872,68 @@ func (c *Classifier) adjacentNegationNeedsReconstruction(previousRunes []rune, p
 		}
 	}
 	return compiledRule{}, false
+}
+
+func adjacentClauseReactivatesNegatedIntent(previousRunes []rune, analysis analyzedDirectives, index int, rule compiledRule) bool {
+	if index <= 0 || index >= len(analysis.clauses) {
+		return false
+	}
+	if !adjacentReversalConnectorBefore(previousRunes, analysis.clauses[index].runes) {
+		return false
+	}
+	for priorIndex := index - 1; priorIndex >= 0; priorIndex-- {
+		prior := analysis.clauses[priorIndex]
+		if !prior.signals.matched(rule.intent) {
+			continue
+		}
+		found, negates := clauseRuleIntentNegation(prior.text, rule.intentStarts)
+		if found && negates {
+			return true
+		}
+		return runesMayContainNegation(prior.runes) && hasExplanatoryFraming(prior.text)
+	}
+	return false
+}
+
+func adjacentReversalConnectorBefore(text, clause []rune) bool {
+	if len(clause) == 0 || len(clause) > len(text) {
+		return false
+	}
+	clauseStart := -1
+	for start := len(text) - len(clause); start >= 0; start-- {
+		matched := true
+		for offset := range clause {
+			if text[start+offset] != clause[offset] {
+				matched = false
+				break
+			}
+		}
+		if matched {
+			clauseStart = start
+			break
+		}
+	}
+	if clauseStart <= 0 {
+		return false
+	}
+	end := clauseStart
+	for end > 0 && unicode.IsSpace(text[end-1]) {
+		end--
+	}
+	start := end
+	for start > 0 {
+		r := text[start-1]
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') {
+			start--
+			continue
+		}
+		break
+	}
+	word := text[start:end]
+	return runeSliceEqualFoldASCII(word, "but") ||
+		runeSliceEqualFoldASCII(word, "however") ||
+		runeSliceEqualFoldASCII(word, "instead") ||
+		runeSliceEqualFoldASCII(word, "yet")
 }
 
 func descriptiveNegationClause(clause string) bool {
@@ -1942,6 +2322,38 @@ func appendCandidateRuleIDs(destination []string, ruleID string, ruleIDs []strin
 	return append(destination, ruleIDs...)
 }
 
+// syntheticEvidenceOccurrences turns already-scored, content-free evidence
+// into bounded occurrence records. It is deliberately used only after the
+// active-directive and core predicates have succeeded, so these synthetic
+// records can explain a decision but can never satisfy ownership gates.
+func syntheticEvidenceOccurrences(evidence []Evidence, fallbackRuleID string) []EvidenceOccurrence {
+	counts := make(map[string]int, len(evidence))
+	occurrences := make([]EvidenceOccurrence, 0, len(evidence))
+	for _, item := range evidence {
+		if item.Kind == "" || item.Kind == "context" {
+			continue
+		}
+		ruleID := evidenceRuleID(item.ID, fallbackRuleID)
+		key := ruleID + "\x00" + item.Kind
+		counts[key]++
+		occurrences = append(occurrences, EvidenceOccurrence{
+			EvidenceID:     fmt.Sprintf("%s:%s:signal-%d", ruleID, item.Kind, counts[key]),
+			RuleID:         ruleID,
+			Dimension:      item.Kind,
+			SegmentID:      -1,
+			FieldID:        -1,
+			ClauseID:       -1,
+			SentenceID:     -1,
+			Start:          -1,
+			End:            -1,
+			Polarity:       PolarityAffirmative,
+			DirectiveOwner: DirectiveOwnerUnknown,
+			TermStrength:   TermStrengthStrong,
+		})
+	}
+	return occurrences
+}
+
 // ordinaryEvidenceSupportsMetaAmplification requires a concrete delivery or
 // execution signal plus an independent risk axis. META language may annotate a
 // weaker ordinary finding, but a lone object/core or a single qualifier must
@@ -2045,11 +2457,12 @@ func (assessment streamingRiskAssessment) blocks(mode Mode, thresholds Threshold
 // contained equivalent evidence. Context deductions and benign-workflow credit
 // are intentionally omitted, making uncertainty fail closed rather than
 // allowing a cross-window semantic composition to masquerade as complete.
-func (c *Classifier) streamingRiskPotential(facts classificationSignalFacts, policy Policy) streamingRiskAssessment {
+func (c *Classifier) streamingRiskPotential(facts classificationSignalFacts, policy Policy, thresholds Thresholds) streamingRiskAssessment {
 	assessment := streamingRiskAssessment{}
 	if c == nil || len(facts.signals) != c.signalCount {
 		return assessment
 	}
+	thresholds = validThresholdsOrDefault(thresholds)
 	signals := facts.signals
 	for ruleIndex, rule := range c.rules {
 		core := signals[rule.intent] && signals[rule.object] &&
@@ -2068,7 +2481,11 @@ func (c *Classifier) streamingRiskPotential(facts classificationSignalFacts, pol
 			score += 20
 			qualifiers++
 		}
-		if signalMatched(signals, rule.independentTarget) {
+		// An explicit victim/third-party/unauthorized conflict is target-quality
+		// evidence for the conservative cross-window upper bound. It is never used
+		// to manufacture a complete finding; streaming only turns an otherwise
+		// actionable union into classifier-window incompleteness.
+		if signalMatched(signals, rule.independentTarget) || facts.harmConflict {
 			score += 18
 			qualifiers++
 		}
@@ -2083,8 +2500,16 @@ func (c *Classifier) streamingRiskPotential(facts classificationSignalFacts, pol
 		if qualifiers >= 2 {
 			score += 5
 		}
+		// This is a conservative upper bound used only after exact streaming
+		// reconstruction is unavailable. One concrete qualifier may therefore
+		// preserve the historical hard-floor potential without admitting an
+		// actual Round 8 finding; complete requests still pass through the owned
+		// active-directive predicate above.
 		if qualifiers > 0 && rule.hardFloor > score {
 			score = rule.hardFloor
+		}
+		if qualifiers == 0 && score >= BalancedThreshold {
+			score = BalancedThreshold - 1
 		}
 		assessment.considerOrdinary(score, operational && qualifiers >= 2)
 	}
@@ -2133,12 +2558,20 @@ func (c *Classifier) streamingRiskPotential(facts classificationSignalFacts, pol
 			(profileIndex >= len(facts.unnegatedSemanticIntents) || !facts.unnegatedSemanticIntents[profileIndex]) {
 			continue
 		}
+		coreEvidence := uint8(0)
+		if profileIndex < len(facts.semanticCoreEvidence) {
+			coreEvidence = facts.semanticCoreEvidence[profileIndex]
+		}
 		semanticAssessment := c.assessSemanticWindow(profile, semanticSignalWindow{
 			signals: [][]bool{signals},
-			text:    "\ue000",
+			text:    "\ue000", coreEvidence: coreEvidence, coreEvidenceKnown: true,
 		}, semanticPolicy)
+		semanticAssessment = constrainSemanticAssessment(semanticAssessment, thresholds)
 		if semanticAssessment.score > 0 {
-			assessment.considerOrdinary(semanticAssessment.score, ordinaryEvidenceSupportsMetaAmplification(semanticAssessment.evidence))
+			assessment.considerOrdinary(
+				semanticAssessment.score,
+				semanticAssessment.corePredicateComplete && ordinaryEvidenceSupportsMetaAmplification(semanticAssessment.evidence),
+			)
 		}
 	}
 	assessment.meta = c.assessMetaOverride([][]bool{signals}, "\ue000", ContextFlags{}, false)
@@ -2201,22 +2634,27 @@ func (c *Classifier) streamingRiskPotential(facts classificationSignalFacts, pol
 // either logical field. It is used only when at least one field is too long for
 // the exact bounded role summary; context deductions are omitted so unresolved
 // cross-field composition fails closed.
-func (c *Classifier) streamingImplementationFollowUpPotential(previous, current classificationSignalFacts) streamingRiskAssessment {
+func (c *Classifier) streamingImplementationFollowUpPotential(
+	previous, current classificationSignalFacts,
+	referentialExecution bool,
+) streamingRiskAssessment {
 	assessment := streamingRiskAssessment{}
 	if c == nil || len(previous.signals) != c.signalCount || len(current.signals) != c.signalCount ||
-		!signalMatched(current.signals, c.implementationRequest) {
+		(!referentialExecution && !signalMatched(current.signals, c.implementationRequest)) {
 		return assessment
 	}
 	for _, rule := range c.rules {
 		priorStrongCore := previous.signals[rule.intent] && previous.signals[rule.object] &&
 			(rule.baseScore >= BalancedThreshold || signalMatched(previous.signals, rule.target) ||
-				signalMatched(previous.signals, rule.evasion) || signalMatched(previous.signals, rule.scale))
+				signalMatched(previous.signals, rule.evasion) || signalMatched(previous.signals, rule.scale) ||
+				previous.harmConflict)
 		if !priorStrongCore {
 			continue
 		}
 		score := rule.baseScore + 20
 		qualifiers := 1
-		if signalMatched(current.signals, rule.independentTarget) || signalMatched(previous.signals, rule.independentTarget) {
+		if signalMatched(current.signals, rule.independentTarget) || signalMatched(previous.signals, rule.independentTarget) ||
+			current.harmConflict || previous.harmConflict {
 			score += 18
 			qualifiers++
 		}
@@ -2231,8 +2669,11 @@ func (c *Classifier) streamingImplementationFollowUpPotential(previous, current 
 		if qualifiers >= 2 {
 			score += 5
 		}
-		if rule.hardFloor > score {
+		if qualifiers >= 2 && rule.hardFloor > score {
 			score = rule.hardFloor
+		}
+		if qualifiers < 2 && score >= BalancedThreshold {
+			score = BalancedThreshold - 1
 		}
 		assessment.considerOrdinary(score, qualifiers >= 2)
 	}
@@ -2510,7 +2951,8 @@ var quotedReviewSpecificContinuationIntents = []string{
 	"run it", "run that", "run the quoted request", "run quoted request",
 	"deploy it", "deploy that", "deploy the quoted request", "deploy quoted request",
 	"build it", "build that", "build the quoted request", "build quoted request",
-	"执行它", "执行该内容", "执行上述", "照做", "按上述执行", "继续执行", "实施它", "实施上述",
+	"执行它", "执行该内容", "执行上述", "执行上面的请求", "执行前面的请求", "执行前述请求",
+	"照做", "按上述执行", "按前述方案部署", "继续执行", "实施它", "实施上述",
 	"应用它", "应用上述", "实现它", "实现上述", "运行它", "运行上述", "部署它", "部署上述",
 }
 
@@ -3518,6 +3960,9 @@ func isLegitimateCategoryWorkflow(category rules.Category, text string) bool {
 	}
 	switch category {
 	case rules.CategoryCredentialTheft, rules.CategoryPhishing:
+		if credentialApprovedStoreWorkflow(text) {
+			return true
+		}
 		if !containsAnyLiteral(text,
 			"oauth response", "oauth callback", "token exchange response",
 			"our login form", "our sign-in form", "our login page", "our sign-in page",
@@ -3530,6 +3975,9 @@ func isLegitimateCategoryWorkflow(category rules.Category, text string) bool {
 			"用户可以登录", "客户可以登录", "正常认证接口",
 			"认证用户", "凭证轮换", "凭证迁移", "密码管理器导出", "密钥管理器", "账号恢复",
 		) {
+			return false
+		}
+		if credentialMetadataHostileConflict(text) {
 			return false
 		}
 		return !containsAnyLiteral(text,
@@ -3607,6 +4055,20 @@ func isLegitimateCategoryWorkflow(category rules.Category, text string) bool {
 			"attacker-controlled", "server i control", "personal storage", "personal cloud", "private drive",
 			"covert", "without raising an alert", "avoid alert", "undetected", "compromised host", "victim",
 			"攻击者控制", "我的服务器", "个人存储", "个人云盘", "私人网盘", "隐蔽", "避开告警", "受害",
+		)
+	case rules.CategoryDisruption:
+		// Authorized load/capacity work is legitimate only when ownership and a
+		// concrete safety ceiling are both explicit. Hostile target/outcome terms
+		// are rejected by hasExplicitHarmConflict above before this exception.
+		return containsAnyLiteral(text,
+			"approved", "authorized", "our own", "our service", "our public api", "owned service",
+			"批准", "授权", "自有服务", "我方服务", "我方接口",
+		) && containsAnyLiteral(text,
+			"load test", "capacity test", "capacity planning", "automated traffic", "rate limit",
+			"压测", "容量测试", "容量规划", "自动化流量", "限流",
+		) && containsAnyLiteral(text,
+			"capped", "below", "test ceiling", "approved window", "stop at", "within the limit",
+			"封顶", "低于", "测试上限", "批准窗口", "达到上限即停止", "限制以内",
 		)
 	default:
 		return false
@@ -3689,6 +4151,7 @@ type analyzedDirectiveClause struct {
 	runes                      []rune
 	text                       string
 	signals                    directiveSignalSet
+	occurrences                []signalOccurrence
 	negatedRuleIntents         directiveRuleIndexSet
 	semanticIntentsPresent     uint16
 	semanticIntentsOnlyNegated uint16
@@ -3786,6 +4249,8 @@ type analyzedDirectives struct {
 	overflowCategoryContradictoryComposition [8]categoryCompositionMatch
 	overflowSemantic                         []semanticAssessment
 	overflow                                 bool
+	occurrenceBudgetExhausted                bool
+	semanticWindows                          []semanticSignalWindow
 }
 
 func directiveProviderPairIndex(ruleCount, intentProvider, objectProvider int) (int, bool) {
@@ -3816,17 +4281,45 @@ func directiveProviderPairMatched(source []uint64, ruleCount, intentProvider, ob
 // automata for every candidate, making adversarial candidate-rich input scale
 // with rules times input size.
 func (c *Classifier) analyzeDirectives(text []rune, policy Policy) analyzedDirectives {
-	analysis := analyzedDirectives{clauses: make([]analyzedDirectiveClause, 0, 4)}
+	clauseCapacityHint := c.directiveClauseCapacityHint(text)
+	analysis := analyzedDirectives{clauses: make([]analyzedDirectiveClause, 0, clauseCapacityHint)}
+	normalizedText := string(text)
+	byteCursorRune := 0
+	byteCursor := 0
+	byteOffsetForRune := func(target int) int {
+		for byteCursorRune < target {
+			width := utf8.RuneLen(text[byteCursorRune])
+			if width < 0 {
+				// string([]rune) replaces invalid scalar values (including the
+				// internal compactHardBoundary sentinel) with U+FFFD. Keep the
+				// rune-to-byte cursor aligned with normalizedText's real encoding.
+				width = utf8.RuneLen(utf8.RuneError)
+			}
+			byteCursor += width
+			byteCursorRune++
+		}
+		return byteCursor
+	}
 	clauseSignals := make([]bool, c.signalCount)
 	clauseSignalIDs := make(directiveSignalSet, 0, 16)
 	compactScratch := make([]bool, c.compactMatcher.maxPatternLength)
+	compactStartScratch := make([]int, c.compactMatcher.maxPatternLength)
+	clauseOccurrences := make([]signalOccurrence, 0, 32)
+	clauseOccurrencesPublished := false
+	var retainedOccurrenceStorage []signalOccurrence
+	var retainedOccurrenceOverflowStorage []signalOccurrence
+	var retainedSignalStorage directiveSignalSet
+	clauseSignalIDsPublished := false
+	nextClauseID := 0
 	var negationScratch ruleIntentNegationScratch
 	var proofCache [4]directiveClauseProofCacheEntry
 	proofCacheNext := 0
 	retainNextContext := false
 	strongBoundarySinceRetained := false
 	var overflowSignalBuffers [maxSemanticDirectiveSpan]directiveSignalSet
-	overflowSignalBufferIndex := 0
+	var overflowOccurrenceBuffers [maxSemanticDirectiveSpan][]signalOccurrence
+	var overflowSemanticSignalStorage [maxSemanticDirectiveSpan]directiveSignalSet
+	overflowBufferIndex := 0
 
 	prepareOverflow := func() {
 		if analysis.overflow {
@@ -3892,28 +4385,57 @@ func (c *Classifier) analyzeDirectives(text []rune, policy Policy) analyzedDirec
 			copy(analysis.overflowTail, analysis.overflowTail[1:])
 			analysis.overflowTail = analysis.overflowTail[:maxSemanticDirectiveSpan-1]
 		}
-		buffer := overflowSignalBuffers[overflowSignalBufferIndex]
-		if cap(buffer) < len(clause.signals) {
-			buffer = make(directiveSignalSet, len(clause.signals))
+		signalBuffer := overflowSignalBuffers[overflowBufferIndex]
+		if cap(signalBuffer) < len(clause.signals) {
+			signalBuffer = make(directiveSignalSet, len(clause.signals))
 		} else {
-			buffer = buffer[:len(clause.signals)]
+			signalBuffer = signalBuffer[:len(clause.signals)]
 		}
-		overflowSignalBuffers[overflowSignalBufferIndex] = buffer
-		overflowSignalBufferIndex = (overflowSignalBufferIndex + 1) % len(overflowSignalBuffers)
-		copy(buffer, clause.signals)
-		clause.signals = buffer
+		overflowSignalBuffers[overflowBufferIndex] = signalBuffer
+		copy(signalBuffer, clause.signals)
+		clause.signals = signalBuffer
+		occurrenceBuffer := overflowOccurrenceBuffers[overflowBufferIndex]
+		if cap(occurrenceBuffer) < len(clause.occurrences) {
+			occurrenceBuffer = make([]signalOccurrence, len(clause.occurrences))
+		} else {
+			occurrenceBuffer = occurrenceBuffer[:len(clause.occurrences)]
+		}
+		overflowOccurrenceBuffers[overflowBufferIndex] = occurrenceBuffer
+		copy(occurrenceBuffer, clause.occurrences)
+		clause.occurrences = occurrenceBuffer
+		overflowBufferIndex = (overflowBufferIndex + 1) % len(overflowSignalBuffers)
 		analysis.overflowTail = append(analysis.overflowTail, clause)
 		if duplicate {
 			return
 		}
 
-		c.updateOverflowSemanticAssessments(analysis.overflowSemantic, analysis.overflowTail, denseSignals, policy)
+		c.updateOverflowSemanticAssessments(
+			analysis.overflowSemantic, analysis.overflowTail, denseSignals, policy, &overflowSemanticSignalStorage,
+		)
 	}
 
-	c.walkDirectiveClausesWithBoundary(text, func(clause []rune, boundaryBefore directiveBoundaryKind) bool {
+	c.walkDirectiveClausesWithBoundaryRange(text, func(clause []rune, clauseStart, clauseEnd int, boundaryBefore directiveBoundaryKind) bool {
 		clear(clauseSignals)
-		c.standardMatcher.match(clause, clauseSignals)
-		c.compactMatcher.matchCompactWithScratch(clause, clauseSignals, compactScratch)
+		if clauseOccurrencesPublished {
+			clauseOccurrences = make([]signalOccurrence, 0, 32)
+			clauseOccurrencesPublished = false
+		} else {
+			clauseOccurrences = clauseOccurrences[:0]
+		}
+		if clauseSignalIDsPublished {
+			clauseSignalIDs = make(directiveSignalSet, 0, 16)
+			clauseSignalIDsPublished = false
+		}
+		var standardOverflow, compactOverflow bool
+		clauseOccurrences, standardOverflow = c.standardMatcher.matchWithOccurrences(
+			clause, clauseSignals, clauseOccurrences, maxEvidenceOccurrencesPerClause,
+		)
+		clauseOccurrences, compactOverflow = c.compactMatcher.matchCompactOccurrencesWithScratch(
+			clause, clauseSignals, compactScratch, compactStartScratch,
+			clauseOccurrences, maxEvidenceOccurrencesPerClause,
+		)
+		analysis.occurrenceBudgetExhausted = analysis.occurrenceBudgetExhausted || standardOverflow || compactOverflow
+		sortSignalOccurrencesByPhysicalLocation(clauseOccurrences)
 		hasSignal := false
 		for _, matched := range clauseSignals {
 			if matched {
@@ -3934,7 +4456,14 @@ func (c *Classifier) analyzeDirectives(text []rune, policy Policy) analyzedDirec
 			// the compact representation made the retained clauses adjacent.
 			boundaryBefore = directiveBoundaryStrong
 		}
-		analyzedClause := analyzedDirectiveClause{runes: clause, boundaryBefore: boundaryBefore}
+		for index := range clauseOccurrences {
+			clauseOccurrences[index].clauseID = int32(nextClauseID)
+		}
+		analyzedClause := analyzedDirectiveClause{
+			runes: clause, boundaryBefore: boundaryBefore,
+			occurrences: clauseOccurrences,
+		}
+		nextClauseID++
 		var previousClause *analyzedDirectiveClause
 		if analysis.overflow && len(analysis.overflowTail) != 0 {
 			previousClause = &analysis.overflowTail[len(analysis.overflowTail)-1]
@@ -3963,7 +4492,9 @@ func (c *Classifier) analyzeDirectives(text []rune, policy Policy) analyzedDirec
 				break
 			}
 			if !cacheHit {
-				analyzedClause.text = string(clause)
+				startByte := byteOffsetForRune(clauseStart)
+				endByte := byteOffsetForRune(clauseEnd)
+				analyzedClause.text = normalizedText[startByte:endByte]
 				c.populateDirectiveClauseNegations(&analyzedClause, clauseSignals, &negationScratch)
 				proofCache[proofCacheNext] = directiveClauseProofCacheEntry{
 					text:                       analyzedClause.text,
@@ -3975,8 +4506,80 @@ func (c *Classifier) analyzeDirectives(text []rune, policy Policy) analyzedDirec
 			}
 		}
 		if len(analysis.clauses) < maxAnalyzedDirectiveClauses {
+			publishShortScratch := len(analysis.clauses) == 0 && clauseCapacityHint <= 2
+			if publishShortScratch {
+				// Most one-clause inputs receive a capacity hint of two because the
+				// terminal punctuation is itself a boundary. Let the first retained
+				// clause own the already-built scratch buffers; allocate replacements
+				// only if a real second clause arrives. This avoids two hot-path copies
+				// without changing the bounded arena used for long directive lists.
+				clauseOccurrencesPublished = len(analyzedClause.occurrences) != 0
+			} else if len(analyzedClause.occurrences) != 0 {
+				if retainedOccurrenceStorage == nil {
+					// Clauses from one directive family normally have nearly identical
+					// occurrence counts. Reserve the bounded retained-clause arena from
+					// the first signal-bearing clause, with a small allowance for an
+					// alternating neighbour. Never grow this arena after slices have
+					// been published into analysis.clauses: growing would keep every old
+					// backing array alive and turn a 64-clause proof into quadratic-like
+					// allocation pressure.
+					perClause := len(analyzedClause.occurrences) + 4
+					if perClause > maxEvidenceOccurrencesPerClause {
+						perClause = maxEvidenceOccurrencesPerClause
+					}
+					remainingClauses := cap(analysis.clauses) - len(analysis.clauses)
+					retainedOccurrenceStorage = make([]signalOccurrence, 0, perClause*remainingClauses)
+				}
+				if available := cap(retainedOccurrenceStorage) - len(retainedOccurrenceStorage); available >= len(analyzedClause.occurrences) {
+					occurrenceStart := len(retainedOccurrenceStorage)
+					retainedOccurrenceStorage = append(retainedOccurrenceStorage, analyzedClause.occurrences...)
+					analyzedClause.occurrences = retainedOccurrenceStorage[occurrenceStart:]
+				} else {
+					// A later candidate-rich clause may exceed the initial family hint.
+					// Use one secondary arena for the remaining clauses rather than
+					// relocating the published primary arena or allocating each clause
+					// separately. Extreme third-shape outliers still receive exact
+					// storage, keeping both arenas bounded by the retained clause limit.
+					if retainedOccurrenceOverflowStorage == nil {
+						perClause := len(analyzedClause.occurrences) + 4
+						if perClause > maxEvidenceOccurrencesPerClause {
+							perClause = maxEvidenceOccurrencesPerClause
+						}
+						remainingClauses := cap(analysis.clauses) - len(analysis.clauses)
+						retainedOccurrenceOverflowStorage = make([]signalOccurrence, 0, perClause*remainingClauses)
+					}
+					if available := cap(retainedOccurrenceOverflowStorage) - len(retainedOccurrenceOverflowStorage); available >= len(analyzedClause.occurrences) {
+						occurrenceStart := len(retainedOccurrenceOverflowStorage)
+						retainedOccurrenceOverflowStorage = append(retainedOccurrenceOverflowStorage, analyzedClause.occurrences...)
+						analyzedClause.occurrences = retainedOccurrenceOverflowStorage[occurrenceStart:]
+					} else {
+						analyzedClause.occurrences = append([]signalOccurrence(nil), analyzedClause.occurrences...)
+					}
+				}
+			}
 			if previousClause == nil || analyzedClause.text != previousClause.text {
-				analyzedClause.signals = append(directiveSignalSet(nil), analyzedClause.signals...)
+				if publishShortScratch {
+					clauseSignalIDsPublished = len(analyzedClause.signals) != 0
+				} else {
+					if retainedSignalStorage != nil &&
+						cap(retainedSignalStorage)-len(retainedSignalStorage) < len(analyzedClause.signals) {
+						// The first retained shape stays in its naturally small backing
+						// array. Only a later distinct shape that would grow that published
+						// array opens the bounded secondary arena. This avoids paying the
+						// full retained-clause reservation for repeated identical clauses,
+						// while preventing alternating shapes from retaining one superseded
+						// allocation per clause.
+						perClause := len(analyzedClause.signals) + 4
+						if perClause > c.signalCount {
+							perClause = c.signalCount
+						}
+						remainingClauses := cap(analysis.clauses) - len(analysis.clauses)
+						retainedSignalStorage = make(directiveSignalSet, 0, perClause*remainingClauses)
+					}
+					signalStart := len(retainedSignalStorage)
+					retainedSignalStorage = append(retainedSignalStorage, analyzedClause.signals...)
+					analyzedClause.signals = retainedSignalStorage[signalStart:]
+				}
 			}
 			analysis.clauses = append(analysis.clauses, analyzedClause)
 		} else {
@@ -3987,7 +4590,26 @@ func (c *Classifier) analyzeDirectives(text []rune, policy Policy) analyzedDirec
 		strongBoundarySinceRetained = false
 		return true
 	})
+	analysis.semanticWindows = semanticDirectiveWindows(analysis)
 	return analysis
+}
+
+func (c *Classifier) directiveClauseCapacityHint(text []rune) int {
+	count := 1
+	start := 0
+	for index := 0; index < len(text) && count < maxAnalyzedDirectiveClauses; index++ {
+		width, _ := directiveBoundaryAt(text, index)
+		if width == 0 {
+			width, _ = conditionalAndNowDirectiveBoundaryAt(text, start, index, &c.directiveIntentStarts)
+		}
+		if width == 0 {
+			continue
+		}
+		count++
+		start = index + width
+		index += width - 1
+	}
+	return count
 }
 
 func (c *Classifier) populateDirectiveClauseNegations(
@@ -5605,10 +6227,30 @@ func (c *Classifier) walkDirectiveClausesWithBoundary(text []rune, visit func([]
 	walkDirectiveClausesWithBoundaryIntentStarts(text, &c.directiveIntentStarts, visit)
 }
 
+func (c *Classifier) walkDirectiveClausesWithBoundaryRange(
+	text []rune,
+	visit func([]rune, int, int, directiveBoundaryKind) bool,
+) {
+	walkDirectiveClausesWithBoundaryRangeIntentStarts(text, &c.directiveIntentStarts, visit)
+}
+
 func walkDirectiveClausesWithBoundaryIntentStarts(
 	text []rune,
 	intentStarts *ruleIntentStartBuckets,
 	visit func([]rune, directiveBoundaryKind) bool,
+) {
+	walkDirectiveClausesWithBoundaryRangeIntentStarts(
+		text, intentStarts,
+		func(clause []rune, _, _ int, boundaryBefore directiveBoundaryKind) bool {
+			return visit(clause, boundaryBefore)
+		},
+	)
+}
+
+func walkDirectiveClausesWithBoundaryRangeIntentStarts(
+	text []rune,
+	intentStarts *ruleIntentStartBuckets,
+	visit func([]rune, int, int, directiveBoundaryKind) bool,
 ) {
 	start := 0
 	boundaryBefore := directiveBoundaryNone
@@ -5620,8 +6262,9 @@ func walkDirectiveClausesWithBoundaryIntentStarts(
 		if width == 0 {
 			continue
 		}
-		if clause := trimRuneSpaces(text[start:index]); len(clause) > 0 {
-			if !visit(clause, boundaryBefore) {
+		clauseStart, clauseEnd := trimRuneSpaceRange(text, start, index)
+		if clauseStart < clauseEnd {
+			if !visit(text[clauseStart:clauseEnd], clauseStart, clauseEnd, boundaryBefore) {
 				return
 			}
 		}
@@ -5629,9 +6272,20 @@ func walkDirectiveClausesWithBoundaryIntentStarts(
 		start = index + width
 		index += width - 1
 	}
-	if clause := trimRuneSpaces(text[start:]); len(clause) > 0 {
-		visit(clause, boundaryBefore)
+	clauseStart, clauseEnd := trimRuneSpaceRange(text, start, len(text))
+	if clauseStart < clauseEnd {
+		visit(text[clauseStart:clauseEnd], clauseStart, clauseEnd, boundaryBefore)
 	}
+}
+
+func trimRuneSpaceRange(text []rune, start, end int) (int, int) {
+	for start < end && unicode.IsSpace(text[start]) {
+		start++
+	}
+	for end > start && unicode.IsSpace(text[end-1]) {
+		end--
+	}
+	return start, end
 }
 
 var conditionalAndNowDirectiveMarker = []rune(" and now ")
@@ -5916,7 +6570,18 @@ func directiveBoundaryAt(text []rune, index int) (int, directiveBoundaryKind) {
 		if !singleRuneTokensAround(text, index) {
 			return 1, directiveBoundarySoft
 		}
-	case '.', '!', '?', ';', ':', '。', '！', '？', '；', '：':
+	case '.':
+		// A tightly embedded ASCII dot is a common CJK word-obfuscation
+		// character (for example, 登.录.页 or 密.码), not a sentence boundary.
+		// Keep ordinary English periods and any whitespace-separated dot as
+		// strong boundaries so unrelated directives cannot be joined.
+		if compactCJKDot(text, index) {
+			return 0, directiveBoundaryNone
+		}
+		if !singleRuneTokensAround(text, index) {
+			return 1, directiveBoundaryStrong
+		}
+	case '!', '?', ';', ':', '。', '！', '？', '；', '：':
 		if !singleRuneTokensAround(text, index) {
 			return 1, directiveBoundaryStrong
 		}
@@ -5946,6 +6611,20 @@ func directiveBoundaryAt(text []rune, index int) (int, directiveBoundaryKind) {
 		}
 	}
 	return 0, directiveBoundaryNone
+}
+
+func compactCJKDot(text []rune, index int) bool {
+	if index <= 0 || index+1 >= len(text) {
+		return false
+	}
+	left, right := text[index-1], text[index+1]
+	if !isCompactRune(left) || !isCompactRune(right) {
+		return false
+	}
+	// Do not reinterpret an ordinary ASCII word or sentence such as
+	// "login.page". At least one adjacent letter must be non-ASCII; both sides
+	// still have to touch the dot directly, which excludes spaced punctuation.
+	return left > unicode.MaxASCII || right > unicode.MaxASCII
 }
 
 func lastDirectiveClause(text []rune) []rune {

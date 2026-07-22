@@ -38,12 +38,12 @@ const (
 	defaultManagementRawCaptureLimit = 20
 	maxManagementRawCaptureLimit     = 100
 	maxManagementRawPreviewBytes     = audit.RawCaptureQueryPreviewBudgetBytes
-	managementRawPreviewTransport    = "cpa-v7.2.88-html-escaped-utf8"
+	managementRawPreviewTransport    = "cpa-json-html-escaped-utf8"
 	managementRawPreviewB64Encoding  = "base64-standard-utf8"
 	managementRawPreviewRendering    = "text-only-never-html"
-	managementRawCaptureSchema       = 2
+	managementRawCaptureSchema       = 3
 	managementHealthProbePath        = managementBasePath + "/health/probe"
-	managementAuthDocumentation      = "CPA v7.2.88 management middleware is authoritative; the plugin additionally rejects callbacks without a management credential header"
+	managementAuthDocumentation      = "CPA v7.2.95 management middleware is authoritative; the plugin additionally rejects callbacks without a management credential header"
 )
 
 type managementRoute struct {
@@ -54,7 +54,7 @@ type managementRoute struct {
 }
 
 // managementRawCapture preserves the readable preview for existing operators
-// and adds a canonical transport-safe representation. CPA v7.2.88 HTML-escapes
+// and adds a canonical transport-safe representation. CPA v7.2.95 HTML-escapes
 // every JSON string returned by ServeManagementHTTP, so raw_preview_b64 is the
 // only byte-stable representation across the plugin/Host boundary.
 type managementRawCapture struct {
@@ -344,7 +344,7 @@ func (p *Plugin) managementStatus(state *runtimeState) []byte {
 		"conflict_detection": map[string]any{
 			"router_enumeration_supported":           false,
 			"duplicate_plugin_binary_scan_supported": false,
-			"reason":                                 "CPA v7.2.88 plugin ABI exposes neither the loaded router ordering nor the plugin directory inventory",
+			"reason":                                 "CPA v7.2.95 plugin ABI exposes neither the loaded router ordering nor the plugin directory inventory",
 		},
 	}
 	if state != nil {
@@ -481,7 +481,7 @@ func managementRawCaptureResponseDefaults(enabled bool, requestedLimit int) mana
 }
 
 // managementBoundRawCaptureResponse selects the largest newest-first prefix
-// whose complete CPA v7.2.88 Host-visible JSON body fits the fixed response
+// whose complete CPA v7.2.95 Host-visible JSON body fits the fixed response
 // budget. Each sensitive row is counted once; only the small metadata envelope
 // is re-encoded while the prefix grows.
 func managementBoundRawCaptureResponse(page audit.RawCapturePage, requestedLimit int) (managementRawCaptureResponse, error) {
@@ -630,6 +630,9 @@ func managementRawCaptureCPAHostJSONBytes(capture managementRawCapture) (int, er
 		}
 		addField(key, len("false"))
 	}
+	addInt := func(key string, value int) {
+		addField(key, len(strconv.Itoa(value)))
+	}
 
 	addString("id", capture.ID)
 	addString("event_id", capture.EventID)
@@ -648,6 +651,10 @@ func managementRawCaptureCPAHostJSONBytes(capture managementRawCapture) (int, er
 	addString("decision", capture.Decision)
 	addBool("truncated", capture.Truncated)
 	addBool("redacted", capture.Redacted)
+	addBool("preview_truncated", capture.PreviewTruncated)
+	addBool("redaction_applied", capture.RedactionApplied)
+	addInt("redaction_pattern_hits", capture.RedactionPatternHits)
+	addString("redaction_version", capture.RedactionVersion)
 	addString("raw_preview", capture.RawPreview)
 	addString("raw_sha256", capture.RawSHA256)
 	addString("raw_preview_b64", capture.RawPreviewB64)
@@ -691,7 +698,7 @@ func managementRawCaptureResponseBodies(response managementRawCaptureResponse) (
 	return body, len(hostBody), nil
 }
 
-// managementCPAHostSanitizeJSON mirrors CPA v7.2.88
+// managementCPAHostSanitizeJSON mirrors CPA v7.2.95
 // internal/htmlsanitize.JSONBody. The compatibility contract module compares
 // this prediction with the real Host ServeManagementHTTP behavior.
 func managementCPAHostSanitizeJSON(body []byte) ([]byte, bool) {

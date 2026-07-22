@@ -12,8 +12,8 @@ candidate_run_id=29578024185
 so_sha256=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 store_zip_sha256=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 tag=v0.15-dev.round6.2
-cpa_version=v7.2.88
-cpa_commit=93d74a890a44802f656d7f39a573916b2611896e
+cpa_version=v7.2.95
+cpa_commit=f71ec0eb6776854457892452cf28c47f0d658251
 
 export EXPECTED_TAG="$tag"
 export EXPECTED_COMMIT="$commit"

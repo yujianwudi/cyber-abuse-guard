@@ -195,6 +195,49 @@ func (m *literalMatcher) match(text []rune, signals []bool) {
 	}
 }
 
+// matchWithOccurrences mirrors match while retaining a bounded set of
+// physical spans. Callers use the spans only for one-occurrence/one-dimension
+// ownership; request text is never copied into the occurrence record.
+func (m *literalMatcher) matchWithOccurrences(text []rune, signals []bool, occurrences []signalOccurrence, limit int) ([]signalOccurrence, bool) {
+	if m == nil || len(text) == 0 {
+		return occurrences, false
+	}
+	state := 0
+	overflow := false
+	for index, r := range text {
+		for {
+			if next, ok := m.nodes[state].next[r]; ok {
+				state = next
+				break
+			}
+			if state == 0 {
+				break
+			}
+			state = m.nodes[state].failure
+		}
+		for _, patternIndex := range m.nodes[state].outputs {
+			pattern := m.patterns[patternIndex]
+			start := index - pattern.length + 1
+			if start < 0 || pattern.ascii && !hasWordBoundaries(text, start, index) {
+				continue
+			}
+			for _, signalID := range pattern.signalIDs {
+				signals[signalID] = true
+				occurrence := signalOccurrence{signalID: int32(signalID), start: int32(start), end: int32(index + 1)}
+				if signalOccurrenceAlreadyRecorded(occurrences, occurrence) {
+					continue
+				}
+				if len(occurrences) >= limit {
+					overflow = true
+					continue
+				}
+				occurrences = append(occurrences, occurrence)
+			}
+		}
+	}
+	return occurrences, overflow
+}
+
 func (m *literalMatcher) matchCompact(text []rune, signals []bool) {
 	m.matchCompactWithScratch(text, signals, nil)
 }
@@ -248,6 +291,98 @@ func (m *literalMatcher) matchCompactWithScratch(text []rune, signals []bool, be
 		}
 		compactIndex++
 	}
+}
+
+// matchCompactOccurrencesWithScratch is the compact-view counterpart to
+// matchWithOccurrences. The ring maps compact indexes back to normalized rune
+// offsets so punctuated/obfuscated evidence still has a single physical owner.
+func (m *literalMatcher) matchCompactOccurrencesWithScratch(
+	text []rune,
+	signals []bool,
+	beforeRing []bool,
+	startRing []int,
+	occurrences []signalOccurrence,
+	limit int,
+) ([]signalOccurrence, bool) {
+	if m == nil || len(text) == 0 || m.maxPatternLength == 0 {
+		return occurrences, false
+	}
+	if len(beforeRing) < m.maxPatternLength {
+		beforeRing = make([]bool, m.maxPatternLength)
+	} else {
+		beforeRing = beforeRing[:m.maxPatternLength]
+	}
+	if len(startRing) < m.maxPatternLength {
+		startRing = make([]int, m.maxPatternLength)
+	} else {
+		startRing = startRing[:m.maxPatternLength]
+	}
+	state := 0
+	compactIndex := 0
+	overflow := false
+	for index, r := range text {
+		if isHardCompactSeparator(text, index) {
+			state = 0
+			compactIndex = 0
+			continue
+		}
+		if !isCompactRune(r) {
+			continue
+		}
+		ringIndex := compactIndex % m.maxPatternLength
+		beforeRing[ringIndex] = index == 0 || !isASCIILetterOrDigit(text[index-1])
+		startRing[ringIndex] = index
+		for {
+			if next, ok := m.nodes[state].next[r]; ok {
+				state = next
+				break
+			}
+			if state == 0 {
+				break
+			}
+			state = m.nodes[state].failure
+		}
+		after := index+1 == len(text) || !isASCIILetterOrDigit(text[index+1])
+		for _, patternIndex := range m.nodes[state].outputs {
+			pattern := m.patterns[patternIndex]
+			compactStart := compactIndex - pattern.length + 1
+			if compactStart < 0 || pattern.ascii && (!beforeRing[compactStart%m.maxPatternLength] || !after) {
+				continue
+			}
+			originalStart := startRing[compactStart%m.maxPatternLength]
+			for _, signalID := range pattern.signalIDs {
+				signals[signalID] = true
+				occurrence := signalOccurrence{
+					signalID: int32(signalID), start: int32(originalStart), end: int32(index + 1), compact: true,
+				}
+				if signalOccurrenceAlreadyRecorded(occurrences, occurrence) {
+					continue
+				}
+				if len(occurrences) >= limit {
+					overflow = true
+					continue
+				}
+				occurrences = append(occurrences, occurrence)
+			}
+		}
+		compactIndex++
+	}
+	return occurrences, overflow
+}
+
+// signalOccurrenceAlreadyRecorded prevents the standard and compact matcher
+// views from charging the same physical signal span twice against the bounded
+// evidence budget. The compact bit records how a span was discovered; it is
+// not part of the occurrence's physical identity.
+func signalOccurrenceAlreadyRecorded(occurrences []signalOccurrence, candidate signalOccurrence) bool {
+	for _, occurrence := range occurrences {
+		if occurrence.signalID == candidate.signalID &&
+			occurrence.clauseID == candidate.clauseID &&
+			occurrence.start == candidate.start && occurrence.end == candidate.end {
+			return true
+		}
+	}
+	return false
 }
 
 func isHardCompactSeparator(text []rune, index int) bool {

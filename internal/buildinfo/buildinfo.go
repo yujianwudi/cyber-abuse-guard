@@ -9,7 +9,7 @@ const StreamingScannerIdentity = "streaming-scanner-v1"
 var (
 	Version        = "0.16"
 	Commit         = "unknown"
-	RulesetVersion = "1.0.8"
+	RulesetVersion = "1.0.9"
 	RulesetSHA256  = "unknown"
 	Dirty          = "true"
 )

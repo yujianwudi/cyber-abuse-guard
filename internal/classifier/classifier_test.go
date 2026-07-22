@@ -627,6 +627,12 @@ func TestCandidateRichMaxPartsAllocationBound(t *testing.T) {
 	if got := c.Analyze(parts); got.Action != ActionBlock {
 		t.Fatalf("candidate-rich max-parts input was not blocked: %+v", got)
 	}
+	if raceEnabled {
+		// The race runtime adds nondeterministic bookkeeping allocations to this
+		// hot path. Keep the security assertion above in the race suite, and leave
+		// the exact allocation budget to the ordinary Linux test lane.
+		return
+	}
 	allocations := testing.AllocsPerRun(1, func() {
 		_ = c.Analyze(parts)
 	})

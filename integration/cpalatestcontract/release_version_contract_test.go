@@ -11,14 +11,14 @@ import (
 )
 
 const (
-	exactGuardVersion       = "0.15"
-	exactGuardReleaseTag    = "v0.15"
-	exactGuardRCVersion     = "0.15-rc.4"
-	exactGuardRCReleaseTag  = "v0.15-rc.4"
-	localGuardRCVersion     = "0.16-rc.1"
-	localGuardRCReleaseTag  = "v0.16-rc.1"
-	unsupportedVersionAlias = "0.15.0"
-	guardPluginID           = "cyber-abuse-guard"
+	exactGuardVersion           = "0.15"
+	exactGuardReleaseTag        = "v0.15"
+	historicalGuardRCVersion    = "0.15-rc.4"
+	historicalGuardRCReleaseTag = "v0.15-rc.4"
+	round8GuardRCVersion        = "0.16-rc.2"
+	round8GuardRCReleaseTag     = "v0.16-rc.2"
+	unsupportedVersionAlias     = "0.15.0"
+	guardPluginID               = "cyber-abuse-guard"
 )
 
 func TestExactGuardV015PluginStoreContract(t *testing.T) {
@@ -83,15 +83,15 @@ func TestExactGuardV015PluginStoreContract(t *testing.T) {
 		profile.Version, exactGuardReleaseTag, exactGuardVersion, archiveName, exactLibraryName, aliasVersion, errAlias)
 }
 
-func TestExactGuardV015RC4PluginStoreContract(t *testing.T) {
+func TestHistoricalGuardV015RC4PluginStoreContract(t *testing.T) {
 	profile := selectedCPACompatibilityProfile(t)
 
-	version, errVersion := pluginstore.ReleaseVersion(pluginstore.Release{TagName: exactGuardRCReleaseTag})
+	version, errVersion := pluginstore.ReleaseVersion(pluginstore.Release{TagName: historicalGuardRCReleaseTag})
 	if errVersion != nil {
-		t.Fatalf("%s ReleaseVersion(%q) error = %v", profile.Version, exactGuardRCReleaseTag, errVersion)
+		t.Fatalf("%s ReleaseVersion(%q) error = %v", profile.Version, historicalGuardRCReleaseTag, errVersion)
 	}
-	if version != exactGuardRCVersion {
-		t.Fatalf("%s ReleaseVersion(%q) = %q, want %q", profile.Version, exactGuardRCReleaseTag, version, exactGuardRCVersion)
+	if version != historicalGuardRCVersion {
+		t.Fatalf("%s ReleaseVersion(%q) = %q, want %q", profile.Version, historicalGuardRCReleaseTag, version, historicalGuardRCVersion)
 	}
 
 	archiveName := pluginstore.ArchiveName(guardPluginID, version, "linux", "amd64")
@@ -115,32 +115,32 @@ func TestExactGuardV015RC4PluginStoreContract(t *testing.T) {
 		t.Fatalf("%s InstallArchive() error = %v", profile.Version, errInstall)
 	}
 	wantTarget := filepath.Join(pluginsDir, "linux", "amd64", libraryName)
-	if result.Version != exactGuardRCVersion || result.Path != wantTarget {
-		t.Fatalf("%s InstallArchive() result = %#v, want version=%q path=%q", profile.Version, result, exactGuardRCVersion, wantTarget)
+	if result.Version != historicalGuardRCVersion || result.Path != wantTarget {
+		t.Fatalf("%s InstallArchive() result = %#v, want version=%q path=%q", profile.Version, result, historicalGuardRCVersion, wantTarget)
 	}
 
-	t.Logf("CPA %s RC release contract PASS: tag=%s version=%s archive=%s target=%s",
-		profile.Version, exactGuardRCReleaseTag, exactGuardRCVersion, archiveName, libraryName)
+	t.Logf("CPA %s historical RC release contract PASS: tag=%s version=%s archive=%s target=%s",
+		profile.Version, historicalGuardRCReleaseTag, historicalGuardRCVersion, archiveName, libraryName)
 }
 
-func TestLocalGuardV016RC1PluginStoreContract(t *testing.T) {
+func TestRound8GuardV016RC2PluginStoreContract(t *testing.T) {
 	profile := selectedCPACompatibilityProfile(t)
 
-	version, errVersion := pluginstore.ReleaseVersion(pluginstore.Release{TagName: localGuardRCReleaseTag})
+	version, errVersion := pluginstore.ReleaseVersion(pluginstore.Release{TagName: round8GuardRCReleaseTag})
 	if errVersion != nil {
-		t.Fatalf("%s ReleaseVersion(%q) error = %v", profile.Version, localGuardRCReleaseTag, errVersion)
+		t.Fatalf("%s ReleaseVersion(%q) error = %v", profile.Version, round8GuardRCReleaseTag, errVersion)
 	}
-	if version != localGuardRCVersion {
-		t.Fatalf("%s ReleaseVersion(%q) = %q, want %q", profile.Version, localGuardRCReleaseTag, version, localGuardRCVersion)
+	if version != round8GuardRCVersion {
+		t.Fatalf("%s ReleaseVersion(%q) = %q, want %q", profile.Version, round8GuardRCReleaseTag, version, round8GuardRCVersion)
 	}
 
 	archiveName := pluginstore.ArchiveName(guardPluginID, version, "linux", "amd64")
-	wantArchiveName := "cyber-abuse-guard_0.16-rc.1_linux_amd64.zip"
+	wantArchiveName := "cyber-abuse-guard_0.16-rc.2_linux_amd64.zip"
 	if archiveName != wantArchiveName {
 		t.Fatalf("%s ArchiveName() = %q, want %q", profile.Version, archiveName, wantArchiveName)
 	}
 
-	libraryName := "cyber-abuse-guard-v0.16-rc.1.so"
+	libraryName := "cyber-abuse-guard-v0.16-rc.2.so"
 	archiveData := makeReleaseVersionContractArchive(t, libraryName)
 	pluginsDir := t.TempDir()
 	result, errInstall := pluginstore.InstallArchive(archiveData, pluginstore.Plugin{
@@ -155,12 +155,12 @@ func TestLocalGuardV016RC1PluginStoreContract(t *testing.T) {
 		t.Fatalf("%s InstallArchive() error = %v", profile.Version, errInstall)
 	}
 	wantTarget := filepath.Join(pluginsDir, "linux", "amd64", libraryName)
-	if result.Version != localGuardRCVersion || result.Path != wantTarget {
-		t.Fatalf("%s InstallArchive() result = %#v, want version=%q path=%q", profile.Version, result, localGuardRCVersion, wantTarget)
+	if result.Version != round8GuardRCVersion || result.Path != wantTarget {
+		t.Fatalf("%s InstallArchive() result = %#v, want version=%q path=%q", profile.Version, result, round8GuardRCVersion, wantTarget)
 	}
 
-	t.Logf("CPA %s local RC contract PASS: tag=%s version=%s archive=%s target=%s",
-		profile.Version, localGuardRCReleaseTag, localGuardRCVersion, archiveName, libraryName)
+	t.Logf("CPA %s candidate RC contract PASS: tag=%s version=%s archive=%s target=%s",
+		profile.Version, round8GuardRCReleaseTag, round8GuardRCVersion, archiveName, libraryName)
 }
 
 func makeReleaseVersionContractArchive(t *testing.T, libraryName string) []byte {

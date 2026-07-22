@@ -1,21 +1,17 @@
 # CPA Cyber Abuse Guard
 
 ```text
-current_classifier_policy_version: classifier-policy-v6
-current_classifier_policy_sha256: ece497210db938528cb166a34f2ce3013324b792a7eedf276a96fa5d256001d4
+current_classifier_policy_version: classifier-policy-v7
+current_classifier_policy_sha256: ea8c4dcfacacc6478f86fd2ca5de96d667ae98f2fc6ff0c83d8e6092e9f6a82d
 ```
 
-> **Current development state:** a local Linux amd64 `v0.16-rc.1` core package
-> has been built from exact source version `0.16` for the pinned CPA v7.2.88
-> contract. Its manifest binds local annotated tag object `4c04e465`, commit
-> `7b2422e`, and tree `d586824e`. It is not a remote tag, GitHub Release,
-> successful GitHub Actions artifact, production deployment, or new CPA Host
-> attestation. Exact-main CI run
-> [`29799561002`](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29799561002)
-> failed in both attempts and produced no Actions artifact. The current P1-P2
-> hardening branch is newer than that local package and has passed the complete
-> local Linux development gate set, but it is not included in those package
-> hashes and has no GitHub Actions, release, or real-Host evidence.
+> **Current development state:** Round 8 prepares a Linux amd64
+> `v0.16-rc.2` prerelease candidate for production false-positive governance and
+> Balanced re-admission review. The fixed source/compile target is CPA
+> `v7.2.95` only. No candidate tag, Release, or
+> stable `v0.16` is created by the source changes alone. Counted-Mock real-Host
+> validation and an independent audit are still required, production approval
+> has not been granted, and production Balanced must remain gated.
 
 [![Historical CI](https://img.shields.io/badge/historical_CI-v0.15-blue)](https://github.com/yujianwudi/cyber-abuse-guard/actions/workflows/ci.yml)
 [![Go](https://img.shields.io/badge/Go-1.26.4-00ADD8?logo=go&logoColor=white)](go.mod)
@@ -48,23 +44,23 @@ classifier.
 
 | Item | State |
 |---|---|
-| Source version / local RC identity | `0.16` / local annotated tag `v0.16-rc.1` (never `v0.16-rc1`), tag object `4c04e465ba10815e6ee7261e86807556c2e86102`, commit `7b2422ed30c11d405d05bcb6b46a2527eed6471b`, tree `d586824ed7f273e9f7f49f82d5ea0eb24bdd2da9` |
-| Local package evidence | Generated under ignored local path `dist/v0.16-rc.1`; the delivered `local-rc-manifest.json` and checksums bind the SO (`9d0ee747491dedeb83f3b3e98137d879dbaba5818e7a6922f9cf1f61d407e685`) and CPA Store ZIP (`86e9eba5265d5f2bb737ec41d5ed8ada51bf352b3833c2d985d3f754963540f7`) |
-| Local package source gates (`7b2422e`) | `make test`, `make round6-vet`, format/module checks, release-document consistency, and 154 safe-gate contract tests are recorded as passing in the local manifest; later hardening changes require fresh evidence |
-| Post-package P1-P2 hardening | Branch `fix/p1-p2-hardening-v016`; complete local Linux test/race/vet/script/safe-gate/benchmark and CPA v7.2.88 source-overlay checks pass as development self-checks, but are not included in the package hashes |
-| Exact-main GitHub CI | **FAILED — run 29799561002, two attempts, zero Actions artifacts.** Attempt 1 failed in `fuzz-smoke` because `FuzzExtractText` exceeded its context deadline. Attempt 2 passed that step, then failed in `operational-script-security` when the Round 6 document-consistency fixture rejected a document mutation |
-| GitHub publication | No remote `v0.16-rc.1` tag and no corresponding GitHub Release |
-| CPA compatibility | Pinned v7.2.88 module, checksums, compile probes, registration, role-aware routing, and Store contracts pass; the final repeated direct Git Origin refresh timed out and is not called a remote PASS |
-| v0.16 workflows | Existing candidate/RC/formal workflows are historical v0.15 machinery and have **NOT BEEN MIGRATED** to v0.16 |
+| Source version / RC target | `0.16` / `v0.16-rc.2` prerelease only; exact tag, commit, tree, and artifact hashes must come from the future clean release run |
+| Previous local package | `v0.16-rc.1` is historical incident evidence only and must not be overwritten, relabeled, or treated as Round 8 output |
+| GitHub publication | No Round 8 tag or Release is claimed by this branch; the RC workflow may publish only a non-latest prerelease after exact-main gates pass |
+| CPA source/compile target | `v7.2.95` (`f71ec0eb6776854457892452cf28c47f0d658251`) |
+| CPA Host + counted Mock | **NOT RUN / SERVER SANDBOX REQUIRED** for the fixed v7.2.95 identity |
+| Independent audit | **REQUIRED / NOT PROVIDED**; development self-tests do not satisfy this gate |
+| Production approval | **NOT GRANTED**; there is no stable `v0.16` and no automatic Balanced re-admission |
+| v0.16 workflows | `release-rc.yml` is migrated to `v0.16-rc.2`; candidate/formal/promotion workflows remain historical v0.15 machinery and do not authorize stable v0.16 |
 | Static analysis governance | `.github/workflows/codeql.yml` performs minimal-permission Go analysis on Ubuntu within the reviewed sparse source boundary; CodeQL results do not authorize a release |
 | Validation platform | Linux amd64 only; emitted numeric GLIBC ABI versions must be `<= 2.34` |
 | Out of scope | Windows, macOS, musl/Alpine, local deployment, production validation |
-| CPA Host matrix | Active validation and the supported release target are pinned to CPA v7.2.88 (`93d74a890a44802f656d7f39a573916b2611896e`); owner-operated isolated Host + Mock-upstream evidence is **NOT RUN / PENDING** |
+| CPA Host matrix | CPA v7.2.95, Linux amd64, counted Mock upstream; external evidence is **NOT RUN / PENDING** |
 | Production | Not accessed or modified; no production request, audit database, credential, HMAC key, account pool, or real Provider was used |
 | Scanner identity | `streaming-scanner-v1` |
-| Classifier policy | `classifier-policy-v6` / `ece497210db938528cb166a34f2ce3013324b792a7eedf276a96fa5d256001d4` |
-| Embedded YAML ruleset | `1.0.8` / `1d908c8c631bc6f72e7ec6b098bea49c4923580766859393d0be48c8c00c6d7d` |
-| Audit schema | v4; new capture writes are default-off and disable transitions are purge-gated |
+| Classifier policy | `classifier-policy-v7`; final SHA-256 must bind the exact release commit |
+| Embedded YAML ruleset | `1.0.9`; final SHA-256 must bind the exact release commit |
+| Audit schema | v5; privacy-safe decision explanations and TTL deduplication by an internal exact request-body SHA-256 are added without enabling raw capture or exposing `request_hash` by default |
 | Code review | Automated review is advisory; no independent approval is claimed |
 
 ## Historical v0.15 release record
@@ -155,7 +151,7 @@ opaque-media dispositions keep the full configured audit path.
 
 Repository-neutral regressions derived from four public prompt-override source
 pins cover high-authority `instructions`, Chat and Responses tool descriptions,
-CPA v7.2.88 Codex Desktop `additional_tools`, assistant/tool history, defensive
+CPA v7.2.95 Codex Desktop `additional_tools`, assistant/tool history, defensive
 domain catalogs, 1,397-17,166 decoded-byte templates, and the 16 KiB boundary
 without adding repository-name signatures or complete third-party prompts. See the
 [public jailbreak repository review](docs/reports/PUBLIC_JAILBREAK_REPOSITORY_REVIEW.md).
@@ -281,7 +277,7 @@ curl -H "X-Management-Key: $CPA_MANAGEMENT_KEY" \
   "http://127.0.0.1:8317/v0/management/plugins/cyber-abuse-guard/raw-captures?limit=20"
 ```
 
-CPA v7.2.88 HTML-escapes the legacy `raw_preview` string. That field remains
+CPA v7.2.95 HTML-escapes the legacy `raw_preview` string. That field remains
 available for compatibility but is explicitly deprecated. New consumers should
 use the canonical `raw_preview_b64` field when byte-stable review text is
 required. Base64 is transport encoding, not encryption or redaction: decoded
@@ -311,7 +307,7 @@ not describe an available v0.16 workflow.
 | RC4 exact-main CI | Must be a completed successful `push` run of `ci.yml` for the exact tagged `main` commit and is revalidated before checkout |
 | Source-only `v0.15-rc.1` tag CI | [29630926354](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29630926354) **SUCCESS** for `6782dfa` / tree `a8edbe2` |
 | Private untagged clean candidate Actions artifact | **NOT CREATED / PENDING**; must bind one final commit/tree and emit `candidate-manifest.json` |
-| CPA v7.2.88 Host + Mock upstream | **NOT RUN / PENDING** |
+| CPA v7.2.95 Host + Mock upstream | **NOT RUN / PENDING** |
 | Independent source/artifact/Host audit | **NOT RUN / PENDING** |
 | Candidate-bound external evaluation-v11 or later | **NOT RUN / PENDING**; must be first-and-only `CONSUMED / PASS` for the exact candidate |
 | Annotated `v0.15-dev.round6[.N]` prerelease | Optional and blocked until Host, independent audit, and candidate-level evaluation pass; never a formal release |
@@ -345,7 +341,7 @@ The historical v0.15 pre-publication evidence chain was designed as follows:
    deployment or release approval.
 2. A manual, private, **untagged** GitHub Actions dispatch from `main` builds clean exact-source
    Linux amd64 candidate bytes. Its artifact is not a GitHub Release and expires.
-3. The CPA v7.2.88 Host + Mock record, the independent
+3. The CPA v7.2.95 Host + Mock record, the independent
    audit, and a candidate-bound external `evaluation-v11` or later
    `CONSUMED / PASS` report must all bind the same candidate identity.
    The Host identity and evidence hash are carried by attestation schema v2 as
@@ -378,11 +374,11 @@ The actual 2026-07-20 v0.15 publication did not complete that protected chain;
 its owner-reported sandbox result and manual-build disclosure live in the
 GitHub Release notes and are not upgraded here into independent evidence.
 
-Active release and Host validation is pinned to CPA v7.2.88 at
-`93d74a890a44802f656d7f39a573916b2611896e`. Later upstream CPA versions do
-not automatically change the supported, tested, or release-admitted target. Legacy version-specific test
-profiles and Make aliases have been removed; older observations remain only as
-non-executable historical records and are not current release or Host evidence.
+The Round 8 prerelease target is pinned to CPA v7.2.95 at
+`f71ec0eb6776854457892452cf28c47f0d658251`. Later upstream
+versions do not automatically change the supported or release-admitted target.
+Older observations remain non-executable historical records and are not current
+release or Host evidence.
 
 Historical evaluation-v10 remains `CONSUMED / FAIL`, cannot be rerun, and is
 not accepted as a formal-build input.

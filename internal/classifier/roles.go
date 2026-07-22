@@ -1,6 +1,7 @@
 package classifier
 
 import (
+	"sort"
 	"strings"
 	"unicode"
 
@@ -67,6 +68,11 @@ func (c *Classifier) ClassifyUntrustedPartsWithPolicy(parts []string, mode Mode,
 // reactivate the established block. Unknown roles or provenance use the legacy
 // all-parts classifier as a conservative fallback.
 func (c *Classifier) ClassifySegmentsWithPolicy(segments []extract.Segment, mode Mode, thresholds Thresholds, policy Policy) Result {
+	if hasProfiledSegmentMetadata(segments) {
+		return c.classifyProfiledSegmentsWithPolicy(
+			normalizeLegacySegmentsForProfiledClassification(segments), mode, thresholds, policy,
+		)
+	}
 	if len(segments) > maxRoleClassifierSegments {
 		return c.classifyStreamingSegmentsCompat(segments, mode, thresholds, policy)
 	}
@@ -320,6 +326,1525 @@ func (c *Classifier) ClassifySegmentsWithPolicy(segments []extract.Segment, mode
 	return best
 }
 
+type profiledSegmentRef struct {
+	index   int
+	segment extract.Segment
+}
+
+type profiledSegmentGroup struct {
+	refs            []profiledSegmentRef
+	parts           []string
+	activeDirective bool
+	structuredTool  bool
+}
+
+type profiledSegmentGroupKey struct {
+	role            extract.Role
+	provenance      extract.SegmentProvenance
+	attribution     extract.UserAttribution
+	turnIndex       int
+	currentTurn     bool
+	scopeID         uint64
+	zeroScopeUnique int
+}
+
+func hasProfiledSegmentMetadata(segments []extract.Segment) bool {
+	for _, segment := range segments {
+		if segmentDeclaresProfiledMetadata(segment) {
+			return true
+		}
+	}
+	return false
+}
+
+func segmentDeclaresProfiledMetadata(segment extract.Segment) bool {
+	// Index values cannot signal presence: zero is a valid first conversation
+	// item/turn, while -1 is also emitted by the legacy extractor for unknown
+	// coordinates. Structural ownership metadata is the opt-in boundary.
+	return segment.ContentKind != extract.ContentKindUnknown || segment.ScopeID != 0 ||
+		segment.FieldPathHash != "" || segment.IsCurrentTurn
+}
+
+func segmentDeclaresProfiledCoordinates(segment extract.Segment) bool {
+	// ContentKind alone describes syntax, not a position in provider history.
+	// Scope/path ownership or an explicit current-turn marker is required before
+	// zero-valued indexes can safely mean the first conversation item/turn.
+	return segment.ScopeID != 0 || segment.FieldPathHash != "" || segment.IsCurrentTurn
+}
+
+func normalizeLegacySegmentsForProfiledClassification(segments []extract.Segment) []extract.Segment {
+	normalized := segments
+	copied := false
+	for index, segment := range segments {
+		if segmentDeclaresProfiledCoordinates(segment) ||
+			segment.ConversationIndex == -1 && segment.TurnIndex == -1 {
+			continue
+		}
+		if !copied {
+			normalized = append([]extract.Segment(nil), segments...)
+			copied = true
+		}
+		normalized[index].ConversationIndex = -1
+		normalized[index].TurnIndex = -1
+	}
+	return normalized
+}
+
+// classifyProfiledSegmentsWithPolicy applies the Round 8 ownership contract to
+// extractor-proven conversation metadata. Historical content is context, not a
+// request-wide bag of evidence; only current user scopes, independent active
+// system directives, and executable tool-call arguments are ranked. Legacy
+// zero-value Segment callers continue through the established path above.
+func (c *Classifier) classifyProfiledSegmentsWithPolicy(
+	segments []extract.Segment,
+	mode Mode,
+	thresholds Thresholds,
+	policy Policy,
+) Result {
+	best := c.ClassifyWithPolicy(nil, mode, thresholds, policy)
+	truncated := false
+	quotedOrInertSuppressed := false
+	for index := 0; index < len(segments); {
+		segment := segments[index]
+		if strings.TrimSpace(segment.Text) == "" {
+			index++
+			continue
+		}
+		if !profiledTrustedCurrentUserCarrier(segment) ||
+			!profiledSelfContainedCarrierKind(segment.ContentKind) {
+			if profiledContentInert(segment.ContentKind) || profiledTrustedCurrentUserCarrier(segment) {
+				quotedOrInertSuppressed = true
+			}
+			index++
+			continue
+		}
+
+		quotedOrInertSuppressed = true
+		end := index + 1
+		for end < len(segments) && profiledSelfContainedCarrierRunAdjacent(
+			segments[end-1], segments[end],
+		) {
+			end++
+		}
+		refs, parts, imperative, complete := c.profiledSelfContainedCarrierRun(
+			segments, index, end,
+		)
+		if !complete {
+			return c.profiledProofUnavailableResult(mode, thresholds, policy)
+		}
+		if imperative {
+			annotationRefs := refs
+			referent := false
+			suppressed := false
+			if owner, localOwner := c.profiledSelfContainedCarrierRunLocalOwner(
+				segments, index, end,
+			); localOwner {
+				if len(refs) == 1 {
+					suppressed = c.profiledCarrierLocalOwnerClaimsCarrier(owner.segment)
+				} else {
+					var reactivated bool
+					suppressed, reactivated, complete =
+						c.profiledCarrierLocalOwnerRunDisposition(owner.segment)
+					if !complete {
+						return c.profiledProofUnavailableResult(mode, thresholds, policy)
+					}
+					if reactivated {
+						annotationRefs = mergeProfiledCarrierRunOwner(refs, owner)
+						referent = true
+					}
+				}
+			}
+			if suppressed {
+				index = end
+				continue
+			}
+			candidate := c.classifyWithPolicy(
+				parts, mode, thresholds, policy, false,
+			)
+			if profiledSelfContainedCarrierCandidate(candidate) {
+				if len(refs) > 1 {
+					profiledCarrierRunClearOccurrenceOffsets(&candidate)
+				}
+				candidate = withRoleAwareFindingOrigin(
+					candidate, FindingOriginUserContent, mode, thresholds,
+				)
+				c.annotateProfiledResult(&candidate, annotationRefs, referent, policy)
+				truncated = truncated || candidate.Truncated
+				if roleResultBetter(candidate, best) {
+					best = candidate
+				}
+			}
+		}
+		index = end
+	}
+	groups := buildProfiledSegmentGroups(segments, false)
+	for _, group := range groups {
+		if len(group.parts) == 0 {
+			continue
+		}
+		candidate := c.classifyWithPolicy(group.parts, mode, thresholds, policy, group.structuredTool)
+		origin := findingOriginForSegment(group.refs[0].segment)
+		roleOwnedWrapper := profiledRoleOwnedWrapper(candidate, origin)
+		if !group.activeDirective && !roleOwnedWrapper &&
+			candidate.Score >= validThresholdsOrDefault(thresholds).BalancedBlock {
+			// Code/configuration without an active natural-language execution
+			// relation is reviewable evidence, but is not a balanced block by
+			// itself under the Round 8 content-kind contract.
+			candidate.Score = validThresholdsOrDefault(thresholds).BalancedBlock - 1
+			candidate.Action = actionFor(mode, candidate.Score, thresholds)
+			if candidate.DecisionExplanation != nil {
+				candidate.DecisionExplanation.CorePredicateComplete = false
+				candidate.DecisionExplanation.HardFloorApplied = false
+				candidate.DecisionExplanation.HardFloorReason = ""
+			}
+			markQuotedOrInertSuppressed(&candidate)
+			quotedOrInertSuppressed = true
+		}
+		candidate = withRoleAwareFindingOrigin(
+			candidate, origin, mode, thresholds,
+		)
+		c.annotateProfiledResult(&candidate, group.refs, false, policy)
+		if candidate.DecisionExplanation != nil && candidate.DecisionExplanation.QuotedOrInertSuppressed {
+			quotedOrInertSuppressed = true
+		}
+		truncated = truncated || candidate.Truncated
+		if roleResultBetter(candidate, best) {
+			best = candidate
+		}
+	}
+	// Code/configuration may complete an immediately adjacent active sentence in
+	// the same current user scope (for example, "Create ..." followed by a code
+	// continuation). This is distinct from referent reactivation: only the final
+	// natural-language segment and one adjacent code/config carrier participate,
+	// so benign review directives cannot activate an arbitrary payload elsewhere
+	// in the scope.
+	for _, group := range groups {
+		directCandidates, proofComplete := c.classifyProfiledCurrentDirectCarriers(
+			segments, group, mode, thresholds, policy,
+		)
+		if !proofComplete {
+			// The direct code/config association proof is bounded. Do not silently
+			// discard an earlier split directive when a later field exhausts that
+			// proof budget; return the same neutral incomplete-inspection contract
+			// as the streaming path so the host can apply its mode-specific policy.
+			return c.profiledProofUnavailableResult(mode, thresholds, policy)
+		}
+		for _, candidate := range directCandidates {
+			truncated = truncated || candidate.Truncated
+			if roleResultBetter(candidate, best) {
+				best = candidate
+			}
+		}
+	}
+
+	// A terse affirmative referent such as "Execute it" first binds to a
+	// referent-bearing carrier in the same non-zero current user scope. The local
+	// carrier owns that speech act even when it is benign, so a bare referent
+	// cannot skip it and jump backward to an unrelated historical attack. Only
+	// when the current scope has no eligible carrier may the established nearest-
+	// historical-scope rule run.
+	currentReferents, referentProofComplete := affirmativeCurrentReferents(c, groups)
+	if !referentProofComplete {
+		return c.profiledProofUnavailableResult(mode, thresholds, policy)
+	}
+	for _, currentReferent := range currentReferents {
+		anchor := currentReferent.anchor
+		if carrier, localOwner := selectProfiledCurrentCarrier(segments, currentReferent.group, anchor); localOwner {
+			if len(carrier.refs) != 0 {
+				referent := c.classifyWithPolicy(carrier.parts, mode, thresholds, policy, false)
+				truncated = truncated || referent.Truncated
+				if !referent.Truncated && referent.Action == ActionBlock &&
+					referent.FindingConfidence != FindingNone {
+					referent = withRoleAwareFindingOrigin(referent, FindingOriginUserContent, mode, thresholds)
+					c.annotateProfiledResult(&referent, carrier.refs, false, policy)
+					if referent.DecisionExplanation != nil {
+						referent.DecisionExplanation.CurrentTurnEvidence = true
+						referent.DecisionExplanation.CrossSegmentComposition = true
+						referent.DecisionExplanation.ReferentLinkUsed = true
+						referent.DecisionExplanation.EvidenceSegmentCount = len(carrier.refs) + 1
+					}
+					if roleResultBetter(referent, best) {
+						best = referent
+					}
+				}
+			}
+		} else if referent, historical, ok := c.nearestProfiledHistoricalReferent(segments, mode, thresholds, policy); ok {
+			referent = withRoleAwareFindingOrigin(referent, FindingOriginUserContent, mode, thresholds)
+			c.annotateProfiledResult(&referent, historical.refs, false, policy)
+			if referent.DecisionExplanation != nil {
+				referent.DecisionExplanation.CurrentTurnEvidence = true
+				referent.DecisionExplanation.CrossSegmentComposition = true
+				referent.DecisionExplanation.ReferentLinkUsed = true
+				referent.DecisionExplanation.EvidenceSegmentCount = len(historical.refs) + 1
+			}
+			if roleResultBetter(referent, best) {
+				best = referent
+			}
+		}
+	}
+
+	best.Truncated = best.Truncated || truncated
+	ensureResultDecisionExplanation(&best)
+	if quotedOrInertSuppressed {
+		markQuotedOrInertSuppressed(&best)
+	}
+	attachBehaviorGraph(&best, "role_aware_profiled", "")
+	return best
+}
+
+func (c *Classifier) profiledProofUnavailableResult(
+	mode Mode,
+	thresholds Thresholds,
+	policy Policy,
+) Result {
+	result := c.classifyWithPolicy(nil, mode, thresholds, policy, false)
+	result.Coverage = Coverage{
+		State: CoverageUnavailable, Reason: CoverageReasonClassifierWindow,
+	}
+	result.Truncated = true
+	result.FindingConfidence = FindingNone
+	result.FindingOrigin = FindingOriginNone
+	return result
+}
+
+func buildProfiledSegmentGroups(segments []extract.Segment, historicalTrustedUsers bool) []profiledSegmentGroup {
+	groups := make([]profiledSegmentGroup, 0, len(segments))
+	indexes := make(map[profiledSegmentGroupKey]int, len(segments))
+	activeTurnIndex := -1
+	for _, segment := range segments {
+		if segment.IsCurrentTurn && segment.TurnIndex > activeTurnIndex {
+			activeTurnIndex = segment.TurnIndex
+		}
+	}
+	if activeTurnIndex < 0 {
+		for _, segment := range segments {
+			if segment.TurnIndex > activeTurnIndex {
+				activeTurnIndex = segment.TurnIndex
+			}
+		}
+	}
+	for index, segment := range segments {
+		if historicalTrustedUsers {
+			if !trustedUserContentSegment(segment) || segment.IsCurrentTurn || profiledContentInert(segment.ContentKind) {
+				continue
+			}
+		} else if !profiledSegmentClassifiable(segment, activeTurnIndex) {
+			continue
+		}
+		effectiveCurrent := profiledEffectiveCurrentTurn(segment, activeTurnIndex)
+		segment.IsCurrentTurn = effectiveCurrent
+		key := profiledSegmentGroupKey{
+			role: segment.Role, provenance: segment.Provenance, attribution: segment.UserAttribution,
+			turnIndex: segment.TurnIndex, currentTurn: effectiveCurrent, scopeID: segment.ScopeID,
+		}
+		if segment.ScopeID == 0 || segment.ContentKind == extract.ContentKindToolSchema {
+			key.zeroScopeUnique = index + 1
+		}
+		groupIndex, exists := indexes[key]
+		if !exists {
+			groupIndex = len(groups)
+			indexes[key] = groupIndex
+			groups = append(groups, profiledSegmentGroup{})
+		}
+		group := &groups[groupIndex]
+		group.refs = append(group.refs, profiledSegmentRef{index: index, segment: segment})
+		group.parts = append(group.parts, segment.Text)
+		group.activeDirective = group.activeDirective || profiledContentActiveDirective(segment.ContentKind)
+		group.structuredTool = group.structuredTool || segment.Provenance == extract.ProvenanceToolPayload ||
+			segment.ContentKind == extract.ContentKindToolCallArguments
+	}
+	return groups
+}
+
+func buildProfiledHistoricalReferentGroups(segments []extract.Segment) []profiledSegmentGroup {
+	groups := make([]profiledSegmentGroup, 0, len(segments))
+	indexes := make(map[profiledSegmentGroupKey]int, len(segments))
+	for index, segment := range segments {
+		if !profiledHistoricalReferentEligible(segment) {
+			continue
+		}
+		key := profiledSegmentGroupKey{
+			role: segment.Role, provenance: segment.Provenance, attribution: segment.UserAttribution,
+			turnIndex: segment.TurnIndex, currentTurn: false, scopeID: segment.ScopeID,
+		}
+		if segment.ScopeID == 0 {
+			key.zeroScopeUnique = index + 1
+		}
+		groupIndex, exists := indexes[key]
+		if !exists {
+			groupIndex = len(groups)
+			indexes[key] = groupIndex
+			groups = append(groups, profiledSegmentGroup{})
+		}
+		group := &groups[groupIndex]
+		group.refs = append(group.refs, profiledSegmentRef{index: index, segment: segment})
+		group.parts = append(group.parts, segment.Text)
+	}
+	if len(groups) > maxRoleClassifierSegments {
+		groups = groups[len(groups)-maxRoleClassifierSegments:]
+	}
+	return groups
+}
+
+func profiledHistoricalReferentEligible(segment extract.Segment) bool {
+	if segment.IsCurrentTurn || segment.Provenance == extract.ProvenanceToolPayload ||
+		!segmentDeclaresProfiledCoordinates(segment) {
+		return false
+	}
+	switch segment.ContentKind {
+	case extract.ContentKindToolSchema, extract.ContentKindToolCallArguments:
+		return false
+	case extract.ContentKindToolResult:
+		return segment.Role == extract.RoleTool || segment.Role == extract.RoleUnknown
+	case extract.ContentKindCodeBlock, extract.ContentKindQuotedText,
+		extract.ContentKindLogOutput, extract.ContentKindConfiguration,
+		extract.ContentKindDocumentation, extract.ContentKindSecurityAnalysis:
+		return profiledHistoricalEvidenceCarrier(segment)
+	case extract.ContentKindNaturalLanguageDirective, extract.ContentKindUnknown:
+		if trustedUserContentSegment(segment) {
+			return true
+		}
+		return segment.Role == extract.RoleAssistant
+	default:
+		return false
+	}
+}
+
+// profiledHistoricalEvidenceCarrier identifies inert historical material that
+// a later explicit user speech act may reactivate. The material remains inert
+// on its own; admitting it here both lets "Execute it" bind to the nearest
+// quoted/code/log/configuration scope and prevents that bare referent from
+// jumping across a newer benign scope to an unrelated older attack. Role is
+// not an allow boundary: inert system material can also become active through
+// an explicit trusted-user referent. Tool-schema declarations remain isolated.
+func profiledHistoricalEvidenceCarrier(segment extract.Segment) bool {
+	switch segment.Role {
+	case extract.RoleUser:
+		return segment.UserAttribution == extract.UserAttributionTrusted
+	case extract.RoleSystem, extract.RoleAssistant, extract.RoleTool, extract.RoleUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+func (c *Classifier) nearestProfiledHistoricalReferent(
+	segments []extract.Segment,
+	mode Mode,
+	thresholds Thresholds,
+	policy Policy,
+) (Result, profiledSegmentGroup, bool) {
+	groups := buildProfiledHistoricalReferentGroups(segments)
+	for index := len(groups) - 1; index >= 0; index-- {
+		group := groups[index]
+		if len(group.parts) == 0 || len(group.refs) == 0 {
+			continue
+		}
+		owner := group.refs[len(group.refs)-1].segment
+		if owner.Role == extract.RoleAssistant &&
+			isClearNonUserSafetyContent(owner.Role, strings.Join(group.parts, "\n")) {
+			continue
+		}
+		candidate := c.classifyWithPolicy(group.parts, mode, thresholds, policy, false)
+		if candidate.Action != ActionBlock {
+			// A defensive user review deliberately suppresses the quoted behavior in
+			// its own turn. Keep the closed quotation as the historical referent so
+			// an explicit later "Execute it" can reactivate that behavior without
+			// treating the surrounding safety analysis as active evidence.
+			if quoted, inert := c.rawInertQuotedSafetyReviewReferent(strings.Join(group.parts, "\n")); inert {
+				candidate = c.classifyWithPolicy([]string{quoted}, mode, thresholds, policy, false)
+			}
+		}
+		if candidate.Truncated || candidate.Action != ActionBlock ||
+			candidate.FindingConfidence == FindingNone {
+			// The nearest eligible scope owns a bare referent even when it is
+			// benign. Do not skip it and bind "Execute it" to an older attack.
+			return Result{}, profiledSegmentGroup{}, false
+		}
+		return candidate, group, true
+	}
+	return Result{}, profiledSegmentGroup{}, false
+}
+
+func profiledSegmentClassifiable(segment extract.Segment, activeTurnIndex int) bool {
+	if profiledTrustedCurrentUserCarrier(segment) {
+		return false
+	}
+	if profiledContentInert(segment.ContentKind) {
+		return false
+	}
+	if segment.ContentKind == extract.ContentKindToolCallArguments ||
+		segment.Provenance == extract.ProvenanceToolPayload {
+		return profiledEffectiveCurrentTurn(segment, activeTurnIndex)
+	}
+	switch segment.Role {
+	case extract.RoleUser:
+		if segment.UserAttribution == extract.UserAttributionTrusted {
+			return segment.IsCurrentTurn
+		}
+		// Model-visible text under an unknown/future field remains independently
+		// inspectable, but its untrusted attribution prevents subject-state
+		// accumulation. Scope IDs still prohibit it from donating dimensions to a
+		// separate trusted user field.
+		return segment.IsCurrentTurn || segment.TurnIndex < 0
+	case extract.RoleSystem:
+		return true
+	case extract.RoleAssistant:
+		return false
+	case extract.RoleTool:
+		return false
+	default:
+		// Envelope-level input arrays have no conversation turn but still describe
+		// the current request. Scope metadata keeps their fields isolated or grouped
+		// correctly; historical unknown-role content with a real turn index remains
+		// non-current unless the extractor marks it explicitly.
+		return segment.IsCurrentTurn || segment.TurnIndex < 0
+	}
+}
+
+func profiledEffectiveCurrentTurn(segment extract.Segment, activeTurnIndex int) bool {
+	if segment.IsCurrentTurn {
+		return true
+	}
+	structuredTool := segment.ContentKind == extract.ContentKindToolCallArguments ||
+		segment.Provenance == extract.ProvenanceToolPayload
+	if structuredTool && activeTurnIndex < 0 && segment.TurnIndex < 0 {
+		return true
+	}
+	return activeTurnIndex >= 0 && segment.TurnIndex == activeTurnIndex &&
+		structuredTool
+}
+
+func profiledContentInert(kind extract.ContentKind) bool {
+	switch kind {
+	case extract.ContentKindToolResult, extract.ContentKindQuotedText, extract.ContentKindLogOutput,
+		extract.ContentKindDocumentation, extract.ContentKindSecurityAnalysis:
+		return true
+	default:
+		return false
+	}
+}
+
+// profiledReferentCarrierKind is intentionally a closed list. These content
+// kinds enter the narrow trusted-current user carrier path and can become
+// active only through a proven local directive relationship. Code/configuration
+// from system or unknown owners retain their established independent grouping
+// semantics. Tool schemas, tool-call arguments, and tool results have separate
+// ownership rules and must never enter this carrier path.
+func profiledReferentCarrierKind(kind extract.ContentKind) bool {
+	switch kind {
+	case extract.ContentKindQuotedText, extract.ContentKindCodeBlock,
+		extract.ContentKindLogOutput, extract.ContentKindConfiguration,
+		extract.ContentKindDocumentation, extract.ContentKindSecurityAnalysis:
+		return true
+	default:
+		return false
+	}
+}
+
+func profiledTrustedCurrentUserCarrier(segment extract.Segment) bool {
+	return segment.IsCurrentTurn && trustedUserContentSegment(segment) &&
+		profiledReferentCarrierKind(segment.ContentKind)
+}
+
+// profiledSelfContainedCarrierKind is limited to content kinds produced by a
+// caller-controlled fenced info string. Quoted text and security analysis keep
+// their stronger inertness contract; a later explicit referent may still
+// reactivate them through the established ownership path.
+func profiledSelfContainedCarrierKind(kind extract.ContentKind) bool {
+	switch kind {
+	case extract.ContentKindCodeBlock, extract.ContentKindLogOutput,
+		extract.ContentKindConfiguration, extract.ContentKindDocumentation:
+		return true
+	default:
+		return false
+	}
+}
+
+func profiledSelfContainedCarrierRunAdjacent(previous, current extract.Segment) bool {
+	return previous.ScopeID != 0 && previous.ScopeID == current.ScopeID &&
+		previous.TurnIndex == current.TurnIndex &&
+		previous.ConversationIndex == current.ConversationIndex &&
+		strings.TrimSpace(previous.Text) != "" && strings.TrimSpace(current.Text) != "" &&
+		profiledTrustedCurrentUserCarrier(previous) && profiledTrustedCurrentUserCarrier(current) &&
+		profiledSelfContainedCarrierKind(previous.ContentKind) &&
+		profiledSelfContainedCarrierKind(current.ContentKind) &&
+		profiledSelfContainedCarrierTextContinues(previous.Text, current.Text)
+}
+
+func profiledSelfContainedCarrierTextContinues(previous, current string) bool {
+	previous = strings.TrimSpace(profiledClosedFenceBodyOrText(previous))
+	current = strings.TrimSpace(profiledClosedFenceBodyOrText(current))
+	if previous == "" || current == "" || strings.ContainsAny(previous, "\r\n") ||
+		strings.ContainsAny(current, "\r\n") {
+		return false
+	}
+	previousRunes := []rune(previous)
+	currentRunes := []rune(current)
+	last := previousRunes[len(previousRunes)-1]
+	first := currentRunes[0]
+	if unicode.IsPunct(last) || unicode.IsSymbol(last) {
+		return false
+	}
+	return unicode.IsDigit(first) || unicode.IsLetter(first) && !unicode.IsUpper(first)
+}
+
+// profiledSelfContainedCarrierRun treats one bounded, physically contiguous
+// run of caller-controlled fenced carriers as a single logical carrier. This
+// closes the equivalent split-core relabeling bypass without composing across
+// a natural-language owner, quoted/security-analysis material, role, turn, or
+// scope boundary.
+func (c *Classifier) profiledSelfContainedCarrierRun(
+	segments []extract.Segment,
+	start int,
+	end int,
+) (refs []profiledSegmentRef, parts []string, imperative bool, complete bool) {
+	if c == nil || start < 0 || start >= end || end > len(segments) {
+		return nil, nil, false, true
+	}
+	refs = make([]profiledSegmentRef, 0, end-start)
+	for index := start; index < end; index++ {
+		segment := segments[index]
+		if !profiledTrustedCurrentUserCarrier(segment) ||
+			!profiledSelfContainedCarrierKind(segment.ContentKind) {
+			return nil, nil, false, true
+		}
+		refs = append(refs, profiledSegmentRef{index: index, segment: segment})
+	}
+	parts, imperative, complete = c.profiledSelfContainedCarrierRefs(refs)
+	return refs, parts, imperative, complete
+}
+
+func (c *Classifier) profiledSelfContainedCarrierRefs(
+	refs []profiledSegmentRef,
+) (parts []string, imperative bool, complete bool) {
+	if c == nil || len(refs) == 0 {
+		return nil, false, true
+	}
+	proofParts := make([]string, 0, len(refs))
+	for _, ref := range refs {
+		segment := ref.segment
+		if !profiledTrustedCurrentUserCarrier(segment) ||
+			!profiledSelfContainedCarrierKind(segment.ContentKind) {
+			return nil, false, true
+		}
+		proofParts = append(proofParts, profiledClosedFenceBodyOrText(segment.Text))
+	}
+	direct, complete := directProfiledPartIndexes(c, proofParts)
+	if !complete || len(direct) == 0 {
+		return proofParts, false, complete
+	}
+	if len(refs) == 1 {
+		return []string{refs[0].segment.Text}, true, true
+	}
+	return []string{strings.Join(proofParts, " ")}, true, true
+}
+
+func profiledCarrierRunClearOccurrenceOffsets(result *Result) {
+	if result == nil {
+		return
+	}
+	for index := range result.EvidenceOccurrences {
+		occurrence := &result.EvidenceOccurrences[index]
+		occurrence.ClauseID = -1
+		occurrence.SentenceID = -1
+		occurrence.Start = -1
+		occurrence.End = -1
+	}
+}
+
+func mergeProfiledCarrierRunOwner(
+	refs []profiledSegmentRef,
+	owner profiledSegmentRef,
+) []profiledSegmentRef {
+	merged := make([]profiledSegmentRef, 0, len(refs)+1)
+	if len(refs) != 0 && owner.index < refs[0].index {
+		merged = append(merged, owner)
+		return append(merged, refs...)
+	}
+	merged = append(merged, refs...)
+	return append(merged, owner)
+}
+
+func profiledSelfContainedCarrierCandidate(result Result) bool {
+	if result.Truncated || result.Action != ActionBlock || result.Category == "" ||
+		result.FindingConfidence == FindingNone || result.DecisionExplanation == nil ||
+		!result.DecisionExplanation.CorePredicateComplete {
+		return false
+	}
+	const requiredCore = uint16(1)<<ruleDimensionIntent | uint16(1)<<ruleDimensionObject
+	return result.DecisionExplanation.EvidenceDimensionMask&requiredCore == requiredCore
+}
+
+func profiledClosedFenceBodyOrText(text string) string {
+	lines := strings.Split(strings.TrimSpace(text), "\n")
+	if len(lines) < 3 {
+		return text
+	}
+	marker, count, ok := profiledFenceMarkerLine(strings.TrimSuffix(lines[0], "\r"))
+	if !ok || !profiledClosingFenceLine(strings.TrimSuffix(lines[len(lines)-1], "\r"), marker, count) {
+		return text
+	}
+	return strings.Join(lines[1:len(lines)-1], "\n")
+}
+
+func profiledFenceMarkerLine(line string) (byte, int, bool) {
+	spaces := 0
+	for spaces < len(line) && line[spaces] == ' ' && spaces < 4 {
+		spaces++
+	}
+	if spaces > 3 || spaces >= len(line) || line[spaces] != '`' && line[spaces] != '~' {
+		return 0, 0, false
+	}
+	marker := line[spaces]
+	end := spaces
+	for end < len(line) && line[end] == marker {
+		end++
+	}
+	if end-spaces < 3 {
+		return 0, 0, false
+	}
+	return marker, end - spaces, true
+}
+
+func profiledClosingFenceLine(line string, marker byte, minimum int) bool {
+	spaces := 0
+	for spaces < len(line) && line[spaces] == ' ' && spaces < 4 {
+		spaces++
+	}
+	if spaces > 3 || spaces >= len(line) || line[spaces] != marker {
+		return false
+	}
+	end := spaces
+	for end < len(line) && line[end] == marker {
+		end++
+	}
+	if end-spaces < minimum {
+		return false
+	}
+	return strings.TrimSpace(line[end:]) == ""
+}
+
+func (c *Classifier) profiledSelfContainedCarrierRunLocalOwner(
+	segments []extract.Segment,
+	start int,
+	end int,
+) (profiledSegmentRef, bool) {
+	if c == nil || start < 0 || start >= end || end > len(segments) {
+		return profiledSegmentRef{}, false
+	}
+	carrier := segments[start]
+	before, beforeOK := nearestProfiledCurrentScopeUnit(segments, carrier, start, -1)
+	after, afterOK := nearestProfiledCurrentScopeUnit(segments, carrier, end-1, 1)
+	eligible := func(owner profiledSegmentRef, ok bool) bool {
+		return ok && owner.segment.ScopeID == carrier.ScopeID &&
+			owner.segment.TurnIndex == carrier.TurnIndex && owner.segment.IsCurrentTurn &&
+			trustedUserContentSegment(owner.segment)
+	}
+	beforeEligible := eligible(before, beforeOK)
+	afterEligible := eligible(after, afterOK)
+	beforeDisposition, beforeComplete := c.profiledCarrierLocalOwnerDisposition(before.segment)
+	afterDisposition, afterComplete := c.profiledCarrierLocalOwnerDisposition(after.segment)
+	if !beforeEligible || !beforeComplete {
+		beforeDisposition = quotedReviewContinuationNone
+	}
+	if !afterEligible || !afterComplete {
+		afterDisposition = quotedReviewContinuationNone
+	}
+	// A newer active speech act or explicit cancellation owns the completed
+	// run. A trailing inert review outranks a generic prefix, but it must not
+	// erase a preceding active execution request because review is additive,
+	// not a cancellation.
+	if afterDisposition == quotedReviewContinuationActive ||
+		afterDisposition == quotedReviewContinuationCancelled {
+		return after, true
+	}
+	if beforeDisposition == quotedReviewContinuationActive {
+		return before, true
+	}
+	if afterDisposition == quotedReviewContinuationInert {
+		return after, true
+	}
+	if beforeDisposition == quotedReviewContinuationCancelled ||
+		beforeDisposition == quotedReviewContinuationInert {
+		return before, true
+	}
+	var owner profiledSegmentRef
+	switch {
+	case beforeOK:
+		owner = before
+	case afterOK:
+		owner = after
+	default:
+		return profiledSegmentRef{}, false
+	}
+	if !eligible(owner, true) {
+		return profiledSegmentRef{}, false
+	}
+	return owner, true
+}
+
+func (c *Classifier) profiledCarrierLocalOwnerClaimsCarrier(owner extract.Segment) bool {
+	disposition, complete := c.profiledCarrierLocalOwnerDisposition(owner)
+	return complete && disposition != quotedReviewContinuationNone
+}
+
+func (c *Classifier) profiledCarrierLocalOwnerRunDisposition(
+	owner extract.Segment,
+) (suppress bool, reactivate bool, complete bool) {
+	disposition, complete := c.profiledCarrierLocalOwnerDisposition(owner)
+	if !complete {
+		return false, false, false
+	}
+	switch disposition {
+	case quotedReviewContinuationActive:
+		return false, true, true
+	case quotedReviewContinuationInert, quotedReviewContinuationCancelled:
+		return true, false, true
+	default:
+		return false, false, true
+	}
+}
+
+func (c *Classifier) profiledCarrierLocalOwnerDisposition(
+	owner extract.Segment,
+) (quotedReviewContinuationDisposition, bool) {
+	if c == nil {
+		return quotedReviewContinuationNone, true
+	}
+	switch owner.ContentKind {
+	case extract.ContentKindNaturalLanguageDirective, extract.ContentKindUnknown:
+	default:
+		return quotedReviewContinuationNone, true
+	}
+	var scratch normalizationScratch
+	views := normalizePartsInto([]string{owner.Text}, takeNormalizedRuneBuffer(), &scratch)
+	defer putNormalizedRuneBuffer(views.standardRunes, views.storageUsed)
+	if views.truncated {
+		return quotedReviewContinuationNone, false
+	}
+	normalized := string(views.standardRunes)
+	disposition := quotedReviewFollowUpDisposition(
+		normalized, c.implementationStarts, c.implementationPatterns,
+	)
+	if disposition != quotedReviewContinuationNone {
+		return disposition, true
+	}
+	if quotedReviewContinuationIsSafetyOnly(normalized, c.implementationStarts) ||
+		profiledCarrierLocalOwnerIsNonOperationalReview(normalized) {
+		return quotedReviewContinuationInert, true
+	}
+	return quotedReviewContinuationNone, true
+}
+
+// profiledCarrierLocalOwnerIsNonOperationalReview is deliberately narrower
+// than the general quoted-review safety grammar. It only lets an adjacent
+// current-user owner keep one fenced carrier inert when the entire normalized
+// instruction asks to summarize/review that carrier, optionally for an
+// explicit safety purpose. Exact tail matching prevents an appended
+// operational instruction from inheriting this local suppression.
+func profiledCarrierLocalOwnerIsNonOperationalReview(clause string) bool {
+	clause = strings.Join(strings.Fields(clause), " ")
+	clause = strings.TrimRightFunc(clause, func(value rune) bool {
+		return unicode.IsSpace(value) || unicode.IsPunct(value)
+	})
+	for _, head := range []string{
+		"summarize it", "summarise it", "review it", "analyze it", "analyse it",
+	} {
+		if clause == head {
+			return true
+		}
+		if !strings.HasPrefix(clause, head+" for ") {
+			continue
+		}
+		purpose := strings.TrimSpace(clause[len(head)+len(" for "):])
+		purpose = strings.TrimPrefix(purpose, "the ")
+		purpose = strings.TrimPrefix(purpose, "a ")
+		switch purpose {
+		case "defensive review", "safety review", "security review", "risk review", "harm review":
+			return true
+		}
+	}
+	return false
+}
+
+func profiledContentActiveDirective(kind extract.ContentKind) bool {
+	switch kind {
+	case extract.ContentKindNaturalLanguageDirective, extract.ContentKindToolSchema,
+		extract.ContentKindToolCallArguments, extract.ContentKindUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+type profiledCurrentReferent struct {
+	group  profiledSegmentGroup
+	anchor profiledSegmentRef
+}
+
+func affirmativeCurrentReferents(
+	c *Classifier,
+	groups []profiledSegmentGroup,
+) ([]profiledCurrentReferent, bool) {
+	if c == nil {
+		return nil, true
+	}
+	referents := make([]profiledCurrentReferent, 0, len(groups))
+	for _, group := range groups {
+		if len(group.refs) == 0 || len(group.refs) != len(group.parts) {
+			continue
+		}
+		segment := group.refs[0].segment
+		if !trustedUserContentSegment(segment) || !segment.IsCurrentTurn || !group.activeDirective {
+			continue
+		}
+		partIndexes, complete := affirmativeProfiledPartIndexes(c, group.parts)
+		if !complete {
+			return nil, false
+		}
+		for _, partIndex := range partIndexes {
+			referents = append(referents, profiledCurrentReferent{
+				group:  group,
+				anchor: group.refs[partIndex],
+			})
+		}
+	}
+	// Preserve the previous latest-speech-act preference for equal-ranked
+	// findings while still evaluating every surviving anchor. A later benign
+	// anchor no longer erases an earlier malicious execution pair.
+	sort.SliceStable(referents, func(i, j int) bool {
+		return referents[i].anchor.index > referents[j].anchor.index
+	})
+	return referents, true
+}
+
+// latestAffirmativeProfiledPartIndex preserves cross-part cancellation while
+// locating the physical segment that contains the latest surviving affirmative
+// speech act. A phrase split across fields has no local anchor and therefore
+// cannot create an implicit cross-field link.
+func latestAffirmativeProfiledPartIndex(c *Classifier, parts []string) (int, bool) {
+	indexes, complete := affirmativeProfiledPartIndexes(c, parts)
+	if !complete || len(indexes) == 0 {
+		return -1, false
+	}
+	return indexes[len(indexes)-1], true
+}
+
+// affirmativeProfiledPartIndexes returns every physical segment whose
+// affirmative speech act remains effective after applying later explicit
+// cancellations. Multiple independent "Execute it" anchors are not implicit
+// cancellations of one another; each must bind to its own nearest local owner.
+func affirmativeProfiledPartIndexes(c *Classifier, parts []string) ([]int, bool) {
+	if c == nil || len(parts) == 0 {
+		return nil, true
+	}
+	allIntents := make([]string, 0,
+		len(quotedReviewSpecificContinuationIntents)+len(quotedReviewTerseContinuationIntents)+len(c.implementationStarts))
+	allIntents = append(allIntents, quotedReviewSpecificContinuationIntents...)
+	allIntents = append(allIntents, quotedReviewTerseContinuationIntents...)
+	allIntents = append(allIntents, c.implementationStarts...)
+	cancellations := make([]quotedReviewContinuationDecision, 0, 4)
+	indexes := make([]int, 0, len(parts))
+	for index := len(parts) - 1; index >= 0; index-- {
+		decisions, complete := profiledPartContinuationDecisions(c, parts[index], allIntents)
+		if !complete {
+			return nil, false
+		}
+		activePart := false
+		for _, decision := range decisions {
+			switch decision.disposition {
+			case quotedReviewContinuationActive:
+				cancelled := false
+				for _, cancellation := range cancellations {
+					if quotedReviewContinuationIntentsEquivalent(decision.intent, cancellation.intent) {
+						cancelled = true
+						break
+					}
+				}
+				if !cancelled {
+					activePart = true
+				}
+			case quotedReviewContinuationCancelled:
+				if !decision.alternative {
+					cancellations = append(cancellations, decision)
+				}
+			}
+		}
+		if activePart {
+			indexes = append(indexes, index)
+		}
+	}
+	// The scan above is newest-to-oldest. Return physical order so callers that
+	// ask for the latest index can take the final element deterministically.
+	for left, right := 0, len(indexes)-1; left < right; left, right = left+1, right-1 {
+		indexes[left], indexes[right] = indexes[right], indexes[left]
+	}
+	return indexes, true
+}
+
+func profiledPartContinuationDecisions(
+	c *Classifier,
+	text string,
+	allIntents []string,
+) ([]quotedReviewContinuationDecision, bool) {
+	return profiledPartIntentDecisions(c, text, c.implementationStarts, allIntents)
+}
+
+func profiledPartIntentDecisions(
+	c *Classifier,
+	text string,
+	explicitIntents []string,
+	allIntents []string,
+) ([]quotedReviewContinuationDecision, bool) {
+	if c == nil || strings.TrimSpace(text) == "" {
+		return nil, true
+	}
+	var scratch normalizationScratch
+	views := normalizePartsInto([]string{text}, nil, &scratch)
+	defer putNormalizedRuneBuffer(views.standardRunes, views.storageUsed)
+	if views.truncated {
+		return nil, false
+	}
+	clauses := make([]string, 0, 4)
+	overflow := false
+	walkDirectiveClauses(views.standardRunes, func(clauseRunes []rune) bool {
+		if len(clauses) >= 32 {
+			overflow = true
+			return false
+		}
+		if clause := strings.TrimSpace(string(clauseRunes)); clause != "" {
+			clauses = append(clauses, clause)
+		}
+		return true
+	})
+	if overflow {
+		return nil, false
+	}
+	ordered := make([]quotedReviewContinuationDecision, 0, 4)
+	for index := len(clauses) - 1; index >= 0; index-- {
+		next := ""
+		if index+1 < len(clauses) {
+			next = clauses[index+1]
+		}
+		decisions, _, occurrenceOverflow := quotedReviewContinuationClauseDecisions(
+			clauses[index], next, explicitIntents, compactRuleIntentPatterns{}, allIntents,
+		)
+		if occurrenceOverflow {
+			return nil, false
+		}
+		for _, decision := range decisions {
+			if decision.disposition == quotedReviewContinuationCancelled &&
+				!decision.alternative && index > 0 &&
+				quotedReviewStandaloneAlternativeClause(clauses[index-1]) {
+				decision.alternative = true
+			}
+			ordered = append(ordered, decision)
+		}
+	}
+	return ordered, true
+}
+
+// directProfiledPartIndexes returns every physical natural-language segment
+// whose direct rule-intent speech act remains effective. A later unrelated
+// directive is not an implicit replacement. Only a later explicit negative
+// occurrence in the same intent family removes an earlier anchor.
+func directProfiledPartIndexes(c *Classifier, parts []string) ([]int, bool) {
+	if c == nil || len(parts) == 0 {
+		return nil, true
+	}
+	directIntents := profiledRuleDirectiveIntents(c)
+	if len(directIntents) == 0 {
+		return nil, true
+	}
+	directSet := make(map[string]struct{}, len(directIntents))
+	for _, intent := range directIntents {
+		directSet[intent] = struct{}{}
+	}
+	allIntents := make([]string, 0,
+		len(quotedReviewSpecificContinuationIntents)+len(quotedReviewTerseContinuationIntents)+len(directIntents))
+	allIntents = append(allIntents, quotedReviewSpecificContinuationIntents...)
+	allIntents = append(allIntents, quotedReviewTerseContinuationIntents...)
+	allIntents = append(allIntents, directIntents...)
+
+	cancellations := make([]quotedReviewContinuationDecision, 0, 4)
+	indexes := make([]int, 0, len(parts))
+	for index := len(parts) - 1; index >= 0; index-- {
+		decisions, complete := profiledPartIntentDecisions(c, parts[index], directIntents, allIntents)
+		if !complete {
+			return nil, false
+		}
+		activePart := false
+		for _, decision := range decisions {
+			if _, direct := directSet[decision.intent]; !direct {
+				continue
+			}
+			switch decision.disposition {
+			case quotedReviewContinuationActive:
+				cancelled := false
+				for _, cancellation := range cancellations {
+					if quotedReviewContinuationIntentsEquivalent(decision.intent, cancellation.intent) {
+						cancelled = true
+						break
+					}
+				}
+				if !cancelled {
+					activePart = true
+				}
+			case quotedReviewContinuationCancelled:
+				if !decision.alternative {
+					cancellations = append(cancellations, decision)
+				}
+			}
+		}
+		if activePart && profiledPartStartsRuleDirective(c, parts[index]) {
+			// Referential speech acts have their own ownership path and must
+			// not be reinterpreted as a direct code/config continuation.
+			if _, referential := latestAffirmativeProfiledPartIndex(c, []string{parts[index]}); !referential {
+				indexes = append(indexes, index)
+			}
+		}
+	}
+	for left, right := 0, len(indexes)-1; left < right; left, right = left+1, right-1 {
+		indexes[left], indexes[right] = indexes[right], indexes[left]
+	}
+	return indexes, true
+}
+
+func profiledPartDirectRuleDecisions(
+	c *Classifier,
+	text string,
+) ([]quotedReviewContinuationDecision, bool) {
+	directIntents := profiledRuleDirectiveIntents(c)
+	if len(directIntents) == 0 {
+		return nil, true
+	}
+	directSet := make(map[string]struct{}, len(directIntents))
+	for _, intent := range directIntents {
+		directSet[intent] = struct{}{}
+	}
+	allIntents := make([]string, 0,
+		len(quotedReviewSpecificContinuationIntents)+len(quotedReviewTerseContinuationIntents)+len(directIntents))
+	allIntents = append(allIntents, quotedReviewSpecificContinuationIntents...)
+	allIntents = append(allIntents, quotedReviewTerseContinuationIntents...)
+	allIntents = append(allIntents, directIntents...)
+	decisions, complete := profiledPartIntentDecisions(c, text, directIntents, allIntents)
+	if !complete {
+		return nil, false
+	}
+	filtered := decisions[:0]
+	for _, decision := range decisions {
+		if _, direct := directSet[decision.intent]; direct {
+			filtered = append(filtered, decision)
+		}
+	}
+	return filtered, true
+}
+
+func profiledRuleDirectiveIntents(c *Classifier) []string {
+	if c == nil {
+		return nil
+	}
+	intents := make([]string, 0, 64)
+	for _, bucket := range c.directiveIntentStarts.ascii {
+		intents = append(intents, bucket...)
+	}
+	for _, bucket := range c.directiveIntentStarts.other {
+		for _, intent := range bucket {
+			intents = append(intents, string(intent))
+		}
+	}
+	return uniqueSorted(intents)
+}
+
+// selectProfiledCurrentCarrier applies a bounded nearest/local tie rule. The
+// first non-empty unit on either side of the affirmative anchor is the only
+// eligible local owner; when both sides exist, the preceding unit wins as the
+// conventional anaphoric referent. A nearby benign carrier therefore
+// terminates both farther malicious carriers and historical fallback. Any
+// nearby non-carrier is a locality barrier rather than a transparent bridge.
+// Exactly one carrier is returned and classified.
+func selectProfiledCurrentCarrier(
+	segments []extract.Segment,
+	currentReferent profiledSegmentGroup,
+	anchor profiledSegmentRef,
+) (profiledSegmentGroup, bool) {
+	if len(currentReferent.refs) == 0 {
+		return profiledSegmentGroup{}, false
+	}
+	owner := anchor.segment
+	if owner.ScopeID == 0 || !owner.IsCurrentTurn || !trustedUserContentSegment(owner) {
+		return profiledSegmentGroup{}, false
+	}
+	before, beforeOK := nearestProfiledCurrentScopeUnit(segments, owner, anchor.index, -1)
+	after, afterOK := nearestProfiledCurrentScopeUnit(segments, owner, anchor.index, 1)
+	var selected profiledSegmentRef
+	switch {
+	case beforeOK && afterOK:
+		selected = before
+	case beforeOK:
+		selected = before
+	case afterOK:
+		selected = after
+	default:
+		return profiledSegmentGroup{}, false
+	}
+	if selected.segment.ScopeID != owner.ScopeID || selected.segment.TurnIndex != owner.TurnIndex ||
+		!selected.segment.IsCurrentTurn || !trustedUserContentSegment(selected.segment) ||
+		!profiledReferentCarrierKind(selected.segment.ContentKind) {
+		return profiledSegmentGroup{}, true
+	}
+	return profiledSegmentGroup{
+		refs:  []profiledSegmentRef{selected},
+		parts: []string{selected.segment.Text},
+	}, true
+}
+
+func nearestProfiledCurrentScopeUnit(
+	segments []extract.Segment,
+	owner extract.Segment,
+	anchorIndex int,
+	direction int,
+) (profiledSegmentRef, bool) {
+	if anchorIndex < 0 || anchorIndex >= len(segments) || direction == 0 {
+		return profiledSegmentRef{}, false
+	}
+	for index := anchorIndex + direction; index >= 0 && index < len(segments); index += direction {
+		segment := segments[index]
+		if strings.TrimSpace(segment.Text) == "" {
+			continue
+		}
+		if !segment.IsCurrentTurn && segment.TurnIndex != owner.TurnIndex {
+			continue
+		}
+		return profiledSegmentRef{index: index, segment: segment}, true
+	}
+	return profiledSegmentRef{}, false
+}
+
+func (c *Classifier) classifyProfiledCurrentDirectCarriers(
+	segments []extract.Segment,
+	directive profiledSegmentGroup,
+	mode Mode,
+	thresholds Thresholds,
+	policy Policy,
+) ([]Result, bool) {
+	if c == nil || len(directive.refs) == 0 || len(directive.refs) != len(directive.parts) {
+		return nil, true
+	}
+	owner := directive.refs[0].segment
+	if owner.ScopeID == 0 || !owner.IsCurrentTurn || !trustedUserContentSegment(owner) ||
+		!directive.activeDirective {
+		return nil, true
+	}
+	anchorParts, complete := directProfiledPartIndexes(c, directive.parts)
+	if !complete {
+		return nil, false
+	}
+	if len(anchorParts) == 0 {
+		return nil, true
+	}
+	results := make([]Result, 0, len(anchorParts))
+	for _, anchorIndex := range anchorParts {
+		if anchorIndex < 0 || anchorIndex >= len(directive.refs) {
+			continue
+		}
+		anchor := directive.refs[anchorIndex]
+		carrier, localOwner := selectProfiledCurrentCarrier(segments, directive, anchor)
+		if !localOwner || len(carrier.refs) != 1 || !profiledDirectCarrierKind(carrier.refs[0].segment.ContentKind) {
+			continue
+		}
+		combined := mergeProfiledLocalUnits(anchor, carrier.refs[0])
+		// The natural-language speech act owns the adjacent code/config carrier
+		// regardless of whether that carrier was emitted immediately before or
+		// after it. Classify the semantic relation in anchor-first order while
+		// retaining physical order in the ownership refs used for audit metadata.
+		parts := []string{anchor.segment.Text, carrier.refs[0].segment.Text}
+		candidate := c.classifyWithPolicy(parts, mode, thresholds, policy, false)
+		if candidate.Truncated {
+			results = append(results, candidate)
+			continue
+		}
+		if candidate.Action != ActionBlock || candidate.FindingConfidence == FindingNone {
+			continue
+		}
+		candidate = withRoleAwareFindingOrigin(candidate, FindingOriginUserContent, mode, thresholds)
+		c.annotateProfiledResult(&candidate, combined, false, policy)
+		results = append(results, candidate)
+	}
+	return results, true
+}
+
+func profiledDirectCarrierKind(kind extract.ContentKind) bool {
+	return kind == extract.ContentKindCodeBlock || kind == extract.ContentKindConfiguration
+}
+
+func profiledPartStartsRuleDirective(c *Classifier, text string) bool {
+	if c == nil || strings.TrimSpace(text) == "" {
+		return false
+	}
+	var scratch normalizationScratch
+	views := normalizePartsInto([]string{text}, nil, &scratch)
+	defer putNormalizedRuneBuffer(views.standardRunes, views.storageUsed)
+	if views.truncated {
+		return false
+	}
+	suffix := trimLeadingRuneSpaces(views.standardRunes)
+	return directiveSuffixStartsRuleIntent(suffix, &c.directiveIntentStarts) ||
+		directiveSuffixContainsModalRuleIntent(suffix, &c.directiveIntentStarts)
+}
+
+func mergeProfiledLocalUnits(first, second profiledSegmentRef) []profiledSegmentRef {
+	if first.index <= second.index {
+		return []profiledSegmentRef{first, second}
+	}
+	return []profiledSegmentRef{second, first}
+}
+
+type profiledOccurrenceKey struct {
+	refIndex int
+	clauseID int32
+	start    int32
+	end      int32
+}
+
+type profiledOccurrenceSource struct {
+	valid      bool
+	ref        profiledSegmentRef
+	occurrence signalOccurrence
+}
+
+func (c *Classifier) annotateProfiledResult(result *Result, refs []profiledSegmentRef, referent bool, policy Policy) {
+	if result == nil || len(refs) == 0 {
+		return
+	}
+	ensureResultDecisionExplanation(result)
+	if result.DecisionExplanation == nil {
+		return
+	}
+	owner := refs[len(refs)-1]
+	sources := c.profiledOccurrenceSources(result.EvidenceOccurrences, refs, policy)
+	for index := range result.EvidenceOccurrences {
+		occurrence := &result.EvidenceOccurrences[index]
+		source := owner
+		if index < len(sources) && sources[index].valid {
+			source = sources[index].ref
+			if occurrence.ClauseID < 0 {
+				occurrence.ClauseID = int(sources[index].occurrence.clauseID)
+				occurrence.SentenceID = occurrence.ClauseID
+			}
+			if occurrence.Start < 0 || occurrence.End < 0 {
+				occurrence.Start = int(sources[index].occurrence.start)
+				occurrence.End = int(sources[index].occurrence.end)
+			}
+		}
+		occurrence.SegmentID = source.segment.ConversationIndex
+		occurrence.FieldID = source.index
+		occurrence.Role = source.segment.Role
+		occurrence.Provenance = source.segment.Provenance
+		occurrence.UserAttribution = source.segment.UserAttribution
+		occurrence.CurrentTurn = source.segment.IsCurrentTurn
+		occurrence.DirectiveOwner = directiveOwnerForRole(source.segment.Role)
+	}
+	explanation := result.DecisionExplanation
+	explanation.WinningRole = owner.segment.Role
+	explanation.WinningProvenance = owner.segment.Provenance
+	explanation.CurrentTurnEvidence = owner.segment.IsCurrentTurn || referent
+	explanation.CrossSegmentComposition = len(refs) > 1 || referent
+	explanation.ReferentLinkUsed = explanation.ReferentLinkUsed || referent
+	explanation.EvidenceSegmentCount = len(refs)
+	explanation.EvidenceOccurrenceCount = len(result.EvidenceOccurrences)
+	explanation.EvidenceDimensionMask = occurrenceDimensionMask(result.EvidenceOccurrences)
+	explanation.ScoreBreakdown.FinalScore = result.Score
+}
+
+// profiledOccurrenceSources binds the content-free winning evidence back to
+// the exact profiled fields that supplied it. The roleless classifier keeps
+// physical clause offsets for rule-local winners, while semantic/composed
+// winners intentionally expose only stable evidence IDs. Replaying the bounded
+// matcher over each field restores that ownership without retaining request
+// text. A small bipartite assignment preserves the one-occurrence/one-dimension
+// contract when one phrase belongs to more than one compiled evidence family.
+func (c *Classifier) profiledOccurrenceSources(
+	evidence []EvidenceOccurrence,
+	refs []profiledSegmentRef,
+	policy Policy,
+) []profiledOccurrenceSource {
+	sources := make([]profiledOccurrenceSource, len(evidence))
+	if c == nil || len(evidence) == 0 || len(refs) == 0 {
+		return sources
+	}
+	candidates := make([][]profiledOccurrenceKey, len(evidence))
+	physical := make(map[profiledOccurrenceKey]profiledOccurrenceSource)
+	for refIndex := len(refs) - 1; refIndex >= 0; refIndex-- {
+		ref := refs[refIndex]
+		if strings.TrimSpace(ref.segment.Text) == "" {
+			continue
+		}
+		var scratch normalizationScratch
+		views := normalizePartsInto([]string{ref.segment.Text}, takeNormalizedRuneBuffer(), &scratch)
+		analysis := c.analyzeDirectives(views.standardRunes, policy)
+		visitClause := func(clause analyzedDirectiveClause) {
+			for _, matched := range clause.occurrences {
+				key := profiledOccurrenceKey{
+					refIndex: refIndex, clauseID: matched.clauseID, start: matched.start, end: matched.end,
+				}
+				physical[key] = profiledOccurrenceSource{valid: true, ref: ref, occurrence: matched}
+				for evidenceIndex := range evidence {
+					item := evidence[evidenceIndex]
+					if !profiledOccurrenceOffsetsMatch(item, matched) ||
+						!c.signalSupportsProfiledEvidence(int(matched.signalID), item) ||
+						profiledOccurrenceCandidateExists(candidates[evidenceIndex], key) {
+						continue
+					}
+					candidates[evidenceIndex] = append(candidates[evidenceIndex], key)
+				}
+			}
+			for evidenceIndex := range evidence {
+				item := evidence[evidenceIndex]
+				if item.RuleID != "DISRUPT-001" || item.Dimension != "object" ||
+					item.ClauseID < 0 || item.Start < 0 || item.End <= item.Start {
+					continue
+				}
+				clauseID := clauseIDForOccurrence(clause)
+				if clauseID != int32(item.ClauseID) || item.End > len(clause.runes) ||
+					!profiledDisruptionServiceSpan(clause.runes[item.Start:item.End]) {
+					continue
+				}
+				matched := signalOccurrence{
+					clauseID: clauseID, start: int32(item.Start), end: int32(item.End),
+				}
+				key := profiledOccurrenceKey{
+					refIndex: refIndex, clauseID: matched.clauseID, start: matched.start, end: matched.end,
+				}
+				physical[key] = profiledOccurrenceSource{valid: true, ref: ref, occurrence: matched}
+				if !profiledOccurrenceCandidateExists(candidates[evidenceIndex], key) {
+					candidates[evidenceIndex] = append(candidates[evidenceIndex], key)
+				}
+			}
+		}
+		for _, clause := range analysis.clauses {
+			visitClause(clause)
+		}
+		for _, clause := range analysis.overflowTail {
+			visitClause(clause)
+		}
+		putNormalizedRuneBuffer(views.standardRunes, views.storageUsed)
+	}
+
+	assigned := make(map[profiledOccurrenceKey]int)
+	var augment func(int, []bool) bool
+	augment = func(evidenceIndex int, seen []bool) bool {
+		if evidenceIndex < 0 || evidenceIndex >= len(candidates) || seen[evidenceIndex] {
+			return false
+		}
+		seen[evidenceIndex] = true
+		for _, key := range candidates[evidenceIndex] {
+			previous, occupied := assigned[key]
+			if occupied && !augment(previous, seen) {
+				continue
+			}
+			assigned[key] = evidenceIndex
+			return true
+		}
+		return false
+	}
+	for evidenceIndex := range evidence {
+		augment(evidenceIndex, make([]bool, len(evidence)))
+	}
+	for key, evidenceIndex := range assigned {
+		sources[evidenceIndex] = physical[key]
+	}
+	return sources
+}
+
+func profiledOccurrenceOffsetsMatch(evidence EvidenceOccurrence, occurrence signalOccurrence) bool {
+	if evidence.ClauseID >= 0 && evidence.ClauseID != int(occurrence.clauseID) {
+		return false
+	}
+	if evidence.Start >= 0 && evidence.Start != int(occurrence.start) {
+		return false
+	}
+	return evidence.End < 0 || evidence.End == int(occurrence.end)
+}
+
+func profiledOccurrenceCandidateExists(candidates []profiledOccurrenceKey, target profiledOccurrenceKey) bool {
+	for _, candidate := range candidates {
+		if candidate == target {
+			return true
+		}
+	}
+	return false
+}
+
+func profiledDisruptionServiceSpan(span []rune) bool {
+	return directiveRunesEqualString(span, "service") || directiveRunesEqualString(span, "服务")
+}
+
+func (c *Classifier) signalSupportsProfiledEvidence(signalID int, evidence EvidenceOccurrence) bool {
+	for _, rule := range c.rules {
+		if rule.id != evidence.RuleID {
+			continue
+		}
+		var expected int
+		switch evidence.Dimension {
+		case "intent":
+			expected = rule.intent
+		case "object":
+			expected = rule.object
+		case "operational":
+			expected = rule.independentOperational
+		case "target":
+			expected = rule.independentTarget
+		case "evasion":
+			expected = rule.independentEvasion
+		case "scale":
+			expected = rule.independentScale
+		default:
+			return false
+		}
+		return expected >= 0 && signalID == expected
+	}
+	for _, profile := range c.semanticProfiles {
+		if profile.id() != evidence.RuleID {
+			continue
+		}
+		dimension := -1
+		for index, kind := range semanticDimensionKinds {
+			if kind == evidence.Dimension {
+				dimension = index
+				break
+			}
+		}
+		if dimension < 0 {
+			return false
+		}
+		mask := uint16(1) << semanticDimension(dimension)
+		for _, compiled := range profile.evidence {
+			if compiled.signalID == signalID && compiled.dimensionMask&mask != 0 {
+				return true
+			}
+		}
+		return false
+	}
+	return false
+}
+
+func directiveOwnerForRole(role extract.Role) DirectiveOwner {
+	switch role {
+	case extract.RoleUser:
+		return DirectiveOwnerUser
+	case extract.RoleSystem:
+		return DirectiveOwnerSystem
+	case extract.RoleAssistant:
+		return DirectiveOwnerAssistant
+	case extract.RoleTool:
+		return DirectiveOwnerTool
+	default:
+		return DirectiveOwnerUnknown
+	}
+}
+
 // refusedHistoricalSafetyMaintenanceTail recognizes one deliberately narrow
 // conversation closure: a trusted-user attack, an immediately adjacent clear
 // assistant refusal, and a final trusted-user request to improve the guard or
@@ -523,9 +2048,37 @@ func withRoleAwareFindingOrigin(result Result, origin FindingOrigin, mode Mode, 
 		return result
 	}
 	thresholds = validThresholdsOrDefault(thresholds)
+	if result.DecisionExplanation != nil {
+		explanation := *result.DecisionExplanation
+		result.DecisionExplanation = &explanation
+	}
+	originalScore := result.Score
+	if result.DecisionExplanation != nil {
+		// A prior content-kind cap may already have changed Result.Score without
+		// changing the explanation. Ownership is the final admission boundary for
+		// this wrapper-only finding, so reconcile from the last explained score;
+		// repeated calls see the updated FinalScore and therefore add zero.
+		originalScore = result.DecisionExplanation.ScoreBreakdown.FinalScore
+	}
 	result.Score = metaControlAuditScore(result.Score, thresholds)
 	result.Action = actionForMetaControl(mode, result.Score, thresholds)
+	if result.DecisionExplanation != nil {
+		// The wrapper predicate is still complete, but non-user or untrusted
+		// ownership prevents it from carrying cyber-abuse blocking weight. Keep
+		// that provenance adjustment explicit in the numeric decomposition so
+		// the persisted final score remains identical to the decision score.
+		result.DecisionExplanation.ScoreBreakdown.OwnershipScore += result.Score - originalScore
+		result.DecisionExplanation.ScoreBreakdown.FinalScore = result.Score
+		result.DecisionExplanation.CorePredicateComplete = true
+		result.DecisionExplanation.HardFloorApplied = false
+		result.DecisionExplanation.HardFloorReason = hardFloorReasonNone
+	}
 	return result
+}
+
+func profiledRoleOwnedWrapper(result Result, origin FindingOrigin) bool {
+	return origin == FindingOriginNonUserOrUntrusted && result.Behavior != nil &&
+		result.Behavior.Wrapper && !result.Behavior.BaseBehavior
 }
 
 func shouldClassifyRoleSegment(segment extract.Segment) bool {

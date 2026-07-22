@@ -1,18 +1,17 @@
 # Documentation index
 
 ```text
-current_classifier_policy_version: classifier-policy-v6
-current_classifier_policy_sha256: ece497210db938528cb166a34f2ce3013324b792a7eedf276a96fa5d256001d4
+current_classifier_policy_version: classifier-policy-v7
+current_classifier_policy_sha256: ea8c4dcfacacc6478f86fd2ca5de96d667ae98f2fc6ff0c83d8e6092e9f6a82d
 ```
 
 The root [English README](../README.md) and [Chinese README](../README_CN.md)
 are the shortest current-status entry points. `v0.15` is the manually published
-[latest stable release](https://github.com/yujianwudi/cyber-abuse-guard/releases/tag/v0.15).
-The current v0.16 work is development-only: a checksum-bound local
-`v0.16-rc.1` Linux package exists, exact-main CI run
-[`29799561002`](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29799561002)
-failed in both attempts with zero Actions artifacts, and there is no remote
-v0.16 tag or GitHub Release.
+[historical stable release](https://github.com/yujianwudi/cyber-abuse-guard/releases/tag/v0.15).
+The current publication target is the Linux-only `v0.16-rc.2` prerelease. It
+uses the single CPA v7.2.95 pin. Independent audit and
+counted-Mock Host validation remain required, production approval has not been
+granted, and no stable `v0.16` exists.
 
 This cleanup adds navigation without relocating frozen evaluation or Holdout
 evidence. Those files keep their existing paths so historical hashes and
@@ -24,6 +23,11 @@ Use these files for the current implementation and evidence state:
 
 - [Blocked-request review capture operator guide](RAW_CAPTURE.md)
 - [v0.16 release admission policy](RELEASE_POLICY.md)
+- [Round 8 v0.16-rc.2 release readiness](reports/ROUND8_RELEASE_READINESS.md)
+- [Round 8 synthetic score calibration](reports/ROUND8_CALIBRATION.md) —
+  development-only 336 benign / 336 paired-malicious histogram and threshold
+  analysis; not blind or Holdout evidence
+- [Round 8 Linux Host runner and counted-Mock contract](ROUND8_HOST_RUNNER.md)
 - [Current test status and exact-main CI failures](reports/TEST_REPORT.md)
 - [Local-package and publication evidence](reports/RELEASE_EVIDENCE.md)
 - [Historical performance evidence and v0.16 acceptance table](reports/PERFORMANCE.md)
@@ -70,21 +74,21 @@ Current GitHub Actions entry points are intentionally limited to:
 - `.github/workflows/attested-prerelease.yml` for the externally attested
   development prerelease gate;
 - `.github/workflows/release-rc.yml` for the exact-main, Linux-only
-  `v0.15-rc.4` formal-structure sandbox prerelease;
+  `v0.16-rc.2` formal-structure sandbox prerelease;
 - `.github/workflows/release.yml` and
   `.github/workflows/release-promote.yml` for the formal draft and its
   protected promotion.
 
 CodeQL creates code-scanning evidence only. It does not create package bytes or
-authorize publication. The candidate, attestation, RC, formal, and promotion
-workflows listed above remain version-locked v0.15 machinery and have not been
-migrated into an executable v0.16 publication path.
+authorize publication. Only the RC workflow has been migrated to v0.16-rc.2.
+Candidate, attestation, formal, and promotion workflows remain version-locked
+historical v0.15 machinery and do not authorize a stable v0.16 publication.
 
 The retired attempted `v0.15-rc.2` workflow definition is archived under
 [`archive/workflows/`](archive/workflows/) and cannot be dispatched by GitHub
 Actions. Its recorded runs failed and did not produce the public RC, which was
 published separately through the disclosed direct owner override. It remains
-historical evidence and is separate from the active RC4 workflow.
+historical evidence and is separate from the active v0.16-rc.2 workflow.
 
 The protected `v0.15-rc.3` tag is separate failed evidence. Workflow run
 29728286559 passed admission, failed before packaging, published no Actions

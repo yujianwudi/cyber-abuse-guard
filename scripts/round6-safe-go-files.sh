@@ -13,8 +13,10 @@ safe_roots=(
   internal/classifier
   internal/config
   internal/extract
+  internal/explanation
   internal/fixturepublish
   internal/plugin
+  internal/round8test
   internal/rules
   internal/subject
   integration/cpalatestcontract

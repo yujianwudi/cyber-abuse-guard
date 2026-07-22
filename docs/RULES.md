@@ -1,14 +1,43 @@
-# Rule System — ruleset 1.0.8
+# Rule System — ruleset 1.0.9
 
 ```text
-current_classifier_policy_version: classifier-policy-v6
-current_classifier_policy_sha256: ece497210db938528cb166a34f2ce3013324b792a7eedf276a96fa5d256001d4
+current_classifier_policy_version: classifier-policy-v7
+current_classifier_policy_sha256: ea8c4dcfacacc6478f86fd2ca5de96d667ae98f2fc6ff0c83d8e6092e9f6a82d
 ```
 
 The default rule set is embedded into the shared object from `/rules`. Every
 rule has a unique stable ID, category, severity, weighted score, bilingual
 evidence groups, allow contexts, and an optional hard authorization floor.
 Runtime auto-download and external rule override are not supported.
+
+## Round 8 evidence ownership and Balanced admission
+
+Ruleset 1.0.9 is evaluated inside attributable active-directive units, not
+against one global set of request-wide booleans. Every matched occurrence keeps
+its segment, field, role, provenance, current-turn, clause/sentence, polarity,
+quoted/inert, directive-owner, and term-strength metadata until the decision is
+complete.
+
+A Balanced block requires all of the following:
+
+- a complete harmful action/object core predicate;
+- at least two independently owned strengthening dimensions such as target,
+  destination, delivery, harmful outcome, evasion relationship, scale, impact,
+  or explicit unauthorized scope;
+- the evidence belongs to the same clause, sentence/continuation, attributable
+  current-user directive, or a bounded explicit referent chain;
+- one occurrence supplies at most one scoring dimension;
+- quoted, negated, defensive, historical, tool-schema, and otherwise inert
+  occurrences cannot fill a missing core or strengthening dimension;
+- inspection is complete. Balanced incomplete requests allow and audit; Strict
+  incomplete requests block and audit under the fixed incomplete reason.
+
+Generic development vocabulary such as `code`, `tool`, `working`, `sandbox`,
+`production`, `session`, `token`, `hidden`, `silent`, and `automatic` is weak
+context only. It cannot by itself establish credential theft, malware
+deployment, service disruption, or defense evasion and cannot trigger a hard
+floor. The tightened EVADE-002, CRED-001/002, MAL-002, and DISRUPT-001 predicates
+require an explicit harmful relationship rather than keyword accumulation.
 
 Covered categories:
 
@@ -218,9 +247,9 @@ directory, retention, permissions, and cleanup require separate review.
 
 ## Version and identity
 
-Ruleset `1.0.8` is the source version in `rules/manifest.yaml`. Its current
+Ruleset `1.0.9` is the source version in `rules/manifest.yaml`. Its current
 canonical embedded SHA-256 is
-`1d908c8c631bc6f72e7ec6b098bea49c4923580766859393d0be48c8c00c6d7d`.
+`a3de344d3f6dc8eea86d946a823996494d4d297c41efcc6346a6ef757f263a7d`.
 A release emits:
 
 ```text
@@ -233,7 +262,7 @@ version and canonical SHA-256 are linked into the binary, exposed by
 authenticated status, compared with source by `verify-release.sh`, and included
 in `build-metadata.json`. A missing or mismatched identity is a release failure.
 
-Ruleset `1.0.8` identifies only the embedded YAML Cyber Abuse assets. It does
+Ruleset `1.0.9` identifies only the embedded YAML Cyber Abuse assets. It does
 **not** contain the Go-code `META-OVERRIDE-001` overlay, extractor/media and
 multipart semantics, approved tool-schema mappings, or control-plane event
 logic. Those behaviors require the separately verified classifier-policy
@@ -243,8 +272,8 @@ This identity covers the embedded YAML rule assets. The complete code-level
 policy is separately identified as:
 
 ```text
-current_release_classifier_policy_version: classifier-policy-v6
-current_release_classifier_policy_sha256: ece497210db938528cb166a34f2ce3013324b792a7eedf276a96fa5d256001d4
+current_release_classifier_policy_version: classifier-policy-v7
+current_release_classifier_policy_sha256: ea8c4dcfacacc6478f86fd2ca5de96d667ae98f2fc6ff0c83d8e6092e9f6a82d
 ```
 
 The policy digest test binds the deterministic classifier, matcher,
@@ -269,8 +298,9 @@ findings are user-originated only if all contributing user-like fields are
 trusted. A role-attribution failure clears every tentative trust bit.
 
 Commit `21ceb57e6b6030e56d7820c9a67a8eecd068c669` passed push and PR CI as
-an earlier classifier-policy-v3 checkpoint. It does not verify the current v5
-identity or the final v0.15 candidate. Automated review is development feedback only.
+an earlier classifier-policy-v3 checkpoint. It does not verify the historical
+v0.15 classifier-policy-v5 identity, the current v7 identity, or either final
+candidate. Automated review is development feedback only.
 The final PR head must have no unresolved, non-outdated actionable review
 threads before merge; no independent approval is claimed.
 
@@ -371,7 +401,7 @@ consumed or retired fixtures during normal development.
 Passing unit or CI gates does not authorize deployment. The exact v0.15 chain
 requires final PR CI, merge to `main`, exact post-merge main push CI, and a
 private untagged clean candidate dispatched from `refs/heads/main`, followed by
-CPA v7.2.88 + Mock-upstream Host validation against one SO SHA-256 and independent
+CPA v7.2.95 + Mock-upstream Host validation against one SO SHA-256 and independent
 source/artifact/Host review. An optional annotated development prerelease is
 allowed only after a candidate-bound external `evaluation-v11` or later
 first-and-only `CONSUMED / PASS` attestation and is not a formal release. The

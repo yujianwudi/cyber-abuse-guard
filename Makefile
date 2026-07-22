@@ -8,6 +8,7 @@ CYCLONEDX_GOMOD ?= cyclonedx-gomod
 CYCLONEDX_GOMOD_VERSION ?= v1.9.0
 GOVULNCHECK ?= govulncheck
 GOVULNCHECK_VERSION ?= v1.6.0
+ACTIONLINT_VERSION ?= v1.7.12
 PLUGIN_ID := cyber-abuse-guard
 DIST_DIR := $(CURDIR)/dist
 DIRTY_SUFFIX := $(if $(filter 1,$(ALLOW_DIRTY_BUILD)),-dirty,)
@@ -44,7 +45,7 @@ CPA_ROUTER_FIXTURE_SCENARIOS := guard-priority-higher fixture-priority-higher \
 
 .NOTPARALLEL: release round6-development-artifacts
 
-.PHONY: all format-check round6-format-check git-diff-check round6-git-diff-check module-verify round6-module-verify test unit-test vet round6-vet race \
+.PHONY: all format-check round6-format-check git-diff-check round6-git-diff-check module-verify round6-module-verify test unit-test vet round6-vet race workflow-lint \
 	fuzz-smoke script-test corpus-regression development-public-jailbreak-corpus consumed-boundary-test holdout-test benchmark round6-benchmark build-linux-amd64 \
 	integration-compile integration-test cpa-host-blackbox cpa-router-fixture-blackbox cpa-host-fixture-contract cpa-latest-compat round4-regression round5-regression round6-regression round6-development-artifacts round6-reproducibility-test round6-script-test round6-cpa-store-contract management-proxy-413-test ruleset-manifest sbom vulncheck round6-vulncheck release-preflight \
 	package-release package-source-release release release-evidence formal-release external-release-attestation frozen-evaluation-v10-tree release-doc-consistency release-doc-consistency-test verify-release verification-fault-test cpa-store-contract artifact-hash \
@@ -108,6 +109,8 @@ round6-git-diff-check:
 module-verify:
 	$(GO) mod verify
 	$(GO) mod tidy -diff
+	$(GO) -C integration/round8countedmock mod verify
+	$(GO) -C integration/round8countedmock mod tidy -diff
 	$(GO) -C integration/pluginstorecontract mod verify
 	$(GO) -C integration/pluginstorecontract mod tidy -diff
 	$(GO) -C integration/cpalatestcontract mod verify
@@ -116,6 +119,8 @@ module-verify:
 round6-module-verify:
 	$(GO) mod verify
 	$(GO) list -tags=$(TEST_TAGS) -deps $(ROUND6_SAFE_PACKAGES) >/dev/null
+	$(GO) -C integration/round8countedmock mod verify
+	$(GO) -C integration/round8countedmock mod tidy -diff
 	$(GO) -C integration/pluginstorecontract mod verify
 	$(GO) -C integration/pluginstorecontract mod tidy -diff
 	$(GO) -C integration/cpalatestcontract mod verify
@@ -131,6 +136,7 @@ vet:
 
 round6-vet:
 	$(GO) vet -tags=$(TEST_TAGS) $(ROUND6_SAFE_PACKAGES)
+	$(GO) -C integration/round8countedmock vet .
 
 race:
 	GO=$(GO) TEST_TAGS=$(TEST_TAGS) bash ./scripts/go-safe-development-test.sh race
@@ -149,11 +155,27 @@ fuzz-smoke:
 	@$(GO) test ./internal/config -list='^FuzzConfigParser$$' | grep -Fxq 'FuzzConfigParser' || { echo 'required config fuzz seed target FuzzConfigParser is missing' >&2; exit 1; }
 	$(GO) test ./internal/config -run='^FuzzConfigParser$$' -count=1
 
+workflow-lint:
+	$(GO) run github.com/rhysd/actionlint/cmd/actionlint@$(ACTIONLINT_VERSION) \
+		-config-file .github/actionlint.yaml \
+		.github/workflows/ci.yml \
+		.github/workflows/codeql.yml \
+		.github/workflows/candidate.yml \
+		.github/workflows/attested-prerelease.yml \
+		.github/workflows/release-rc.yml \
+		.github/workflows/round8-host-validation.yml \
+		.github/workflows/release.yml \
+		.github/workflows/release-promote.yml
+
 script-test:
+	make workflow-lint
 	bash -n ./scripts/go-safe-development-test.sh
 	bash -n ./scripts/cpa-latest-compat.sh
 	bash -n ./scripts/round6-candidate-artifacts.sh
 	bash -n ./scripts/round6-rc-artifacts.sh
+	bash -n ./scripts/round8-build-host-images.sh
+	bash -n ./scripts/round8-host-evidence.sh
+	python3 -B ./scripts/round8-host-evidence-test.py
 	./scripts/release-candidate-contract-test.sh
 	bash -n ./scripts/verify-external-release-attestation.sh
 	./scripts/verify-external-release-attestation-test.sh
@@ -169,10 +191,14 @@ script-test:
 	./scripts/release-doc-consistency.sh
 
 round6-script-test:
+	make workflow-lint
 	bash -n ./scripts/go-safe-development-test.sh
 	bash -n ./scripts/cpa-latest-compat.sh
 	bash -n ./scripts/round6-candidate-artifacts.sh
 	bash -n ./scripts/round6-rc-artifacts.sh
+	bash -n ./scripts/round8-build-host-images.sh
+	bash -n ./scripts/round8-host-evidence.sh
+	python3 -B ./scripts/round8-host-evidence-test.py
 	./scripts/release-candidate-contract-test.sh
 	bash -n ./scripts/verify-external-release-attestation.sh
 	./scripts/verify-external-release-attestation-test.sh

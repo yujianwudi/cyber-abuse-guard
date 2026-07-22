@@ -1,8 +1,8 @@
 # Defensive Review: public prompt-injection references and v0.15 Round 6 controls
 
 ```text
-current_classifier_policy_version: classifier-policy-v6
-current_classifier_policy_sha256: ece497210db938528cb166a34f2ce3013324b792a7eedf276a96fa5d256001d4
+current_classifier_policy_version: classifier-policy-v7
+current_classifier_policy_sha256: ea8c4dcfacacc6478f86fd2ca5de96d667ae98f2fc6ff0c83d8e6092e9f6a82d
 ```
 
 > The Round 6 addendum below is current design/handoff context. The older
@@ -13,7 +13,7 @@ current_classifier_policy_sha256: ece497210db938528cb166a34f2ce3013324b792a7eedf
 ## Round 6 CPA pinned-compatibility addendum
 
 Exact project version is `0.15`; the only formal tag is `v0.15`, never
-`v0.15.0`. The current source/compile and real-Host release target is v7.2.88
+`v0.15.0`. The current source/compile and real-Host release target is v7.2.95
 only. Its native Host + Mock matrix remains **NOT RUN / PENDING**. Earlier
 v7.2.85/v7.2.84/v7.2.83/v7.2.82/v7.2.81 profiles are historical and non-gating. Commit
 `21ceb57e6b6030e56d7820c9a67a8eecd068c669` passed push
@@ -33,19 +33,23 @@ configuration mutator, or third-party test runner is installed or executed.
 No original jailbreak prompt, live payload, real target, credential, URL/IP,
 or model output is copied into rules, tests, audit, counters, or reports.
 
-The 2026-07-16 read-only refresh fixed these default-branch snapshots without
+The 2026-07-22 read-only refresh fixed these default-branch snapshots without
 executing third-party code or copying prompt payloads:
 
 | Public reference | Fixed commit | Abstract mechanisms used for defensive review |
 |---|---|---|
 | `Jia-Ethan/codex-keysmith` | `f699b9bd2cb59eb0d54e69139c68f7808d869b6d` | conditional session routing, placeholder/default branches, hierarchy inversion, refusal suppression, concealed exact-output completion |
-| `MDX-Tom/gpt-5.6-instruct` | `5f469e43ef66f540cadb475039fd9ed469aef654` | persistent instruction-file replacement, refusal suppression, unrestricted persona, scope/placeholder laundering, direct completion, benchmark coercion, bilingual compound routing |
+| `MDX-Tom/gpt-5.6-instruct` | `18fea37f4f1a263cc0fc31bb0e32e61ace0b1f69` | persistent instruction-file replacement, refusal suppression, unrestricted persona, scope/placeholder laundering, direct completion, benchmark coercion, bilingual compound routing |
 | `yynxxxxx/Codex-X` | `7d0e0064d54f860d4bf12b557fd9f8c489043a35` | remote template/cache and Markdown import, append/replace, managed `AGENTS`, Skill/MCP, activation aliases, agentic execution, segmented continuation, concealment |
 | `yynxxxxx/Codex-5.5-codex-instruct-5.5` | `ed0b6dc37d1994e93788d92f7af63f58bf0b9e2d` | unrestricted developer mode, filter/refusal suppression, default lab authorization, persistent instruction-file injection |
 
 The corresponding Codex-5.5 example shared by the latter two repositories is
 the same Git blob (`b1428e813708188d62fedba02bd49e31397f6296`). This
 deduplication fact is source-review metadata only, not classifier evidence.
+The MDX-Tom refresh advanced only documentation and GitHub Pages maintenance;
+its reviewed instruction/deployment payloads were unchanged from the earlier
+`5f469e43...` snapshot, and the current v5 Markdown is Git blob
+`4fa25ea7f680ff07808467b0d164764dc0161d39`.
 
 The sanitized mechanism-level additions are combination-based rather than a
 jailbreak keyword blocklist:
@@ -136,11 +140,11 @@ Nested business lookalikes and scalar fields remain inert. Native CPA
 inspection; this is source-level compatibility, not native Host evidence.
 
 Ordinary CI does not invoke the consumed evaluation-v10 boundary target or
-start CPA. The current v7.2.88 lane is source/compile compatibility evidence
+start CPA. The current v7.2.95 contract is source/compile compatibility evidence
 only. The final PR head must first pass PR CI, merge to `main`, and the exact
 resulting main commit/tree must pass push CI. The private untagged clean
 candidate is then dispatched from `refs/heads/main`; the owner-operated
-v7.2.88 Host validation and
+v7.2.95 Host validation and
 independent source/artifact/Host review plus a candidate-bound external
 `evaluation-v11` or later first-and-only `CONSUMED / PASS` attestation are
 separate and are not production authorization. Until exact evidence is recorded, status is:
@@ -304,25 +308,29 @@ Primary implementation and regression files:
 On 2026-07-13 (Asia/Shanghai), the following current-diff checks exited zero.
 The invoked toolchain reported `go version go1.26.4 linux/amd64`:
 
+The historical operator-local executable paths are normalized below as `$GO`
+and `$GOFMT`; they identified the reported Go 1.26.4 Linux amd64 toolchain and
+are not required to reproduce the commands.
+
 ```text
-/home/yujian/.local/toolchains/go1.26.4/bin/go test -tags=sqlite_omit_load_extension \
+$GO test -tags=sqlite_omit_load_extension \
   ./internal/rules ./internal/extract ./internal/classifier ./internal/plugin \
   -count=1
-/home/yujian/.local/toolchains/go1.26.4/bin/go vet -tags=sqlite_omit_load_extension \
+$GO vet -tags=sqlite_omit_load_extension \
   ./internal/rules ./internal/extract ./internal/classifier ./internal/plugin
-/home/yujian/.local/toolchains/go1.26.4/bin/go test -race -tags=sqlite_omit_load_extension \
+$GO test -race -tags=sqlite_omit_load_extension \
   ./internal/extract ./internal/classifier ./internal/plugin \
   -run '^(TestMetaOverride.*|TestNegativeAuthorizationClearsLabLaundering|TestMaliciousSystemPolicyCannotNegateRefusalInsteadOfAbuse|TestSystemClosedQuoteCannotHideNewOperationalSentence|TestAssistant.*|Test.*Permission.*|TestExtractTextRoleAmbiguityReextractsUnknownTopLevelSemantics|TestExtractTextUnknownTopLevelMetadataDoesNotEraseRoleIsolation|TestExtractTextRedecodesEncodedContentSplitAcrossBlocks|TestExtractTextRedecodesEncodedToolFieldsAfterPristineJoin|TestExtractTextRecursesJSONStringUnderArbitraryToolPayloadField|TestPromptInjection.*)$' \
   -count=1
-/home/yujian/.local/toolchains/go1.26.4/bin/gofmt -l internal/classifier/classifier.go \
+$GOFMT -l internal/classifier/classifier.go \
   internal/classifier/matcher.go internal/classifier/meta_override.go \
   internal/classifier/meta_override_test.go internal/classifier/normalize.go \
   internal/classifier/roles.go internal/extract/extract.go \
   internal/extract/roles.go internal/extract/roles_test.go \
   internal/plugin/router.go internal/plugin/prompt_injection_regression_test.go \
   internal/rules/types.go
-/home/yujian/.local/toolchains/go1.26.4/bin/go mod verify
-/home/yujian/.local/toolchains/go1.26.4/bin/go mod tidy -diff
+$GO mod verify
+$GO mod tidy -diff
 git diff --check
 ```
 

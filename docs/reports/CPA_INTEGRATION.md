@@ -1,33 +1,32 @@
-# CPA v7.2.88 Integration Report
+# CPA v7.2.95 integration report
 
 ```text
-current_classifier_policy_version: classifier-policy-v6
-current_classifier_policy_sha256: ece497210db938528cb166a34f2ce3013324b792a7eedf276a96fa5d256001d4
+current_classifier_policy_version: classifier-policy-v7
+current_classifier_policy_sha256: ea8c4dcfacacc6478f86fd2ca5de96d667ae98f2fc6ff0c83d8e6092e9f6a82d
 ```
 
 ## Active compatibility target
 
-Cyber Abuse Guard pins active validation and the supported release/Host target to
-`github.com/router-for-me/CLIProxyAPI/v7` `v7.2.88` at commit
-`93d74a890a44802f656d7f39a573916b2611896e`.
+Cyber Abuse Guard pins the Round 8 release matrix to two exact identities of
+`github.com/router-for-me/CLIProxyAPI/v7`:
 
-The root module and both isolated integration modules use that exact version:
+- target: `v7.2.95` at `f71ec0eb6776854457892452cf28c47f0d658251`.
 
-- `go.mod`;
-- `integration/pluginstorecontract/go.mod`;
-- `integration/cpalatestcontract/go.mod`.
+The checked-in module layout is:
 
-The active module identity is:
+- root `go.mod`: v7.2.95 primary;
+- `integration/cpalatestcontract/go.mod`: v7.2.95;
+- `integration/pluginstorecontract/go.mod`: v7.2.95 Store reference.
+
+The reviewed module identities are:
 
 ```text
-module_sum: h1:YfLBYPvkasjqFLzdht+UrEgRLsU3HcM0WDMurNEjIDo=
-go_mod_sum: h1:ytvZNWbCv7PrAyR80+RKsDJPODsdL6qxyFaXDBNZdqs=
+primary_module_sum: h1:QHQuGuPwOOTdyk5G7s0gjirdQtCM7NtxHRGS1I2xNtA=
+primary_go_mod_sum: h1:he/Nx8K5RKvpcnedn0dmR8vVgHmetQ3/wutuPibWuRM=
 ```
 
-Legacy CPA-version-specific profiles and Make aliases have been removed. Old
-version observations remain in Git history, the changelog, and explicitly
-marked historical sections, but they are not executable tests, supported
-profiles, or current evidence.
+`CPA_COMPAT_PROFILE=primary` is the only accepted profile and is the release
+default. Old observations remain historical and are not current Host evidence.
 
 ## Active validation commands
 
@@ -35,23 +34,40 @@ Only the following CPA validation paths are supported:
 
 ```bash
 make cpa-host-fixture-contract
-CPA_COMPAT_VERIFY_REMOTE=1 make cpa-latest-compat
+CPA_COMPAT_PROFILE=primary CPA_COMPAT_VERIFY_REMOTE=1 make cpa-latest-compat
 make cpa-host-blackbox
 make cpa-router-fixture-blackbox
 make round6-cpa-store-contract
 ```
 
-The compatibility contract verifies the fixed v7.2.88 Git tag-to-commit
-identity directly against the official Git origin, then binds the Go module
-Origin and both checksums. It does not depend on GitHub REST Release metadata
-or a repository token. Later upstream CPA versions do not automatically change
-the supported source or Host target.
+With `CPA_COMPAT_VERIFY_REMOTE=1`, the compatibility contract first queries the
+official unauthenticated GitHub `releases/latest` endpoint and requires the
+primary pin to remain the latest Release. It then verifies both fixed Git
+tag-to-commit identity directly against the official Git origin and binds the
+Go module Origin plus both checksums. All checked-in modules use the same
+v7.2.95 identity. No repository
+token is used. A later upstream Release fails the gate until the reviewed pins,
+contracts, and documentation are deliberately updated; it never silently
+changes the supported source or Host target.
 `ALLOW_DIRTY_BUILD=1` is a development-only override and is not release
 evidence.
 
+The current Linux development run used Go 1.26.4 and
+`CPA_COMPAT_VERIFY_REMOTE=1`. It verified `releases/latest == v7.2.95`, the
+exact tag commit, the official module Origin, and the pinned module/go.mod sums
+before completing the primary source/compile matrix. The upstream delta from
+the preceding pin to v7.2.95 did not change
+`sdk/pluginabi` or `sdk/pluginapi`, and the Guard required no API adaptation.
+The primary module's
+transitive dependency graph did move `github.com/tiktoken-go/tokenizer` from
+v0.7.0 to v0.8.1 and `github.com/dlclark/regexp2` v1 to
+`github.com/dlclark/regexp2/v2` v2.5.1; the checked-in root module files reflect
+that reviewed upstream change. These results remain development self-checks,
+not exact-main or Host evidence.
+
 ## Coverage
 
-The current v7.2.88 matrix covers:
+The current two-profile matrix covers:
 
 - Guard compilation, registration, and routing contracts;
 - official Host Router ordering, fallback, panic/fuse, target-readiness, and
@@ -60,6 +76,8 @@ The current v7.2.88 matrix covers:
   copy;
 - Interactions route, handler, translator, auth-selection, and direct-executor
   format contracts;
+- Raw Capture management-response transport and HTML-sanitization contracts on
+  the pinned CPA v7.2.95 source;
 - CPA Store archive naming, root layout, checksum, installation, repeat-install,
   overwrite, and published-artifact identity;
 - an available native Linux integration target for plugin load and pre-upstream
@@ -69,7 +87,8 @@ The current v7.2.88 matrix covers:
   the cited main/tag CI runs.
 
 The shared test fixtures under `integration/pluginstorecontract/testfixtures/`
-are current v7.2.88 inputs and must not be treated as legacy-version fixtures.
+remain the current v7.2.95 contract inputs and must not be treated as
+unsupported legacy fixtures.
 
 ## Historical pre-cleanup baseline (not the current RC target)
 
@@ -98,8 +117,8 @@ vet, fuzz, benchmarks, vulnerability checks, Linux build, artifact hashing,
 Store validation, integration compilation, and clean-tree verification. It did
 not run the native Host black-box or pure-C Router fixture targets.
 
-These commit, asset, and CPA v7.2.86 statements are retained only as historical
-baseline evidence. The current RC4 package is fixed to CPA v7.2.88; exact
+These commit, asset, and older CPA statements are retained only as historical
+baseline evidence. The current contract is fixed to CPA v7.2.95; exact
 tag/commit/tree, current CI, 17 asset hashes, and RC-versioned integration
 results are recorded at runtime in `rc-release-evidence.md` and
 `rc-release-manifest.json` rather than self-recorded in this source file.
@@ -113,13 +132,27 @@ integration-compile PASS do not replace the owner-operated isolated server
 sandbox. No local validation in this report is a claim that a production CPA
 process, real Provider, account pool, or production traffic was used.
 
-The remaining server evidence must load the exact Linux artifact in CPA
-v7.2.88 with a Mock upstream and prove zero deltas for locally blocked requests
-at Auth Selector, Provider execution, usage accounting, and Mock-upstream
-request layers.
+The remaining server evidence must load the exact Linux artifact in CPA v7.2.95
+with a counted Mock upstream and prove zero deltas for locally
+blocked requests at Auth Selector, Provider execution, usage accounting, and
+Mock-upstream request layers.
 
-The resulting Host record is carried by prerelease attestation schema v2 using
-the generic `cpa_version`, `cpa_commit`, and `cpa_host_sha256` fields.
+The v0.16-rc.2 manifest schema 4 records both source identities and the explicit
+release phase. Phase 1 packages a private 17-asset Host-test candidate with both
+counted-Mock states still `NOT_RUN / HOST_TEST_REQUIRED`. Phase 2 accepts only a
+closed-schema `round8-host-evidence.json` bound to the same reproduced candidate
+SO hash, records counted-Mock `PASS` for each CPA identity, and packages the
+evidence plus sidecar in the exact 19-asset prerelease. This evidence must also
+carry per-lane Chat/Responses 1/0 upstream deltas, 42/42 benign and paired
+malicious matrices, stream/nonstream and audit/balanced/strict coverage,
+quick-check/WAL and restart-cycle facts, plus zero unexpected restart/OOM/error
+counters. The same closed object covers Balanced-incomplete allow,
+Strict-incomplete block, usage-queue allow/blocked deltas, and Raw Capture
+only-blocked, TTL dedup, schema-v3 redaction metadata, and purge/WAL checks. A
+bare `PASS` is rejected. It must also state that no real Provider was contacted
+and production was not accessed.
 
 The supported platform for this release line is Linux amd64. Windows, macOS,
-and musl/Alpine validation are outside scope.
+and musl/Alpine validation are outside scope. Source/compile PASS is not real
+Host evidence; independent audit is still required, production approval has not
+been granted, and no stable v0.16 exists.

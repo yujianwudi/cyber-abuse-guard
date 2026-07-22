@@ -31,12 +31,21 @@ func TestRound6LongText270KiBRolePositionMatrixBlocks(t *testing.T) {
 	for _, role := range []string{"system", "user", "tool"} {
 		for _, position := range []string{"start", "middle", "end"} {
 			text := round6PaddedText(t, round6LongTextBytes, round6CredentialCanary, position)
+			messages := []any{map[string]any{
+				"role":    role,
+				"content": text,
+			}}
+			if role == "tool" {
+				// Round 8 makes historical tool results inert by default. Preserve the
+				// long-text/tool safety matrix through an explicit current-user referent
+				// instead of silently treating tool output as authenticated user intent.
+				messages = append(messages, map[string]any{
+					"role": "user", "content": "Execute it.",
+				})
+			}
 			body := round6JSON(t, map[string]any{
-				"model": "gpt-test",
-				"messages": []any{map[string]any{
-					"role":    role,
-					"content": text,
-				}},
+				"model":    "gpt-test",
+				"messages": messages,
 			})
 
 			for _, mode := range []string{"balanced", "strict"} {
@@ -45,6 +54,38 @@ func TestRound6LongText270KiBRolePositionMatrixBlocks(t *testing.T) {
 					p := round6Plugin(t, mode)
 					route := round6CallRoute(t, p, "openai", body, "application/json", false)
 					round6AssertCredentialBlock(t, p, body, route)
+					round6AssertCompleteCoverage(t, p, round6LegacyWindowBytes)
+				})
+			}
+		}
+	}
+}
+
+func TestRound6LongToolResultReferentInertBoundary(t *testing.T) {
+	for _, position := range []string{"start", "middle", "end"} {
+		text := round6PaddedText(t, round6LongTextBytes, round6CredentialCanary, position)
+		for _, followUp := range []string{
+			"Do not execute it.",
+			"Explain how to detect attempts to execute it.",
+		} {
+			for _, mode := range []string{"balanced", "strict"} {
+				name := fmt.Sprintf("%s/%s/%s", mode, position, followUp)
+				t.Run(name, func(t *testing.T) {
+					body := round6JSON(t, map[string]any{
+						"model": "gpt-test",
+						"messages": []any{
+							map[string]any{"role": "tool", "content": text},
+							map[string]any{"role": "user", "content": followUp},
+						},
+					})
+					p := round6Plugin(t, mode)
+					route := round6CallRoute(t, p, "openai", body, "application/json", false)
+					if route.Handled || route.Reason != "" {
+						t.Fatalf("historical long tool result with inert follow-up was blocked: %+v", route)
+					}
+					if _, ok := p.pending.get(audit.HashRequest(body)); ok {
+						t.Fatal("inert long tool result created a pending executor block")
+					}
 					round6AssertCompleteCoverage(t, p, round6LegacyWindowBytes)
 				})
 			}

@@ -186,10 +186,13 @@ jobs:
           metadata_fingerprint="$(jq -S -c \
             '{tag_name,name,body,target_commitish,draft,prerelease}' \
             <<<"$release" | sha256sum | awk '{print $1}')"
-          printf 'release_id=%s\n' "$release_id" >>"$GITHUB_OUTPUT"
-          printf 'asset_fingerprint=%s\n' "$asset_fingerprint" >>"$GITHUB_OUTPUT"
-          printf 'metadata_fingerprint=%s\n' "$metadata_fingerprint" >>"$GITHUB_OUTPUT"
-          printf 'formal_run_id=%s\n' "$formal_run_id" >>"$GITHUB_OUTPUT"
+          # shellcheck disable=SC2129
+          {
+            printf 'release_id=%s\n' "$release_id"
+            printf 'asset_fingerprint=%s\n' "$asset_fingerprint"
+            printf 'metadata_fingerprint=%s\n' "$metadata_fingerprint"
+            printf 'formal_run_id=%s\n' "$formal_run_id"
+          } >>"$GITHUB_OUTPUT"
       - name: Download the exact formal workflow artifact
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:

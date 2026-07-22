@@ -2,20 +2,34 @@
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-go_bin="${GO:-go}"
-git_identity_dir="$(mktemp -d)"
-origin_modcache=""
+go_launcher="${GO:-go}"
+selected_go_root="$("$go_launcher" -C "$root" env GOROOT)"
+if [[ "$selected_go_root" != /* || "$selected_go_root" == *$'\n'* || \
+      ! -x "$selected_go_root/bin/go" ]]; then
+  printf 'selected Go toolchain root is invalid: %q\n' "$selected_go_root" >&2
+  exit 1
+fi
+go_bin="$selected_go_root/bin/go"
+export GOTOOLCHAIN=local
+printf 'CPA compatibility Go toolchain: %s\n' "$("$go_bin" version)"
+work_dir="$(mktemp -d)"
+git_identity_dir="$work_dir/git-identity"
+mkdir -p "$git_identity_dir"
+origin_modcaches=()
 cleanup() {
-  rm -rf -- "$git_identity_dir"
-  if [[ -n "$origin_modcache" ]]; then
-    chmod -R u+w "$origin_modcache" 2>/dev/null || true
-    rm -rf -- "$origin_modcache"
-  fi
+  local cache
+  for cache in "${origin_modcaches[@]:-}"; do
+    [[ -n "$cache" ]] || continue
+    chmod -R u+w "$cache" 2>/dev/null || true
+  done
+  rm -rf -- "$work_dir"
 }
 trap cleanup EXIT
+
 cpa_module='github.com/router-for-me/CLIProxyAPI/v7'
 cpa_origin_url='https://github.com/router-for-me/CLIProxyAPI'
 cpa_origin_git_url="${cpa_origin_url}.git"
+cpa_latest_release_api='https://api.github.com/repos/router-for-me/CLIProxyAPI/releases/latest'
 
 requested_profile="${CPA_COMPAT_PROFILE:-primary}"
 case "$requested_profile" in
@@ -23,7 +37,8 @@ case "$requested_profile" in
     profiles=(primary)
     ;;
   *)
-    printf 'unsupported CPA_COMPAT_PROFILE=%s; only primary is supported\n' "$requested_profile" >&2
+    printf 'unsupported CPA_COMPAT_PROFILE=%s; the only supported value is primary\n' \
+      "$requested_profile" >&2
     exit 2
     ;;
 esac
@@ -37,23 +52,37 @@ case "$verify_remote" in
     ;;
 esac
 
-cpa_version='v7.2.88'
-cpa_commit='93d74a890a44802f656d7f39a573916b2611896e'
-cpa_module_sum='h1:YfLBYPvkasjqFLzdht+UrEgRLsU3HcM0WDMurNEjIDo='
-cpa_go_mod_sum='h1:ytvZNWbCv7PrAyR80+RKsDJPODsdL6qxyFaXDBNZdqs='
-cpa_expected_module_identity="$cpa_version $cpa_module_sum $cpa_go_mod_sum"
+set_profile_identity() {
+  case "$1" in
+    primary)
+      cpa_version='v7.2.95'
+      cpa_commit='f71ec0eb6776854457892452cf28c47f0d658251'
+      cpa_module_sum='h1:QHQuGuPwOOTdyk5G7s0gjirdQtCM7NtxHRGS1I2xNtA='
+      cpa_go_mod_sum='h1:he/Nx8K5RKvpcnedn0dmR8vVgHmetQ3/wutuPibWuRM='
+      ;;
+    *)
+      printf 'internal error: unsupported CPA profile %s\n' "$1" >&2
+      exit 1
+      ;;
+  esac
+  cpa_expected_module_identity="$cpa_version $cpa_module_sum $cpa_go_mod_sum"
+}
 
 assert_checked_in_module_identity() {
   local directory="$1"
   local label="$2"
-  local resolved
+  local expected_version="$3"
+  local expected_sum="$4"
+  local expected_go_mod_sum="$5"
+  local resolved expected
 
+  expected="$expected_version $expected_sum $expected_go_mod_sum"
   resolved="$(GOWORK=off "$go_bin" -C "$directory" list -mod=readonly -m \
     -f '{{if .Replace}}REPLACED {{.Replace.Path}} {{.Replace.Version}}{{else}}{{.Version}} {{.Sum}} {{.GoModSum}}{{end}}' \
     "$cpa_module")"
-  [[ "$resolved" == "$cpa_expected_module_identity" ]] || {
+  [[ "$resolved" == "$expected" ]] || {
     printf 'checked-in %s CPA module identity mismatch: got %s want %s\n' \
-      "$label" "$resolved" "$cpa_expected_module_identity" >&2
+      "$label" "$resolved" "$expected" >&2
     exit 1
   }
 }
@@ -78,6 +107,24 @@ resolve_remote_tag_commit() {
   printf '%s\n' "$cpa_commit"
 }
 
+resolve_remote_latest_release_tag() {
+  local response latest_tag
+
+  if ! response="$(timeout --signal=KILL 60s curl \
+    --fail --silent --show-error --location \
+    --connect-timeout 15 --max-time 60 \
+    --header 'Accept: application/vnd.github+json' \
+    --header 'X-GitHub-Api-Version: 2022-11-28' \
+    --header 'User-Agent: cyber-abuse-guard-cpa-compat' \
+    "$cpa_latest_release_api")"; then
+    printf 'CPA latest release could not be resolved from the official GitHub API within 60 seconds\n' >&2
+    return 1
+  fi
+  latest_tag="$(printf '%s\n' "$response" | jq -er \
+    '.tag_name | select(type == "string" and length > 0)')"
+  printf '%s\n' "$latest_tag"
+}
+
 for required_command in jq timeout; do
   command -v "$required_command" >/dev/null 2>&1 || {
     printf '%s is required for CPA module identity verification\n' "$required_command" >&2
@@ -85,21 +132,53 @@ for required_command in jq timeout; do
   }
 done
 if [[ "$verify_remote" == 1 ]]; then
-  for required_command in git; do
+  for required_command in git curl; do
     command -v "$required_command" >/dev/null 2>&1 || {
-      printf '%s is required for CPA remote tag verification\n' "$required_command" >&2
+      printf '%s is required for CPA remote latest/tag verification\n' "$required_command" >&2
       exit 1
     }
   done
 else
-  printf 'CPA remote tag check skipped; pinned module Origin and sums remain required\n' >&2
+  printf 'CPA remote latest/tag checks skipped; pinned module Origin and sums remain required\n' >&2
 fi
 
-assert_checked_in_module_identity "$root" root
-assert_checked_in_module_identity "$root/integration/cpalatestcontract" cpalatestcontract
-assert_checked_in_module_identity "$root/integration/pluginstorecontract" pluginstorecontract
+assert_checked_in_module_identity \
+  "$root" root \
+  v7.2.95 h1:QHQuGuPwOOTdyk5G7s0gjirdQtCM7NtxHRGS1I2xNtA= \
+  h1:he/Nx8K5RKvpcnedn0dmR8vVgHmetQ3/wutuPibWuRM=
+assert_checked_in_module_identity \
+  "$root/integration/cpalatestcontract" cpalatestcontract \
+  v7.2.95 h1:QHQuGuPwOOTdyk5G7s0gjirdQtCM7NtxHRGS1I2xNtA= \
+  h1:he/Nx8K5RKvpcnedn0dmR8vVgHmetQ3/wutuPibWuRM=
+assert_checked_in_module_identity \
+  "$root/integration/pluginstorecontract" pluginstorecontract \
+  v7.2.95 h1:QHQuGuPwOOTdyk5G7s0gjirdQtCM7NtxHRGS1I2xNtA= \
+  h1:he/Nx8K5RKvpcnedn0dmR8vVgHmetQ3/wutuPibWuRM=
+
+verify_primary_latest=0
+for profile in "${profiles[@]}"; do
+  if [[ "$profile" == primary ]]; then
+    verify_primary_latest=1
+    break
+  fi
+done
+if [[ "$verify_remote" == 1 && "$verify_primary_latest" == 1 ]]; then
+  set_profile_identity primary
+  resolved_latest_tag="$(resolve_remote_latest_release_tag)"
+  [[ "$resolved_latest_tag" == "$cpa_version" ]] || {
+    printf 'CPA primary is no longer the latest official release: got latest=%s want=%s\n' \
+      "$resolved_latest_tag" "$cpa_version" >&2
+    exit 1
+  }
+  printf 'CPA latest release identity PASS: %s\n' "$resolved_latest_tag"
+fi
 
 for profile in "${profiles[@]}"; do
+  set_profile_identity "$profile"
+  root_mod_flags=()
+  contract_mod_flags=()
+  contract_modfile='go.mod'
+
   if [[ "$verify_remote" == 1 ]]; then
     resolved_tag_commit="$(resolve_remote_tag_commit "$cpa_version")"
     [[ "$resolved_tag_commit" == "$cpa_commit" ]] || {
@@ -128,13 +207,10 @@ for profile in "${profiles[@]}"; do
     exit 1
   }
 
-  # Go reports Origin on a fresh direct VCS download, but may omit it when the
-  # same module is served from a warm module cache. Revalidate only the pinned
-  # module in an isolated direct cache instead of treating a harmless warm
-  # cache as an origin mismatch or forcing all transitive dependencies direct.
   origin_json="$download_json"
   if ! printf '%s\n' "$origin_json" | jq -e '.Origin.VCS and .Origin.URL and .Origin.Hash and .Origin.Ref' >/dev/null; then
-    origin_modcache="$(mktemp -d)"
+    origin_modcache="$(mktemp -d "$work_dir/origin-$profile.XXXXXX")"
+    origin_modcaches+=("$origin_modcache")
     printf 'CPA module Origin missing from warm cache; refreshing pinned identity in an isolated direct cache\n' >&2
     if ! origin_json="$(timeout --signal=KILL 60s env \
       GIT_CONFIG_GLOBAL=/dev/null \
@@ -178,29 +254,32 @@ for profile in "${profiles[@]}"; do
       "$download_origin_hash" "$download_origin_ref" >&2
     exit 1
   }
-  origin_metadata_file="$git_identity_dir/cpa-origin-$profile.json"
+  origin_metadata_file="$work_dir/cpa-origin-$profile.json"
   printf '%s\n' "$origin_json" >"$origin_metadata_file"
 
   (
     cd "$root"
     GOWORK=off CGO_ENABLED=1 "$go_bin" test \
-      -mod=readonly \
+      "${root_mod_flags[@]}" -mod=readonly \
       -tags=sqlite_omit_load_extension -run='^$' -count=1 \
       ./cmd/cyber-abuse-guard
     GOWORK=off CGO_ENABLED=1 "$go_bin" test \
-      -mod=readonly \
+      "${root_mod_flags[@]}" -mod=readonly \
       -tags=sqlite_omit_load_extension -count=1 \
       -run='^(TestRegistrationMatchesTargetCPAContract|TestRouterUsesRoleAwareConversationClassification)$' \
       ./internal/plugin
     GOWORK=off CGO_ENABLED=1 "$go_bin" test \
-      -mod=readonly \
+      "${root_mod_flags[@]}" -mod=readonly \
       -tags=integration,sqlite_omit_load_extension -run='^$' -count=1 \
       ./integration
     CPA_COMPAT_PROFILE="$profile" \
+      CPA_COMPAT_MODFILE="$contract_modfile" \
       CPA_COMPAT_EXPECTED_COMMIT="$cpa_commit" \
       CPA_COMPAT_ORIGIN_FILE="$origin_metadata_file" \
       GOWORK=off "$go_bin" -C integration/cpalatestcontract test \
-      -mod=readonly -count=1 -v .
+      "${contract_mod_flags[@]}" -mod=readonly -count=1 -v .
+    GOWORK=off "$go_bin" -C integration/pluginstorecontract test \
+      -mod=readonly -count=1 .
   )
 
   if [[ "$verify_remote" == 1 ]]; then
@@ -213,8 +292,9 @@ for profile in "${profiles[@]}"; do
 done
 
 if [[ "$verify_remote" == 1 ]]; then
-  printf 'CPA pinned source/compile compatibility PASS: profile=%s %s@%s\n' \
-    "${profiles[*]}" "$cpa_version" "$cpa_commit"
+  printf 'CPA pinned source/compile compatibility matrix PASS: profiles=%s remote_latest_and_tag_verified=1\n' \
+    "${profiles[*]}"
 else
-  printf 'CPA source/compile compatibility PASS: profile=%s remote_tag_checks=SKIPPED\n' "${profiles[*]}"
+  printf 'CPA source/compile compatibility matrix PASS: profiles=%s remote_latest_and_tag_check=SKIPPED\n' \
+    "${profiles[*]}"
 fi

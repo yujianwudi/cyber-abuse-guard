@@ -186,13 +186,13 @@ func TestQueryRawCapturesPageStopsAfterOneBudgetSentinel(t *testing.T) {
 		if _, err := tx.Exec(insertEventSQL,
 			eventID, timestamp.UnixNano(), "block", "balanced", "exploitation", 100, "[]",
 			"", "", "", "openai", 0, 0, "raw-capture-budget-test",
-			"block_malicious_text", "complete", "", "streaming-scanner-v1", 0,
+			"block_malicious_text", "complete", "", "streaming-scanner-v1", 0, "{}",
 		); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := tx.Exec(insertLargeCapture,
 			"capture-"+eventID, eventID, timestamp.UnixNano(), maxRawCaptureBytes,
-			"sha256:"+strings.Repeat("a", 64),
+			fmt.Sprintf("sha256:%064x", index+1),
 		); err != nil {
 			t.Fatal(err)
 		}

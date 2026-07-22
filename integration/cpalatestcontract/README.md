@@ -1,34 +1,44 @@
-# CPA v7.2.88 pinned source/compile compatibility contract
+# CPA v7.2.95 source and compatibility contract
 
-This isolated module is the source-contract half of the Round6 CPA compatibility
-gate. Its only profile is the reviewed CPA release pin:
+This isolated module is the source-contract half of the CPA compatibility gate.
+The active contract has one exact, reviewed target:
 
-| Profile | CPA | Commit | Module sum |
-|---|---|---|---|
-| `primary` | `v7.2.88` | `93d74a890a44802f656d7f39a573916b2611896e` | `h1:YfLBYPvkasjqFLzdht+UrEgRLsU3HcM0WDMurNEjIDo=` |
+| Profile | CPA | Commit | Module sum | `go.mod` sum |
+|---|---|---|---|---|
+| `primary` | `v7.2.95` | `f71ec0eb6776854457892452cf28c47f0d658251` | `h1:QHQuGuPwOOTdyk5G7s0gjirdQtCM7NtxHRGS1I2xNtA=` | `h1:he/Nx8K5RKvpcnedn0dmR8vVgHmetQ3/wutuPibWuRM=` |
 
-The profile pins go.mod sum
-`h1:ytvZNWbCv7PrAyR80+RKsDJPODsdL6qxyFaXDBNZdqs=`. The checked-in isolated
-module uses this reviewed CPA release. Unknown profile names fail closed.
+The checked-in root, latest-contract, and plugin-store contract modules all use
+this same pin. `CPA_COMPAT_PROFILE` defaults to `primary`; every other value
+fails closed. There is no active legacy CPA lane.
 
-The tests run 18 official Host routing/status and metadata-sanitization contracts,
+The tests run 19 official Host routing/status and metadata-sanitization contracts,
 the official Responses namespace/custom `additional_tools` conversion contract,
 two official Codex Responses Lite `additional_tools` role/shape contracts, and
-11 official Interactions route/handler contracts, then apply three
-checksum-pinned overlays only to ephemeral copies of the selected official CPA
-module. `scripts/cpa-latest-compat.sh` compiles the Guard and integration
-packages against the checked-in v7.2.88 modules and runs the real Guard
-registration/route tests. Only the official upstream test graph and overlays
-use ephemeral modfiles. With `CPA_COMPAT_VERIFY_REMOTE=1`, it verifies the exact
-`v7.2.88` Tag-to-Commit identity through the official Git origin, the
-official Go module `Origin`, and both Go sums. It deliberately does not query
-GitHub REST Release metadata or `releases/latest`, and it needs no repository
-token; a PASS applies only to the reviewed pinned source and never claims
-moving-latest compatibility.
+14 official internal API/Interactions route and handler contracts, including
+the current Codex Alpha Search routes, then apply three
+checksum-pinned fixture overlays only to ephemeral copies of the selected
+official CPA module: fail-open routing, Interactions handler/translator, and
+Interactions direct-executor format. A fourth source-controlled Raw Capture
+management overlay is compiled from this test module. The Raw Capture contract
+resolves the selected CPA source through the same checked-in module identity as
+every other contract. `scripts/cpa-latest-compat.sh` compiles the Guard and
+integration packages against v7.2.95 and runs the real Guard registration/route
+tests. Official upstream test graphs use ephemeral modfiles; checked-in module
+files are never rewritten.
+With `CPA_COMPAT_VERIFY_REMOTE=1`, it queries the official unauthenticated
+GitHub `releases/latest` endpoint and requires the pin to remain the latest
+Release. It also verifies the exact Tag-to-Commit identity through the official
+Git origin, the official Go module `Origin`, and both Go sums. It needs no
+repository token. A PASS applies only to v7.2.95 and the observed latest-Release
+identity at validation time; later upstream Releases fail closed until the
+reviewed target is deliberately updated.
 
-`CPA_COMPAT_PROFILE=primary` is the only supported profile and is the default.
+`CPA_COMPAT_PROFILE=primary` is the only supported selection and is also the
+default.
 
 No CPA process is started, no Guard `.so` is loaded, and no Provider or account
 is contacted. A PASS proves source and compile compatibility only; native Host,
-Store installation, request reconstruction, logging, and upstream-isolation
-evidence remain server-sandbox work. No profile is real Host evidence.
+Store installation, request reconstruction, logging, counted Mock behavior, and
+upstream/usage isolation remain server-sandbox work. No profile is real Host or
+counted Mock evidence. Independent audit is still required, production approval
+has not been granted, and this contract does not authorize a stable `v0.16`.

@@ -1,9 +1,7 @@
 package cpalatestcontract
 
 import (
-	"encoding/json"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -35,7 +33,7 @@ func TestCyberAbuseGuardRawCaptureManagementHostContract(t *testing.T) {
 			"raw_preview": preview,
 			"raw_preview_b64": previewB64,
 		}},
-		"raw_preview_transport": "cpa-v7.2.88-html-escaped-utf8",
+		"raw_preview_transport": "cpa-json-html-escaped-utf8",
 		"raw_preview_b64_encoding": "base64-standard-utf8",
 		"raw_preview_rendering": "text-only-never-html",
 		"raw_preview_deprecated": true,
@@ -109,7 +107,7 @@ func TestCyberAbuseGuardRawCaptureManagementHostContract(t *testing.T) {
 	if err != nil || string(decoded) != preview {
 		t.Fatalf("decode raw_preview_b64: bytes=%d err=%v", len(decoded), err)
 	}
-	if response["raw_preview_transport"] != "cpa-v7.2.88-html-escaped-utf8" ||
+	if response["raw_preview_transport"] != "cpa-json-html-escaped-utf8" ||
 		response["raw_preview_b64_encoding"] != "base64-standard-utf8" ||
 		response["raw_preview_rendering"] != "text-only-never-html" ||
 		response["raw_preview_deprecated"] != true ||
@@ -125,7 +123,7 @@ func TestCyberAbuseGuardRawCaptureManagementHostContract(t *testing.T) {
 			{"id": "capture-one", "event_id": "event-one", "raw_preview": preview, "raw_preview_b64": previewB64},
 			{"id": "capture-two", "event_id": "event-two", "raw_preview": preview, "raw_preview_b64": previewB64},
 		},
-		"raw_preview_transport": "cpa-v7.2.88-html-escaped-utf8",
+		"raw_preview_transport": "cpa-json-html-escaped-utf8",
 		"raw_preview_b64_encoding": "base64-standard-utf8",
 		"raw_preview_rendering": "text-only-never-html",
 		"cpa_host_response_budget_bytes": 8 << 20,
@@ -144,7 +142,7 @@ func TestCyberAbuseGuardRawCaptureManagementHostContract(t *testing.T) {
 `
 
 func TestLatestCPARawCaptureManagementHostContract(t *testing.T) {
-	goBinary, module := pinnedCPAModuleForRawCaptureHostContract(t)
+	goBinary, _, module := prepareLatestCPAModule(t)
 	moduleCopy := filepath.Join(t.TempDir(), "cpa-raw-capture-management-host-contract")
 	if err := os.CopyFS(moduleCopy, os.DirFS(module.Dir)); err != nil {
 		t.Fatalf("copy CPA module for raw-capture Host contract: %v", err)
@@ -161,23 +159,4 @@ func TestLatestCPARawCaptureManagementHostContract(t *testing.T) {
 	}
 	runLatestGoCommandInDir(t, moduleCopy, goBinary,
 		"test", "-mod=readonly", "-count=1", "-v", "-run", "^"+testName+"$", "./internal/pluginhost")
-}
-
-func pinnedCPAModuleForRawCaptureHostContract(t *testing.T) (string, latestResolvedCPAModule) {
-	t.Helper()
-	goBinary, err := exec.LookPath("go")
-	if err != nil {
-		t.Fatalf("locate go tool: %v", err)
-	}
-	moduleJSON := runLatestGoJSONCommand(t, goBinary, "list", "-mod=readonly", "-m", "-json", cpaLatestModulePath)
-	var module latestResolvedCPAModule
-	if err := json.Unmarshal([]byte(moduleJSON), &module); err != nil {
-		t.Fatalf("decode pinned CPA module metadata: %v", err)
-	}
-	profile := selectedCPACompatibilityProfile(t)
-	if module.Replace != nil || module.Path != cpaLatestModulePath || module.Version != profile.Version ||
-		strings.TrimSpace(module.Dir) == "" || module.Sum != profile.ModuleSum || module.GoModSum != profile.GoModSum {
-		t.Fatalf("pinned CPA module=%+v, want %s@%s with expected checksums", module, cpaLatestModulePath, profile.Version)
-	}
-	return goBinary, module
 }

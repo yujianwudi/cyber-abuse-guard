@@ -621,7 +621,7 @@ func verifyMinimalSchema(t *testing.T, path string) {
 		"id", "timestamp_ns", "action", "mode", "category", "risk_score", "rule_ids",
 		"request_hash", "subject_hash", "model", "source_format", "stream",
 		"text_bytes_scanned", "classifier", "latency_us", "decision", "coverage",
-		"incomplete_reason", "scanner",
+		"incomplete_reason", "scanner", "decision_explanation",
 	}
 	if strings.Join(columns, ",") != strings.Join(want, ",") {
 		t.Fatalf("schema columns = %v, want %v", columns, want)
