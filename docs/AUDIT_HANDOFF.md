@@ -157,7 +157,7 @@ historical_v10: CONSUMED / FAIL / MUST NOT RERUN / NOT A FORMAL INPUT
 4. 从 `refs/heads/main` dispatch 候选 workflow，生成私有、无标签、干净精确源码的
    Linux amd64 Actions 候选产物及
    `candidate-manifest.json`；
-5. CPA v7.2.95 Host + Mock 记录绑定 candidate SO SHA-256，并通过 schema v2
+5. CPA v7.2.88 Host + Mock 记录绑定 candidate SO SHA-256，并通过 schema v2
    `cpa_version`、`cpa_commit`、`cpa_host_sha256` 绑定 Host 身份与证据哈希，同时证明
    Auth Selector、Provider、Usage、Mock Upstream
    四层零调用；

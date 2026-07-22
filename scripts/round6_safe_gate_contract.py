@@ -1050,7 +1050,7 @@ FORMAL_RELEASE_STEP_RUN_SHA256 = {
     ("publish", 2): "1574a0d0ac458f3e12ab6052955d1027955a8cfad76f5773547da4d4bcb85fb2",
 }
 PROMOTE_STEP_RUN_SHA256 = {
-    ("verify", 0): "e316073ae7610d5b15008f467ed0921eebc9bc926b1ae37790b23fd39adb9356",
+    ("verify", 0): "1136924fac09486e80411376a74957eedba466120f9746dbf18636500b2a7f12",
     ("verify", 2): "81f3c306c6e57ff95c598cb10fcc9c9bd185361a1bb753ab98de0e4e4a8df813",
     ("promote", 0): "d04544c3a61f3bae7810179742dbd326ae291aa02791347eb4f2ebb5dfccd4b1",
 }
