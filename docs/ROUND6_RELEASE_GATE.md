@@ -211,8 +211,9 @@ independent-audit hash.
 It rebuilds the same clean exact-source bytes, proves reproducibility, and
 rechecks the SO hash before and after Actions artifact transfer.
 
-GitHub allows at most 10 top-level `workflow_dispatch` inputs. The
-repository keeps this manual dispatcher at exactly nine inputs and carries the
+GitHub allows at most 25 top-level `workflow_dispatch` inputs. This repository
+retains a stricter reviewed cap of 10, keeps this manual dispatcher at exactly
+nine inputs, and carries the
 Host, audit, and evaluation decisions and evidence in one required
 `external_attestations_json` object. That object must contain exactly
 `host_validation`, `host_evidence_sha256`, `independent_audit_validation`,

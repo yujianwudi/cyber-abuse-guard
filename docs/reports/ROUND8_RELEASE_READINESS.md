@@ -70,7 +70,7 @@ The active `.github/workflows/release-rc.yml` accepts only an annotated
 exact-main `v0.16-rc.2` tag. It requires the exact successful main CI run and
 attempt, runs the complete Linux gate set, runs the CPA v7.2.95 contract, and performs
 two independent clean-clone reproducibility builds. Its ten dispatch inputs
-match GitHub's current 10-input platform limit.
+match the repository's stricter reviewed cap; GitHub's platform limit is 25.
 
 The build lane runs on the declared `ubuntu-24.04` GitHub-hosted runner label
 and carries that build job's `runner.os`, `runner.arch`, and
