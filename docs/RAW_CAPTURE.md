@@ -35,6 +35,15 @@ unbounded copy of every prompt.
   as one composite work item and are written in one SQLite transaction. If the
   preview insert fails, the metadata-only audit event remains the durable
   priority and dedicated capture-failure counters expose the missing preview.
+- Retry deduplication: every blocking decision remains an ordinary audit event,
+  but at most one preview of the same complete request is retained in one
+  `ttl_hours` window. Deduplication reuses the already-persisted `raw_sha256`
+  integrity value, so it still works when `log_request_hash: false` without
+  manufacturing or exposing a `request_hash`. A request arriving exactly at
+  the TTL boundary may create a fresh preview.
+- Output: preview text must not be printed to service logs or included in CI or
+  release artifacts. It is available only through the authenticated management
+  query described below.
 - Legacy switch: `audit.log_original_text: true` remains invalid. There is no
   unrestricted full-request logging mode.
 
@@ -78,7 +87,7 @@ Supported query parameters are:
 | Parameter | Meaning |
 |---|---|
 | `event_id` | Exact audit event UUID |
-| `request_hash` | Exact `sha256:` request-correlation value from `/events` |
+| `request_hash` | Exact `sha256:` request-correlation value from `/events`; unavailable when request-hash logging is disabled |
 | `limit` | 1..100; defaults to 20 |
 
 Parameters may be combined. Unknown, duplicate, malformed, or oversized
@@ -112,13 +121,13 @@ size of that complete CPA Host-visible body:
   "response_preview_budget_bytes": 8388608,
   "cpa_host_response_budget_bytes": 8388608,
   "cpa_host_response_bytes": 1189,
-  "raw_preview_transport": "cpa-v7.2.88-html-escaped-utf8",
+  "raw_preview_transport": "cpa-json-html-escaped-utf8",
   "raw_preview_b64_encoding": "base64-standard-utf8",
   "raw_preview_rendering": "text-only-never-html",
   "raw_preview_deprecated": true,
   "encoded_preview_bytes_deprecated": true,
   "preferred_preview_field": "raw_preview_b64",
-  "raw_capture_response_schema_version": 2,
+  "raw_capture_response_schema_version": 3,
   "captures": [
     {
       "id": "capture-id",
@@ -129,7 +138,11 @@ size of that complete CPA Host-visible body:
       "action": "block",
       "decision": "block_malicious_text",
       "truncated": false,
+      "preview_truncated": false,
       "redacted": true,
+      "redaction_applied": true,
+      "redaction_pattern_hits": 2,
+      "redaction_version": "raw-redactor-v1",
       "raw_preview": "{\"messages\":[{\"content\":\"...\"}]}",
       "raw_preview_b64": "eyJtZXNzYWdlcyI6W3siY29udGVudCI6Ii4uLiJ9XX0=",
       "raw_sha256": "sha256:..."
@@ -138,7 +151,7 @@ size of that complete CPA Host-visible body:
 }
 ```
 
-CPA v7.2.88 HTML-escapes every JSON string after the plugin returns. The legacy
+CPA v7.2.95 HTML-escapes every JSON string after the plugin returns. The legacy
 `raw_preview` field is therefore retained for existing clients but is explicitly
 deprecated by `raw_preview_deprecated: true`; it may not be byte-identical to
 the stored redacted preview. `raw_preview_b64` is the canonical
@@ -166,7 +179,7 @@ query limit and the current `max_bytes` setting. This remains safe after a
 configuration downgrade when the database still contains older 1 MiB rows: a
 `limit=100` query cannot first materialize roughly 100 MiB of previews. The
 management encoder separately enforces an 8 MiB budget over the complete
-CPA-v7.2.88 Host-visible JSON body, including both preview fields and response
+CPA-v7.2.95 Host-visible JSON body, including both preview fields and response
 metadata. The maximum single 1 MiB preview fits this budget even for the
 reviewed worst-case HTML-escaping fixture.
 
@@ -182,13 +195,36 @@ value constrained by `cpa_host_response_budget_bytes`. Callers must not assume
 that `returned_count == requested_limit`.
 
 `subject_hash` can be empty when subject correlation is unavailable or
-disabled. `redacted` reports whether a replacement was actually made;
-mandatory redaction can therefore be active while this field is `false` for a
-record containing no recognized secret. `truncated` reports whether content
-exceeded `max_bytes` after redaction. `raw_sha256` is the direct SHA-256 of the
-complete original request bytes before redaction and truncation; it supports
-integrity checks and deduplication but is not a substitute for the
-domain-separated `request_hash` audit correlation value.
+disabled. `request_hash` is likewise omitted when `log_request_hash: false`;
+Raw Capture TTL deduplication still operates in that mode and does not expose a
+replacement correlation hash.
+
+`preview_truncated` and `redaction_applied` are the canonical schema-v3 field
+names. `truncated` and `redacted` are compatibility aliases for existing
+clients; each alias always has the same value as its canonical field.
+`preview_truncated` reports whether content exceeded `max_bytes` after
+redaction or the bounded redaction window. `redaction_applied` reports only
+that at least one supported redaction pattern made a replacement. A value of
+`false` is **not** proof that the request contains no secret; custom, encoded,
+fragmented, or otherwise unsupported secrets may remain.
+
+`redaction_pattern_hits` is the number of supported-pattern matches replaced
+while preparing the preview. `redaction_version` identifies how that metadata
+was produced:
+
+- `raw-redactor-v1`: current bounded redactor; the hit count is available.
+- `legacy-boolean-v0`: a row migrated from the earlier boolean-only schema;
+  `redaction_pattern_hits` is `0` because the historical count is unknown, not
+  because migration proved that no match existed.
+
+`raw_sha256` is the direct SHA-256 of the complete original request bytes before
+redaction and truncation. It supports integrity checks and the internal
+unique-request TTL deduplication, but it is not a substitute for the
+domain-separated `request_hash` audit correlation value. Repeated requests keep
+all audit events and enforcement/accounting boundaries; only duplicate preview
+storage is suppressed. A v4-to-v5 migration retains the newest preview for each
+nonempty `raw_sha256` and labels migrated redaction metadata
+`legacy-boolean-v0`.
 
 Expired captures are removed when the audit database opens and by the existing
 periodic cleanup path (normally hourly). Deleting an ordinary audit event also
@@ -224,13 +260,13 @@ illustrative; the live field is exact for the live body:
   "response_preview_budget_bytes": 8388608,
   "cpa_host_response_budget_bytes": 8388608,
   "cpa_host_response_bytes": 636,
-  "raw_preview_transport": "cpa-v7.2.88-html-escaped-utf8",
+  "raw_preview_transport": "cpa-json-html-escaped-utf8",
   "raw_preview_b64_encoding": "base64-standard-utf8",
   "raw_preview_rendering": "text-only-never-html",
   "raw_preview_deprecated": true,
   "encoded_preview_bytes_deprecated": true,
   "preferred_preview_field": "raw_preview_b64",
-  "raw_capture_response_schema_version": 2,
+  "raw_capture_response_schema_version": 3,
   "captures": []
 }
 ```
@@ -247,16 +283,18 @@ blocked before it was enabled.
 
 ## Operational review
 
-For each reviewed block, compare `event_id` and `request_hash` with `/events`,
-then record the disposition outside the capture database using an access-
-controlled review system. Do not paste captured content into public issues,
-GitHub Actions logs, chat rooms, or classifier test fixtures. If a capture
-reveals a false positive, reduce it with a synthetic, repository-neutral
-regression rather than copying customer text into the source tree.
+For each reviewed block, compare the required `event_id` with `/events`. When
+`audit.log_request_hash: true`, also compare `request_hash`; when it is false,
+the hash is intentionally omitted and must not be treated as missing evidence.
+Record the disposition outside the capture database using an access-controlled
+review system. Do not paste captured content into public issues, GitHub Actions
+logs, chat rooms, or classifier test fixtures. If a capture reveals a false
+positive, reduce it with a synthetic, repository-neutral regression rather than
+copying customer text into the source tree.
 
 `/status` and `/stats` expose dedicated
-`raw_capture_enqueued/written/dropped/failed/rejected` counters, the shared
-queue high-water observed by capture attempts, and preparation
+`raw_capture_enqueued/written/dropped/failed/rejected/deduplicated` counters,
+the shared queue high-water observed by capture attempts, and preparation
 count/total/last/max latency in microseconds. Queue-full attempts do not
 increment the preparation count because they are rejected before request-body
 capture work begins.

@@ -16,6 +16,7 @@ documents=(
   README.md
   README_CN.md
   CHANGELOG.md
+  SECURITY.md
   docs/AUDIT_HANDOFF.md
   docs/DESIGN.md
   docs/LIMITATIONS.md
@@ -27,6 +28,7 @@ documents=(
   docs/ROUND6_LIMITATIONS.md
   docs/ROUND6_RELEASE_GATE.md
   docs/ROUND6_STREAMING_SCANNER_DESIGN.md
+  docs/ROUND8_HOST_RUNNER.md
   docs/RULES.md
   docs/THREAT_MODEL.md
   docs/reports/CPA_INTEGRATION.md
@@ -36,6 +38,8 @@ documents=(
   docs/reports/PUBLIC_JAILBREAK_REPOSITORY_REVIEW.md
   docs/reports/PROMPT_INJECTION_REVIEW.md
   docs/reports/RELEASE_EVIDENCE.md
+  docs/reports/ROUND8_CALIBRATION.md
+  docs/reports/ROUND8_RELEASE_READINESS.md
   docs/reports/TEST_REPORT.md
   docs/reports/CORPUS_REPORT.md
 )
@@ -44,6 +48,7 @@ classifier_identity_documents=(
   README.md
   README_CN.md
   CHANGELOG.md
+  SECURITY.md
   docs/AUDIT_HANDOFF.md
   docs/DESIGN.md
   docs/INSTALL_DOCKER.md
@@ -55,6 +60,7 @@ classifier_identity_documents=(
   docs/ROUND6_LIMITATIONS.md
   docs/ROUND6_RELEASE_GATE.md
   docs/ROUND6_STREAMING_SCANNER_DESIGN.md
+  docs/ROUND8_HOST_RUNNER.md
   docs/RULES.md
   docs/THREAT_MODEL.md
   docs/reports/CPA_INTEGRATION.md
@@ -64,6 +70,8 @@ classifier_identity_documents=(
   docs/reports/PUBLIC_JAILBREAK_REPOSITORY_REVIEW.md
   docs/reports/PROMPT_INJECTION_REVIEW.md
   docs/reports/RELEASE_EVIDENCE.md
+  docs/reports/ROUND8_CALIBRATION.md
+  docs/reports/ROUND8_RELEASE_READINESS.md
   docs/reports/TEST_REPORT.md
 )
 
@@ -80,25 +88,42 @@ make_fixture() {
         'formal_tag: v0.16' \
         'version_alias_policy: reject-v0.16.0' \
         'platform: linux-amd64' \
-        'local_rc_artifact_version: 0.16-rc.1' \
-        'local_rc_artifact_scope: local-linux-amd64-core-package' \
-        'local_rc_evidence_policy: not-github-release-actions-or-host-evidence' \
+        'local_rc_artifact_version: 0.16-rc.2' \
+        'local_rc_artifact_scope: two-stage-linux-amd64-private-candidate-or-prerelease' \
+        'local_rc_evidence_policy: phase1-no-host-evidence-phase2-strict-counted-mock-evidence' \
         'candidate_workflow: .github/workflows/candidate.yml' \
         'candidate_attestation: candidate-manifest.json' \
         'attested_prerelease_workflow: .github/workflows/attested-prerelease.yml' \
         'rc_workflow: .github/workflows/release-rc.yml' \
         'rc_workflow_archive: docs/archive/workflows/release-rc-v0.15-rc.2.yml' \
-        'rc_artifact_version: 0.15-rc.4' \
-        'rc_artifact_history: historical-v0.15-rc4-only' \
-        'rc_status: internal-gates-required-sandbox-only-not-formal-not-round6-candidate' \
+        'rc_artifact_version: 0.16-rc.2' \
+        'rc_artifact_history: active-v0.16-rc2-prerelease-only' \
+        'rc_status: two-stage-private-candidate-or-counted-mock-verified-prerelease-independent-audit-required-production-not-approved' \
+        'rc_manifest_schema: 4' \
+        'rc_candidate_asset_count: 17' \
+        'rc_publish_asset_count: 19' \
+        'rc_publish_host_evidence: round8-host-evidence.json' \
+        'rc_publish_host_evidence_sidecar: round8-host-evidence.json.sha256' \
+        'immutable_published_rc_identity_verification: release-object,tag=v0.16-rc.2,annotated-tag-target=exact-commit,target-commitish=exact-commit,title=exact,body=exact,prerelease=true,latest=false,draft=false,immutable=true' \
+        'immutable_published_rc_asset_verification: exact-count=19,download-count=19,byte-compare-each=rebuilt-candidate,release-digest-and-attestation-check=each' \
+        'immutable_published_rc_recovery: same-run-re-run-failed-or-admission-read-only-verifier' \
+        'immutable_published_rc_new_dispatch_or_rerun_all: admission-already-public-skip-write-capable-build-and-publish' \
+        'immutable_published_rc_recovery_access_policy: read-only-no-state-mutation' \
+        'immutable_published_rc_forbidden_mutations: release-create,release-edit,release-upload,release-delete,artifact-upload,attestation-write,cache-write' \
+        'immutable_published_rc_latest_release: v0.15' \
+        'immutable_published_rc_mismatch_policy: fail-only-no-automatic-repair' \
         'host_audit_attestation: round6-prerelease-attestation.json' \
         'formal_gate_attestation: formal-release-attestation.json' \
         'promotion_workflow: .github/workflows/release-promote.yml' \
-        'host_matrix: v7.2.88' \
-        'host_matrix_commit: 93d74a890a44802f656d7f39a573916b2611896e' \
+        'host_matrix: v7.2.95' \
+        'host_matrix_commit: f71ec0eb6776854457892452cf28c47f0d658251' \
+        'candidate_manifest_schema: 3' \
         'host_attestation_schema: 2' \
-        'host_evidence_fields: cpa_version,cpa_commit,cpa_host_sha256' \
+        'host_evidence_fields: schema_version,validation_scope,candidate,cpa,mock,safety' \
         'upstream_version_policy: no-automatic-follow' \
+        'independent_audit_status: required-not-provided' \
+        'production_approval_status: not-granted' \
+        'stable_v0.16_status: not-released' \
         'external_admission: required' \
         'minimum_independent_evaluation: evaluation-v11' \
         'independent_evaluation_required_status: CONSUMED/PASS' \
@@ -109,6 +134,26 @@ make_fixture() {
       printf '# Changelog\n\n## 0.16 - 2026-07-21\n\nround6-prerelease-attestation.json\nformal-release-attestation.json\n' >"$fixture/$relative"
     elif [[ "$relative" == docs/reports/CORPUS_REPORT.md ]]; then
       printf '# Historical project regression corpus report - v0.1.2 candidate\n' >"$fixture/$relative"
+    elif [[ "$relative" == docs/reports/ROUND8_RELEASE_READINESS.md ]]; then
+      printf '%s\n' \
+        '# Round 8 release readiness' \
+        '' \
+        '```json' \
+        '{' \
+        '  "validation_scope": "CPA_HOST_COUNTED_MOCK_ONLY",' \
+        '  "cpa": {' \
+        '    "primary": {' \
+        '      "host_results": {' \
+        '        "database": {' \
+        '          "schema_version": 5,' \
+        '          "migration_versions": [1, 2, 3, 4, 5]' \
+        '        }' \
+        '      }' \
+        '    }' \
+        '  }' \
+        '}' \
+        '```' \
+        >"$fixture/$relative"
     else
       printf '# Final release document\n\nRelease evidence is complete.\n' >"$fixture/$relative"
     fi
@@ -203,6 +248,96 @@ sed -i '/formal-release-attestation.json/d' "$work/stale-document/README.md"
 must_fail stale-document "$work/stale-document" \
   'README.md must point readers to the formal gate attestation'
 
+cp -a "$work/pass" "$work/stale-round8-security-identity"
+sed -i 's/current_classifier_policy_version: classifier-policy-v5/current_classifier_policy_version: classifier-policy-v4/' \
+  "$work/stale-round8-security-identity/SECURITY.md"
+must_fail stale-round8-security-identity "$work/stale-round8-security-identity" \
+  'SECURITY.md must place the exact visible classifier policy prologue on lines 2-6'
+
+cp -a "$work/pass" "$work/stale-active-classifier-key"
+printf '\ncurrent_release_classifier_policy_version: %s\ncurrent_release_classifier_policy_sha256: %s\n' \
+  "$classifier_policy_version" "$old_classifier_policy_sha256" \
+  >>"$work/stale-active-classifier-key/docs/RULES.md"
+must_fail stale-active-classifier-key "$work/stale-active-classifier-key" \
+  'current release documents must not contain stale active classifier identities'
+
+cp -a "$work/pass" "$work/stale-json-active-classifier-key"
+printf '\n{"current_release_classifier_policy_sha256":"%s"}\n' \
+  "$old_classifier_policy_sha256" \
+  >>"$work/stale-json-active-classifier-key/docs/RULES.md"
+must_fail stale-json-active-classifier-key "$work/stale-json-active-classifier-key" \
+  'current release documents must not contain stale active classifier identities'
+
+cp -a "$work/pass" "$work/stale-backtick-active-classifier-key"
+printf '\n`round8_classifier_policy_sha256`: `%s`\n' \
+  "$old_classifier_policy_sha256" \
+  >>"$work/stale-backtick-active-classifier-key/docs/reports/RELEASE_EVIDENCE.md"
+must_fail stale-backtick-active-classifier-key "$work/stale-backtick-active-classifier-key" \
+  'current release documents must not contain stale active classifier identities'
+
+cp -a "$work/pass" "$work/stale-inline-classifier-identity"
+printf '\n| Classifier policy | `%s` / `%s` |\n' \
+  "$classifier_policy_version" "$old_classifier_policy_sha256" \
+  >>"$work/stale-inline-classifier-identity/docs/reports/TEST_REPORT.md"
+must_fail stale-inline-classifier-identity "$work/stale-inline-classifier-identity" \
+  'current release documents must not contain stale active classifier identities'
+
+cp -a "$work/pass" "$work/stale-adjacent-classifier-identity"
+printf '\nActive classifier: `%s`\nActive classifier policy digest: `%s`\n' \
+  "$classifier_policy_version" "$old_classifier_policy_sha256" \
+  >>"$work/stale-adjacent-classifier-identity/docs/DESIGN.md"
+must_fail stale-adjacent-classifier-identity "$work/stale-adjacent-classifier-identity" \
+  'current release documents must not contain stale active classifier identities'
+
+cp -a "$work/pass" "$work/stale-three-line-classifier-identity"
+printf '\nActive classifier: `%s`\nSHA-256\n`%s`\n' \
+  "$classifier_policy_version" "$old_classifier_policy_sha256" \
+  >>"$work/stale-three-line-classifier-identity/docs/DESIGN.md"
+must_fail stale-three-line-classifier-identity "$work/stale-three-line-classifier-identity" \
+  'current release documents must not contain stale active classifier identities'
+
+cp -a "$work/pass" "$work/ruleset-before-current-classifier"
+printf '\n| Ruleset SHA-256 | `%s` |\n| Classifier policy | `%s` / `%s` |\n' \
+  "$ruleset_sha256" "$classifier_policy_version" "$classifier_policy_sha256" \
+  >>"$work/ruleset-before-current-classifier/docs/reports/TEST_REPORT.md"
+run_gate "$work/ruleset-before-current-classifier"
+printf 'release document consistency allowed a distinct ruleset hash immediately before the correct classifier identity\n'
+
+cp -a "$work/pass" "$work/quoted-current-active-classifier"
+printf '\n{"current_release_classifier_policy_sha256":"%s"}\n' \
+  "$classifier_policy_sha256" \
+  >>"$work/quoted-current-active-classifier/docs/RULES.md"
+run_gate "$work/quoted-current-active-classifier"
+printf 'release document consistency allowed a quoted JSON active classifier identity when it is current\n'
+
+cp -a "$work/pass" "$work/round8-database-same-lane-duplicate"
+awk '
+  $0 == "          \"schema_version\": 5," {
+    schema_count++
+    if (schema_count == 1) {
+      print
+    }
+    next
+  }
+  $0 == "          \"migration_versions\": [1, 2, 3, 4, 5]" {
+    migration_count++
+    if (migration_count == 1) {
+      print $0 ","
+      print "          \"schema_version\": 5,"
+      print
+    }
+    next
+  }
+  { print }
+' "$work/round8-database-same-lane-duplicate/docs/reports/ROUND8_RELEASE_READINESS.md" \
+  >"$work/round8-database-same-lane-duplicate/docs/reports/ROUND8_RELEASE_READINESS.md.tmp"
+mv -f -- \
+  "$work/round8-database-same-lane-duplicate/docs/reports/ROUND8_RELEASE_READINESS.md.tmp" \
+  "$work/round8-database-same-lane-duplicate/docs/reports/ROUND8_RELEASE_READINESS.md"
+must_fail round8-database-same-lane-duplicate \
+  "$work/round8-database-same-lane-duplicate" \
+  'docs/reports/ROUND8_RELEASE_READINESS.md must show the exact database schema and migration history in each named CPA lane'
+
 cp -a "$work/pass" "$work/alias-policy"
 sed -i 's/version_alias_policy: reject-v0.16.0/version_alias_policy: allow-v0.16.0/' \
   "$work/alias-policy/docs/RELEASE_POLICY.md"
@@ -217,36 +352,87 @@ policy_keys=(
   rc_artifact_version
   rc_artifact_history
   rc_status
+  rc_manifest_schema
+  rc_candidate_asset_count
+  rc_publish_asset_count
+  rc_publish_host_evidence
+  rc_publish_host_evidence_sidecar
+  immutable_published_rc_identity_verification
+  immutable_published_rc_asset_verification
+  immutable_published_rc_recovery
+  immutable_published_rc_new_dispatch_or_rerun_all
+  immutable_published_rc_recovery_access_policy
+  immutable_published_rc_forbidden_mutations
+  immutable_published_rc_latest_release
+  immutable_published_rc_mismatch_policy
   host_matrix_commit
+  candidate_manifest_schema
   host_attestation_schema
   host_evidence_fields
   upstream_version_policy
+  independent_audit_status
+  production_approval_status
+  stable_v0.16_status
 )
 policy_values=(
-  0.16-rc.1
-  local-linux-amd64-core-package
-  not-github-release-actions-or-host-evidence
+  0.16-rc.2
+  two-stage-linux-amd64-private-candidate-or-prerelease
+  phase1-no-host-evidence-phase2-strict-counted-mock-evidence
   .github/workflows/release-rc.yml
-  0.15-rc.4
-  historical-v0.15-rc4-only
-  internal-gates-required-sandbox-only-not-formal-not-round6-candidate
-  93d74a890a44802f656d7f39a573916b2611896e
+  0.16-rc.2
+  active-v0.16-rc2-prerelease-only
+  two-stage-private-candidate-or-counted-mock-verified-prerelease-independent-audit-required-production-not-approved
+  4
+  17
+  19
+  round8-host-evidence.json
+  round8-host-evidence.json.sha256
+  release-object,tag=v0.16-rc.2,annotated-tag-target=exact-commit,target-commitish=exact-commit,title=exact,body=exact,prerelease=true,latest=false,draft=false,immutable=true
+  exact-count=19,download-count=19,byte-compare-each=rebuilt-candidate,release-digest-and-attestation-check=each
+  same-run-re-run-failed-or-admission-read-only-verifier
+  admission-already-public-skip-write-capable-build-and-publish
+  read-only-no-state-mutation
+  release-create,release-edit,release-upload,release-delete,artifact-upload,attestation-write,cache-write
+  v0.15
+  fail-only-no-automatic-repair
+  f71ec0eb6776854457892452cf28c47f0d658251
+  3
   2
-  cpa_version,cpa_commit,cpa_host_sha256
+  schema_version,validation_scope,candidate,cpa,mock,safety
   no-automatic-follow
+  required-not-provided
+  not-granted
+  not-released
 )
 policy_bad_values=(
-  0.16-rc.2
+  0.16-rc.1
   github-release
   github-release-evidence
   docs/archive/workflows/release-rc-v0.15-rc.2.yml
-  0.15-rc.2
-  active-v0.15-rc4
-  sandbox-only-not-formal-not-round6-candidate
+  0.15-rc.4
+  historical-v0.15-rc4-only
+  production-approved
+  3
+  16
+  18
+  unreviewed-host-evidence.json
+  round8-host-evidence.sha256
+  release-object,tag=v0.16-rc.1,annotated-tag-target=branch-head,target-commitish=branch-head,title=unchecked,body=unchecked,prerelease=false,latest=true,draft=true
+  exact-count=18,download-count=0,byte-compare-each=skipped
+  new-dispatch
+  allow-build
+  GET,POST
+  mutation-allowed
+  v0.16-rc.2
+  automatic-repair
   0000000000000000000000000000000000000000
+  2
   1
   cpa_version,cpa_commit
   automatic-follow
+  pass
+  granted
+  released
 )
 for index in "${!policy_keys[@]}"; do
   key="${policy_keys[$index]}"

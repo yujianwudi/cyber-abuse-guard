@@ -10,13 +10,19 @@ import (
 // with another field. Start and End describe real logical field boundaries,
 // not classifier window boundaries.
 type SegmentChunk struct {
-	Role            Role
-	Provenance      SegmentProvenance
-	UserAttribution UserAttribution
-	FieldID         uint64
-	Start           bool
-	End             bool
-	Text            []byte
+	Role              Role
+	Provenance        SegmentProvenance
+	UserAttribution   UserAttribution
+	ConversationIndex int
+	TurnIndex         int
+	IsCurrentTurn     bool
+	ScopeID           uint64
+	ContentKind       ContentKind
+	FieldPathHash     string
+	FieldID           uint64
+	Start             bool
+	End               bool
+	Text              []byte
 }
 
 // ChunkSink consumes request text synchronously. AddSegment must not retain
@@ -29,15 +35,21 @@ type ChunkSink interface {
 }
 
 type collectingChunkSink struct {
-	aborted     bool
-	active      bool
-	activeField uint64
-	activeRole  Role
-	activeProv  SegmentProvenance
-	activeAttr  UserAttribution
-	activeText  strings.Builder
-	parts       []string
-	segments    []Segment
+	aborted                 bool
+	active                  bool
+	activeField             uint64
+	activeRole              Role
+	activeProv              SegmentProvenance
+	activeAttr              UserAttribution
+	activeConversationIndex int
+	activeTurnIndex         int
+	activeCurrentTurn       bool
+	activeScopeID           uint64
+	activeContentKind       ContentKind
+	activeFieldPathHash     string
+	activeText              strings.Builder
+	parts                   []string
+	segments                []Segment
 }
 
 func (s *collectingChunkSink) AddSegment(chunk SegmentChunk) error {
@@ -53,10 +65,21 @@ func (s *collectingChunkSink) AddSegment(chunk SegmentChunk) error {
 		s.activeRole = defaultRole(chunk.Role)
 		s.activeProv = chunk.Provenance
 		s.activeAttr = chunk.UserAttribution
+		s.activeConversationIndex = chunk.ConversationIndex
+		s.activeTurnIndex = chunk.TurnIndex
+		s.activeCurrentTurn = chunk.IsCurrentTurn
+		s.activeScopeID = chunk.ScopeID
+		s.activeContentKind = chunk.ContentKind
+		s.activeFieldPathHash = chunk.FieldPathHash
 		s.activeText.Reset()
 	} else if !s.active || s.activeField != chunk.FieldID ||
 		s.activeRole != defaultRole(chunk.Role) || s.activeProv != chunk.Provenance ||
-		s.activeAttr != chunk.UserAttribution {
+		s.activeAttr != chunk.UserAttribution ||
+		s.activeConversationIndex != chunk.ConversationIndex ||
+		s.activeTurnIndex != chunk.TurnIndex ||
+		s.activeCurrentTurn != chunk.IsCurrentTurn ||
+		s.activeScopeID != chunk.ScopeID || s.activeContentKind != chunk.ContentKind ||
+		s.activeFieldPathHash != chunk.FieldPathHash {
 		return errors.New("collector received a non-serial field chunk")
 	}
 	s.activeText.Write(chunk.Text)
@@ -70,19 +93,37 @@ func (s *collectingChunkSink) AddSegment(chunk SegmentChunk) error {
 	role := s.activeRole
 	provenance := s.activeProv
 	attribution := s.activeAttr
+	conversationIndex := s.activeConversationIndex
+	turnIndex := s.activeTurnIndex
+	currentTurn := s.activeCurrentTurn
+	scopeID := s.activeScopeID
+	contentKind := s.activeContentKind
+	fieldPathHash := s.activeFieldPathHash
 	s.active = false
 	s.activeField = 0
 	s.activeAttr = UserAttributionUntrusted
+	s.activeConversationIndex = 0
+	s.activeTurnIndex = 0
+	s.activeCurrentTurn = false
+	s.activeScopeID = 0
+	s.activeContentKind = ContentKindUnknown
+	s.activeFieldPathHash = ""
 	s.activeText.Reset()
 	if strings.TrimSpace(text) == "" {
 		return nil
 	}
 	s.parts = append(s.parts, text)
 	s.segments = append(s.segments, Segment{
-		Role:            role,
-		Provenance:      provenance,
-		UserAttribution: attribution,
-		Text:            text,
+		Role:              role,
+		Provenance:        provenance,
+		UserAttribution:   attribution,
+		ConversationIndex: conversationIndex,
+		TurnIndex:         turnIndex,
+		IsCurrentTurn:     currentTurn,
+		ScopeID:           scopeID,
+		ContentKind:       contentKind,
+		FieldPathHash:     fieldPathHash,
+		Text:              text,
 	})
 	return nil
 }
@@ -92,6 +133,12 @@ func (s *collectingChunkSink) Abort() {
 	s.active = false
 	s.activeField = 0
 	s.activeAttr = UserAttributionUntrusted
+	s.activeConversationIndex = 0
+	s.activeTurnIndex = 0
+	s.activeCurrentTurn = false
+	s.activeScopeID = 0
+	s.activeContentKind = ContentKindUnknown
+	s.activeFieldPathHash = ""
 	s.activeText.Reset()
 	s.parts = nil
 	s.segments = nil

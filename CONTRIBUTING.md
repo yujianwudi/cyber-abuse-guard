@@ -1,7 +1,8 @@
 # Contributing
 
 Contributions are welcome through pull requests. This project is a Linux amd64
-CPA plugin and currently targets Go 1.26.4 and the pinned CPA v7.2.88 contract.
+CPA plugin and currently targets Go 1.26.4 and CPA v7.2.95 as the only active
+source/compile and Host contract.
 Windows, macOS, musl/Alpine, local deployment, and production deployment are
 outside the ordinary contribution and validation scope.
 
@@ -35,8 +36,9 @@ make round6-script-test
 
 Run `make round6-benchmark` for classifier, extraction, audit, queueing,
 management-response, or other performance-sensitive changes. Changes to CPA
-integration must retain the pinned v7.2.88 compatibility contract. Do not claim
-Windows, macOS, production, real-Host, or release validation from these checks.
+integration must update the exact v7.2.95 pin deliberately. Do not claim
+Windows, macOS, production,
+real-Host, or release validation from these checks.
 
 ## Pull requests
 

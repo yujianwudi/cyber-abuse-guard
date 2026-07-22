@@ -1,34 +1,90 @@
-# 独立审计交接说明 — CPA Cyber Abuse Guard v0.15 Round 6 开发候选
+# 独立审计交接说明 — CPA Cyber Abuse Guard v0.16 Round 8 候选
 
 ```text
-current_classifier_policy_version: classifier-policy-v6
-current_classifier_policy_sha256: ece497210db938528cb166a34f2ce3013324b792a7eedf276a96fa5d256001d4
+current_classifier_policy_version: classifier-policy-v7
+current_classifier_policy_sha256: ea8c4dcfacacc6478f86fd2ca5de96d667ae98f2fc6ff0c83d8e6092e9f6a82d
 ```
 
-## 2026-07-18 Round 6 v0.15 当前交接门禁
+## 2026-07-22 Round 8 当前交接门禁
 
-项目精确版本为 `0.15`，唯一正式标签名为 `v0.15`，绝不使用 `v0.15.0`。正式发行
-状态仍为 **BLOCKED / PENDING HOST AND INDEPENDENT AUDIT**。Round 6 实现已通过
-[PR #9](https://github.com/yujianwudi/cyber-abuse-guard/pull/9) 合并到 `main`；精确
-main CI [29630844605](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29630844605)
-与标签 CI [29630926354](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29630926354)
-随后通过。公开 `v0.15-rc.1` 预发行没有附加发行资产，不是私有干净候选或正式发行；
-正式 `v0.15` 标签仍不存在。
+当前源码版本为 `0.16`，候选目标为 Linux amd64 非 latest 预发行
+`v0.16-rc.2`。稳定版 `v0.16` 不存在，生产批准未授予；不得把自测、源码兼容或
+候选打包写成生产准入。`v0.16-rc.1` 是本轮误报事故的历史本地资产，不得覆盖、
+改名或冒充新候选。
 
-当前验证与支持的发行目标固定为 CPA v7.2.88
-(`93d74a890a44802f656d7f39a573916b2611896e`)；后续上游版本不会自动改变
-正式发布或 Host pin。旧版本专用 profile 与 Make
-别名已经删除；明确标注的旧观察仅是历史非门禁工程记录。
+本轮修复重点是 Balanced 误报治理：分类器保留 occurrence 级证据归属、当前 turn、
+role/provenance、字段与 clause/sentence 边界、主动指令所有者、否定/引用/inert 状态，
+并实施一条 occurrence 最多占用一个评分维度。只有同一可归因主动恶意指令或显式
+referent chain 中的完整 harmful core 与独立强化维度成立，Balanced 才可阻断。
+历史 assistant/tool/system、tool schema、代码、日志、互不相关 JSON 字段和长文本窗口
+不得为当前正常请求补齐风险维度。
 
-The last fully verified pre-cleanup baseline is
-`main@6782dfaffd4da3f09604113c7d38675f331dc759`, tree
-`a8edbe2e6d19fa725fb962cdd6aaad5b416d4b85`. PR #9's Actions jobs did not
-start because of the recorded GitHub billing limit, so no PR-CI PASS is claimed;
-the exact merged commit/tree was subsequently validated by the successful main
-and tag runs above. The private untagged clean-candidate artifact, owner-run
-v7.2.88 Host + Mock matrix, and independent review remain **PENDING / NOT RUN**.
-Older PASS records below are historical source/compile evidence and are not
-relabeled as the current CPA matrix or Host evidence.
+当前 CPA 固定矩阵：
+
+```text
+target:        v7.2.95 / f71ec0eb6776854457892452cf28c47f0d658251
+platform:      linux-amd64
+host_mode:     counted Mock only; no real Provider
+```
+
+源码/编译合同与官方 Host overlay 已在固定 CPA `v7.2.95` primary profile 上通过，但这仍不是候选 SO 的
+真实 counted-Mock Host 证明。下列事项保持 **PENDING / NOT PROVIDED**：独立源码与
+产物审计、固定 CPA `v7.2.95` 对同一候选 SHA-256 的完整 Host 计数矩阵、外部准入、
+生产 Audit 观察和 Balanced canary。详见
+[ROUND8_RELEASE_READINESS.md](reports/ROUND8_RELEASE_READINESS.md)。
+
+### Round 8 RC 两阶段发布交接
+
+`release-rc.yml` 只接受 exact-main 注解标签 `v0.16-rc.2`，并使用恰好 10 个
+`workflow_dispatch` 输入：5 个 tag/commit/tree/CI 身份输入（其中 `ci_run` 以
+`RUN_ID:RUN_ATTEMPT` 绑定两项身份）、布尔值 `publish_rc_release`，以及 4 个受保护
+Host 输入（`host_run` 同样编码 run ID/attempt，另含 artifact ID、artifact digest
+和一次性 64-hex challenge）。
+
+- `publish_rc_release=false`：4 个顶层 Host 输入必须为空；完整 Linux 与固定 CPA
+  `v7.2.95` primary profile 内部门禁通过后，对根构建和两个独立 clean clone 的全部 17 项最终资产
+  逐字节比较，仅上传私有 Actions Host-test candidate，不创建或修改 GitHub
+  Release。Host/count-Mock 状态保持 `NOT_RUN / HOST_TEST_REQUIRED`。
+- Host 阶段：`round8-host-validation.yml` 只在受保护的 `self-hosted` / Linux /
+  x64 / `cag-round8-sandbox` runner 上运行。它按 Phase 1 run/attempt、artifact
+  ID/digest 下载精确 17 项候选，验证 Phase 1 signer workflow、tag ref、commit 和
+  每个资产的 GitHub attestation；随后验证受保护 daemon ID、sandbox/production
+  labels、预装 immutable probe image，并通过不可预测宿主 bind-mount nonce
+  challenge 证明本地性。固定 CPA `v7.2.95` counted-Mock lane 完成后，仅对 schema-v2
+  `round8-host-evidence.json` 与 sidecar 生成 GitHub attestation 并上传两文件 artifact。
+- `publish_rc_release=true`：只接受指定成功 Host run/attempt 和精确 Host artifact
+  ID/digest，并要求 evidence 中的 challenge、Host workflow/ref/commit、Phase 1
+  artifact、runner、daemon/sandbox/probe 与 locality `PASS` 全部一致。证据仍必须
+  绑定 CPA v7.2.95 的 counted-Mock `PASS`、Chat/Responses `1/0` 上游
+  计数、42/42 benign 与 paired-malicious 结果、stream/nonstream、
+  audit/balanced/strict、DB quick_check/WAL/restart、Balanced/Strict incomplete、
+  usage queue 和 Raw Capture 专项，并证明未联系真实 Provider、未访问生产、无
+  unexpected restart/OOM/panic/fatal/plugin error。证据及 sidecar 进入两份 clean
+  rebuild、audit bundle、`checksums.txt`、manifest 和 19 项 Release allowlist。
+
+上述代码门禁依赖尚未自动创建的 GitHub 外部配置：`round8-host-validation` 与
+`round8-rc-publication` environments、required reviewers、禁止 self-review、禁止
+admin bypass、精确部署策略、专用 runner，以及 `ROUND8_SANDBOX_ID`、
+`ROUND8_DAEMON_ID`、`ROUND8_PROBE_IMAGE_ID`。在管理员完成并复核这些配置前，
+不得把当前仓库状态写成“可发布”或“Host 已验证”。
+
+发布阶段的 Host 结论只能表述为 `VERIFIED / COUNTED_MOCK_ONLY`，不得表述为真实
+Provider 或生产验证。独立审计和独立评测仍是 `NOT_PROVIDED / required`，生产批准
+仍未授予。
+
+方法学披露：本轮开发继承了下文记录的历史受限材料误读事件；此前多次过宽只读搜索曾
+显示 evaluation/holdout 测试或历史报告文件名、历史 ruleset SHA-256 引用、少量调用路径
+和 aggregate 摘要。本次收口又有一次过宽 `git grep` 意外输出若干 retired holdout fixture
+中的单条 request 与 label。possessive browser target 漏报在该搜索前已经由分类器终审明确
+提出；这些输出未复制进源码、测试或文档，也未用于选择规则、谓词、分数或阈值。另有
+一次过宽的 `go test ./internal/classifier` 可能编译或运行了受限 gate；其结果继续从全部
+发行证据中排除。本次会话不得声称 fixture 零接触、盲测或独立评测；这些证据继续标记为
+`NOT_PROVIDED`，未来必须由未参与开发且持有全新未接触 holdout 的审计方重新裁决。
+
+## Historical Round 6 handoff
+
+以下 Round 6、v0.15、旧 PR/CI、evaluation-v10 与旧 CPA 记录仅用于历史审计。
+其中出现的“当前”均指当时快照，不是 Round 8 当前状态，也不得重标为本轮 PASS。
 
 ## Current PR #18 hardening delta — 2026-07-20
 
@@ -77,7 +133,7 @@ it cannot leak a cancellation back across the `or` boundary.
 Local Linux development evidence currently passes targeted OpenAI Chat and
 Responses routes, the long-text size/position ladder, classifier and plugin
 race, full `make unit-test`, and `make round6-script-test`. The safe-gate suite
-contains 152 tests. These results are not a candidate artifact, CPA v7.2.88 Host
+contains 170 tests. These results are not a candidate artifact, CPA v7.2.95 Host
 + Mock record, independent audit, external evaluation, tag, or Release approval.
 
 当前策略与构建身份：
@@ -100,7 +156,7 @@ historical_v10: CONSUMED / FAIL / MUST NOT RERUN / NOT A FORMAL INPUT
 4. 从 `refs/heads/main` dispatch 候选 workflow，生成私有、无标签、干净精确源码的
    Linux amd64 Actions 候选产物及
    `candidate-manifest.json`；
-5. CPA v7.2.88 Host + Mock 记录绑定 candidate SO SHA-256，并通过 schema v2
+5. CPA v7.2.95 Host + Mock 记录绑定 candidate SO SHA-256，并通过 schema v2
    `cpa_version`、`cpa_commit`、`cpa_host_sha256` 绑定 Host 身份与证据哈希，同时证明
    Auth Selector、Provider、Usage、Mock Upstream
    四层零调用；
@@ -216,14 +272,8 @@ SUCCESS，当前 10/10 个 review thread（9 个源码冻结线程 + 1 个文档
 upstream Host 验收或独立源码/artifact 复核，更不能推翻唯一方法学有效且已冻结的 v10
 `CONSUMED / FAIL`。
 
-最新版兼容性采用独立门禁，不改变 v7.2.75 运行基线：
-`integration/cpalatestcontract` 与 `scripts/cpa-latest-compat.sh` 精确固定
-CPA v7.2.80 / `09da52ad509e2c18e7b9540db3b98c2214c280aa`，module
-`h1:QIa5T/KYvJACHVPPRzXcRwq/HLpbwWYJYpZAC1eY2WA=`，go.mod
-`h1:ytvZNWbCv7PrAyR80+RKsDJPODsdL6qxyFaXDBNZdqs=`。开发自检已完成 Guard/integration
-compile 探针、真实 Guard registration/route 测试、17 个官方 Host routing/status 测试、
-11 个官方 Interactions route/handler 测试和三个 checksum 固定 overlay；未启动 CPA、
-未加载 `.so`；精确 source-freeze Push CI `29467936241` 与 PR CI `29467938359` 均已通过。
+旧版 CPA 兼容性门禁、校验和与 CI 记录仅作为历史事实保留在 CHANGELOG 和归档报告中；
+它们不是当前 v7.2.95 准入证据，也不得替代本轮精确源码、Host 与独立审计门禁。
 
 第五轮审计必须单独确认以下宿主边界：
 
@@ -256,8 +306,8 @@ compile 探针、真实 Guard registration/route 测试、17 个官方 Host rout
 - `testdata/development-public-jailbreak-patterns-v1` 现有 36 个净化用例（18 allow / 18
   audit），必须保持 `development_only=true`、`future_holdout_eligible=false`、
   `derived_from_public_adversarial_taxonomy=true`、`contains_live_payloads=false`。其固定公开
-  参考为 `MDX-Tom/gpt-5.6-instruct@5f469e43...`、
-  `yynxxxxx/Codex-X@659415f5...`、
+  参考为 `MDX-Tom/gpt-5.6-instruct@18fea37f...`、
+  `yynxxxxx/Codex-X@7d0e0064...`、
   `yynxxxxx/Codex-5.5-codex-instruct-5.5@ed0b6dc3...`；只抽象机制，不复制或执行原始
   payload。`source_context` 只是开发元数据，不能证明攻击来自某仓库或本地文件，也不是
   独立盲测证据。

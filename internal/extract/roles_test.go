@@ -26,10 +26,10 @@ func TestExtractTextRoleAwareProviderMessages(t *testing.T) {
 				{"role":"tool","content":"tool output"}
 			]}`,
 			want: []Segment{
-				{Role: RoleSystem, Text: "policy example"},
-				{Role: RoleUser, UserAttribution: UserAttributionTrusted, Text: "first request"},
-				{Role: RoleAssistant, Text: "refusal"},
-				{Role: RoleTool, Text: "tool output"},
+				{Role: RoleSystem, ConversationIndex: -1, TurnIndex: -1, Text: "policy example"},
+				{Role: RoleUser, UserAttribution: UserAttributionTrusted, ConversationIndex: -1, TurnIndex: -1, Text: "first request"},
+				{Role: RoleAssistant, ConversationIndex: -1, TurnIndex: -1, Text: "refusal"},
+				{Role: RoleTool, ConversationIndex: -1, TurnIndex: -1, Text: "tool output"},
 			},
 		},
 		{
@@ -40,9 +40,9 @@ func TestExtractTextRoleAwareProviderMessages(t *testing.T) {
 				{"type":"message","role":"user","content":[{"type":"input_text","text":"exact message type"}]}
 			]}`,
 			want: []Segment{
-				{Role: RoleUser, UserAttribution: UserAttributionTrusted, Text: "omitted type"},
-				{Role: RoleUser, UserAttribution: UserAttributionTrusted, Text: "empty type"},
-				{Role: RoleUser, UserAttribution: UserAttributionTrusted, Text: "exact message type"},
+				{Role: RoleUser, UserAttribution: UserAttributionTrusted, ConversationIndex: -1, TurnIndex: -1, Text: "omitted type"},
+				{Role: RoleUser, UserAttribution: UserAttributionTrusted, ConversationIndex: -1, TurnIndex: -1, Text: "empty type"},
+				{Role: RoleUser, UserAttribution: UserAttributionTrusted, ConversationIndex: -1, TurnIndex: -1, Text: "exact message type"},
 			},
 		},
 		{
@@ -53,10 +53,10 @@ func TestExtractTextRoleAwareProviderMessages(t *testing.T) {
 				{"role":"tool","content":[{"type":"text","text":"tool result"}]}
 			]}`,
 			want: []Segment{
-				{Role: RoleSystem, Text: "claude policy"},
-				{Role: RoleUser, UserAttribution: UserAttributionTrusted, Text: "question"},
-				{Role: RoleAssistant, Text: "answer"},
-				{Role: RoleTool, Text: "tool result"},
+				{Role: RoleSystem, ConversationIndex: -1, TurnIndex: -1, Text: "claude policy"},
+				{Role: RoleUser, UserAttribution: UserAttributionTrusted, ConversationIndex: -1, TurnIndex: -1, Text: "question"},
+				{Role: RoleAssistant, ConversationIndex: -1, TurnIndex: -1, Text: "answer"},
+				{Role: RoleTool, ConversationIndex: -1, TurnIndex: -1, Text: "tool result"},
 			},
 		},
 		{
@@ -66,9 +66,9 @@ func TestExtractTextRoleAwareProviderMessages(t *testing.T) {
 				{"role":"model","parts":[{"text":"answer"}]}
 			]}`,
 			want: []Segment{
-				{Role: RoleSystem, Text: "gemini policy"},
-				{Role: RoleUser, UserAttribution: UserAttributionTrusted, Text: "question"},
-				{Role: RoleAssistant, Text: "answer"},
+				{Role: RoleSystem, ConversationIndex: -1, TurnIndex: -1, Text: "gemini policy"},
+				{Role: RoleUser, UserAttribution: UserAttributionTrusted, ConversationIndex: -1, TurnIndex: -1, Text: "question"},
+				{Role: RoleAssistant, ConversationIndex: -1, TurnIndex: -1, Text: "answer"},
 			},
 		},
 	}
@@ -465,39 +465,39 @@ func TestExtractTextSeparatesProviderToolPayloadProvenance(t *testing.T) {
 			name: "openai chat assistant tool call",
 			body: `{"tools":[{"type":"function","function":{"name":"safe_wrapper","description":"Format a local report"}}],"messages":[{"role":"assistant","content":"I cannot provide that request.","tool_calls":[{"id":"call_1","type":"function","function":{"name":"safe_wrapper","arguments":"{\"request\":\"` + malicious + `\"}"}}]}]}`,
 			want: []Segment{
-				{Role: RoleSystem, Provenance: ProvenanceContent, Text: "Format a local report"},
-				{Role: RoleAssistant, Provenance: ProvenanceContent, Text: "I cannot provide that request."},
-				{Role: RoleAssistant, Provenance: ProvenanceToolPayload, Text: malicious},
+				{Role: RoleSystem, Provenance: ProvenanceContent, ConversationIndex: -1, TurnIndex: -1, Text: "Format a local report"},
+				{Role: RoleAssistant, Provenance: ProvenanceContent, ConversationIndex: -1, TurnIndex: -1, Text: "I cannot provide that request."},
+				{Role: RoleAssistant, Provenance: ProvenanceToolPayload, ConversationIndex: -1, TurnIndex: -1, Text: malicious},
 			},
 		},
 		{
 			name: "anthropic assistant tool use",
 			body: `{"tools":[{"name":"safe_wrapper","description":"Format a local report","input_schema":{"type":"object"}}],"messages":[{"role":"assistant","content":[{"type":"text","text":"I cannot provide that request."},{"type":"tool_use","id":"tool_1","name":"safe_wrapper","input":{"request":"` + malicious + `"}}]}]}`,
 			want: []Segment{
-				{Role: RoleSystem, Provenance: ProvenanceContent, Text: "Format a local report"},
-				{Role: RoleAssistant, Provenance: ProvenanceContent, Text: "I cannot provide that request."},
-				{Role: RoleAssistant, Provenance: ProvenanceToolPayload, Text: malicious},
+				{Role: RoleSystem, Provenance: ProvenanceContent, ConversationIndex: -1, TurnIndex: -1, Text: "Format a local report"},
+				{Role: RoleAssistant, Provenance: ProvenanceContent, ConversationIndex: -1, TurnIndex: -1, Text: "I cannot provide that request."},
+				{Role: RoleAssistant, Provenance: ProvenanceToolPayload, ConversationIndex: -1, TurnIndex: -1, Text: malicious},
 			},
 		},
 		{
 			name: "openai responses typed function call",
 			body: `{"input":[{"type":"function_call","call_id":"call_1","name":"safe_wrapper","arguments":"{\"request\":\"` + malicious + `\"}"}]}`,
 			want: []Segment{
-				{Role: RoleAssistant, Provenance: ProvenanceToolPayload, Text: malicious},
+				{Role: RoleAssistant, Provenance: ProvenanceToolPayload, ConversationIndex: -1, TurnIndex: -1, Text: malicious},
 			},
 		},
 		{
 			name: "gemini native function call wrapper",
 			body: `{"contents":[{"role":"model","parts":[{"functionCall":{"name":"safe_wrapper","args":{"request":"` + malicious + `"}}}]}]}`,
 			want: []Segment{
-				{Role: RoleAssistant, Provenance: ProvenanceToolPayload, Text: malicious},
+				{Role: RoleAssistant, Provenance: ProvenanceToolPayload, ConversationIndex: -1, TurnIndex: -1, Text: malicious},
 			},
 		},
 		{
 			name: "anthropic split refusal content",
 			body: `{"messages":[{"role":"assistant","content":[{"type":"text","text":"I cannot help with that."},{"type":"text","text":"The forbidden request was: ` + malicious + `."}]}]}`,
 			want: []Segment{
-				{Role: RoleAssistant, Provenance: ProvenanceContent, Text: "I cannot help with that.\nThe forbidden request was: " + malicious + "."},
+				{Role: RoleAssistant, Provenance: ProvenanceContent, ConversationIndex: -1, TurnIndex: -1, Text: "I cannot help with that.\nThe forbidden request was: " + malicious + "."},
 			},
 		},
 	}

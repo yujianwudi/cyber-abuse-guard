@@ -47,6 +47,54 @@ const (
 	UserAttributionTrusted
 )
 
+// ContentKind is a closed, structural classification of model-visible text.
+// It does not decide whether the text is safe; it preserves the boundary that
+// downstream classifiers need in order to avoid composing unrelated evidence.
+// Unknown is the zero value so callers using older keyed Segment literals stay
+// conservative until they opt in to the richer metadata.
+type ContentKind uint8
+
+const (
+	ContentKindUnknown ContentKind = iota
+	ContentKindNaturalLanguageDirective
+	ContentKindQuotedText
+	ContentKindCodeBlock
+	ContentKindLogOutput
+	ContentKindToolSchema
+	ContentKindToolCallArguments
+	ContentKindToolResult
+	ContentKindConfiguration
+	ContentKindDocumentation
+	ContentKindSecurityAnalysis
+)
+
+func (kind ContentKind) String() string {
+	switch kind {
+	case ContentKindNaturalLanguageDirective:
+		return "natural_language_directive"
+	case ContentKindQuotedText:
+		return "quoted_text"
+	case ContentKindCodeBlock:
+		return "code_block"
+	case ContentKindLogOutput:
+		return "log_output"
+	case ContentKindToolSchema:
+		return "tool_schema"
+	case ContentKindToolCallArguments:
+		return "tool_call_arguments"
+	case ContentKindToolResult:
+		return "tool_result"
+	case ContentKindConfiguration:
+		return "configuration"
+	case ContentKindDocumentation:
+		return "documentation"
+	case ContentKindSecurityAnalysis:
+		return "security_analysis"
+	default:
+		return "unknown"
+	}
+}
+
 type roleContentValueShape uint8
 
 const (
@@ -62,7 +110,34 @@ type Segment struct {
 	Role            Role
 	Provenance      SegmentProvenance
 	UserAttribution UserAttribution
-	Text            string
+	// ConversationIndex is the zero-based provider history item. TurnIndex is
+	// the zero-based trusted-user turn and is inherited by following assistant
+	// and tool items until the next trusted user item. Values are -1 when the
+	// text is outside a recognized conversation history.
+	ConversationIndex int
+	TurnIndex         int
+	IsCurrentTurn     bool
+	// ScopeID is a request-local directive ownership boundary. FieldPathHash is
+	// a one-way, content-free digest of the structural JSON/multipart field path.
+	ScopeID       uint64
+	ContentKind   ContentKind
+	FieldPathHash string
+	Text          string
+}
+
+// newLegacySegment is used by the pre-profiled role extractor. Its role and
+// provenance remain useful, but it has no provider-history coordinates. Keep
+// both indexes at the documented sentinel so a caller that later mixes these
+// segments with profiled output cannot accidentally present them as turn 0.
+func newLegacySegment(role Role, provenance SegmentProvenance, attribution UserAttribution, text string) Segment {
+	return Segment{
+		Role:              role,
+		Provenance:        provenance,
+		UserAttribution:   attribution,
+		ConversationIndex: -1,
+		TurnIndex:         -1,
+		Text:              text,
+	}
 }
 
 const (
@@ -190,7 +265,7 @@ func extractRoleSegments(body []byte, limits Limits) ([]Segment, bool, bool) {
 				return err
 			}
 			for _, part := range parts {
-				segments.add(Segment{Role: RoleUser, Provenance: ProvenanceContent, Text: part})
+				segments.add(newLegacySegment(RoleUser, ProvenanceContent, UserAttributionUntrusted, part))
 			}
 			truncated = truncated || partTruncated
 		}
@@ -316,7 +391,7 @@ func addRoleMessageSegments(segments *segmentRing, raw json.RawMessage, role Rol
 				return err
 			}
 			for _, part := range parts {
-				segments.add(Segment{Role: RoleUser, Provenance: ProvenanceContent, Text: part})
+				segments.add(newLegacySegment(RoleUser, ProvenanceContent, UserAttributionUntrusted, part))
 			}
 			truncated = truncated || valueTruncated
 			return nil
@@ -441,10 +516,9 @@ func addRoleContentSegments(
 			appendDecoded(rawJoined)
 			text, textTruncated := joinRoleParts(analysisParts)
 			truncated = truncated || textTruncated
-			segments.add(Segment{
-				Role: pending.role, Provenance: pending.provenance,
-				UserAttribution: pending.userAttribution, Text: text,
-			})
+			segments.add(newLegacySegment(
+				pending.role, pending.provenance, pending.userAttribution, text,
+			))
 			pending = nil
 		}
 	}
@@ -579,12 +653,7 @@ func addRawRoleContentSegmentAttributed(
 		return false, err
 	}
 	text, joinTruncated := joinRoleParts(parts)
-	segments.add(Segment{
-		Role:            role,
-		Provenance:      ProvenanceContent,
-		UserAttribution: attribution,
-		Text:            text,
-	})
+	segments.add(newLegacySegment(role, ProvenanceContent, attribution, text))
 	return partTruncated || joinTruncated, nil
 }
 
@@ -633,10 +702,9 @@ func addRoleContentObjectFields(
 			return err
 		}
 		for _, part := range parts {
-			segments.add(Segment{
-				Role: RoleUser, Provenance: ProvenanceContent,
-				UserAttribution: UserAttributionUntrusted, Text: part,
-			})
+			segments.add(newLegacySegment(
+				RoleUser, ProvenanceContent, UserAttributionUntrusted, part,
+			))
 		}
 		truncated = truncated || valueTruncated
 		return nil
@@ -731,11 +799,11 @@ func addRoleSegment(segments *segmentRing, raw json.RawMessage, role Role, prove
 			return false, rawErr
 		}
 		text, analysisTruncated := joinRolePartsWithPristineDecode(parts, rawParts)
-		segments.add(Segment{Role: role, Provenance: provenance, Text: text})
+		segments.add(newLegacySegment(role, provenance, UserAttributionUntrusted, text))
 		return partTruncated || rawTruncated || analysisTruncated, nil
 	}
 	text, joinTruncated := joinRoleParts(parts)
-	segments.add(Segment{Role: role, Provenance: provenance, Text: text})
+	segments.add(newLegacySegment(role, provenance, UserAttributionUntrusted, text))
 	return partTruncated || joinTruncated, nil
 }
 

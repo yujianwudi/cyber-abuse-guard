@@ -38,14 +38,12 @@ type cpaCompatibilityProfile struct {
 	GoModSum  string
 }
 
-var cpaCompatibilityProfiles = map[string]cpaCompatibilityProfile{
-	cpaPrimaryProfile: {
-		Name:      cpaPrimaryProfile,
-		Version:   "v7.2.88",
-		Commit:    "93d74a890a44802f656d7f39a573916b2611896e",
-		ModuleSum: "h1:YfLBYPvkasjqFLzdht+UrEgRLsU3HcM0WDMurNEjIDo=",
-		GoModSum:  "h1:ytvZNWbCv7PrAyR80+RKsDJPODsdL6qxyFaXDBNZdqs=",
-	},
+var cpaPinnedProfile = cpaCompatibilityProfile{
+	Name:      cpaPrimaryProfile,
+	Version:   "v7.2.95",
+	Commit:    "f71ec0eb6776854457892452cf28c47f0d658251",
+	ModuleSum: "h1:QHQuGuPwOOTdyk5G7s0gjirdQtCM7NtxHRGS1I2xNtA=",
+	GoModSum:  "h1:he/Nx8K5RKvpcnedn0dmR8vVgHmetQ3/wutuPibWuRM=",
 }
 
 var latestCriticalCPAHostTests = []string{
@@ -96,7 +94,7 @@ type latestCPAModuleOrigin struct {
 }
 
 // Compile-time binding proves that the pinned public plugin API, including the
-// additive UsageRecord.Generate field required by the current v7.2.88 contract is available.
+// additive UsageRecord.Generate field required by both reviewed CPA contracts is available.
 // The Guard does not register UsagePlugin; this is an API compatibility probe.
 var _ = pluginapi.UsageRecord{Generate: true}
 
@@ -367,11 +365,11 @@ func selectedCPACompatibilityProfile(t *testing.T) cpaCompatibilityProfile {
 	if name == "" {
 		name = cpaPrimaryProfile
 	}
-	profile, ok := cpaCompatibilityProfiles[name]
-	if !ok {
-		t.Fatalf("unsupported %s=%q; allowed value is %q",
+	if name != cpaPrimaryProfile {
+		t.Fatalf("unsupported %s=%q; the only allowed value is %q",
 			cpaCompatibilityProfileEnv, name, cpaPrimaryProfile)
 	}
+	profile := cpaPinnedProfile
 	if expectedCommit := strings.TrimSpace(os.Getenv(cpaCompatibilityCommitEnv)); expectedCommit != "" && expectedCommit != profile.Commit {
 		t.Fatalf("%s=%q does not match pinned %s commit %s",
 			cpaCompatibilityCommitEnv, expectedCommit, profile.Name, profile.Commit)

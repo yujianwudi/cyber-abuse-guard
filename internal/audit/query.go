@@ -13,8 +13,42 @@ import (
 )
 
 const selectColumns = `id, timestamp_ns, action, mode, category, risk_score, rule_ids,
- request_hash, subject_hash, model, source_format, stream, text_bytes_scanned,
- classifier, decision, coverage, incomplete_reason, scanner, latency_us`
+	request_hash, subject_hash, model, source_format, stream, text_bytes_scanned,
+	classifier, decision, coverage, incomplete_reason, scanner, latency_us,
+	decision_explanation`
+
+const (
+	retryWindowSeconds     int64 = 5 * 60
+	retryWindowNanoseconds int64 = retryWindowSeconds * int64(time.Second)
+	// One statistics snapshot may hold one of SQLite's four pooled
+	// connections. Additional management requests wait without reserving a
+	// connection, leaving capacity for the audit writer and cleanup work.
+	statsConcurrentLimit = 1
+)
+
+const retryWindowAggregateSQL = `WITH canonical_events AS (
+	SELECT
+		request_hash,
+		decision,
+		CAST(timestamp_ns / ? AS INTEGER) AS window_id,
+		COALESCE((
+			SELECT group_concat(length(rule_id) || ':' || rule_id, '|')
+			FROM (
+				SELECT DISTINCT CAST(value AS TEXT) AS rule_id
+				FROM json_each(events.rule_ids)
+				WHERE type = 'text'
+				ORDER BY rule_id
+			)
+		), '') AS canonical_rule_ids
+	FROM audit_events AS events
+	WHERE request_hash <> ''
+), decision_rule_windows AS (
+	SELECT request_hash, decision, canonical_rule_ids, window_id, COUNT(*) AS event_count
+	FROM canonical_events
+	GROUP BY request_hash, decision, canonical_rule_ids, window_id
+)
+SELECT COUNT(*), COALESCE(SUM(event_count - 1), 0)
+FROM decision_rule_windows`
 
 // Query returns only the fixed Event schema. All caller-controlled filters are
 // SQL parameters; limit and offset are validated integers.
@@ -62,6 +96,7 @@ func (s *Store) Stats(ctx context.Context) (Stats, error) {
 	stats := Stats{
 		ByAction:                 make(map[string]int64),
 		ByCategory:               make(map[string]int64),
+		RetryWindowSeconds:       retryWindowSeconds,
 		Enqueued:                 status.Enqueued,
 		Written:                  status.Written,
 		Dropped:                  status.Dropped,
@@ -72,6 +107,7 @@ func (s *Store) Stats(ctx context.Context) (Stats, error) {
 		RawCaptureDropped:        status.RawCaptureDropped,
 		RawCaptureFailed:         status.RawCaptureFailed,
 		RawCaptureRejected:       status.RawCaptureRejected,
+		RawCaptureDeduplicated:   status.RawCaptureDeduplicated,
 		RawCaptureQueueHighWater: status.RawCaptureQueueHighWater,
 		RawCapturePrepareCount:   status.RawCapturePrepareCount,
 		RawCapturePrepareTotalUS: status.RawCapturePrepareTotalUS,
@@ -82,19 +118,75 @@ func (s *Store) Stats(ctx context.Context) (Stats, error) {
 	if s == nil || s.db == nil {
 		return stats, ErrUnavailable
 	}
-	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM audit_events").Scan(&stats.Total); err != nil {
+	if err := s.acquireStatsSlot(ctx); err != nil {
+		return stats, err
+	}
+	defer s.releaseStatsSlot()
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return stats, fmt.Errorf("audit: begin statistics snapshot: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := tx.QueryRowContext(ctx, `SELECT
+COUNT(*),
+COUNT(DISTINCT NULLIF(request_hash, '')),
+COALESCE(SUM(CASE WHEN request_hash = '' THEN 1 ELSE 0 END), 0)
+FROM audit_events`).Scan(&stats.Events, &stats.UniqueRequests, &stats.UnhashedEvents); err != nil {
 		return stats, fmt.Errorf("audit: count events: %w", err)
 	}
-	if err := aggregate(ctx, s.db, "action", stats.ByAction); err != nil {
+	stats.Total = stats.Events
+	hashedEvents := stats.Events - stats.UnhashedEvents
+	if hashedEvents > stats.UniqueRequests {
+		stats.RepeatEvents = hashedEvents - stats.UniqueRequests
+	}
+	// This query returns two scalars regardless of event count. Rule IDs are
+	// treated as a sorted distinct set for the retry key; neither rule IDs nor
+	// request hashes are returned by Stats. The window size is a package constant
+	// supplied as an SQL parameter rather than interpolated SQL.
+	if err := tx.QueryRowContext(
+		ctx,
+		retryWindowAggregateSQL,
+		retryWindowNanoseconds,
+	).Scan(&stats.UniqueDecisionRuleWindows, &stats.WindowRepeatEvents); err != nil {
+		return stats, fmt.Errorf("audit: aggregate decision/rule retry windows: %w", err)
+	}
+	if err := aggregate(ctx, tx, "action", stats.ByAction); err != nil {
 		return stats, err
 	}
-	if err := aggregate(ctx, s.db, "category", stats.ByCategory); err != nil {
+	if err := aggregate(ctx, tx, "category", stats.ByCategory); err != nil {
 		return stats, err
+	}
+	if err := tx.Commit(); err != nil {
+		return stats, fmt.Errorf("audit: commit statistics snapshot: %w", err)
 	}
 	return stats, nil
 }
 
-func aggregate(ctx context.Context, db *sql.DB, column string, destination map[string]int64) error {
+func (s *Store) acquireStatsSlot(ctx context.Context) error {
+	// Store values created through Open always have the gate. Keep nil tolerant
+	// for zero-value/internal test stores so this helper cannot deadlock them.
+	if s.statsSlots == nil {
+		return nil
+	}
+	select {
+	case s.statsSlots <- struct{}{}:
+		return nil
+	case <-ctx.Done():
+		return fmt.Errorf("audit: wait for statistics capacity: %w", ctx.Err())
+	}
+}
+
+func (s *Store) releaseStatsSlot() {
+	if s.statsSlots != nil {
+		<-s.statsSlots
+	}
+}
+
+type contextQueryer interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}
+
+func aggregate(ctx context.Context, db contextQueryer, column string, destination map[string]int64) error {
 	// column is selected exclusively by package code, never caller input.
 	rows, err := db.QueryContext(ctx, "SELECT "+column+", COUNT(*) FROM audit_events GROUP BY "+column)
 	if err != nil {
@@ -163,11 +255,16 @@ func (s *Store) ExportCSV(ctx context.Context, writer io.Writer, query Query) er
 		"id", "timestamp", "action", "mode", "category", "risk_score", "rule_ids",
 		"request_hash", "subject_hash", "model", "source_format", "stream",
 		"text_bytes_scanned", "classifier", "decision", "coverage", "incomplete_reason", "scanner", "latency_us",
+		"decision_explanation",
 	}
 	if err := csvWriter.Write(header); err != nil {
 		return fmt.Errorf("audit: write CSV header: %w", err)
 	}
 	for _, event := range events {
+		explanation, err := marshalDecisionExplanation(event.DecisionExplanation)
+		if err != nil {
+			return fmt.Errorf("audit: encode decision explanation for CSV: %w", err)
+		}
 		record := []string{
 			safeCSV(event.ID),
 			event.Timestamp.UTC().Format(time.RFC3339Nano),
@@ -188,6 +285,7 @@ func (s *Store) ExportCSV(ctx context.Context, writer io.Writer, query Query) er
 			safeCSV(event.IncompleteReason),
 			safeCSV(event.Scanner),
 			strconv.FormatInt(event.LatencyUS, 10),
+			safeCSV(explanation),
 		}
 		if err := csvWriter.Write(record); err != nil {
 			return fmt.Errorf("audit: write CSV event: %w", err)
@@ -237,13 +335,14 @@ func scanEvent(row rowScanner) (Event, error) {
 	var event Event
 	var timestampNS int64
 	var ruleJSON string
+	var explanationJSON string
 	var stream int
 	if err := row.Scan(
 		&event.ID, &timestampNS, &event.Action, &event.Mode, &event.Category,
 		&event.RiskScore, &ruleJSON, &event.RequestHash, &event.SubjectHash,
 		&event.Model, &event.SourceFormat, &stream, &event.TextBytesScanned,
 		&event.Classifier, &event.Decision, &event.Coverage, &event.IncompleteReason,
-		&event.Scanner, &event.LatencyUS,
+		&event.Scanner, &event.LatencyUS, &explanationJSON,
 	); err != nil {
 		return Event{}, fmt.Errorf("audit: scan event: %w", err)
 	}
@@ -257,7 +356,60 @@ func scanEvent(row rowScanner) (Event, error) {
 	event.Stream = stream != 0
 	event.Model = privacySafeModel(event.Model)
 	event.SourceFormat = privacySafeSourceFormat(event.SourceFormat)
+	explanation, err := decodeDecisionExplanation(explanationJSON)
+	if err != nil {
+		return Event{}, fmt.Errorf("audit: decode decision explanation: %w", err)
+	}
+	event.DecisionExplanation = explanation
+	// This is schema and cross-field consistency validation only. It detects
+	// corrupt or internally contradictory rows, but it does not cryptographically
+	// authenticate SQLite contents or protect against a database writer that
+	// coherently rewrites all related fields.
+	if err := validateEvent(event); err != nil {
+		return Event{}, fmt.Errorf("audit: invalid persisted event: %w", err)
+	}
 	return event, nil
+}
+
+func marshalDecisionExplanation(explanation *DecisionExplanation) (string, error) {
+	if explanation == nil {
+		return "{}", nil
+	}
+	if err := validateDecisionExplanation(explanation); err != nil {
+		return "", err
+	}
+	encoded, err := json.Marshal(explanation)
+	if err != nil {
+		return "", err
+	}
+	if len(encoded) > 32768 {
+		return "", fmt.Errorf("decision explanation exceeds 32768 bytes")
+	}
+	return string(encoded), nil
+}
+
+func decodeDecisionExplanation(encoded string) (*DecisionExplanation, error) {
+	encoded = strings.TrimSpace(encoded)
+	if encoded == "" || encoded == "{}" || encoded == "null" {
+		return nil, nil
+	}
+	if len(encoded) > 32768 {
+		return nil, fmt.Errorf("decision explanation exceeds 32768 bytes")
+	}
+	decoder := json.NewDecoder(strings.NewReader(encoded))
+	decoder.DisallowUnknownFields()
+	var explanation DecisionExplanation
+	if err := decoder.Decode(&explanation); err != nil {
+		return nil, err
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		return nil, fmt.Errorf("decision explanation must contain exactly one JSON value")
+	}
+	if err := validateDecisionExplanation(&explanation); err != nil {
+		return nil, err
+	}
+	return &explanation, nil
 }
 
 func safeCSV(value string) string {

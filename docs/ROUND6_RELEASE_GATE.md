@@ -1,8 +1,8 @@
 # Round 6 v0.15 CI, candidate, and release gate
 
 ```text
-current_classifier_policy_version: classifier-policy-v6
-current_classifier_policy_sha256: ece497210db938528cb166a34f2ce3013324b792a7eedf276a96fa5d256001d4
+current_classifier_policy_version: classifier-policy-v7
+current_classifier_policy_sha256: ea8c4dcfacacc6478f86fd2ca5de96d667ae98f2fc6ff0c83d8e6092e9f6a82d
 ```
 
 Status: **BLOCKED / PENDING HOST AND INDEPENDENT AUDIT**.
@@ -12,8 +12,8 @@ The exact project version is `0.15`; the only formal tag is `v0.15`, never
 current execution evidence is Linux amd64-only. Windows, macOS, and musl/Alpine
 are outside this round.
 
-Classifier policy identity is `classifier-policy-v6` /
-`ece497210db938528cb166a34f2ce3013324b792a7eedf276a96fa5d256001d4`;
+Historical v0.15 classifier policy identity is `classifier-policy-v5` /
+`0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b`;
 scanner identity is `streaming-scanner-v1`.
 
 The release chain is deliberately ordered:
@@ -23,7 +23,7 @@ final PR head + PR CI
   -> merge to main
   -> exact post-merge main push CI
   -> private untagged clean-candidate Actions artifact
-  -> CPA v7.2.88 Host + Mock evidence
+  -> CPA v7.2.95 Host + Mock evidence
   -> independent source/artifact/Host audit
   -> candidate-bound external evaluation-v11+ CONSUMED / PASS
   -> optional annotated development prerelease
@@ -83,7 +83,7 @@ It verifies named suites for:
   256 KiB, 256 KiB + 1, 270 KiB, 512 KiB, 1 MiB, 4 MiB, and near the
   effective RPC limit;
 - management status, audit privacy, and legacy `max_scan_bytes` migration;
-- source/compile compatibility with the fixed CPA v7.2.88 release target.
+- source/compile compatibility with the fixed CPA v7.2.95 release target.
 
 The safety checker inspects the reachable Make/script graph. Ordinary Round 6
 entrypoints must not reach formal release, consumed evaluation, Holdout, or
@@ -147,7 +147,7 @@ Linux amd64 CPA Hosts with a Mock upstream and no real auth pool or Provider:
 
 | Target | Exact source identity | Current real Host state |
 |---|---|---|
-| CPA v7.2.88 | `93d74a890a44802f656d7f39a573916b2611896e` | **NOT RUN / PENDING** |
+| CPA v7.2.95 | `f71ec0eb6776854457892452cf28c47f0d658251` | **NOT RUN / PENDING** |
 
 Earlier v7.2.85/v7.2.84/v7.2.83/v7.2.82/v7.2.81 source/compile checks are historical engineering
 context only. They are not current v0.15 Host or release requirements.
@@ -195,7 +195,7 @@ The neutral machine-readable source policy is
 
 ## Optional annotated development prerelease
 
-An optional durable development handoff may be created only after the v7.2.88
+An optional durable development handoff may be created only after the v7.2.95
 Host record, the independent audit, and the candidate-bound external evaluation-v11+
 `CONSUMED / PASS` attestation pass. It uses an existing annotated tag:
 
@@ -206,12 +206,12 @@ v0.15-dev.round6.N
 
 `.github/workflows/attested-prerelease.yml` binds that tag to the exact
 candidate `main` commit/tree, successful main push CI run, successful clean-candidate run,
-candidate SO and Store ZIP SHA-256 values, the v7.2.88 Host-record hash, and
+candidate SO and Store ZIP SHA-256 values, the v7.2.95 Host-record hash, and
 independent-audit hash.
 It rebuilds the same clean exact-source bytes, proves reproducibility, and
 rechecks the SO hash before and after Actions artifact transfer.
 
-GitHub currently allows at most 25 top-level `workflow_dispatch` inputs. The
+GitHub allows at most 10 top-level `workflow_dispatch` inputs. The
 repository keeps this manual dispatcher at exactly nine inputs and carries the
 Host, audit, and evaluation decisions and evidence in one required
 `external_attestations_json` object. That object must contain exactly

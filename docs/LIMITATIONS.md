@@ -1,30 +1,21 @@
-# Known Limitations — v0.15 Round 6 development candidate
+# Known Limitations — v0.16 Round 8 prerelease candidate
 
 ```text
-current_classifier_policy_version: classifier-policy-v6
-current_classifier_policy_sha256: ece497210db938528cb166a34f2ce3013324b792a7eedf276a96fa5d256001d4
+current_classifier_policy_version: classifier-policy-v7
+current_classifier_policy_sha256: ea8c4dcfacacc6478f86fd2ca5de96d667ae98f2fc6ff0c83d8e6092e9f6a82d
 ```
 
 1. **No guarantee against account action.** The plugin reduces the number of
    clearly risky requests that reach upstream. It cannot guarantee that an
    account will never be warned, rate-limited, suspended, or deactivated.
 
-2. **The current v0.15 candidate remains blocked by the formal release gate.**
-   Exact project version is `0.15`; the only formal tag is `v0.15`, never
-   `v0.15.0`. v1-v8
-   are retired or consumed failures. v9 is a consumed methodology-invalid failure because
-   the exact taxonomy-enum validator was missing. The methodologically valid
-   v10 first-and-only run failed with 28/320 benign false positives, 49/320
-   policy blocks, and 33/320 exact classifications. v10 is `CONSUMED / FAIL`
-   and cannot be rerun. No `v0.15` tag, production release, or production
-   deployment may be created. A future formal attempt requires a candidate-bound
-   external `evaluation-v11` or later first-and-only `CONSUMED / PASS`
-   attestation. Historical development prerelease
-   `v0.1.2-dev.round5.1` exists only as `BLOCKED / NOT FOR DEPLOYMENT`
-   evidence at immutable tag target
-   `89b62b341278073e7b6518b85e41cd7f7c6b682c`; it must not be moved or reused.
-   Round 5 hashes and tags remain frozen historical evidence and cannot be
-   relabeled as v0.15.
+2. **The Round 8 candidate is not production-approved.** The current source
+   version is `0.16`; the only Round 8 artifact target is the non-latest Linux
+   amd64 prerelease `v0.16-rc.2`. Stable `v0.16` does not exist. Independent
+   source/artifact audit, dual CPA counted-Mock Host validation, and external
+   admission remain required. The local `v0.16-rc.1` package and the Round 5/6
+   v0.15 evidence are immutable historical records and cannot be moved,
+   overwritten, or relabeled as Round 8 output.
 
 3. **Deterministic language rules are imperfect.** Novel phrasing, languages,
    slang, semantic indirection, encrypted content, unknown encodings, and
@@ -78,8 +69,13 @@ current_classifier_policy_sha256: ece497210db938528cb166a34f2ce3013324b792a7eedf
    quotation/provenance extensions and deliberately split non-adjacent evidence
    can remain outside the deterministic follow-up window.
 
-8. **CPA router failures are host-level fail-open.** The current required Host
-   target is CPA v7.2.88 only. CPA may continue other Routers or native routing if
+   Round 8 adds occurrence ownership and active-directive boundaries, but this
+   is still a deterministic bounded parser rather than unrestricted natural-
+   language understanding. An unusual but valid explicit referent may be missed,
+   while a sufficiently ambiguous directive may remain audit-only.
+
+8. **CPA router failures are host-level fail-open.** The required Host matrix is
+   CPA v7.2.95. CPA may continue other Routers or native routing if
    the plugin is not loaded, registration fails, it is fused, the Router returns
    an error, a panic occurs before the host accepts a valid handled result, the
    target is invalid/empty, or the self executor is not ready. The plugin
@@ -107,7 +103,7 @@ current_classifier_policy_sha256: ece497210db938528cb166a34f2ce3013324b792a7eedf
     frame; successful chunks would force HTTP 200. The policy executor routes
     `execute`, `execute_stream`, and `count_tokens` to the same policy HTTP 403;
     `http_request` returns an unsupported-method RPC error whose `StatusCode()`
-    is 405; the official adapter returns `(nil, error)`. CPA v7.2.88's public
+    is 405; the official adapter returns `(nil, error)`. CPA v7.2.95's public
     `/v1/alpha/search` consumer normally selects `codex` and maps every executor
     error to HTTP 502. The project-owned `httptest.Server` manually maps the
     status error, so final official CPA client HTTP 405 is `NOT AVAILABLE / NOT
@@ -122,7 +118,7 @@ current_classifier_policy_sha256: ece497210db938528cb166a34f2ce3013324b792a7eedf
 13. **No `Retry-After` on executor errors.** ABI-v1 RPC errors cannot attach
     arbitrary downstream response headers.
 
-14. **Exact management routes only.** CPA v7.2.88 rejects dynamic `:`/`*`
+14. **Exact management routes only.** CPA v7.2.95 rejects dynamic `:`/`*`
     plugin routes, so subject unblock uses a fixed path and bounded JSON body.
     CPA host middleware, not the plugin, is the Management Key verification
     authority; ABI v1 does not reveal the configured key to the plugin. Host
@@ -143,7 +139,7 @@ current_classifier_policy_sha256: ece497210db938528cb166a34f2ce3013324b792a7eedf
     reserved, but `classifier.enabled: true` is rejected. The plugin makes no
     classifier network request and does not upload prompts to a third party.
 
-17. **No authenticated management UI.** CPA v7.2.88 resource routes are not a
+17. **No authenticated management UI.** CPA v7.2.95 resource routes are not a
     safe place for audit/subject data. This version exposes exact authenticated
     management API routes only.
 
@@ -208,11 +204,11 @@ current_classifier_policy_sha256: ece497210db938528cb166a34f2ce3013324b792a7eedf
     evicts logical entries immediately, but heap buckets may remain until later
     garbage collection. The new logical limit is enforced for every request.
 
-29. **Only one platform and one CPA Host version are in scope.** The release
-    platform is Linux amd64 with glibc 2.34+; musl/Alpine is unsupported. The
-    root `go.mod` and current compatibility contract pin CPA v7.2.88, but
-    source/compile success is not runtime admission. Exact-candidate Host
-    evidence is required for CPA v7.2.88.
+29. **Only one platform and one fixed CPA Host target are in scope.** The
+    release platform is Linux amd64 with glibc 2.34+; musl/Alpine is unsupported.
+    The root module and both current contract modules pin CPA v7.2.95.
+    Source/compile success is not runtime admission. Exact-candidate counted-Mock
+    Host evidence is required for this target.
     Earlier v7.2.85/v7.2.84/v7.2.83/v7.2.82/v7.2.81 checks are historical and non-gating.
     Windows/macOS checks and source contracts do
     not establish native compatibility.
@@ -271,21 +267,21 @@ current_classifier_policy_sha256: ece497210db938528cb166a34f2ce3013324b792a7eedf
     proxy-413 fixture were mistakenly executed in WSL using loopback/Mock
     components and cleaned up without residual fixture processes. Those local
     results are excluded. Earlier CPA v7.2.72 and Round 5 v7.2.75 records remain
-    frozen historical evidence only. Current v0.15 requires a private untagged
-    clean candidate and one external v7.2.88 Host record,
-    followed by independent verification. It has not run, and no Host result can
-    reverse the frozen v10 failure.
+    frozen historical evidence only. Round 8 requires one exact v0.16-rc.2
+    candidate, dual CPA counted-Mock Host records, and independent verification.
+    Those external gates have not run, and no Host result can relabel historical
+    evaluation evidence.
 
 37. **Classifier-policy identity is source- and artifact-bound, but still not
-    independent approval.** The current identity is `classifier-policy-v6` /
+    independent approval.** The current identity is `classifier-policy-v7` /
     SHA-256
-`ece497210db938528cb166a34f2ce3013324b792a7eedf276a96fa5d256001d4`.
+`ea8c4dcfacacc6478f86fd2ca5de96d667ae98f2fc6ff0c83d8e6092e9f6a82d`.
     Build metadata and artifact verification carry it. The historical
     round5.2 value was `classifier-policy-v2` /
     `e9b87f7e2635495bdbceae469ef89e696b419f0a9a6fd129558a20bc4be947ec`,
     and the historical round5.1 value was `classifier-policy-v2` /
     `c2092d0949fcaa1d0f085dfe31a668d45cc4d14efc10427d0f3ebcf3e821a112`.
-    Ruleset `1.0.8` separately identifies YAML assets and
+    Ruleset `1.0.9` separately identifies YAML assets and
     does **not** include the Go-level `META-OVERRIDE-001` overlay, extractor
     semantics, approved tool-schema mappings, or control-plane telemetry. A
     digest test binds the reviewed source list, and authenticated status exposes
@@ -322,9 +318,9 @@ current_classifier_policy_sha256: ece497210db938528cb166a34f2ce3013324b792a7eedf
     reports, and operator scripts belong in the separate
     `cyber-abuse-guard-v<version>-audit-bundle.zip`. Historical round5.1 dirty
     versions of these files exist on a blocked development prerelease, but
-    neither is an approved stable v0.15 release artifact. Current v0.15 Host
-    evidence must use the private untagged clean candidate, not a historical
-    Round 5 asset.
+    neither is an approved stable release artifact. Current Round 8 Host
+    evidence must use the exact v0.16-rc.2 candidate, not a historical Round 5,
+    Round 6, or v0.16-rc.1 asset.
 
 41. **Visible development corpora are not independent evidence.**
     `testdata/development-adversarial-v11-prep` is deliberately visible,
@@ -379,7 +375,7 @@ current_classifier_policy_sha256: ece497210db938528cb166a34f2ce3013324b792a7eedf
     unit, race, vet, fuzz, benchmark, privacy, packaging, or reproducibility
     gates shows only that the named command passed on the named commit and
     environment. It cannot replace artifact inspection, the authorized CPA
-    v7.2.88 + Mock-upstream Host matrix, or independent
+    v7.2.95 + Mock-upstream Host matrix, or independent
     review, and it cannot reverse the frozen v10 failure.
 
 48. **The Round 6 deployment decision is still blocked.** Historical
@@ -443,20 +439,16 @@ current_classifier_policy_sha256: ece497210db938528cb166a34f2ce3013324b792a7eedf
     restricted access; v10 remains `CONSUMED / FAIL`, and methodology handoff
     remains blocked.
 
-54. **CPA v7.2.88 compatibility is source/compile evidence only.** The separate
-    `integration/cpalatestcontract` module pins current target v7.2.88 at commit
-    `93d74a890a44802f656d7f39a573916b2611896e`. Earlier v7.2.85/v7.2.84/v7.2.83/v7.2.82/v7.2.81
-    profiles and their checksums are retained only as historical development
-    evidence, not current release requirements.
-    The primary compatibility lane compiles the Guard and integration packages, runs
-    the real Guard registration/role-routing probes, 18 official Host
-    routing/status tests, 11 official Interactions route/handler tests, and
-    three checksum-pinned overlays in ephemeral official-source copies. It does not start CPA, load a
-    Guard `.so`, install through Store, or prove request reconstruction,
-    logging, Auth/Provider/Usage isolation, and upstream behavior on v7.2.88.
-    No current runtime baseline is admitted until the owner runs the authorized
-    v7.2.88 server sandbox matrix against the exact candidate SO. Later upstream
-    CPA versions do not automatically change this pinned Host requirement.
+54. **The CPA source/compile contract is evidence only until counted-Mock Host
+    validation.** `integration/cpalatestcontract` and
+    `integration/pluginstorecontract` both bind CPA v7.2.95. The contract
+    compiles the Guard and integration packages and runs exact official Host,
+    Responses, Interactions, fail-open, Raw Capture, and Store contracts. They do
+    not start the release CPA binary, load the candidate `.so`, or prove request
+    reconstruction, logging, Auth/Provider/Usage isolation, and upstream behavior.
+    No runtime baseline is admitted until the authorized counted-Mock sandbox
+    matrix binds the same candidate SHA-256. Later CPA versions do not
+    automatically change these pinned requirements.
 
 55. **The public-reference corpus cannot attribute attack origin.** Its 36
     sanitized cases cover visible mechanism families and abstract source
@@ -484,7 +476,7 @@ current_classifier_policy_sha256: ece497210db938528cb166a34f2ce3013324b792a7eedf
     v7.2.80, an `agent` request that the Guard self-routes is rejected by CPA's
     native-Interactions validator with HTTP 400 before the Guard executor runs;
     a uniform Guard 403 would require an upstream CPA change. The owner-operated
-    sandbox must recheck that behavior on v7.2.88 and
+    sandbox must recheck that behavior on v7.2.95 and
     separately verify model/agent, stream/non-stream, exact status
     shapes, first-byte behavior, and zero Auth/Provider/Usage/upstream effects.
 
@@ -495,7 +487,7 @@ current_classifier_policy_sha256: ece497210db938528cb166a34f2ce3013324b792a7eedf
     commit/tree must pass push CI before the private untagged candidate workflow
     is dispatched from `refs/heads/main`. That workflow binds the post-merge
     main commit/tree and hashes in `candidate-manifest.json`. Only after the
-    v7.2.88 Host record, independent audit, and candidate-bound external
+    v7.2.95 Host record, independent audit, and candidate-bound external
     evaluation-v11+ `CONSUMED / PASS` report bind that same candidate may an
     optional annotated `v0.15-dev.round6[.N]` draft prerelease be created. The
     annotated formal `v0.15` tag and verified draft remain a later, separate

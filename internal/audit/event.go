@@ -7,11 +7,14 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
 	"unicode"
+
+	explanationpkg "github.com/yujianwudi/cyber-abuse-guard/internal/explanation"
 )
 
 const (
@@ -21,7 +24,8 @@ const (
 
 	// SourceFormatUnknown is the only value retained for caller-supplied source
 	// formats outside the fixed CPA provider enum.
-	SourceFormatUnknown = "unknown"
+	SourceFormatUnknown          = "unknown"
+	SourceFormatCodexAlphaSearch = "codex-alpha-search"
 )
 
 // Event is the complete persistent audit schema. Keep this type deliberately
@@ -49,6 +53,41 @@ type Event struct {
 	IncompleteReason string `json:"incomplete_reason,omitempty"`
 	Scanner          string `json:"scanner"`
 	LatencyUS        int64  `json:"latency_us"`
+	// DecisionExplanation is a bounded, identifier-only explanation of the
+	// winning decision. It deliberately has no text, span, offset, arbitrary
+	// metadata, or map field capable of carrying request fragments.
+	DecisionExplanation *DecisionExplanation `json:"decision_explanation,omitempty"`
+}
+
+// ScoreComponent is one bounded scoring dimension. Dimension and EvidenceIDs
+// are stable implementation identifiers, never matched text or request spans.
+type ScoreComponent struct {
+	Dimension   string   `json:"dimension"`
+	Points      int      `json:"points"`
+	EvidenceIDs []string `json:"evidence_ids,omitempty"`
+}
+
+// DecisionExplanation is the privacy-safe persisted explanation contract used
+// by audit and protected management surfaces. Keep it closed and scalar: do not
+// add prompt text, matched fragments, arbitrary metadata, field paths, offsets,
+// or provider payloads.
+type DecisionExplanation struct {
+	WinningRuleID           string           `json:"winning_rule_id,omitempty"`
+	WinningCategory         string           `json:"winning_category,omitempty"`
+	ScoreBreakdown          []ScoreComponent `json:"score_breakdown,omitempty"`
+	CorePredicateComplete   bool             `json:"core_predicate_complete"`
+	EvidenceDimensionMask   uint64           `json:"evidence_dimension_mask"`
+	EvidenceOccurrenceCount int              `json:"evidence_occurrence_count"`
+	EvidenceSegmentCount    int              `json:"evidence_segment_count"`
+	WinningRole             string           `json:"winning_role,omitempty"`
+	WinningProvenance       string           `json:"winning_provenance,omitempty"`
+	CurrentTurnEvidence     bool             `json:"current_turn_evidence"`
+	CrossSegmentComposition string           `json:"cross_segment_composition,omitempty"`
+	ReferentLinkUsed        bool             `json:"referent_link_used"`
+	QuotedOrInertSuppressed bool             `json:"quoted_or_inert_suppressed"`
+	ContextAdjustment       int              `json:"context_adjustment"`
+	HardFloorApplied        bool             `json:"hard_floor_applied"`
+	HardFloorReason         string           `json:"hard_floor_reason,omitempty"`
 }
 
 // HashRequest produces the one-way request correlation value accepted by an
@@ -85,6 +124,8 @@ func CanonicalSourceFormat(sourceFormat string) string {
 		return "openai-response"
 	case "interactions":
 		return "interactions"
+	case SourceFormatCodexAlphaSearch:
+		return SourceFormatCodexAlphaSearch
 	case "openai-image":
 		return "openai-image"
 	case "openai-video":
@@ -112,6 +153,7 @@ func prepareEvent(event Event, now time.Time) (Event, error) {
 		event.Timestamp = event.Timestamp.UTC()
 	}
 	event.RuleIDs = append([]string(nil), event.RuleIDs...)
+	event.DecisionExplanation = cloneDecisionExplanation(event.DecisionExplanation)
 	event.Model = privacySafeModel(event.Model)
 	event.SourceFormat = privacySafeSourceFormat(event.SourceFormat)
 	// Source compatibility for pre-Round6 callers and migration tests. New
@@ -184,7 +226,7 @@ func validateEvent(event Event) error {
 	if event.Model != "" && !validDigest(event.Model, modelHashPrefix) {
 		return errors.New("audit: model is not a domain-separated SHA-256 correlation value")
 	}
-	if event.SourceFormat != "" && !oneOf(event.SourceFormat, "openai", "openai-response", "interactions", "openai-image", "openai-video", "claude", "gemini", SourceFormatUnknown) {
+	if event.SourceFormat != "" && !oneOf(event.SourceFormat, "openai", "openai-response", "interactions", SourceFormatCodexAlphaSearch, "openai-image", "openai-video", "claude", "gemini", SourceFormatUnknown) {
 		return errors.New("audit: source_format is not a canonical provider value")
 	}
 	if event.RiskScore < 0 || event.RiskScore > 1_000_000 {
@@ -195,6 +237,12 @@ func validateEvent(event Event) error {
 	}
 	if event.LatencyUS < 0 {
 		return errors.New("audit: latency_us must not be negative")
+	}
+	if err := validateDecisionExplanation(event.DecisionExplanation); err != nil {
+		return err
+	}
+	if err := validateDecisionExplanationEventConsistency(event); err != nil {
+		return err
 	}
 	if len(event.RuleIDs) > 128 {
 		return errors.New("audit: too many rule IDs")
@@ -211,6 +259,196 @@ func validateEvent(event Event) error {
 		return errors.New("audit: subject_hash is not an HMAC-SHA256 correlation value")
 	}
 	return nil
+}
+
+// validateDecisionExplanationEventConsistency binds the structured
+// explanation to the audit row it explains. Both write admission and SQLite
+// reads use this check so a corrupt or externally modified row cannot present
+// a category, winning rule, score, or context adjustment that contradicts the
+// persisted top-level decision.
+func validateDecisionExplanationEventConsistency(event Event) error {
+	if event.DecisionExplanation == nil {
+		return nil
+	}
+	var finalScore *int
+	var contextAdjustment *int
+	for index := range event.DecisionExplanation.ScoreBreakdown {
+		component := &event.DecisionExplanation.ScoreBreakdown[index]
+		switch component.Dimension {
+		case "final_score":
+			finalScore = &component.Points
+		case "context_adjustment":
+			contextAdjustment = &component.Points
+		}
+	}
+	if finalScore == nil {
+		return errors.New("audit: decision explanation requires final_score")
+	}
+	if *finalScore != event.RiskScore {
+		return errors.New("audit: decision explanation final_score does not match risk_score")
+	}
+	if contextAdjustment == nil {
+		return errors.New("audit: decision explanation requires context_adjustment")
+	}
+	if *contextAdjustment != event.DecisionExplanation.ContextAdjustment {
+		return errors.New("audit: decision explanation context_adjustment is inconsistent")
+	}
+	if event.Category != "" {
+		if event.DecisionExplanation.WinningCategory == "" {
+			return errors.New("audit: decision explanation requires winning_category when category is logged")
+		}
+		if event.Category != event.DecisionExplanation.WinningCategory {
+			return errors.New("audit: decision explanation winning_category does not match category")
+		}
+	} else if event.DecisionExplanation.WinningCategory != "" {
+		return errors.New("audit: decision explanation winning_category bypasses category logging policy")
+	}
+	if len(event.RuleIDs) != 0 {
+		if event.DecisionExplanation.WinningRuleID == "" {
+			return errors.New("audit: decision explanation requires winning_rule_id when rule_ids are logged")
+		}
+		if countExact(event.RuleIDs, event.DecisionExplanation.WinningRuleID) != 1 {
+			return errors.New("audit: decision explanation winning_rule_id must occur exactly once in rule_ids")
+		}
+	} else if event.DecisionExplanation.WinningRuleID != "" {
+		return errors.New("audit: decision explanation winning_rule_id bypasses rule_ids logging policy")
+	}
+	return nil
+}
+
+func countExact(values []string, want string) int {
+	count := 0
+	for _, value := range values {
+		if value == want {
+			count++
+		}
+	}
+	return count
+}
+
+func cloneDecisionExplanation(source *DecisionExplanation) *DecisionExplanation {
+	if source == nil {
+		return nil
+	}
+	cloned := *source
+	cloned.ScoreBreakdown = make([]ScoreComponent, len(source.ScoreBreakdown))
+	for index, component := range source.ScoreBreakdown {
+		cloned.ScoreBreakdown[index] = component
+		cloned.ScoreBreakdown[index].EvidenceIDs = append([]string(nil), component.EvidenceIDs...)
+	}
+	return &cloned
+}
+
+func validateDecisionExplanation(explanation *DecisionExplanation) error {
+	if explanation == nil {
+		return nil
+	}
+	for name, value := range map[string]string{
+		"winning_rule_id":   explanation.WinningRuleID,
+		"winning_category":  explanation.WinningCategory,
+		"hard_floor_reason": explanation.HardFloorReason,
+	} {
+		if value != "" && !validStableCode(value, 128) {
+			return fmt.Errorf("audit: decision explanation %s is not a stable identifier", name)
+		}
+	}
+	if explanation.WinningRole != "" && !oneOf(explanation.WinningRole,
+		"unknown", "user", "system", "assistant", "tool") {
+		return errors.New("audit: decision explanation winning_role is unsupported")
+	}
+	if explanation.WinningProvenance != "" && !oneOf(explanation.WinningProvenance,
+		"unknown", "content", "tool_payload") {
+		return errors.New("audit: decision explanation winning_provenance is unsupported")
+	}
+	if explanation.CrossSegmentComposition != "" && !oneOf(explanation.CrossSegmentComposition,
+		"none", "bounded_same_scope", "explicit_referent") {
+		return errors.New("audit: decision explanation cross_segment_composition is unsupported")
+	}
+	if explanation.EvidenceOccurrenceCount < 0 || explanation.EvidenceOccurrenceCount > 1_000_000 {
+		return errors.New("audit: decision explanation evidence_occurrence_count is outside the supported range")
+	}
+	if explanation.EvidenceSegmentCount < 0 || explanation.EvidenceSegmentCount > 1_000_000 {
+		return errors.New("audit: decision explanation evidence_segment_count is outside the supported range")
+	}
+	if explanation.ContextAdjustment < -1_000_000 || explanation.ContextAdjustment > 1_000_000 {
+		return errors.New("audit: decision explanation context_adjustment is outside the supported range")
+	}
+	if len(explanation.ScoreBreakdown) > 32 {
+		return errors.New("audit: decision explanation has too many score components")
+	}
+	seenDimensions := make(map[string]struct{}, len(explanation.ScoreBreakdown))
+	seenEvidenceDimensions := make(map[string]string)
+	for _, component := range explanation.ScoreBreakdown {
+		if !oneOf(component.Dimension,
+			"core_predicate_score", "qualifier_score", "scope_coherence_score",
+			"ownership_score", "active_directive_score", "context_adjustment",
+			"contradiction_adjustment", "final_score") {
+			return errors.New("audit: decision explanation score dimension is unsupported")
+		}
+		if _, duplicate := seenDimensions[component.Dimension]; duplicate {
+			return fmt.Errorf("audit: decision explanation score dimension %q is duplicated", component.Dimension)
+		}
+		seenDimensions[component.Dimension] = struct{}{}
+		if component.Points < -1_000_000 || component.Points > 1_000_000 {
+			return errors.New("audit: decision explanation score component is outside the supported range")
+		}
+		if len(component.EvidenceIDs) > 128 {
+			return errors.New("audit: decision explanation score component has too many evidence IDs")
+		}
+		seenEvidence := make(map[string]struct{}, len(component.EvidenceIDs))
+		for _, evidenceID := range component.EvidenceIDs {
+			if !validStableCode(evidenceID, 128) {
+				return errors.New("audit: decision explanation evidence ID is not a stable identifier")
+			}
+			if _, duplicate := seenEvidence[evidenceID]; duplicate {
+				return fmt.Errorf("audit: decision explanation evidence ID %q is duplicated within one dimension", evidenceID)
+			}
+			seenEvidence[evidenceID] = struct{}{}
+			if previousDimension, duplicate := seenEvidenceDimensions[evidenceID]; duplicate {
+				return fmt.Errorf(
+					"audit: decision explanation evidence ID %q is assigned to both %q and %q",
+					evidenceID, previousDimension, component.Dimension,
+				)
+			}
+			seenEvidenceDimensions[evidenceID] = component.Dimension
+		}
+	}
+	if explanation.HardFloorApplied {
+		if explanation.HardFloorReason == "" {
+			return errors.New("audit: applied hard floor requires a stable reason")
+		}
+		if !explanationpkg.IsKnownAppliedHardFloorReason(explanationpkg.HardFloorReason(explanation.HardFloorReason)) {
+			return errors.New("audit: applied hard floor reason is unsupported")
+		}
+	}
+	if !explanation.HardFloorApplied && explanation.HardFloorReason != "" {
+		return errors.New("audit: hard floor reason requires hard_floor_applied")
+	}
+	encoded, err := json.Marshal(explanation)
+	if err != nil {
+		return fmt.Errorf("audit: encode decision explanation: %w", err)
+	}
+	if len(encoded) > 32768 {
+		return errors.New("audit: decision explanation exceeds 32768 bytes")
+	}
+	return nil
+}
+
+func validStableCode(value string, limit int) bool {
+	if value == "" || len(value) > limit {
+		return false
+	}
+	for _, r := range value {
+		switch {
+		case r >= 'a' && r <= 'z':
+		case r >= 'A' && r <= 'Z':
+		case r >= '0' && r <= '9':
+		case r == '-', r == '_', r == '.', r == ':':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func validDecision(value string) bool {

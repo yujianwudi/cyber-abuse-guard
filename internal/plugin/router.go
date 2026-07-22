@@ -425,6 +425,11 @@ func extractionProfile(format string) (extract.RequestProfile, bool) {
 		profile.Source = extract.SourceProfileOpenAIResponse
 	case "interactions":
 		profile.Source = extract.SourceProfileInteractions
+	case audit.SourceFormatCodexAlphaSearch:
+		// CPA v7.2.95 exposes Alpha Search request bodies directly to ModelRouter.
+		// They have no chat-role envelope, so treat their model-visible strings as
+		// direct untrusted text while retaining a distinct structural profile.
+		profile.Source = extract.SourceProfileCodexAlphaSearch
 	case "openai-image":
 		profile.Source = extract.SourceProfileOpenAIImage
 	case "openai-video":
@@ -701,14 +706,21 @@ func (p *Plugin) recordDecision(state *runtimeState, request pluginapi.ModelRout
 		return
 	}
 	action := "audit"
+	decisionCode := decision.Code
 	if decision.Observe {
 		action = "observe"
 	} else if decision.Block {
 		action = "block"
 		if subjectReason == "cooldown" {
 			action = "cooldown"
+			decisionCode = "cooldown_subject_risk"
 		}
 	}
+	decisionExplanation := auditDecisionExplanationForDecision(
+		result,
+		decision.Category,
+		len(incompleteReasons) == 0,
+	)
 	event := audit.Event{
 		ID:               newEventID(),
 		Timestamp:        time.Now().UTC(),
@@ -720,10 +732,15 @@ func (p *Plugin) recordDecision(state *runtimeState, request pluginapi.ModelRout
 		Stream:           request.Stream,
 		TextBytesScanned: scanned,
 		Classifier:       result.RuleSetVersion,
-		Decision:         decision.Code,
+		Decision:         decisionCode,
 		Coverage:         "complete",
 		Scanner:          streamingScannerIdentity,
 		LatencyUS:        latency.Microseconds(),
+		DecisionExplanation: applyAuditDecisionExplanationLoggingPolicy(
+			decisionExplanation,
+			state.config.Audit.LogCategory,
+			state.config.Audit.LogRuleIDs,
+		),
 	}
 	if len(incompleteReasons) != 0 {
 		event.Coverage = "incomplete"

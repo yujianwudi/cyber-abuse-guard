@@ -73,7 +73,7 @@ func TestRawCaptureManagementRequiresCredentialAndStaysEmptyWhenDisabled(t *test
 		result.RawPreviewRendering != managementRawPreviewRendering ||
 		!result.RawPreviewDeprecated || !result.EncodedBytesDeprecated ||
 		result.PreferredPreviewField != "raw_preview_b64" ||
-		result.ResponseSchemaVersion != managementRawCaptureSchema {
+		result.ResponseSchemaVersion != 3 || managementRawCaptureSchema != 3 {
 		t.Fatalf("disabled raw capture bounds=%+v", result)
 	}
 }
@@ -87,9 +87,11 @@ func TestRawCaptureManagementBoundsEncodedPreviewResponse(t *testing.T) {
 	pattern := []byte(`&'"<script>alert(1)</script>`)
 	rawRequest := bytes.Repeat(pattern, (1<<20+len(pattern)-1)/len(pattern))[:1<<20]
 	for index := 0; index < 4; index++ {
+		requestForIndex := append([]byte(nil), rawRequest...)
+		requestForIndex[len(requestForIndex)-1] = byte('a' + index)
 		timestamp := time.Now().UTC().Add(time.Duration(index) * time.Nanosecond)
 		eventID := newEventID()
-		requestHash := audit.HashRequest(append(rawRequest, byte(index)))
+		requestHash := audit.HashRequest(requestForIndex)
 		event := audit.Event{
 			ID:          eventID,
 			Timestamp:   timestamp,
@@ -107,7 +109,7 @@ func TestRawCaptureManagementBoundsEncodedPreviewResponse(t *testing.T) {
 			RequestHash: requestHash,
 			Action:      "block",
 			Decision:    "block_malicious_text",
-			RawRequest:  rawRequest,
+			RawRequest:  requestForIndex,
 		})
 		if err != nil || !accepted {
 			t.Fatalf("composite raw capture admission accepted=%t err=%v", accepted, err)
@@ -179,7 +181,7 @@ func TestRawCaptureManagementBoundsEncodedPreviewResponse(t *testing.T) {
 		result.RawPreviewRendering != managementRawPreviewRendering ||
 		!result.RawPreviewDeprecated || !result.EncodedBytesDeprecated ||
 		result.PreferredPreviewField != "raw_preview_b64" ||
-		result.ResponseSchemaVersion != managementRawCaptureSchema ||
+		result.ResponseSchemaVersion != 3 || managementRawCaptureSchema != 3 ||
 		result.Captures[0].RawPreview == "" || result.Captures[0].RawPreviewB64 == "" {
 		t.Fatalf("bounded raw capture contract mismatch: host_bytes=%d transport=%q encoding=%q rendering=%q schema=%d",
 			result.CPAHostResponseBytes, result.RawPreviewTransport, result.RawPreviewB64Encoding,
@@ -188,6 +190,11 @@ func TestRawCaptureManagementBoundsEncodedPreviewResponse(t *testing.T) {
 	decodedPreview, err := base64.StdEncoding.DecodeString(result.Captures[0].RawPreviewB64)
 	if err != nil || string(decodedPreview) != result.Captures[0].RawPreview {
 		t.Fatalf("raw_preview_b64 did not preserve preview: err=%v decoded_bytes=%d", err, len(decodedPreview))
+	}
+	first := result.Captures[0]
+	if first.PreviewTruncated != first.Truncated || first.RedactionApplied != first.Redacted ||
+		first.RedactionPatternHits != 0 || first.RedactionVersion != "raw-redactor-v1" {
+		t.Fatalf("raw capture schema-v3 aliases/metadata mismatch: %#v", first.RawRequestCapture)
 	}
 	if !bytes.Contains(decodedPreview, []byte("<script>")) {
 		t.Fatal("canonical preview fixture did not retain the inert HTML canary")
@@ -241,17 +248,21 @@ func TestManagementRawCaptureSizePredictionMatchesCPAHostSanitizer(t *testing.T)
 
 	capture := managementRawCapture{
 		RawRequestCapture: audit.RawRequestCapture{
-			ID:          "capture-size-contract",
-			EventID:     "event-size-contract",
-			Timestamp:   time.Date(2026, 7, 21, 12, 0, 0, 123, time.UTC),
-			RequestHash: "sha256:" + strings.Repeat("a", 64),
-			SubjectHash: "hmac-sha256:" + strings.Repeat("b", 64),
-			Action:      "block",
-			Decision:    "block_malicious_text",
-			Truncated:   true,
-			Redacted:    true,
-			RawPreview:  `&'"<script>alert(1)</script>`,
-			RawSHA256:   "sha256:" + strings.Repeat("c", 64),
+			ID:                   "capture-size-contract",
+			EventID:              "event-size-contract",
+			Timestamp:            time.Date(2026, 7, 21, 12, 0, 0, 123, time.UTC),
+			RequestHash:          "sha256:" + strings.Repeat("a", 64),
+			SubjectHash:          "hmac-sha256:" + strings.Repeat("b", 64),
+			Action:               "block",
+			Decision:             "block_malicious_text",
+			Truncated:            true,
+			Redacted:             true,
+			PreviewTruncated:     true,
+			RedactionApplied:     true,
+			RedactionPatternHits: 3,
+			RedactionVersion:     "raw-redactor-v1",
+			RawPreview:           `&'"<script>alert(1)</script>`,
+			RawSHA256:            "sha256:" + strings.Repeat("c", 64),
 		},
 	}
 	capture.RawPreviewB64 = base64.StdEncoding.EncodeToString([]byte(capture.RawPreview))

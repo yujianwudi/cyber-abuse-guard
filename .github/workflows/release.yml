@@ -168,8 +168,8 @@ jobs:
                 "independent_evaluation_id", "independent_evaluation_status",
                 "independent_evaluation_sha256"
               ])) and
-              .evidence.cpa_version == "v7.2.88" and
-              .evidence.cpa_commit == "93d74a890a44802f656d7f39a573916b2611896e" and
+              .evidence.cpa_version == "v7.2.95" and
+              .evidence.cpa_commit == "f71ec0eb6776854457892452cf28c47f0d658251" and
               (.evidence.cpa_host_sha256 | sha256) and
               (.evidence.independent_audit_sha256 | sha256) and
               (.evidence.independent_evaluation_id |

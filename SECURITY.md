@@ -1,11 +1,16 @@
 # Security Policy
 
+```text
+current_classifier_policy_version: classifier-policy-v7
+current_classifier_policy_sha256: ea8c4dcfacacc6478f86fd2ca5de96d667ae98f2fc6ff0c83d8e6092e9f6a82d
+```
+
 ## Supported versions
 
 | Version | Status | Security support |
 |---|---|---|
 | `v0.15` | Current latest stable, manually published on 2026-07-20 UTC | Supported for confirmed security defects |
-| Source `0.16` / local `v0.16-rc.1` package | Development only; no remote tag or GitHub Release, and exact-main CI has no successful run or artifact | Reports are accepted, but the build is not production-supported |
+| Source `0.16` / `v0.16-rc.2` candidate | Linux amd64 prerelease candidate only; independent audit is `NOT_PROVIDED`, production approval is `NOT_GRANTED`, and stable `v0.16` is not released | Reports are accepted, but the candidate is not production-supported |
 | Earlier versions | Historical or development evidence | Unsupported |
 
 The project uses exact two-part stable versions. `v0.15.0` is not an alias for
@@ -37,7 +42,8 @@ operator's normal incident process.
 
 The legacy `raw_preview` response field remains available for compatibility
 but is deprecated. `raw_preview_b64` is the canonical byte-stable transport
-field for CPA v7.2.88. Base64 is not encryption, access control, or additional
+field for the single pinned CPA v7.2.95 lane. Base64 is not encryption, access
+control, or additional
 redaction; its decoded UTF-8 text remains sensitive request content. Review
 clients must insert decoded content into a plain-text node (for example,
 `textContent`) and must never pass it to `innerHTML`, an HTML template, a

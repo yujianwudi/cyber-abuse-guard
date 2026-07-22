@@ -54,12 +54,23 @@ var latestOfficialInteractionsTests = []struct {
 	},
 }
 
+var latestPrimaryCodexAlphaSearchTests = []string{
+	"TestCodexAlphaSearchFallsBackWhenPluginDoesNotHandleRoute",
+	"TestCodexAlphaSearchRejectsUnsupportedPluginRouteTarget",
+	"TestCodexAlphaSearchUsesPluginProviderTargetModel",
+}
+
 func TestLatestCPAOfficialInteractionsSourceContract(t *testing.T) {
-	goBinary, moduleArguments, _ := prepareLatestCPAModule(t)
+	goBinary, moduleArguments, module := prepareLatestCPAModule(t)
 	for _, contract := range latestOfficialInteractionsTests {
 		contract := contract
 		t.Run(filepath.Base(contract.packagePath), func(t *testing.T) {
-			runLatestRequiredPackageTests(t, goBinary, moduleArguments, contract.packagePath, contract.testNames)
+			required := append([]string(nil), contract.testNames...)
+			if contract.packagePath == cpaLatestInternalAPIPackage &&
+				module.Version == cpaPinnedProfile.Version {
+				required = append(required, latestPrimaryCodexAlphaSearchTests...)
+			}
+			runLatestRequiredPackageTests(t, goBinary, moduleArguments, contract.packagePath, required)
 		})
 	}
 }

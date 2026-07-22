@@ -1,11 +1,11 @@
 # Privacy Verification Report — post-v10 development handoff
 
 ```text
-current_classifier_policy_version: classifier-policy-v6
-current_classifier_policy_sha256: ece497210db938528cb166a34f2ce3013324b792a7eedf276a96fa5d256001d4
+current_classifier_policy_version: classifier-policy-v7
+current_classifier_policy_sha256: ea8c4dcfacacc6478f86fd2ca5de96d667ae98f2fc6ff0c83d8e6092e9f6a82d
 ```
 
-Last updated: 2026-07-14 (Asia/Shanghai)
+Last updated: 2026-07-22 (Asia/Shanghai)
 
 ## Status
 
@@ -15,8 +15,20 @@ with Go 1.26.4 and CGO/race enabled, plus exact implementation-freeze
 development-candidate artifact/SBOM scans, race, vet, and privacy scripts. Leo's
 independent real-Host/artifact review remains `NOT RUN`.
 
-Evaluation v10 was not read or rerun. Its frozen aggregate result remains
-`CONSUMED / FAIL` and is unrelated to the privacy PASS rows below.
+Earlier over-broad read-only searches displayed evaluation/holdout test or
+historical-report filenames, historical ruleset SHA-256 references, caller-path
+lines, and aggregate summaries. During the current closure, one additional broad
+`git grep` unexpectedly emitted several individual request and label lines from
+retired holdout fixture files. The possessive-browser-target false negative had
+already been identified by classifier review before that search; none of the
+emitted lines was copied into source, tests, or documentation or used to choose
+rules, predicates, scores, or thresholds. A separate over-broad
+`go test ./internal/classifier` may also have compiled or run the restricted gate
+and is excluded from current evidence. This session therefore cannot claim
+fixture non-access, zero-access, blind, or independent evidence; those statuses
+remain `NOT_PROVIDED`, and a new untouched holdout under an independent reviewer
+is required. The frozen aggregate v10 result remains `CONSUMED / FAIL` and is
+unrelated to the privacy PASS rows below.
 
 The WSL command `make cpa-router-fixture-blackbox`, the now-removed legacy
 target `cpa-v7272-host-blackbox`, and

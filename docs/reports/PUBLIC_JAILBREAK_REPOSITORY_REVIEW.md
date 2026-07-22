@@ -1,9 +1,11 @@
 # Public jailbreak repository review
 
 ```text
-current_classifier_policy_version: classifier-policy-v6
-current_classifier_policy_sha256: ece497210db938528cb166a34f2ce3013324b792a7eedf276a96fa5d256001d4
+current_classifier_policy_version: classifier-policy-v7
+current_classifier_policy_sha256: ea8c4dcfacacc6478f86fd2ca5de96d667ae98f2fc6ff0c83d8e6092e9f6a82d
 ```
+
+Last updated: 2026-07-22 (Asia/Shanghai)
 
 ## Scope and safety boundary
 
@@ -17,9 +19,18 @@ Pinned sources:
 | Repository | Exact commit |
 |---|---|
 | `Jia-Ethan/codex-keysmith` | `f699b9bd2cb59eb0d54e69139c68f7808d869b6d` |
-| `MDX-Tom/gpt-5.6-instruct` | `5f469e43ef66f540cadb475039fd9ed469aef654` |
+| `MDX-Tom/gpt-5.6-instruct` | `18fea37f4f1a263cc0fc31bb0e32e61ace0b1f69` |
 | `yynxxxxx/Codex-X` | `7d0e0064d54f860d4bf12b557fd9f8c489043a35` |
 | `yynxxxxx/Codex-5.5-codex-instruct-5.5` | `ed0b6dc37d1994e93788d92f7af63f58bf0b9e2d` |
+
+The pinned source snapshot records the MDX-Tom commit after three
+documentation/Pages-maintenance commits beyond the previously reviewed
+`5f469e43...` snapshot. In that recorded comparison, the instruction and
+deployment payloads were unchanged and the reviewed v5 Markdown was Git blob
+`4fa25ea7f680ff07808467b0d164764dc0161d39`. The Codex-X and Codex-5.5 commits
+shown above are the reviewed snapshot identities. This checked-in report is not
+a live default-branch refresh or a claim that those repositories have not moved
+since the pinned commits. No third-party code or prompt-bank runner was executed.
 
 The production rule set does not contain repository names, release names, file
 hashes, or complete third-party prompts. Tests use repository-neutral, disarmed
@@ -34,7 +45,8 @@ The common CPA-visible carriers are:
 2. chat `system`, `developer`, `assistant`, or `tool` messages;
 3. Chat/Responses function and custom-tool descriptions, including legacy
    `functions[]`;
-4. CPA v7.2.88 Codex Desktop `input[].type="additional_tools"`, including
+4. CPA v7.2.95 Codex Desktop
+   `input[].type="additional_tools"`, including
    namespace-nested MCP/custom tools;
 5. persisted model-instruction or managed `AGENTS.md` content;
 6. function/custom call arguments and tool output;
@@ -98,7 +110,8 @@ User-origin subject risk now requires a closed provider-aware proof:
 - only a SourceProfile-matched root history container can establish a trusted
   user role;
 - OpenAI Responses root scalar `input` is a trusted user carrier;
-- exact CPA v7.2.88 Codex Responses Lite `additional_tools` items, including the
+- exact CPA v7.2.95 Codex Responses Lite `additional_tools` items,
+  including the
   official `role: developer` sibling, are system-originated and untrusted, while
   a following exact Responses user message remains trusted;
 - type-derived Responses call/output/reasoning/additional-tools items cannot add
@@ -135,8 +148,9 @@ uses a zero-copy decode path for valid unescaped JSON strings.
 Final acceptance is Linux-only:
 
 1. GitHub CI on Ubuntu 24.04, including race, vet, fuzz smoke, corpus, benchmarks,
-   CPA v7.2.88 pinned-source compatibility, and Linux amd64 artifact build;
-2. exact-head SO verification in the isolated CPA v7.2.88 sandbox;
+   CPA v7.2.95 pinned-source checks, and Linux
+   amd64 artifact build;
+2. exact-head SO verification in an isolated CPA v7.2.95 sandbox;
 3. zero benign blocks across the repository-neutral matrix;
 4. all independent malicious-user links blocked before Mock upstream;
 5. zero subject growth from non-user carriers and a clean same-auth follow-up;

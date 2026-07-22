@@ -15,7 +15,7 @@ import (
 	sqlite3 "github.com/mattn/go-sqlite3"
 )
 
-const currentSchemaVersion = 4
+const currentSchemaVersion = 5
 
 const migrationMetadataSchema = `
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -73,6 +73,29 @@ CREATE INDEX IF NOT EXISTS idx_raw_request_captures_timestamp
 CREATE INDEX IF NOT EXISTS idx_raw_request_captures_request_timestamp
     ON raw_request_captures(request_hash, timestamp_ns DESC);`
 
+const round8AuditSchema = `
+ALTER TABLE audit_events
+    ADD COLUMN decision_explanation TEXT NOT NULL DEFAULT '{}'
+    CHECK (length(CAST(decision_explanation AS BLOB)) <= 32768);
+ALTER TABLE raw_request_captures
+    ADD COLUMN redaction_pattern_hits INTEGER NOT NULL DEFAULT 0
+    CHECK (redaction_pattern_hits >= 0 AND redaction_pattern_hits <= 1000000);
+ALTER TABLE raw_request_captures
+    ADD COLUMN redaction_version TEXT NOT NULL DEFAULT 'legacy-boolean-v0'
+    CHECK (length(redaction_version) BETWEEN 1 AND 64);`
+
+const round8RawCaptureDedupIndex = `CREATE UNIQUE INDEX IF NOT EXISTS idx_raw_request_captures_raw_sha256_unique
+    ON raw_request_captures(raw_sha256)
+    WHERE raw_sha256 <> '';`
+
+const round8RawCaptureReplayIndex = `CREATE INDEX idx_raw_request_captures_replay_v5
+    ON raw_request_captures(raw_sha256, timestamp_ns, id)
+    WHERE raw_sha256 <> '';`
+
+// Keep migration replay below SQLite's conservative variable limit while
+// bounding both Go heap growth and the number of rows touched by one DELETE.
+const rawCaptureReplayBatchSize = 256
+
 type rowQueryer interface {
 	QueryRow(query string, args ...any) *sql.Row
 }
@@ -80,6 +103,11 @@ type rowQueryer interface {
 type sqliteQueryer interface {
 	rowQueryer
 	Query(query string, args ...any) (*sql.Rows, error)
+}
+
+type sqliteQueryExecer interface {
+	sqliteQueryer
+	Exec(query string, args ...any) (sql.Result, error)
 }
 
 type migrationConnection struct {
@@ -132,6 +160,7 @@ var auditEventColumnContract = []sqliteColumnContract{
 	{name: "coverage", typeName: "TEXT", notNull: true},
 	{name: "incomplete_reason", typeName: "TEXT", notNull: true},
 	{name: "scanner", typeName: "TEXT", notNull: true},
+	{name: "decision_explanation", typeName: "TEXT", notNull: true},
 }
 
 var auditEventIndexContract = []sqliteIndexContract{
@@ -153,12 +182,15 @@ var rawRequestCaptureColumnContract = []sqliteColumnContract{
 	{name: "redacted", typeName: "INTEGER", notNull: true},
 	{name: "raw_preview", typeName: "TEXT", notNull: true},
 	{name: "raw_sha256", typeName: "TEXT", notNull: true},
+	{name: "redaction_pattern_hits", typeName: "INTEGER", notNull: true},
+	{name: "redaction_version", typeName: "TEXT", notNull: true},
 }
 
 var rawRequestCaptureIndexContract = []sqliteIndexContract{
 	{name: "idx_raw_request_captures_event", columns: []string{"event_id"}, desc: []bool{false}},
 	{name: "idx_raw_request_captures_timestamp", columns: []string{"timestamp_ns"}, desc: []bool{true}},
 	{name: "idx_raw_request_captures_request_timestamp", columns: []string{"request_hash", "timestamp_ns"}, desc: []bool{false, true}},
+	{name: "idx_raw_request_captures_raw_sha256_unique", columns: []string{"raw_sha256"}, desc: []bool{false}},
 }
 
 func migrateDatabase(db *sql.DB, cfg Config, databasePath string) error {
@@ -195,7 +227,7 @@ func migrateDatabase(db *sql.DB, cfg Config, databasePath string) error {
 		// create it (or advance the schema) when legacy correlation columns do
 		// not already satisfy the privacy-minimal digest/canonical contracts.
 		// The original database remains untouched for operator-directed repair.
-		if err := validateLegacyAuditPrivacy(locked); err != nil {
+		if err := validateLegacyAuditPrivacy(locked, version); err != nil {
 			return fmt.Errorf("audit: legacy privacy contract is invalid: %w", err)
 		}
 	}
@@ -242,6 +274,26 @@ ON CONFLICT(singleton) DO UPDATE SET version=excluded.version, updated_at_ns=exc
 			if _, err := locked.Exec(rawRequestCaptureSchema); err != nil {
 				return fmt.Errorf("audit: apply schema migration 4: %w", err)
 			}
+		case 5:
+			description = "add privacy-safe decision explanations and request-deduplicated raw captures"
+			if _, err := locked.Exec(round8AuditSchema); err != nil {
+				return fmt.Errorf("audit: apply schema migration 5: %w", err)
+			}
+			// The replay index keeps keyset pages bounded while avoiding a full
+			// table sort for every page. It is dropped before commit because the
+			// final partial unique index serves the runtime contract.
+			if _, err := locked.Exec(round8RawCaptureReplayIndex); err != nil {
+				return fmt.Errorf("audit: apply schema migration 5 replay index: %w", err)
+			}
+			if err := replayRawCaptureTTLWindows(locked, cfg.RawCapture.TTL); err != nil {
+				return fmt.Errorf("audit: apply schema migration 5 raw capture deduplication: %w", err)
+			}
+			if _, err := locked.Exec(`DROP INDEX idx_raw_request_captures_replay_v5`); err != nil {
+				return fmt.Errorf("audit: remove schema migration 5 replay index: %w", err)
+			}
+			if _, err := locked.Exec(round8RawCaptureDedupIndex); err != nil {
+				return fmt.Errorf("audit: apply schema migration 5 raw capture index: %w", err)
+			}
 		default:
 			return fmt.Errorf("audit: missing schema migration %d", next)
 		}
@@ -252,6 +304,9 @@ ON CONFLICT(singleton) DO UPDATE SET version=excluded.version, updated_at_ns=exc
 ON CONFLICT(singleton) DO UPDATE SET version=excluded.version, updated_at_ns=excluded.updated_at_ns`, next, nowNS); err != nil {
 			return fmt.Errorf("audit: advance schema version to %d: %w", next, err)
 		}
+	}
+	if err := validateSchemaContract(locked, currentSchemaVersion); err != nil {
+		return fmt.Errorf("audit: migrated schema contract is invalid before commit: %w", err)
 	}
 
 	if _, err := locked.Exec("COMMIT"); err != nil {
@@ -264,7 +319,138 @@ ON CONFLICT(singleton) DO UPDATE SET version=excluded.version, updated_at_ns=exc
 	return nil
 }
 
-func validateLegacyAuditPrivacy(db sqliteQueryer) error {
+// replayRawCaptureTTLWindows deterministically replays the v5 admission rule
+// over v4 rows. The first capture in a TTL window is retained; later captures
+// with the same digest are duplicates until the retained capture reaches the
+// exact TTL boundary. Ordering by ID makes equal-timestamp legacy rows stable.
+func replayRawCaptureTTLWindows(db sqliteQueryExecer, ttl time.Duration) error {
+	if ttl <= 0 {
+		return errors.New("raw capture TTL must be positive")
+	}
+	var (
+		currentRawSHA     string
+		retainedID        string
+		retainedTimestamp int64
+		haveRetained      bool
+		cursorRawSHA      string
+		cursorID          string
+		cursorTimestamp   int64
+		haveCursor        bool
+	)
+	for {
+		var (
+			rows *sql.Rows
+			err  error
+		)
+		if !haveCursor {
+			rows, err = db.Query(`SELECT id, raw_sha256, timestamp_ns
+FROM raw_request_captures
+WHERE raw_sha256 <> ''
+ORDER BY raw_sha256 ASC, timestamp_ns ASC, id ASC
+LIMIT ?`, rawCaptureReplayBatchSize)
+		} else {
+			rows, err = db.Query(`SELECT id, raw_sha256, timestamp_ns
+FROM raw_request_captures
+WHERE raw_sha256 <> '' AND (
+    raw_sha256 > ? OR
+    (raw_sha256 = ? AND (
+        timestamp_ns > ? OR
+        (timestamp_ns = ? AND id > ?)
+    ))
+)
+ORDER BY raw_sha256 ASC, timestamp_ns ASC, id ASC
+LIMIT ?`, cursorRawSHA, cursorRawSHA, cursorTimestamp, cursorTimestamp, cursorID, rawCaptureReplayBatchSize)
+		}
+		if err != nil {
+			return fmt.Errorf("read legacy raw captures for TTL replay: %w", err)
+		}
+
+		pageRows := 0
+		duplicateIDs := make([]string, 0, rawCaptureReplayBatchSize)
+		for rows.Next() {
+			var id, rawSHA string
+			var timestampNS int64
+			if err := rows.Scan(&id, &rawSHA, &timestampNS); err != nil {
+				_ = rows.Close()
+				return fmt.Errorf("scan legacy raw capture for TTL replay: %w", err)
+			}
+			pageRows++
+			cursorRawSHA = rawSHA
+			cursorTimestamp = timestampNS
+			cursorID = id
+			haveCursor = true
+
+			if !haveRetained || rawSHA != currentRawSHA {
+				currentRawSHA = rawSHA
+				retainedID = id
+				retainedTimestamp = timestampNS
+				haveRetained = true
+				continue
+			}
+			if timestampNS < retainedTimestamp {
+				_ = rows.Close()
+				return errors.New("legacy raw capture TTL replay order is invalid")
+			}
+
+			// Unsigned subtraction preserves the full non-negative int64 timestamp
+			// distance without overflow. Equality opens a new window, matching the
+			// runtime DELETE ... timestamp_ns <= incoming-TTL boundary.
+			elapsed := uint64(timestampNS) - uint64(retainedTimestamp)
+			if elapsed < uint64(ttl) {
+				duplicateIDs = append(duplicateIDs, id)
+				continue
+			}
+			// The incoming capture starts a new live window. Runtime admission
+			// deletes the expired retained row before inserting this capture.
+			duplicateIDs = append(duplicateIDs, retainedID)
+			retainedID = id
+			retainedTimestamp = timestampNS
+		}
+		if err := rows.Err(); err != nil {
+			_ = rows.Close()
+			return fmt.Errorf("iterate legacy raw captures for TTL replay: %w", err)
+		}
+		if err := rows.Close(); err != nil {
+			return fmt.Errorf("close legacy raw capture TTL replay rows: %w", err)
+		}
+		if err := deleteRawCaptureReplayBatch(db, duplicateIDs); err != nil {
+			return err
+		}
+		if pageRows < rawCaptureReplayBatchSize {
+			break
+		}
+	}
+	return nil
+}
+
+func deleteRawCaptureReplayBatch(db sqliteQueryExecer, ids []string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	if len(ids) > rawCaptureReplayBatchSize {
+		return errors.New("legacy raw capture replay delete batch exceeds budget")
+	}
+	placeholders := strings.Repeat("?,", len(ids))
+	placeholders = strings.TrimSuffix(placeholders, ",")
+	args := make([]any, len(ids))
+	for index, id := range ids {
+		args[index] = id
+	}
+	result, err := db.Exec(`DELETE FROM raw_request_captures WHERE id IN (`+placeholders+`)`, args...)
+	if err != nil {
+		return fmt.Errorf("delete legacy raw capture duplicate batch: %w", err)
+	}
+	deleted, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("count deleted legacy raw capture duplicate batch: %w", err)
+	}
+	if deleted != int64(len(ids)) {
+		return errors.New("legacy raw capture duplicate batch changed during TTL replay")
+	}
+	return nil
+}
+
+func validateLegacyAuditPrivacy(db sqliteQueryer, version int) error {
 	rows, err := db.Query(`SELECT request_hash, subject_hash, model, source_format FROM audit_events`)
 	if err != nil {
 		return fmt.Errorf("inspect legacy audit privacy fields: %w", err)
@@ -284,12 +470,52 @@ func validateLegacyAuditPrivacy(db sqliteQueryer) error {
 		if model != "" && !validDigest(model, modelHashPrefix) {
 			return errors.New("model is not a domain-separated SHA-256 correlation value")
 		}
-		if sourceFormat != "" && !oneOf(sourceFormat, "openai", "openai-response", "interactions", "openai-image", "openai-video", "claude", "anthropic", "gemini", SourceFormatUnknown) {
+		if sourceFormat != "" && !oneOf(sourceFormat, "openai", "openai-response", "interactions", SourceFormatCodexAlphaSearch, "openai-image", "openai-video", "claude", "anthropic", "gemini", SourceFormatUnknown) {
 			return errors.New("source_format is not a fixed provider value")
 		}
 	}
 	if err := rows.Err(); err != nil {
 		return fmt.Errorf("iterate legacy audit privacy fields: %w", err)
+	}
+	if version >= 4 {
+		if err := validateLegacyRawCapturePrivacy(db); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateLegacyRawCapturePrivacy(db sqliteQueryer) error {
+	rows, err := db.Query(`SELECT id, event_id, timestamp_ns, request_hash, subject_hash,
+action, decision, truncated, redacted, raw_preview, raw_sha256
+FROM raw_request_captures`)
+	if err != nil {
+		return fmt.Errorf("inspect legacy raw capture privacy fields: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var capture RawRequestCapture
+		var timestampNS int64
+		var truncated, redacted int
+		if err := rows.Scan(
+			&capture.ID, &capture.EventID, &timestampNS, &capture.RequestHash,
+			&capture.SubjectHash, &capture.Action, &capture.Decision, &truncated,
+			&redacted, &capture.RawPreview, &capture.RawSHA256,
+		); err != nil {
+			return fmt.Errorf("scan legacy raw capture privacy fields: %w", err)
+		}
+		capture.Timestamp = time.Unix(0, timestampNS).UTC()
+		capture.Truncated = truncated != 0
+		capture.Redacted = redacted != 0
+		capture.PreviewTruncated = capture.Truncated
+		capture.RedactionApplied = capture.Redacted
+		capture.RedactionVersion = legacyRawCaptureRedactionVersion
+		if err := validateRawRequestCapture(capture); err != nil {
+			return fmt.Errorf("legacy raw capture privacy contract is invalid: %w", err)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate legacy raw capture privacy fields: %w", err)
 	}
 	return nil
 }
@@ -300,9 +526,18 @@ func validateSchemaContract(db sqliteQueryer, version int) error {
 		if version < 3 {
 			// Versions 1 and 2 predate the four fixed Round6 metadata columns.
 			columns = auditEventColumnContract[:15]
+		} else if version < 5 {
+			// Versions 3 and 4 predate the Round8 decision explanation.
+			columns = auditEventColumnContract[:19]
 		}
 		if err := requireSQLiteTable(db, "audit_events", columns); err != nil {
 			return err
+		}
+		if version >= 5 {
+			if err := requireSQLiteDDLFragments(db, "audit_events",
+				"check(length(cast(decision_explanationasblob))<=32768)"); err != nil {
+				return err
+			}
 		}
 		for _, index := range auditEventIndexContract {
 			if err := requireSQLiteIndex(db, index); err != nil {
@@ -369,7 +604,13 @@ func validateSchemaContract(db sqliteQueryer, version int) error {
 		}
 	}
 	if version >= 4 {
-		if err := requireSQLiteTable(db, "raw_request_captures", rawRequestCaptureColumnContract); err != nil {
+		columns := rawRequestCaptureColumnContract
+		indexes := rawRequestCaptureIndexContract
+		if version < 5 {
+			columns = rawRequestCaptureColumnContract[:11]
+			indexes = rawRequestCaptureIndexContract[:3]
+		}
+		if err := requireSQLiteTable(db, "raw_request_captures", columns); err != nil {
 			return err
 		}
 		if err := requireSQLiteDDLFragments(db, "raw_request_captures",
@@ -381,10 +622,37 @@ func validateSchemaContract(db sqliteQueryer, version int) error {
 		); err != nil {
 			return err
 		}
-		for _, index := range rawRequestCaptureIndexContract {
+		if version >= 5 {
+			if err := requireSQLiteDDLFragments(db, "raw_request_captures",
+				"check(redaction_pattern_hits>=0andredaction_pattern_hits<=1000000)",
+				"check(length(redaction_version)between1and64)"); err != nil {
+				return err
+			}
+		}
+		for _, index := range indexes {
 			if err := requireSQLiteIndex(db, index); err != nil {
 				return err
 			}
+		}
+		if version >= 5 {
+			if err := requireSQLiteIndexDDLFragments(db, "idx_raw_request_captures_raw_sha256_unique",
+				"create unique index", "where raw_sha256 <> ''"); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func requireSQLiteIndexDDLFragments(db rowQueryer, index string, fragments ...string) error {
+	var statement string
+	if err := db.QueryRow(`SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ?`, index).Scan(&statement); err != nil {
+		return fmt.Errorf("inspect index %s definition: %w", index, err)
+	}
+	normalized := strings.Join(strings.Fields(strings.ToLower(statement)), " ")
+	for _, fragment := range fragments {
+		if !strings.Contains(normalized, strings.Join(strings.Fields(strings.ToLower(fragment)), " ")) {
+			return fmt.Errorf("index %s is missing required definition %s", index, fragment)
 		}
 	}
 	return nil
@@ -587,6 +855,9 @@ func createMigrationBackup(db *sql.DB, cfg Config, databasePath string) error {
 	if err := copySQLiteDatabase(db, stagedPath, cfg.BusyTimeout); err != nil {
 		return fmt.Errorf("copy migration backup: %w", err)
 	}
+	if err := sanitizeMigrationBackup(stagedPath); err != nil {
+		return fmt.Errorf("sanitize migration backup: %w", err)
+	}
 	info, err := os.Lstat(stagedPath)
 	if err != nil {
 		return fmt.Errorf("inspect staged migration backup: %w", err)
@@ -634,6 +905,60 @@ func createMigrationBackup(db *sql.DB, cfg Config, databasePath string) error {
 		return fmt.Errorf("close migration-backup parent: %w", err)
 	}
 	return pruneMigrationBackups(databasePath, cfg.MaxMigrationBackups)
+}
+
+// sanitizeMigrationBackup keeps rollback schema-compatible while preventing
+// every Raw Capture preview from escaping the active database's TTL and purge
+// lifecycle through an automatic pre-migration copy. A preview that is fresh
+// when the backup is created would otherwise outlive its TTL permanently.
+// Removing child preview rows does not affect audit events or schema version,
+// so an older binary can still restore and open the backup.
+func sanitizeMigrationBackup(path string) error {
+	parameters := url.Values{}
+	parameters.Set("_foreign_keys", "on")
+	parameters.Set("_journal_mode", "DELETE")
+	parameters.Set("_secure_delete", "true")
+	dsn := (&url.URL{Scheme: "file", Path: filepath.ToSlash(path), RawQuery: parameters.Encode()}).String()
+	db, err := sql.Open("sqlite3", dsn)
+	if err != nil {
+		return fmt.Errorf("open staged migration backup: %w", err)
+	}
+	db.SetMaxOpenConns(1)
+	closed := false
+	defer func() {
+		if !closed {
+			_ = db.Close()
+		}
+	}()
+	if err := db.Ping(); err != nil {
+		return fmt.Errorf("connect staged migration backup: %w", err)
+	}
+	hasCaptures, err := sqliteTableExists(db, "raw_request_captures")
+	if err != nil {
+		return fmt.Errorf("inspect staged raw capture table: %w", err)
+	}
+	if hasCaptures {
+		if _, err := db.Exec("DELETE FROM raw_request_captures"); err != nil {
+			return fmt.Errorf("purge staged raw captures: %w", err)
+		}
+		// VACUUM rewrites the staged file after secure_delete so removed previews
+		// do not remain in freelist pages in the published rollback copy.
+		if _, err := db.Exec("VACUUM"); err != nil {
+			return fmt.Errorf("compact staged migration backup: %w", err)
+		}
+	}
+	var integrity string
+	if err := db.QueryRow("PRAGMA quick_check").Scan(&integrity); err != nil {
+		return fmt.Errorf("check staged migration backup: %w", err)
+	}
+	if integrity != "ok" {
+		return errors.New("staged migration backup failed SQLite quick_check")
+	}
+	if err := db.Close(); err != nil {
+		return fmt.Errorf("close staged migration backup: %w", err)
+	}
+	closed = true
+	return nil
 }
 
 func copySQLiteDatabase(source *sql.DB, destinationPath string, timeout time.Duration) error {

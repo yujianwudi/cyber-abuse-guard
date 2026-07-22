@@ -6,6 +6,7 @@ go_bin="${GO:-go}"
 test_tags="${TEST_TAGS:-sqlite_omit_load_extension}"
 root="$(cd -- "${BASH_SOURCE[0]%/*}/.." && pwd -P)"
 cd "$root"
+round8_counted_mock_module="integration/round8countedmock"
 
 safe_packages=(
   ./cmd/cyber-abuse-guard
@@ -15,8 +16,10 @@ safe_packages=(
   ./internal/buildinfo
   ./internal/config
   ./internal/extract
+  ./internal/explanation
   ./internal/fixturepublish
   ./internal/plugin
+  ./internal/round8test
   ./internal/rules
   ./internal/subject
   ./rules
@@ -34,6 +37,37 @@ join_regex() {
     joined+="${joined:+|}${name}"
   done
   printf '^(%s)$' "$joined"
+}
+
+require_reviewed_entries() {
+  local package="$1" label="$2" discovery_pattern="$3" listed name
+  shift 3
+  local -A reviewed=()
+  for name in "$@"; do
+    if [[ -v reviewed["$name"] ]]; then
+      printf 'duplicate safe %s allowlist entry: %s\n' "$label" "$name" >&2
+      exit 1
+    fi
+    reviewed["$name"]=0
+  done
+  listed="$(
+    "$go_bin" test -tags="$test_tags" "$package" \
+      -list "$discovery_pattern"
+  )"
+  while IFS= read -r name; do
+    [[ "$name" =~ ^(Test|Fuzz|Benchmark|Example)[A-Za-z0-9_]*$ ]] || continue
+    if [[ ! -v reviewed["$name"] ]]; then
+      printf 'unclassified safe %s entry: %s\n' "$label" "$name" >&2
+      exit 1
+    fi
+    reviewed["$name"]=1
+  done <<<"$listed"
+  for name in "$@"; do
+    if [[ "${reviewed[$name]}" != 1 ]]; then
+      printf 'required safe %s entry is missing: %s\n' "$label" "$name" >&2
+      exit 1
+    fi
+  done
 }
 
 # Fifth-round extractor audit regressions are safe development tests. Keep an
@@ -58,6 +92,131 @@ for name in "${expected_round5_extract_entries[@]}"; do
   fi
 done
 
+# Round8 added public, synthetic-only audit/provenance/router regressions. These
+# packages are still executed in full below; this reviewed list additionally
+# fails closed if a required production-FP or privacy contract is renamed or
+# dropped. No restricted evaluation, retired holdout, or private fixture is
+# compiled or inspected here.
+expected_round8_audit_entries=(
+  TestRound8AuditReadRejectsInvalidPersistedEvent
+  TestRound8DecisionExplanationReadAcceptsInternallyConsistentSQLiteRewrite
+  TestRound8DecisionExplanationReadRejectsCrossFieldInconsistentSQLiteRow
+  TestRound8DecisionExplanationRejectsCrossFieldContradictions
+  TestRound8DecisionExplanationRejectsUnsafeOrUnboundedMetadata
+  TestRound8DecisionExplanationRejectsUnknownHardFloorReasonAfterJSONDecode
+  TestRound8DecisionExplanationValidationCloneAndRoundTrip
+  TestRound8RawCaptureCanonicalAliasesHashAndRedactionMetadata
+  TestRound8RawCaptureDeduplicatesWithinTTLAndRenewsAtBoundary
+  TestRound8RawCaptureDeduplicatesWithoutPersistingRequestHash
+  TestRound8RawCaptureReadRejectsMalformedPersistedRows
+  TestRound8RawCaptureWriteValidationKeepsPriorityEvent
+  TestRound8StatsRetryWindowSemantics
+  TestRound8StatsSeparateEventsUniqueRepeatsAndUnhashed
+  TestRound8StatsUsesSingleSnapshotDuringConcurrentWrites
+  TestV3DatabaseMigratesThroughRawCaptureSchemaV5
+  TestV4MigrationBackupNeverRetainsRawCaptures
+  TestV4MigrationRejectsMalformedRawCaptureBeforePublishingBackup
+  TestV4RawCaptureMigrationKeepsFirstLiveCaptureAndCreatesPartialUniqueRawSHAIndex
+  TestV4RawCaptureMigrationReplaysV5TTLWindowsAndPreservesEventAssociation
+  TestV5ContractFailureRollsBackSchemaVersionAndCaptureDeduplication
+)
+expected_round8_extract_entries=(
+  TestRound8ContentKindNamesAreClosed
+  TestRound8Exact16KiBAnd300KiBStreamingTextPlacement
+  TestRound8ExactProtocolTextPartCounts
+  TestRound8FencedCodeProtocolMatrix
+  TestRound8FencedLanguageKindsAndPlainFallback
+  TestRound8FencedPlannerCrossesDecoderChunks
+  TestRound8FencedSegmentationBudgetAbortsBeforePartialField
+  TestRound8FencedSegmentationUsesExactAlignedChunkBudget
+  TestRound8FencedSyntaxPreservesSystemDeveloperAndHistoryMetadata
+  TestRound8FencesCannotCrossSiblingJSONStrings
+  TestRound8IndependentToolCallsHaveIsolatedScopes
+  TestRound8MultipartTextFieldsHaveIndependentScopes
+  TestRound8ProtocolTurnScopeAndSchemaMatrix
+  TestRound8ToolCallAndResultContentKindMatrix
+)
+expected_round8_plugin_entries=(
+  TestAuditDecisionExplanationHonorsIdentifierLoggingPolicy
+  TestAuditDecisionExplanationIsBoundedAndTextFree
+  TestRound8BalancedRouterSeededPairedMutationMatrix
+  TestRound8BalancedRouterSyntheticProductionFalsePositivePairs
+  TestRound8ChatAndResponsesToolSchemaContamination
+  TestRound8ClassifierDecisionExplanationPersistsEndToEnd
+  TestRound8DecisionExplanationRequiresClassifierOwnedTopLevelCategory
+  TestRound8DecisionExplanationUsesClosedEvidenceDimensionMapping
+  TestRound8FencedContentKindRouterProtocolMatrix
+  TestRound8FencedLogConfigAndUnclosedRouterBoundary
+  TestRound8P1FalsePositiveBoundariesAcrossOpenAIProtocols
+  TestRound8RouterHistoricalReactivationBoundary
+  TestRound8RoleAwareWrapperScorePersistsAcrossNonUserSegments
+  TestRound8SystemFencedEvidenceIsNotAnActiveDirective
+)
+require_reviewed_entries ./internal/audit "round-eight audit" '^(TestRound8|TestV[345])' "${expected_round8_audit_entries[@]}"
+require_reviewed_entries ./internal/extract "round-eight extractor" '^TestRound8' "${expected_round8_extract_entries[@]}"
+require_reviewed_entries ./internal/plugin "round-eight plugin" '^(TestRound8|TestAuditDecisionExplanation)' "${expected_round8_plugin_entries[@]}"
+
+expected_round8_classifier_entries=(
+	TestRound8ActiveCredentialNounsAloneAreNotHostileConflicts
+	TestRound8AmbiguousPayloadPersistenceDoesNotImplyMalware
+  TestRound8CompleteNonUserDirectiveRemainsDetectable
+  TestRound8CredentialMetadataDoubleNegationCannotClaimNoSecretAccess
+  TestRound8CredentialMetadataHarvestDoesNotImplyTheft
+  TestRound8CredentialMetadataMarkersCannotSuppressCRED002
+  TestRound8CredentialMetadataMarkersCannotSuppressSecretHarvest
+  TestRound8CredentialMetadataMayNameNegatedSecretExamples
+  TestRound8CredentialMetadataNeighborStillBlocksHostileHarvest
+  TestRound8CredentialMetadataNegatedHostileVerbDoesNotCancelSafety
+  TestRound8CredentialMetadataSafetyCannotCoverCoordinatedSecretCollection
+  TestRound8CredentialMetadataSlashSeparatedSecretExamplesRemainNegated
+  TestRound8CredentialTheftActionRequiresWordBoundary
+  TestRound8CoreFamilyRoleTurnAndProvenanceMatrix
+  TestRound8CurrentTurnOwnershipAndHistoricalReactivation
+  TestRound8DirectCarrierTraversesEveryUncancelledAnchor
+  TestRound8DirectCarrierProofOverflowIsUnavailable
+  TestRound8AffirmativeCarrierProofOverflowIsUnavailable
+  TestRound8ExplicitReferentReactivatesHistoricalInertContentKinds
+  TestRound8Exact16KiBAnd300KiBClassifierPlacement
+  TestRound8GenericDevelopmentVocabularyStress
+  TestRound8HardFloorReasonIsEmptyWhenFloorIsNotApplied
+  TestRound8HardFloorReasonTracksActualAdmissionPath
+  TestRound8HistoricalAndCurrentToolCallOwnership
+  TestRound8NearestHistoricalReferentBoundary
+  TestRound8HistoricalToolResultReferentReactivation
+  TestRound8ManagedHealthHelperDoesNotImplyMalware
+  TestRound8ManagedHealthHelperNeighborStillBlocksBackdoor
+  TestRound8ManagedHealthHelperPerformanceLanguageDoesNotImplyMalware
+  TestRound8NewerBenignInertScopeTerminatesOlderBareReferent
+	TestRound8OutcomeCandidateHasCompleteAuditExplanation
+	TestRound8OAuthAuthenticationWorkflowsDoNotCreateHostileCredentialConflict
+	TestRound8UnrelatedNegationCannotActivateAdjacentOAuthHardBlock
+	TestRound8ApprovedCredentialStoreWorkflowsRemainBenign
+	TestRound8OAuthWorkflowMarkersCannotWashOutCredentialTheft
+	TestRound8OwnedOAuthBackendTransferRemainsBenign
+	TestRound8OwnedOAuthApprovedStoreAfterAuthenticationRemainsBenign
+	TestRound8CredentialWorkflowMarkersDoNotSuppressRuleTargets
+	TestRound8CredentialTheftCoreSynonymsRemainBlocked
+	TestRound8PossessiveBrowserTargetsDistinguishConsentFromAcquisition
+	TestRound8OwnedOAuthResponseExtractionIsNotCredentialTheft
+  TestRound8PersistentMetaBlockHasTruthfulExplanation
+  TestRound8ProfiledWrapperRoleCapKeepsBatchAndStreamExplanationsConsistent
+  TestRound8ProfiledLongDefensiveQuoteReferentReactivation
+  TestRound8ProtocolToolCallScopeIsolationClassification
+  TestRound8QuotedOrInertSuppressedExplanation
+  TestRound8SameDirectiveCrossesWindowButSeparateMessagesDoNotCompose
+  TestRound8SeededOneSlotPairedMutationMatrix
+  TestRound8SemanticCorePredicateCapsIncompleteCandidates
+	TestRound8SelfContainedCarrierKeepsInertAndDescriptiveBoundaries
+	TestRound8SelfContainedCurrentCarrierCannotSplitCoreAcrossAdjacentFences
+	TestRound8SelfContainedCurrentCarrierDirectiveCannotBeFencedAway
+  TestRound8StreamingMetadataOwnership
+  TestRound8StreamingSemanticPotentialUsesCorePredicateAndDynamicThreshold
+  TestRound8SyntheticProductionFalsePositivePairs
+  TestRound8SyntheticWinningRuleIDsRemainAuditable
+  TestRound8OverflowLedgerUsesRealRiskAndPhysicalOrder
+  TestRound8RoleAwareWrapperCapReconcilesOwnershipAndHardFloor
+)
+
 # Every classifier test-like entry visible without the consumed_evaluation build
 # tag is explicitly classified. Restricted evaluation/holdout tests are not
 # compiled or listed in development test/race/list modes. Any new visible test,
@@ -79,6 +238,7 @@ expected_safe_classifier_entries=(
   FuzzMetaOverrideClausePermutation
   FuzzMetaOverrideEncodingAndPartSplit
   FuzzRound6StreamingChunkAndRoleBoundaries
+  TestAnalyzeDirectivesHandlesInternalInvalidRuneBoundary
   TestAnalyzeDoesNotReturnPromptFragments
   TestAssistantClosedQuoteCannotHideNewOperationalSentence
   TestAssistantOperationalTextInsideClosedQuoteRemainsInert
@@ -201,6 +361,9 @@ expected_safe_classifier_entries=(
   TestPriorPolicyTermsDoNotPoisonUnrelatedCurrentTurn
   TestPriorSafetyContextDoesNotSanitizeLaterAbuse
   TestProtectedAuthorizationAcrossPartsDoesNotBypass
+  TestProfiledMetadataIndexSentinelsDoNotOptLegacySlicesIn
+  TestProfiledMetadataNormalizesMixedLegacyIndexesWithoutMutatingCaller
+  TestProfiledMetadataUnscopedLegacyAssistantCannotBecomeHistoricalReferent
   TestQualifiedNeutralCoreBecomesOperationalAbuse
   TestResultJSONOmitsZeroCoverage
   TestRoleAwareClassifierNeverSilentlyAgesOutAbuse
@@ -332,6 +495,7 @@ expected_safe_classifier_entries=(
   TestWrapperBaseBehaviorMinimalContrasts
   TestWrapperOnlyNeverBlocksAnyMode
 )
+expected_safe_classifier_entries+=("${expected_round8_classifier_entries[@]}")
 declare -A safe_seen=()
 for name in "${expected_safe_classifier_entries[@]}"; do
 	if [[ -v safe_seen["$name"] ]]; then
@@ -371,16 +535,25 @@ boundary_pattern="$(join_regex \
 
 case "$mode" in
   list)
-    printf 'Round6 safe development boundary: packages=%d classifier_entries=%d\n' \
-      "${#safe_packages[@]}" "${#expected_safe_classifier_entries[@]}"
+    "$go_bin" -C "$round8_counted_mock_module" list . >/dev/null
+    round8_entry_count=$((
+      ${#expected_round8_audit_entries[@]} +
+      ${#expected_round8_extract_entries[@]} +
+      ${#expected_round8_plugin_entries[@]} +
+      ${#expected_round8_classifier_entries[@]}
+    ))
+    printf 'Round6 safe development boundary: packages=%d classifier_entries=%d round8_entries=%d\n' \
+      "${#safe_packages[@]}" "${#expected_safe_classifier_entries[@]}" "$round8_entry_count"
     ;;
   test)
     "$go_bin" test -tags="$test_tags" -count=1 "${safe_packages[@]}"
     "$go_bin" test -tags="$test_tags" -count=1 -run="$safe_pattern" ./internal/classifier
+    "$go_bin" -C "$round8_counted_mock_module" test -count=1 .
     ;;
   race)
     CGO_ENABLED=1 "$go_bin" test -race -tags="$test_tags" -count=1 "${safe_packages[@]}"
     CGO_ENABLED=1 "$go_bin" test -race -tags="$test_tags" -count=1 -run="$safe_pattern" ./internal/classifier
+    CGO_ENABLED=1 "$go_bin" -C "$round8_counted_mock_module" test -race -count=1 .
     ;;
   boundary)
     "$go_bin" test -tags="$test_tags,consumed_evaluation" -count=1 -v -run="$boundary_pattern" ./internal/classifier

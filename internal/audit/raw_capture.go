@@ -27,6 +27,8 @@ const (
 	// current per-record capture setting because a database may contain larger
 	// previews written before a configuration downgrade.
 	RawCaptureQueryPreviewBudgetBytes = 8 << 20
+	rawCaptureRedactionVersion        = "raw-redactor-v1"
+	legacyRawCaptureRedactionVersion  = "legacy-boolean-v0"
 )
 
 var (
@@ -71,8 +73,15 @@ type RawRequestCapture struct {
 	Decision    string    `json:"decision"`
 	Truncated   bool      `json:"truncated"`
 	Redacted    bool      `json:"redacted"`
-	RawPreview  string    `json:"raw_preview"`
-	RawSHA256   string    `json:"raw_sha256"`
+	// PreviewTruncated and RedactionApplied are the canonical names. Truncated
+	// and Redacted remain compatibility aliases for existing management clients.
+	PreviewTruncated     bool   `json:"preview_truncated"`
+	RedactionApplied     bool   `json:"redaction_applied"`
+	RedactionPatternHits int    `json:"redaction_pattern_hits"`
+	RedactionVersion     string `json:"redaction_version"`
+	RawPreview           string `json:"raw_preview"`
+	RawSHA256            string `json:"raw_sha256"`
+	deduplicated         bool
 }
 
 // RawCaptureQuery is deliberately narrow. Sensitive captures may be correlated
@@ -142,8 +151,10 @@ var rawCaptureRedactors = []rawCaptureRedactor{
 
 const insertRawCaptureSQL = `INSERT INTO raw_request_captures (
     id, event_id, timestamp_ns, request_hash, subject_hash, action, decision,
-    truncated, redacted, raw_preview, raw_sha256
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    truncated, redacted, raw_preview, raw_sha256, redaction_pattern_hits,
+    redaction_version
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(raw_sha256) WHERE raw_sha256 <> '' DO NOTHING`
 
 // RecordRawCapture performs a bounded, nonblocking enqueue. The associated
 // audit Event must be enqueued first with the same EventID; the shared queue
@@ -337,7 +348,8 @@ func (s *Store) QueryRawCapturesPage(ctx context.Context, query RawCaptureQuery)
 	}
 	args = append(args, limit+1)
 	rows, err := s.db.QueryContext(ctx, `SELECT id, event_id, timestamp_ns, request_hash,
-subject_hash, action, decision, truncated, redacted, raw_preview, raw_sha256
+subject_hash, action, decision, truncated, redacted, raw_preview, raw_sha256,
+redaction_pattern_hits, redaction_version
 FROM raw_request_captures`+where+` ORDER BY timestamp_ns DESC, id DESC LIMIT ?`, args...)
 	if err != nil {
 		return RawCapturePage{}, fmt.Errorf("audit: query raw request captures: %w", err)
@@ -352,12 +364,18 @@ FROM raw_request_captures`+where+` ORDER BY timestamp_ns DESC, id DESC LIMIT ?`,
 			&capture.ID, &capture.EventID, &timestampNS, &capture.RequestHash,
 			&capture.SubjectHash, &capture.Action, &capture.Decision, &truncated,
 			&redacted, &capture.RawPreview, &capture.RawSHA256,
+			&capture.RedactionPatternHits, &capture.RedactionVersion,
 		); err != nil {
 			return RawCapturePage{}, fmt.Errorf("audit: scan raw request capture: %w", err)
 		}
 		capture.Timestamp = time.Unix(0, timestampNS).UTC()
 		capture.Truncated = truncated != 0
 		capture.Redacted = redacted != 0
+		capture.PreviewTruncated = capture.Truncated
+		capture.RedactionApplied = capture.Redacted
+		if err := validateRawRequestCapture(capture); err != nil {
+			return RawCapturePage{}, fmt.Errorf("audit: invalid persisted raw request capture: %w", err)
+		}
 		if len(page.Captures) >= limit || len(capture.RawPreview) > RawCaptureQueryPreviewBudgetBytes-page.PreviewBytes {
 			page.HasMore = true
 			break
@@ -448,6 +466,78 @@ func rawCaptureWhere(query RawCaptureQuery) (string, []any, error) {
 	return " WHERE " + strings.Join(clauses, " AND "), args, nil
 }
 
+// validateRawRequestCapture is the single privacy and integrity contract for a
+// prepared, migrated, or read-back preview row. Legacy schema-v4 rows may have
+// an empty raw_sha256, so callers that create new rows separately require that
+// field after this shared validation succeeds.
+func validateRawRequestCapture(capture RawRequestCapture) error {
+	if err := validateField("raw capture id", capture.ID, 128, false); err != nil {
+		return err
+	}
+	if err := validateField("raw capture event_id", capture.EventID, 128, false); err != nil {
+		return err
+	}
+	if capture.Timestamp.Year() < 1970 || capture.Timestamp.Year() > 9999 {
+		return errors.New("audit: invalid raw capture timestamp")
+	}
+	if capture.RequestHash != "" && !validDigest(capture.RequestHash, "sha256:") {
+		return errors.New("audit: raw capture request_hash is not a SHA-256 correlation value")
+	}
+	if capture.SubjectHash != "" && !validDigest(capture.SubjectHash, "hmac-sha256:") {
+		return errors.New("audit: raw capture subject_hash is not an HMAC-SHA256 correlation value")
+	}
+	if !oneOf(capture.Action, "block", "cooldown") {
+		return errors.New("audit: raw capture action is not a blocking action")
+	}
+	if err := validateField("raw capture decision", capture.Decision, 96, false); err != nil {
+		return err
+	}
+	if !validDecision(capture.Decision) {
+		return errors.New("audit: raw capture decision is unsupported")
+	}
+	switch capture.Action {
+	case "block":
+		if !strings.HasPrefix(capture.Decision, "block_") {
+			return errors.New("audit: raw capture block action requires a block decision")
+		}
+	case "cooldown":
+		if capture.Decision != "cooldown_subject_risk" {
+			return errors.New("audit: raw capture cooldown action requires cooldown_subject_risk")
+		}
+	}
+	if capture.PreviewTruncated != capture.Truncated {
+		return errors.New("audit: raw capture preview_truncated alias is inconsistent")
+	}
+	if capture.RedactionApplied != capture.Redacted {
+		return errors.New("audit: raw capture redaction_applied alias is inconsistent")
+	}
+	if !utf8.ValidString(capture.RawPreview) {
+		return errors.New("audit: raw capture preview is not valid UTF-8")
+	}
+	if len(capture.RawPreview) > maxRawCaptureBytes {
+		return fmt.Errorf("audit: raw capture preview exceeds %d bytes", maxRawCaptureBytes)
+	}
+	if capture.RawSHA256 != "" && !validDigest(capture.RawSHA256, "sha256:") {
+		return errors.New("audit: raw capture raw_sha256 is not a SHA-256 integrity value")
+	}
+	if capture.RedactionPatternHits < 0 || capture.RedactionPatternHits > 1_000_000 {
+		return errors.New("audit: raw capture redaction_pattern_hits is outside the supported range")
+	}
+	switch capture.RedactionVersion {
+	case rawCaptureRedactionVersion:
+		if capture.Redacted != (capture.RedactionPatternHits > 0) {
+			return errors.New("audit: raw capture current redaction metadata is inconsistent")
+		}
+	case legacyRawCaptureRedactionVersion:
+		if capture.RedactionPatternHits != 0 {
+			return errors.New("audit: raw capture legacy redaction metadata must not claim a hit count")
+		}
+	default:
+		return errors.New("audit: raw capture redaction_version is unsupported")
+	}
+	return nil
+}
+
 func prepareRawCapture(input RawCaptureInput, cfg RawCaptureConfig, now time.Time) (RawRequestCapture, error) {
 	if !cfg.Enabled {
 		return RawRequestCapture{}, ErrRawCaptureDisabled
@@ -495,23 +585,31 @@ func prepareRawCapture(input RawCaptureInput, cfg RawCaptureConfig, now time.Tim
 
 	previewInput, beyondRedactionWindow := rawCaptureRedactionWindow(input.RawRequest, cfg.MaxBytes)
 	preview := strings.ToValidUTF8(string(previewInput), "\uFFFD")
-	preview, redacted := redactRawCapture(preview)
+	preview, redactionPatternHits := redactRawCapture(preview)
 	preview, truncated := truncateUTF8(preview, cfg.MaxBytes)
 	truncated = truncated || beyondRedactionWindow
 	sum := sha256.Sum256(input.RawRequest)
-	return RawRequestCapture{
-		ID:          id,
-		EventID:     input.EventID,
-		Timestamp:   timestamp,
-		RequestHash: input.RequestHash,
-		SubjectHash: input.SubjectHash,
-		Action:      input.Action,
-		Decision:    input.Decision,
-		Truncated:   truncated,
-		Redacted:    redacted,
-		RawPreview:  preview,
-		RawSHA256:   "sha256:" + hex.EncodeToString(sum[:]),
-	}, nil
+	capture := RawRequestCapture{
+		ID:                   id,
+		EventID:              input.EventID,
+		Timestamp:            timestamp,
+		RequestHash:          input.RequestHash,
+		SubjectHash:          input.SubjectHash,
+		Action:               input.Action,
+		Decision:             input.Decision,
+		Truncated:            truncated,
+		Redacted:             redactionPatternHits > 0,
+		PreviewTruncated:     truncated,
+		RedactionApplied:     redactionPatternHits > 0,
+		RedactionPatternHits: redactionPatternHits,
+		RedactionVersion:     rawCaptureRedactionVersion,
+		RawPreview:           preview,
+		RawSHA256:            "sha256:" + hex.EncodeToString(sum[:]),
+	}
+	if err := validateRawRequestCapture(capture); err != nil {
+		return RawRequestCapture{}, err
+	}
+	return capture, nil
 }
 
 func rawCaptureRedactionWindow(raw []byte, maxBytes int) ([]byte, bool) {
@@ -522,16 +620,26 @@ func rawCaptureRedactionWindow(raw []byte, maxBytes int) ([]byte, bool) {
 	return raw[:windowBytes], true
 }
 
-func redactRawCapture(value string) (string, bool) {
-	redacted := false
+func redactRawCapture(value string) (string, int) {
+	hits := 0
 	for _, rule := range rawCaptureRedactors {
-		if !rule.expression.MatchString(value) {
+		matches := rule.expression.FindAllStringSubmatchIndex(value, -1)
+		if len(matches) == 0 {
 			continue
 		}
-		value = rule.expression.ReplaceAllString(value, rule.replacement)
-		redacted = true
+		replaced := make([]byte, 0, len(value))
+		last := 0
+		for _, match := range matches {
+			start, end := match[0], match[1]
+			replaced = append(replaced, value[last:start]...)
+			replaced = rule.expression.ExpandString(replaced, rule.replacement, value, match)
+			last = end
+		}
+		replaced = append(replaced, value[last:]...)
+		value = string(replaced)
+		hits += len(matches)
 	}
-	return value, redacted
+	return value, hits
 }
 
 func truncateUTF8(value string, maxBytes int) (string, bool) {

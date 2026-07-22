@@ -1,47 +1,34 @@
-# Docker Installation, Staged Rollout, Rollback, and Cleanup
+# Docker Sandbox Installation, Staged Rollout, Rollback, and Cleanup
 
 ```text
-current_classifier_policy_version: classifier-policy-v6
-current_classifier_policy_sha256: ece497210db938528cb166a34f2ce3013324b792a7eedf276a96fa5d256001d4
+current_classifier_policy_version: classifier-policy-v7
+current_classifier_policy_sha256: ea8c4dcfacacc6478f86fd2ca5de96d667ae98f2fc6ff0c83d8e6092e9f6a82d
 ```
 
-## Release warning
+## Round 8 release warning
 
-The exact v0.15 Round 6 working tree is **release-blocked and must not be
-deployed**. The only formal tag name is `v0.15`, never `v0.15.0`. v1-v8
-are retired or consumed failures; v9 is a consumed methodology-invalid
-failure; methodologically valid v10 failed its first and only formal run with
-28/320 benign false positives, 49/320 policy blocks, and 33/320 exact
-classifications. v10 cannot be rerun. Do not create a `v0.15` tag or GitHub
-Release and do not use the installation/rollout procedure below for this
-candidate. It is retained for future releases only after a new implementation
-receives a candidate-bound external `evaluation-v11` or later first-and-only
-`CONSUMED / PASS` attestation.
+The current source version is `0.16`; the only Round 8 artifact target is the
+Linux amd64 prerelease `v0.16-rc.2`. It must be published as non-latest and does
+not authorize production deployment or Balanced mode. Stable `v0.16` does not
+exist. The earlier local `v0.16-rc.1` package and all v0.15 procedures below are
+historical evidence and must not be overwritten or reused as the Round 8
+candidate.
 
-An owner-operated server sandbox result for the post-v10 prompt-injection
-development tree can provide engineering feedback only. It cannot reverse the
-consumed v10 failure, authorize this installation procedure, or substitute for
-that candidate-level external evaluation attestation.
+Only isolated counted-Mock sandbox validation is in scope. The exact candidate
+must be tested on CPA v7.2.95
+(`f71ec0eb6776854457892452cf28c47f0d658251`) without a real Provider. A sandbox
+PASS is engineering evidence only; independent source/artifact audit and the
+external admission policy remain required before production canary discussion.
 
-Development artifacts containing `-dirty` are test-only and must not be placed
-in a production plugin directory. The dedicated candidate workflow instead
-produces clean exact-source bytes in a private, untagged, expiring Actions
-artifact; clean candidate bytes are still unreleased and also must not be placed
-in production.
+Development artifacts containing `-dirty` are test-only. Do not place them in
+any production plugin directory. Do not enable Raw Capture merely to validate
+the candidate, and never include a capture database in CI or release assets.
 
-The v0.15 chain is: final PR head and PR CI, merge to `main`, exact post-merge
-main push CI, private untagged clean candidate dispatched from
-`refs/heads/main`, CPA v7.2.88 Host + Mock evidence, independent
-source/artifact/Host audit, a candidate-bound external `evaluation-v11` or later
-first-and-only `CONSUMED / PASS` attestation, optional annotated development
-prerelease, the annotated formal `v0.15` tag and verified draft, and protected
-promotion of that unchanged draft. The server runs are isolated Host acceptance
-gates, not production observation or release approval. Unit tests, CI success, clean
-candidate bytes, or a development prerelease do not authorize this procedure.
-
-See the neutral [RELEASE_POLICY.md](RELEASE_POLICY.md). Installation is eligible
-only from a published formal Release carrying
-`round6-prerelease-attestation.json` and `formal-release-attestation.json`.
+See [RELEASE_POLICY.md](RELEASE_POLICY.md) and
+[ROUND8_RELEASE_READINESS.md](reports/ROUND8_RELEASE_READINESS.md) for the
+authoritative current status. The command sequence later in this file is a
+historical v0.15 operations reference unless a future release-specific document
+explicitly supersedes it.
 
 ## Host controls outside the Router boundary
 
@@ -59,17 +46,17 @@ Before any isolated Host validation, the owner must independently enforce:
   controls before the request reaches the Router.
 
 The Guard cannot attest to any of those pre-CPA files or configuration values.
-Prompt-keyword scanning is not a substitute. Embedded ruleset `1.0.8` also
+Prompt-keyword scanning is not a substitute. Embedded ruleset `1.0.9` also
 identifies only YAML Cyber Abuse assets; it does not include the Go
 `META-OVERRIDE-001` overlay or the complete classifier/extractor policy.
 
 ## Preconditions
 
-- The sandbox CPA binary is exactly v7.2.88 at
-  `93d74a890a44802f656d7f39a573916b2611896e` and was built with
-  `CGO_ENABLED=1`. Assets labelled `_no-plugin` cannot load native plugins.
-  Source/compile compatibility does not substitute for loading the candidate
-  `.so`. Earlier v7.2.85/v7.2.84/v7.2.83/v7.2.82/v7.2.81 checks are historical non-gating evidence.
+- Run the candidate bytes against CPA v7.2.95 built with `CGO_ENABLED=1`.
+  Assets labelled `_no-plugin`
+  cannot load native plugins. Source/compile compatibility does not substitute
+  for loading the candidate `.so`. Earlier CPA checks are historical
+  non-gating evidence.
 - The container is Linux amd64 with glibc 2.34 or newer. Debian Bookworm is the
   intended base; musl/Alpine is unsupported.
 - The deployment host has `curl`, `jq`, `unzip`, `sha256sum`, and `openssl`.
@@ -90,11 +77,11 @@ The release verifier rejects a binary that imports a glibc symbol newer than
 `GLIBC_2.34`, has a wrong ELF target, lacks CPA ABI symbols, carries mismatched
 build/ruleset identity, or has a checksum/SBOM/archive mismatch.
 
-## 1. Download and verify
+## Historical v0.15 download and verification reference
 
-The commands below are a future-release operations reference. They do not
-authorize installing the current blocked candidate and apply only after a
-formal GitHub Release exists for a release-eligible version:
+The commands below are retained to explain the older formal-release bundle
+shape. They are not valid v0.16-rc.2 installation instructions and do not
+authorize installing the current candidate:
 
 ```bash
 set -eu
@@ -150,9 +137,9 @@ Inspect `$work/audit/build-metadata.json` and require:
 - `dirty` is `false`;
 - `commit` is a full 40-character release commit;
 - `ruleset_version` and `ruleset_sha256` match the standalone ruleset manifest;
-- `classifier_policy_version` equals `classifier-policy-v6` and
+- historical v0.15 `classifier_policy_version` equals `classifier-policy-v5` and
   `classifier_policy_sha256` equals
-`ece497210db938528cb166a34f2ce3013324b792a7eedf276a96fa5d256001d4`;
+`0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b`;
 - `$work/release-evidence-final.md` identifies the same commit, annotated tag,
   rules snapshot, source archive, command-log digest, and artifact hashes.
 - `$work/round6-prerelease-attestation.json` schema v2 binds the exact Host-tested
@@ -404,7 +391,7 @@ Verify New API → CPA using an ordinary harmless request, confirm other plugins
 still behave normally, and compare the current CPA auth-file list with the saved
 inventory. Installation must not create, delete, or modify auth files.
 
-The CPA v7.2.88 Host matrix must cover OpenAI Chat, OpenAI Responses,
+The CPA v7.2.95 Host matrix must cover OpenAI Chat, OpenAI Responses,
 Claude, and Gemini allow/refusal paths, including streaming pre-SSE 403,
 Anthropic/Gemini token-count 403, and zero Auth Selector, Provider, Usage, and
 Mock Upstream counters for blocked requests. Ordinary CI does not execute that
@@ -421,12 +408,12 @@ official public route maps Guard's status error to a final client 405. That
 result is `NOT AVAILABLE / NOT RUN`, cannot be created by the current CI job,
 and remains an explicit `BLOCKED FOR HANDOFF` item.
 
-## 8. Observe → Audit → Balanced rollout
+## Future Observe → Audit → Balanced rollout
 
-**Do not execute this rollout for the current v0.15 candidate.** Its candidate-
-bound external evaluation-v11+ gate is pending. These stages document the
-operational process only after that exact candidate has a first-and-only
-`CONSUMED / PASS` attestation and the formal Release is published.
+**Do not execute this rollout for v0.16-rc.2.** Dual CPA counted-Mock Host
+evidence, independent audit, external admission, and production approval are
+pending. These stages document a possible future process only after all of
+those gates bind the exact unchanged candidate.
 
 ### Stage 1: Observe (24–48 hours)
 

@@ -177,12 +177,20 @@ func (p *transformedMultipartJSONPlanner) plan() IncompleteReason {
 				return IncompleteMultipartParseError
 			}
 			p.spans = append(p.spans, plannedText{
-				id:              uint64(p.textFieldCount),
-				rawStart:        start,
-				rawEnd:          end,
-				role:            RoleUser,
-				provenance:      ProvenanceContent,
-				userAttribution: UserAttributionTrusted,
+				id:                uint64(p.textFieldCount),
+				rawStart:          start,
+				rawEnd:            end,
+				role:              RoleUser,
+				provenance:        ProvenanceContent,
+				userAttribution:   UserAttributionTrusted,
+				conversationIndex: p.textFieldCount - 1,
+				turnIndex:         0,
+				isCurrentTurn:     true,
+				scopeID:           uint64(p.textFieldCount),
+				contentKind:       ContentKindNaturalLanguageDirective,
+				fieldPathHash: structuralFieldPathHash(
+					p.profile, multipartFieldPath(p.profile, key, p.textFieldCount-1),
+				),
 			})
 		case multipartFieldMetadata:
 			if reason := p.skipValue(1); reason != "" {
@@ -518,7 +526,9 @@ func scanMultipartRequest(body []byte, boundary string, profile RequestProfile, 
 			continue
 		}
 		fieldID := uint64(textFieldCount)
-		completed, streamErr := streamMultipartTextField(part, fieldID, limits, sink, &result)
+		completed, streamErr := streamMultipartTextField(
+			part, fieldID, name, profile.Source, limits, sink, &result,
+		)
 		_ = part.Close()
 		if streamErr != nil {
 			if !aborted {
@@ -547,7 +557,15 @@ func scanMultipartRequest(body []byte, boundary string, profile RequestProfile, 
 	return result, nil
 }
 
-func streamMultipartTextField(part *multipart.Part, fieldID uint64, limits Limits, sink ChunkSink, result *Result) (bool, error) {
+func streamMultipartTextField(
+	part *multipart.Part,
+	fieldID uint64,
+	fieldName string,
+	source SourceProfile,
+	limits Limits,
+	sink ChunkSink,
+	result *Result,
+) (bool, error) {
 	// The legacy *PartBytes names are retained for API compatibility, but the
 	// streaming path uses them as bounded chunk sizes. Cumulative text coverage
 	// is enforced below by MaxTotalTextBytes and MaxMultipartTextBytes.
@@ -555,16 +573,26 @@ func streamMultipartTextField(part *multipart.Part, fieldID uint64, limits Limit
 	reader := bufio.NewReaderSize(part, chunkSize)
 	chunk := make([]byte, 0, chunkSize)
 	decoder := newBoundedStreamingDecoder(chunkSize)
+	conversationIndex := int(fieldID - 1)
+	fieldPathHash := structuralFieldPathHash(
+		source, multipartFieldPath(source, fieldName, conversationIndex),
+	)
 	started := false
 	emit := func(final bool) (bool, error) {
 		if len(chunk) == 0 {
 			if final && started {
 				if err := sink.AddSegment(SegmentChunk{
-					Role:            RoleUser,
-					Provenance:      ProvenanceContent,
-					UserAttribution: UserAttributionTrusted,
-					FieldID:         fieldID,
-					End:             true,
+					Role:              RoleUser,
+					Provenance:        ProvenanceContent,
+					UserAttribution:   UserAttributionTrusted,
+					ConversationIndex: conversationIndex,
+					TurnIndex:         0,
+					IsCurrentTurn:     true,
+					ScopeID:           fieldID,
+					ContentKind:       ContentKindNaturalLanguageDirective,
+					FieldPathHash:     fieldPathHash,
+					FieldID:           fieldID,
+					End:               true,
 				}); err != nil {
 					return false, fmtChunkSinkError(err)
 				}
@@ -577,13 +605,19 @@ func streamMultipartTextField(part *multipart.Part, fieldID uint64, limits Limit
 			return false, nil
 		}
 		if err := sink.AddSegment(SegmentChunk{
-			Role:            RoleUser,
-			Provenance:      ProvenanceContent,
-			UserAttribution: UserAttributionTrusted,
-			FieldID:         fieldID,
-			Start:           !started,
-			End:             final,
-			Text:            chunk,
+			Role:              RoleUser,
+			Provenance:        ProvenanceContent,
+			UserAttribution:   UserAttributionTrusted,
+			ConversationIndex: conversationIndex,
+			TurnIndex:         0,
+			IsCurrentTurn:     true,
+			ScopeID:           fieldID,
+			ContentKind:       ContentKindNaturalLanguageDirective,
+			FieldPathHash:     fieldPathHash,
+			FieldID:           fieldID,
+			Start:             !started,
+			End:               final,
+			Text:              chunk,
 		}); err != nil {
 			return false, fmtChunkSinkError(err)
 		}
@@ -619,11 +653,17 @@ func streamMultipartTextField(part *multipart.Part, fieldID uint64, limits Limit
 			}
 			for index, variant := range variants {
 				if err := emitter.emitOwned(plannedText{
-					id:              derivedFieldID(fieldID, index),
-					owned:           variant,
-					role:            RoleUser,
-					provenance:      ProvenanceContent,
-					userAttribution: UserAttributionTrusted,
+					id:                derivedFieldID(fieldID, index),
+					owned:             variant,
+					role:              RoleUser,
+					provenance:        ProvenanceContent,
+					userAttribution:   UserAttributionTrusted,
+					conversationIndex: conversationIndex,
+					turnIndex:         0,
+					isCurrentTurn:     true,
+					scopeID:           fieldID,
+					contentKind:       ContentKindNaturalLanguageDirective,
+					fieldPathHash:     fieldPathHash,
 				}); err != nil {
 					return false, err
 				}

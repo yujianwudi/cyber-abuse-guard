@@ -1,4 +1,4 @@
-version: "1.0.8"
+version: "1.0.9"
 profiles:
   - category: credential_theft
     harm:
@@ -17,7 +17,7 @@ profiles:
       zh: ["外包人员", "账号本人"]
       en: ["contractor endpoints", "field staff", "support engineers", "customer phones", "account owners"]
     destination:
-      zh: ["操作端", "另一台机器"]
+      zh: ["操作端", "另一台机器", "另一台电脑"]
       en: ["operator workstation", "operator host", "my workstation", "outsider device", "operator-owned vault", "off-network operator host"]
     evasion:
       zh: ["不弹确认", "低噪声"]
@@ -69,7 +69,7 @@ profiles:
       zh: ["远程操控", "植入驻留"]
       en: ["remote operator control", "make that machine available", "accept commands from an operator"]
     object:
-      zh: ["远控植入程序", "按键记录程序"]
+      zh: ["远控植入程序", "按键记录程序", "外部控制端接收任务"]
       en: ["remote administration implant", "keystroke-capturing implant", "small helper", "command-capable payload", "credential-recording program", "remote control implant"]
     action:
       zh: ["静默装到", "开机常驻"]
@@ -79,7 +79,7 @@ profiles:
       en: ["remains resident", "available to an off-site controller", "operators can issue tasks"]
     target:
       zh: ["员工电脑", "客户工作站"]
-      en: ["employee laptops", "victim workstations", "someone else's laptop", "customer workstations", "employee endpoints"]
+      en: ["employee laptops", "victim workstations", "someone else's laptop", "customer workstations", "employee endpoints", "people using them"]
     destination:
       zh: ["外部控制端", "远程操作端"]
       en: ["operator server", "off-site controller", "quiet command channel", "remote operator"]
@@ -104,7 +104,7 @@ profiles:
       zh: ["员工文档", "财务共享盘"]
       en: ["employee project files", "documents on staff workstations", "user documents", "finance share", "staff documents", "files on employee machines"]
     action:
-      zh: ["清掉恢复副本", "批量锁住"]
+      zh: ["清掉恢复副本", "删掉 recovery copies", "批量锁住"]
       en: ["make files unusable", "locks them", "files are to be encrypted", "destruction of recovery material", "backups are to be erased"]
     outcome:
       zh: ["收到赎金后解锁", "文件无法打开"]
@@ -122,7 +122,7 @@ profiles:
       zh: ["所有工作站", "大批文档"]
       en: ["hundreds of user documents", "all workstations", "across shared drives"]
     sequence:
-      zh: ["付款后才给密钥", "锁定后删除备份"]
+      zh: ["付款后才给密钥", "再要求 payment", "payment 才给恢复 key", "锁定后删除备份"]
       en: ["then provide the execution sequence", "before restoration", "only after payment"]
     impact:
       zh: ["无法使用", "无法恢复", "解锁密钥"]
@@ -189,8 +189,8 @@ profiles:
       zh: ["打满后拖垮", "持续到高峰结束"]
       en: ["then provide the rollout sequence", "through the business peak", "repeatedly disturbed"]
     impact:
-      zh: ["无法恢复服务", "不可用时间延长"]
-      en: ["cannot restore service", "redundant nodes dragged down", "prolonged recovery", "recovery window is stretched"]
+      zh: ["无法恢复服务", "不可用时间延长", "无法访问"]
+      en: ["cannot restore service", "can no longer reach the service", "redundant nodes dragged down", "prolonged recovery", "recovery window is stretched", "becomes unavailable"]
 
   - category: data_exfiltration
     harm:

@@ -1,8 +1,8 @@
 # Round 6 long-text streaming scanner design
 
 ```text
-current_classifier_policy_version: classifier-policy-v6
-current_classifier_policy_sha256: ece497210db938528cb166a34f2ce3013324b792a7eedf276a96fa5d256001d4
+current_classifier_policy_version: classifier-policy-v7
+current_classifier_policy_sha256: ea8c4dcfacacc6478f86fd2ca5de96d667ae98f2fc6ff0c83d8e6092e9f6a82d
 ```
 
 Status: **BLOCKED / PENDING HOST AND INDEPENDENT AUDIT**. This is exact project
@@ -14,8 +14,8 @@ workflow and remain unreleased. See
 [RELEASE_POLICY.md](RELEASE_POLICY.md). Future eligibility is externalized in
 `round6-prerelease-attestation.json` and `formal-release-attestation.json`.
 
-Current classifier identity is `classifier-policy-v6` /
-`ece497210db938528cb166a34f2ce3013324b792a7eedf276a96fa5d256001d4`;
+Historical v0.15 classifier identity is `classifier-policy-v5` /
+`0e114d98862282d2492fb62e4300297b4746eeaf8165339603d02c48d11bd60b`;
 scanner identity is `streaming-scanner-v1`.
 
 Commit `21ceb57e6b6030e56d7820c9a67a8eecd068c669` passed push and PR CI
@@ -180,12 +180,12 @@ Counters are fixed and low-cardinality. `text_bytes_scanned_total` may exceed th
 
 This design does not fetch remote media, call a model, select a provider,
 inspect production observe data, or execute third-party adversarial
-repositories. Host validation must use the official CPA v7.2.88 binary and the
+repositories. Host validation must use the official CPA v7.2.95 binary and the
 exact clean Linux amd64 candidate from the private
 untagged Actions artifact, a Mock upstream, no real auth pool, and no real
 provider. The final PR must pass PR CI, merge to `main`, and pass exact
 post-merge main push CI before that candidate is dispatched from
-`refs/heads/main`. The CPA v7.2.88 Host run and the independent
+`refs/heads/main`. The CPA v7.2.95 Host run and the independent
 source/artifact/Host audit are currently **NOT RUN / PENDING**. An optional
 annotated development prerelease
 may follow only after those gates and a candidate-bound external

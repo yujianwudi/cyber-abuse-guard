@@ -39,6 +39,7 @@ type compiledSemanticEvidence struct {
 }
 
 type compiledSemanticProfile struct {
+	index          uint8
 	category       rules.Category
 	evidence       []compiledSemanticEvidence
 	result         [semanticDimensionCount]Evidence
@@ -52,14 +53,26 @@ func (profile compiledSemanticProfile) id() string {
 }
 
 type semanticSignalWindow struct {
-	signals          [][]bool
-	directiveSignals []directiveSignalSet
-	text             string
+	signals           [][]bool
+	directiveSignals  []directiveSignalSet
+	clauses           []analyzedDirectiveClause
+	occurrences       []signalOccurrence
+	clauseCount       int
+	text              string
+	coreEvidence      uint8
+	coreEvidenceKnown bool
+	prepared          bool
+	harmConflict      bool
+	affirmativeSafety bool
+	legitimateMask    uint16
+	legitimateKnown   uint16
 }
 
 type semanticAssessment struct {
-	score    int
-	evidence []Evidence
+	score                 int
+	evidence              []Evidence
+	explanation           DecisionExplanation
+	corePredicateComplete bool
 }
 
 type semanticDimensions struct {
@@ -205,7 +218,29 @@ func semanticDimensionsPotential(dimensions semanticDimensions) bool {
 	return evidence >= 4 && riskAxes >= 2
 }
 
+// semanticProfilePotential is a cheap conservative gate for the exact
+// one-occurrence/one-dimension assignment. It may return true when one phrase
+// owns several possible dimensions, but it must never return false when the
+// exact matcher could produce a qualifying profile. This keeps irrelevant
+// profiles out of the 1,024-state assignment on the ordinary short-request
+// path without changing a classification decision.
+func semanticProfilePotential(profile compiledSemanticProfile, windows [][]bool) bool {
+	var mask uint16
+	for _, evidence := range profile.evidence {
+		for _, signals := range windows {
+			if signalMatched(signals, evidence.signalID) {
+				mask |= evidence.dimensionMask
+				break
+			}
+		}
+	}
+	return semanticDimensionsPotential(semanticDimensionsFromMask(mask))
+}
+
 func semanticDirectiveWindows(analysis analyzedDirectives) []semanticSignalWindow {
+	if analysis.semanticWindows != nil {
+		return analysis.semanticWindows
+	}
 	windows := make([]semanticSignalWindow, 0, (len(analysis.clauses)+len(analysis.overflowTail))*2)
 	windows = appendSemanticDirectiveWindows(windows, analysis.clauses)
 	if analysis.overflow {
@@ -219,19 +254,23 @@ func semanticDirectiveWindows(analysis analyzedDirectives) []semanticSignalWindo
 func appendSemanticDirectiveWindows(windows []semanticSignalWindow, clauses []analyzedDirectiveClause) []semanticSignalWindow {
 	for start := range clauses {
 		text := ""
-		signals := make([]directiveSignalSet, 0, maxSemanticDirectiveSpan)
 		for end := start; end < len(clauses) && end < start+maxSemanticDirectiveSpan; end++ {
 			clause := clauses[end]
 			if end > start && !semanticClausesLinked(clauses[end-1].text, clause.text, clause.boundaryBefore) {
 				break
 			}
-			signals = append(signals, clause.signals)
 			if text == "" {
 				text = clause.text
 			} else {
 				text += "\n" + clause.text
 			}
-			windows = append(windows, semanticSignalWindow{directiveSignals: append([]directiveSignalSet(nil), signals...), text: text})
+			window := semanticSignalWindow{
+				clauses:     clauses[start : end+1],
+				clauseCount: end - start + 1,
+				text:        text,
+			}
+			prepareSemanticSignalWindow(&window)
+			windows = append(windows, window)
 		}
 	}
 	return windows
@@ -245,7 +284,6 @@ func semanticDirectiveSuffixWindows(clauses []analyzedDirectiveClause) []semanti
 	windows := make([]semanticSignalWindow, 0, len(clauses))
 	for start := range clauses {
 		text := ""
-		signals := make([]directiveSignalSet, 0, len(clauses)-start)
 		linked := true
 		for end := start; end <= last; end++ {
 			clause := clauses[end]
@@ -253,7 +291,6 @@ func semanticDirectiveSuffixWindows(clauses []analyzedDirectiveClause) []semanti
 				linked = false
 				break
 			}
-			signals = append(signals, clause.signals)
 			if text == "" {
 				text = clause.text
 			} else {
@@ -261,7 +298,13 @@ func semanticDirectiveSuffixWindows(clauses []analyzedDirectiveClause) []semanti
 			}
 		}
 		if linked {
-			windows = append(windows, semanticSignalWindow{directiveSignals: signals, text: text})
+			window := semanticSignalWindow{
+				clauses:     clauses[start:],
+				clauseCount: len(clauses) - start,
+				text:        text,
+			}
+			prepareSemanticSignalWindow(&window)
+			windows = append(windows, window)
 		}
 	}
 	return windows
@@ -272,12 +315,12 @@ func (c *Classifier) updateOverflowSemanticAssessments(
 	clauses []analyzedDirectiveClause,
 	denseLastSignals []bool,
 	policy Policy,
+	signalStorage *[maxSemanticDirectiveSpan]directiveSignalSet,
 ) {
-	if len(clauses) == 0 || len(destination) == 0 {
+	if len(clauses) == 0 || len(destination) == 0 || signalStorage == nil {
 		return
 	}
 	last := len(clauses) - 1
-	var signalStorage [maxSemanticDirectiveSpan]directiveSignalSet
 	for start := range clauses {
 		signals := signalStorage[:0]
 		linked := true
@@ -295,7 +338,9 @@ func (c *Classifier) updateOverflowSemanticAssessments(
 		if len(windowClauses) == 1 && semanticDirectiveClauseOnlyNegated(windowClauses[0]) {
 			continue
 		}
-		window := semanticSignalWindow{directiveSignals: signals}
+		window := semanticSignalWindow{
+			directiveSignals: signals, clauses: windowClauses, clauseCount: len(windowClauses),
+		}
 		textReady := false
 		for profileIndex, profile := range c.semanticProfiles {
 			if profileIndex >= len(destination) || semanticDirectiveProfileOnlyNegated(windowClauses, profileIndex) {
@@ -307,10 +352,12 @@ func (c *Classifier) updateOverflowSemanticAssessments(
 			}
 			if !textReady {
 				window.text = joinAnalyzedDirectiveClauseText(windowClauses)
+				prepareSemanticSignalWindow(&window)
 				textReady = true
 			}
+			prepareSemanticSignalWindowCategory(&window, profile.category)
 			assessment := c.assessSemanticWindowWithDimensions(profile, window, dimensions, policy)
-			if assessment.score > destination[profileIndex].score {
+			if semanticAssessmentBetter(assessment, destination[profileIndex]) {
 				destination[profileIndex] = assessment
 			}
 		}
@@ -360,8 +407,16 @@ func joinAnalyzedDirectiveClauseText(clauses []analyzedDirectiveClause) string {
 func semanticClausesLinked(previous, current string, boundary directiveBoundaryKind) bool {
 	previous = strings.ToLower(strings.TrimSpace(previous))
 	current = strings.ToLower(strings.TrimSpace(current))
-	if boundary == directiveBoundaryStrong || semanticTopicBreak(previous) || semanticTopicBreak(current) || semanticNegatedBoundary(current) {
+	if semanticTopicBreak(previous) || semanticTopicBreak(current) || semanticNegatedBoundary(current) {
 		return false
+	}
+	if boundary == directiveBoundaryStrong {
+		// Strong punctuation normally prevents composition. A narrow affirmative
+		// referent ("actually steal them", "execute the above") is the explicit
+		// exception required by the active-directive model: it reactivates the
+		// immediately preceding object without allowing unrelated sentences to
+		// donate dimensions.
+		return semanticExplicitReferentReactivation(current)
 	}
 	if boundary == directiveBoundaryNone {
 		return false
@@ -371,7 +426,7 @@ func semanticClausesLinked(previous, current string, boundary directiveBoundaryK
 	}
 	if hasAnyPrefix(current,
 		"and ", "or ", "then ", "next ", "while ", "with ", "including ", "followed by ",
-		"并", "且", "然后", "接着", "随后", "同时", "以及", "包括",
+		"并", "且", "然后", "接着", "随后", "同时", "以及", "包括", "再分批", "再外传",
 	) || containsAnyLiteral(current,
 		" it ", " them ", " those ", " these ", " the same ", " the traffic", " those sessions", " their backups",
 		"它", "其", "这些", "上述", "该对象", "该流量", "这些会话", "其备份",
@@ -391,6 +446,21 @@ func semanticClausesLinked(previous, current string, boundary directiveBoundaryK
 	return semanticContinuationFragment(current)
 }
 
+func semanticExplicitReferentReactivation(text string) bool {
+	if semanticNegatedBoundary(text) || hasExplanatoryFraming(text) || hasAffirmativeSafetyPurpose(text) {
+		return false
+	}
+	activeDirective := semanticContinuationFragment(text) || hasAnyPrefix(text,
+		"actually ", "instead ", "nevertheless ", "nonetheless ", "even so ",
+		"execute ", "implement ", "apply ", "carry ", "do ",
+		"实际", "改为", "执行", "实现", "应用", "照做",
+	)
+	return activeDirective && containsAnyLiteral(text,
+		" it", " them", " that", " those", " the above", " above request", " same ",
+		"它", "它们", "上述", "上面", "该内容", "同一",
+	)
+}
+
 func semanticFiniteClause(text string) bool {
 	return hasAnyPrefix(text, "i ", "we ", "you ", "he ", "she ", "they ", "the ", "a ", "an ", "this ", "that ", "weather ", "today ", "我", "我们", "你", "他", "她", "他们", "今天", "天气") ||
 		containsAnyLiteral(text, " is ", " are ", " was ", " were ", " should ", " would ", " could ", " will ", " can ")
@@ -402,12 +472,12 @@ func semanticContinuationFragment(text string) bool {
 	}
 	return hasAnyPrefix(text,
 		"avoid ", "bypass ", "copy ", "defeat ", "delete ", "destroy ", "disable ", "disguise ", "eliminate ",
-		"accept ", "alter ", "erase ", "escalate ", "extend ", "fill ", "gain ", "have ", "hide ", "keep ", "label ", "leave ", "make ", "mute ", "obtain ", "place ", "prevent ", "provide ", "remove ",
+		"accept ", "alter ", "capture ", "deploy ", "erase ", "escalate ", "exhaust ", "extract ", "extend ", "fill ", "flood ", "gain ", "harvest ", "have ", "hide ", "keep ", "label ", "leave ", "make ", "mute ", "obfuscate ", "obtain ", "overload ", "place ", "prevent ", "provide ", "remove ", "run ", "steal ",
 		"retain ", "rewrite ", "route ", "send ", "stage ", "suppress ", "weaken ",
 		"alert suppression", "attribution prevention", "authentication bypass", "audit cleanup", "capacity exhaustion",
 		"covert ", "credential misuse", "destruction ", "evidence destruction", "failover prevention", "lateral access",
 		"central monitoring", "dependency amplification", "privilege escalation", "security-control ", "staged ", "traffic disguise",
-		"把", "借", "停掉", "填入", "压缩", "拿下", "留下", "只在", "避开", "绕过", "删除", "清除", "清掉", "拖垮", "隐藏", "静默", "改写", "分批", "随后", "之后", "批量", "外送", "抑制", "阻止",
+		"把", "从", "用", "对", "向", "将", "借", "停掉", "填入", "压缩", "拿下", "留下", "只在", "避开", "绕过", "删除", "删掉", "清除", "清掉", "拖垮", "压垮", "淹没", "洪泛", "隐藏", "静默", "开机常驻", "自动回连", "改写", "收集", "提取", "上传", "发送", "发动", "发起", "持续", "让真实", "再要求", "分批", "随后", "之后", "批量", "外送", "抑制", "阻止",
 	)
 }
 
@@ -502,7 +572,9 @@ func semanticPartsLinked(previous, current string) bool {
 }
 
 func (c *Classifier) assessSemanticWindow(profile compiledSemanticProfile, window semanticSignalWindow, policy Policy) semanticAssessment {
-	if semanticWindowExcluded(profile, window.text) {
+	prepareSemanticSignalWindow(&window)
+	prepareSemanticSignalWindowCategory(&window, profile.category)
+	if semanticWindowExcluded(profile, window) {
 		return semanticAssessment{}
 	}
 	dimensions := c.semanticWindowDimensions(profile, window)
@@ -515,14 +587,70 @@ func (c *Classifier) assessSemanticWindowWithDimensions(
 	dimensions semanticDimensions,
 	policy Policy,
 ) semanticAssessment {
-	if semanticWindowExcluded(profile, window.text) {
+	prepareSemanticSignalWindow(&window)
+	prepareSemanticSignalWindowCategory(&window, profile.category)
+	if semanticWindowExcluded(profile, window) {
 		return semanticAssessment{}
 	}
 	return c.assessEligibleSemanticWindow(profile, window, dimensions, policy)
 }
 
-func semanticWindowExcluded(profile compiledSemanticProfile, text string) bool {
-	return strings.TrimSpace(text) == "" || isLegitimateCategoryWorkflow(profile.category, text) || hasAffirmativeSafetyPurpose(text)
+func semanticWindowExcluded(profile compiledSemanticProfile, window semanticSignalWindow) bool {
+	return strings.TrimSpace(window.text) == "" ||
+		descriptiveDocumentationWindow(window.text) ||
+		window.legitimateMask&(uint16(1)<<categoryPriority(profile.category)) != 0 ||
+		window.affirmativeSafety
+}
+
+func descriptiveDocumentationWindow(text string) bool {
+	text = strings.TrimSpace(text)
+	if !hasAnyPrefix(text,
+		"documentation notes that ", "documentation states that ",
+		"the documentation notes that ", "the documentation states that ",
+		"a report notes that ", "the report notes that ", "the report states that ",
+		"文档指出", "文档说明", "报告指出", "报告说明",
+	) {
+		return false
+	}
+	return !containsAnyLiteral(text,
+		" now ", " then ", " please ", "provide ", "write ", "create ", "build ",
+		"implement ", "execute ", "deploy ", "run ", "carry it out", "do it",
+		"现在", "然后", "请", "提供", "编写", "创建", "构建", "实现", "执行", "部署", "运行", "照做",
+	)
+}
+
+func prepareSemanticSignalWindow(window *semanticSignalWindow) {
+	if window == nil || window.prepared {
+		return
+	}
+	window.prepared = true
+	text := strings.TrimSpace(window.text)
+	if text == "" {
+		return
+	}
+	window.harmConflict = hasExplicitHarmConflict(text)
+	window.affirmativeSafety = hasAffirmativeSafetyPurpose(text) && !window.harmConflict
+}
+
+// prepareSemanticSignalWindowCategory defers the comparatively expensive
+// legitimate-workflow proof until a rule or semantic profile from that
+// category can actually use the window. Candidate-rich inputs contain many
+// local windows, but only a small subset are relevant to any one category;
+// eagerly running all category predicates for every window multiplied both
+// CPU and compact-intent scratch allocations.
+func prepareSemanticSignalWindowCategory(window *semanticSignalWindow, category rules.Category) {
+	if window == nil {
+		return
+	}
+	prepareSemanticSignalWindow(window)
+	bit := uint16(1) << categoryPriority(category)
+	if window.legitimateKnown&bit != 0 {
+		return
+	}
+	window.legitimateKnown |= bit
+	if isLegitimateCategoryWorkflow(category, strings.TrimSpace(window.text)) {
+		window.legitimateMask |= bit
+	}
 }
 
 func (c *Classifier) assessEligibleSemanticWindow(
@@ -543,8 +671,14 @@ func (c *Classifier) assessEligibleSemanticWindow(
 	if riskAxes < 2 {
 		return semanticAssessment{}
 	}
-	if semanticIntentOnlyNegatedPrepared(window.text, profile.intentStarts, profile.intentPatterns) {
+	if semanticWindowIntentOnlyNegated(profile, window) {
 		return semanticAssessment{}
+	}
+	corePredicateComplete := round8SemanticCorePredicate(profile.category, window.text, dimensions)
+	if window.coreEvidenceKnown {
+		corePredicateComplete = round8SemanticCorePredicateFromEvidence(
+			profile.category, dimensions, window.coreEvidence,
+		)
 	}
 
 	dimensionList := [...]struct {
@@ -574,18 +708,93 @@ func (c *Classifier) assessEligibleSemanticWindow(
 		return semanticAssessment{}
 	}
 
+	corePredicateScore := 27
+	for _, dimension := range dimensionList[:4] {
+		if dimension.matched {
+			corePredicateScore += dimension.points
+		}
+	}
+	qualifierScore := score - corePredicateScore
 	context := c.semanticWindowContexts(window, policy.Allow)
 	if hasExplicitHarmConflict(window.text) {
 		context.Authorized = false
 		context.CTFOrLab = false
 	}
 	authorizationProtected := policy.HardBlockEvenIfAuthorized.protects(profile.category)
+	scoreBeforeContext := score
 	score = applyContextDeductions(score, context, authorizationProtected)
+	contextAdjustment := score - scoreBeforeContext
 	genuineSafetyContext := context.Defensive || context.Remediation || context.StaticAnalysis || context.IncidentResponse || context.HighLevel
-	if authorizationProtected && !genuineSafetyContext && score < HardThreshold {
+	hardFloorApplied := false
+	if corePredicateComplete && authorizationProtected && !genuineSafetyContext && score < HardThreshold {
 		score = HardThreshold
+		hardFloorApplied = true
 	}
-	return semanticAssessment{score: clampScore(score), evidence: evidence}
+	score = clampScore(score)
+	explanation := DecisionExplanation{
+		WinningRuleID:           profile.id(),
+		WinningCategory:         string(profile.category),
+		CorePredicateComplete:   corePredicateComplete,
+		EvidenceDimensionMask:   dimensions.mask(),
+		EvidenceOccurrenceCount: len(evidence),
+		EvidenceSegmentCount:    semanticWindowSegmentCount(window),
+		ContextAdjustment:       contextAdjustment,
+		HardFloorApplied:        hardFloorApplied,
+		ScoreBreakdown: ScoreBreakdown{
+			CorePredicateScore: corePredicateScore,
+			QualifierScore:     qualifierScore,
+			ContextAdjustment:  contextAdjustment,
+			FinalScore:         score,
+		},
+	}
+	if hardFloorApplied {
+		explanation.HardFloorReason = hardFloorReasonSemanticCompleteCoreWithTwoRiskAxes
+	}
+	return semanticAssessment{
+		score: score, evidence: evidence, explanation: explanation,
+		corePredicateComplete: corePredicateComplete,
+	}
+}
+
+func semanticAssessmentBetter(candidate, current semanticAssessment) bool {
+	if candidate.corePredicateComplete != current.corePredicateComplete {
+		return candidate.corePredicateComplete
+	}
+	return candidate.score > current.score
+}
+
+func constrainSemanticAssessment(assessment semanticAssessment, thresholds Thresholds) semanticAssessment {
+	thresholds = validThresholdsOrDefault(thresholds)
+	if assessment.corePredicateComplete || assessment.score < thresholds.BalancedBlock {
+		return assessment
+	}
+	assessment.score = thresholds.BalancedBlock - 1
+	if assessment.score < 0 {
+		assessment.score = 0
+	}
+	assessment.explanation.CorePredicateComplete = false
+	assessment.explanation.HardFloorApplied = false
+	assessment.explanation.HardFloorReason = ""
+	assessment.explanation.ScoreBreakdown.FinalScore = assessment.score
+	return assessment
+}
+
+func semanticWindowIntentOnlyNegated(profile compiledSemanticProfile, window semanticSignalWindow) bool {
+	if len(window.clauses) != 0 {
+		return semanticDirectiveProfileOnlyNegated(window.clauses, int(profile.index))
+	}
+	return semanticIntentOnlyNegatedPrepared(window.text, profile.intentStarts, profile.intentPatterns)
+}
+
+func semanticWindowSegmentCount(window semanticSignalWindow) int {
+	count := window.clauseCount
+	if len(window.signals) > count {
+		count = len(window.signals)
+	}
+	if count == 0 && (len(window.directiveSignals) != 0 || len(window.occurrences) != 0 || window.text != "") {
+		count = 1
+	}
+	return count
 }
 
 func (c *Classifier) semanticDimensions(profile compiledSemanticProfile, windows [][]bool) semanticDimensions {
@@ -644,6 +853,11 @@ func (c *Classifier) semanticWindowDimensions(profile compiledSemanticProfile, w
 		}
 		for _, signals := range window.directiveSignals {
 			if signals.matched(signalID) {
+				return true
+			}
+		}
+		for _, clause := range window.clauses {
+			if clause.signals.matched(signalID) {
 				return true
 			}
 		}
@@ -714,6 +928,11 @@ func (c *Classifier) semanticWindowContexts(window semanticSignalWindow, policy 
 		}
 		for _, signals := range window.directiveSignals {
 			if signals.matched(signalID) {
+				return true
+			}
+		}
+		for _, clause := range window.clauses {
+			if clause.signals.matched(signalID) {
 				return true
 			}
 		}

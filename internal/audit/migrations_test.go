@@ -1,6 +1,8 @@
 package audit
 
 import (
+	"bytes"
+	"context"
 	"database/sql"
 	"fmt"
 	"os"
@@ -294,7 +296,7 @@ func TestFreshDatabaseAppliesAllMigrations(t *testing.T) {
 	}
 }
 
-func TestV3DatabaseMigratesToRawCaptureSchemaV4(t *testing.T) {
+func TestV3DatabaseMigratesThroughRawCaptureSchemaV5(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "audit.db")
 	db, err := sql.Open("sqlite3", path)
@@ -322,18 +324,590 @@ func TestV3DatabaseMigratesToRawCaptureSchemaV4(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	if got := store.Status().SchemaVersion; got != 4 {
-		t.Fatalf("schema version = %d, want 4", got)
+	if got := store.Status().SchemaVersion; got != currentSchemaVersion {
+		t.Fatalf("schema version = %d, want %d", got, currentSchemaVersion)
 	}
-	if err := validateSchemaContract(store.db, 4); err != nil {
-		t.Fatalf("v4 schema contract = %v", err)
+	if err := validateSchemaContract(store.db, currentSchemaVersion); err != nil {
+		t.Fatalf("current schema contract = %v", err)
 	}
 	var migrationRows int
-	if err := store.db.QueryRow(`SELECT COUNT(*) FROM migration_history WHERE version = 4`).Scan(&migrationRows); err != nil {
+	if err := store.db.QueryRow(`SELECT COUNT(*) FROM migration_history WHERE version IN (4, 5)`).Scan(&migrationRows); err != nil {
 		t.Fatal(err)
 	}
-	if migrationRows != 1 {
-		t.Fatalf("migration v4 rows = %d", migrationRows)
+	if migrationRows != 2 {
+		t.Fatalf("migration v4-v5 rows = %d", migrationRows)
+	}
+}
+
+func TestV4RawCaptureMigrationKeepsFirstLiveCaptureAndCreatesPartialUniqueRawSHAIndex(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "audit.db")
+	db, err := sql.Open("sqlite3", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(schema + subjectStateSchema + round6AuditEventColumns + rawRequestCaptureSchema + migrationMetadataSchema); err != nil {
+		t.Fatal(err)
+	}
+	now := fixedMigrationTime()
+	nowNS := now.UnixNano()
+	if _, err := db.Exec(`INSERT INTO schema_version(singleton, version, updated_at_ns) VALUES(1, 4, ?)`, nowNS); err != nil {
+		t.Fatal(err)
+	}
+	for version := 1; version <= 4; version++ {
+		if _, err := db.Exec(`INSERT INTO migration_history(version, applied_at_ns, description) VALUES(?, ?, 'fixture')`, version, nowNS); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	insertV4Event := func(id string, timestamp time.Time, requestHash string) {
+		t.Helper()
+		if _, err := db.Exec(`INSERT INTO audit_events (
+id, timestamp_ns, action, mode, category, risk_score, rule_ids,
+request_hash, subject_hash, model, source_format, stream, text_bytes_scanned,
+classifier, latency_us, decision, coverage, incomplete_reason, scanner
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			id, timestamp.UnixNano(), "block", "balanced", "defense_evasion", 90, `["EVADE-002"]`,
+			requestHash, testSubjectHash("subject-"+id), HashModel("migration-model"), "openai", 0, 128,
+			"classifier-policy-v6", 25, "block_malicious_text", "complete", "", "streaming-scanner-v1"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	insertV4Capture := func(id, eventID string, timestamp time.Time, requestHash, rawSHA256 string, redacted bool) {
+		t.Helper()
+		redactedInt := 0
+		if redacted {
+			redactedInt = 1
+		}
+		if _, err := db.Exec(`INSERT INTO raw_request_captures (
+id, event_id, timestamp_ns, request_hash, subject_hash, action, decision,
+truncated, redacted, raw_preview, raw_sha256
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			id, eventID, timestamp.UnixNano(), requestHash, testSubjectHash("subject-"+eventID),
+			"block", "block_malicious_text", 0, redactedInt, "legacy preview", rawSHA256); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	duplicateHash := HashRequest([]byte("migration-duplicate-request"))
+	duplicateRawSHA := "sha256:" + strings.Repeat("c", 64)
+	fixtures := []struct {
+		eventID, captureID, requestHash, rawSHA256 string
+		timestamp                                  time.Time
+		redacted                                   bool
+	}{
+		{eventID: "migration-old", captureID: "capture-old", requestHash: duplicateHash, rawSHA256: duplicateRawSHA, timestamp: now.Add(-2 * time.Hour), redacted: true},
+		{eventID: "migration-new", captureID: "capture-new", requestHash: duplicateHash, rawSHA256: duplicateRawSHA, timestamp: now.Add(-time.Hour), redacted: false},
+		{eventID: "migration-empty-a", captureID: "capture-empty-a", requestHash: "", rawSHA256: "sha256:" + strings.Repeat("e", 64), timestamp: now.Add(-45 * time.Minute)},
+		{eventID: "migration-empty-b", captureID: "capture-empty-b", requestHash: "", rawSHA256: "sha256:" + strings.Repeat("f", 64), timestamp: now.Add(-30 * time.Minute)},
+	}
+	for _, fixture := range fixtures {
+		insertV4Event(fixture.eventID, fixture.timestamp, fixture.requestHash)
+		insertV4Capture(fixture.captureID, fixture.eventID, fixture.timestamp, fixture.requestHash, fixture.rawSHA256, fixture.redacted)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	store, err := Open(Config{
+		Path:      path,
+		Retention: 30 * 24 * time.Hour,
+		MaxBytes:  8 << 20,
+		Now:       func() time.Time { return now },
+		RawCapture: RawCaptureConfig{
+			Enabled: true, OnlyBlocked: true, MaxBytes: 8192, TTL: 72 * time.Hour, RedactSecrets: true,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	var retainedID, retainedEventID, redactionVersion string
+	var patternHits int
+	if err := store.db.QueryRow(`SELECT id, event_id, redaction_pattern_hits, redaction_version
+FROM raw_request_captures WHERE raw_sha256 = ?`, duplicateRawSHA).
+		Scan(&retainedID, &retainedEventID, &patternHits, &redactionVersion); err != nil {
+		t.Fatal(err)
+	}
+	if retainedID != "capture-old" || retainedEventID != "migration-old" || patternHits != 0 || redactionVersion != legacyRawCaptureRedactionVersion {
+		t.Fatalf("retained migrated capture id=%q event=%q hits=%d version=%q",
+			retainedID, retainedEventID, patternHits, redactionVersion)
+	}
+	var emptyCount int
+	if err := store.db.QueryRow(`SELECT COUNT(*) FROM raw_request_captures WHERE request_hash = ''`).Scan(&emptyCount); err != nil {
+		t.Fatal(err)
+	}
+	if emptyCount != 2 {
+		t.Fatalf("migrated empty-hash captures = %d, want 2", emptyCount)
+	}
+
+	rows, err := store.db.Query(`PRAGMA index_list('raw_request_captures')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	foundUniquePartial := false
+	for rows.Next() {
+		var sequence, unique, partial int
+		var name, origin string
+		if err := rows.Scan(&sequence, &name, &unique, &origin, &partial); err != nil {
+			rows.Close()
+			t.Fatal(err)
+		}
+		if name == "idx_raw_request_captures_raw_sha256_unique" {
+			foundUniquePartial = unique == 1 && partial == 1
+		}
+	}
+	if err := rows.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if !foundUniquePartial {
+		t.Fatal("raw_sha256 deduplication index is not both unique and partial")
+	}
+
+	for _, id := range []string{"migration-post-a", "migration-post-b"} {
+		event := testEvent(id, now.Add(time.Minute))
+		event.Action = "block"
+		event.Decision = "block_malicious_text"
+		event.Coverage = "complete"
+		event.Scanner = "streaming-scanner-v1"
+		if !store.Record(event) {
+			t.Fatalf("Record(%s) failed", id)
+		}
+	}
+	if err := store.Flush(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	insertV5Capture := func(id, eventID, requestHash, rawSHA256 string) error {
+		_, err := store.db.Exec(`INSERT INTO raw_request_captures (
+id, event_id, timestamp_ns, request_hash, subject_hash, action, decision,
+truncated, redacted, raw_preview, raw_sha256, redaction_pattern_hits, redaction_version
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			id, eventID, now.Add(time.Minute).UnixNano(), requestHash, testSubjectHash("subject-"+eventID),
+			"block", "block_malicious_text", 0, 0, "post-migration preview", rawSHA256,
+			0, rawCaptureRedactionVersion)
+		return err
+	}
+	if err := insertV5Capture("capture-post-duplicate", "migration-post-a", "", duplicateRawSHA); err == nil {
+		t.Fatal("partial unique index accepted a duplicate nonempty raw_sha256")
+	}
+	if err := insertV5Capture("capture-post-empty-a", "migration-post-a", "", "sha256:"+strings.Repeat("1", 64)); err != nil {
+		t.Fatalf("partial unique index rejected first empty request_hash: %v", err)
+	}
+	if err := insertV5Capture("capture-post-empty-b", "migration-post-b", "", "sha256:"+strings.Repeat("2", 64)); err != nil {
+		t.Fatalf("partial unique index rejected second empty request_hash: %v", err)
+	}
+}
+
+func TestV4RawCaptureMigrationReplaysV5TTLWindowsAndPreservesEventAssociation(t *testing.T) {
+	t.Parallel()
+	const epsilon = time.Nanosecond
+	ttl := 72 * time.Hour
+	t0 := fixedMigrationTime().Add(-14 * 24 * time.Hour)
+	batchBoundaryOffsets := make([]time.Duration, 0, rawCaptureReplayBatchSize+2)
+	for index := 0; index < rawCaptureReplayBatchSize; index++ {
+		batchBoundaryOffsets = append(batchBoundaryOffsets, time.Duration(index)*time.Nanosecond)
+	}
+	batchBoundaryOffsets = append(batchBoundaryOffsets, ttl, ttl+epsilon)
+	type replayGroup struct {
+		name        string
+		offsets     []time.Duration
+		wantCapture int
+	}
+	groups := []replayGroup{
+		{name: "inside", offsets: []time.Duration{0, ttl - epsilon}, wantCapture: 0},
+		{name: "exact", offsets: []time.Duration{0, ttl}, wantCapture: 1},
+		{name: "beyond", offsets: []time.Duration{0, ttl + epsilon}, wantCapture: 1},
+		{name: "chronological", offsets: []time.Duration{0, ttl - epsilon, ttl + epsilon}, wantCapture: 2},
+		{name: "batch-boundary", offsets: batchBoundaryOffsets, wantCapture: rawCaptureReplayBatchSize},
+	}
+
+	path := filepath.Join(t.TempDir(), "audit.db")
+	fixtures := make([]v4RawCaptureFixture, 0, 9)
+	rawSHAs := make(map[string]string, len(groups))
+	for groupIndex, group := range groups {
+		rawSHA := fmt.Sprintf("sha256:%064x", groupIndex+1)
+		rawSHAs[group.name] = rawSHA
+		for captureIndex, offset := range group.offsets {
+			name := fmt.Sprintf("ttl-%s-%d", group.name, captureIndex)
+			fixtures = append(fixtures, v4RawCaptureFixture{
+				EventID:     "event-" + name,
+				CaptureID:   "capture-" + name,
+				Timestamp:   t0.Add(offset),
+				RequestHash: HashRequest([]byte("request-" + name)),
+				SubjectHash: testSubjectHash("subject-" + name),
+				RawPreview:  "legacy preview " + name,
+				RawSHA256:   rawSHA,
+			})
+		}
+	}
+	createV4RawCaptureDatabase(t, path, fixedMigrationTime(), fixtures)
+
+	store, err := Open(Config{
+		Path:                    path,
+		Now:                     fixedMigrationTime,
+		SkipDisabledPurgeOnOpen: true,
+		RawCapture:              RawCaptureConfig{TTL: ttl},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	for _, group := range groups {
+		wantIndex := group.wantCapture
+		wantTimestamp := t0.Add(group.offsets[wantIndex]).UnixNano()
+		wantCaptureID := fmt.Sprintf("capture-ttl-%s-%d", group.name, wantIndex)
+		wantEventID := fmt.Sprintf("event-ttl-%s-%d", group.name, wantIndex)
+		var captureID, captureEventID, joinedEventID string
+		var captureTimestamp, eventTimestamp int64
+		if err := store.db.QueryRow(`SELECT capture.id, capture.event_id, capture.timestamp_ns,
+event.id, event.timestamp_ns
+FROM raw_request_captures AS capture
+JOIN audit_events AS event ON event.id = capture.event_id
+WHERE capture.raw_sha256 = ?`, rawSHAs[group.name]).Scan(
+			&captureID, &captureEventID, &captureTimestamp, &joinedEventID, &eventTimestamp,
+		); err != nil {
+			t.Fatalf("query %s replay result: %v", group.name, err)
+		}
+		if captureID != wantCaptureID || captureEventID != wantEventID || joinedEventID != wantEventID ||
+			captureTimestamp != wantTimestamp || eventTimestamp != wantTimestamp {
+			t.Fatalf("%s replay retained capture=%q capture_event=%q capture_timestamp=%d joined_event=%q event_timestamp=%d; want capture=%q event=%q timestamp=%d",
+				group.name, captureID, captureEventID, captureTimestamp, joinedEventID, eventTimestamp,
+				wantCaptureID, wantEventID, wantTimestamp)
+		}
+	}
+
+	var eventCount int
+	if err := store.db.QueryRow(`SELECT COUNT(*) FROM audit_events`).Scan(&eventCount); err != nil {
+		t.Fatal(err)
+	}
+	if eventCount != len(fixtures) {
+		t.Fatalf("audit event count after raw capture replay = %d, want %d", eventCount, len(fixtures))
+	}
+	var replayIndexes int
+	if err := store.db.QueryRow(`SELECT COUNT(*) FROM sqlite_master
+WHERE type = 'index' AND name = 'idx_raw_request_captures_replay_v5'`).Scan(&replayIndexes); err != nil {
+		t.Fatal(err)
+	}
+	if replayIndexes != 0 {
+		t.Fatalf("temporary raw capture replay indexes after migration=%d, want 0", replayIndexes)
+	}
+}
+
+func TestV4MigrationBackupNeverRetainsRawCaptures(t *testing.T) {
+	t.Parallel()
+	now := fixedMigrationTime()
+	fixtures := []v4RawCaptureFixture{
+		{
+			EventID:     "backup-expired-event",
+			CaptureID:   "backup-expired-capture",
+			Timestamp:   now.Add(-73 * time.Hour),
+			RequestHash: HashRequest([]byte("backup-expired-request")),
+			SubjectHash: testSubjectHash("backup-expired-subject"),
+			RawPreview:  "expired sensitive preview",
+			RawSHA256:   "sha256:" + strings.Repeat("a", 64),
+		},
+		{
+			EventID:     "backup-fresh-event",
+			CaptureID:   "backup-fresh-capture",
+			Timestamp:   now.Add(-time.Hour),
+			RequestHash: HashRequest([]byte("backup-fresh-request")),
+			SubjectHash: testSubjectHash("backup-fresh-subject"),
+			RawPreview:  "fresh sensitive preview",
+			RawSHA256:   "sha256:" + strings.Repeat("b", 64),
+		},
+	}
+
+	t.Run("disabled purges every preview", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "audit.db")
+		createV4RawCaptureDatabase(t, path, now, fixtures)
+		store, err := Open(Config{
+			Path:                  path,
+			Now:                   func() time.Time { return now },
+			BackupBeforeMigration: true,
+			MaxMigrationBackups:   1,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = store.Close() })
+
+		var currentCaptures, currentEvents int
+		if err := store.db.QueryRow(`SELECT COUNT(*) FROM raw_request_captures`).Scan(&currentCaptures); err != nil {
+			t.Fatal(err)
+		}
+		if err := store.db.QueryRow(`SELECT COUNT(*) FROM audit_events`).Scan(&currentEvents); err != nil {
+			t.Fatal(err)
+		}
+		if currentCaptures != 0 || currentEvents != len(fixtures) {
+			t.Fatalf("current database captures=%d events=%d", currentCaptures, currentEvents)
+		}
+
+		backup := onlyMigrationBackup(t, path)
+		backupDB, err := sql.Open("sqlite3", "file:"+filepath.ToSlash(backup)+"?mode=ro")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer backupDB.Close()
+		var version, backupCaptures, backupEvents int
+		if err := backupDB.QueryRow(`SELECT version FROM schema_version WHERE singleton = 1`).Scan(&version); err != nil {
+			t.Fatal(err)
+		}
+		if err := backupDB.QueryRow(`SELECT COUNT(*) FROM raw_request_captures`).Scan(&backupCaptures); err != nil {
+			t.Fatal(err)
+		}
+		if err := backupDB.QueryRow(`SELECT COUNT(*) FROM audit_events`).Scan(&backupEvents); err != nil {
+			t.Fatal(err)
+		}
+		if version != 4 || backupCaptures != 0 || backupEvents != len(fixtures) {
+			t.Fatalf("disabled backup version=%d captures=%d events=%d", version, backupCaptures, backupEvents)
+		}
+	})
+
+	t.Run("enabled preserves active TTL state but purges rollback copy", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "audit.db")
+		createV4RawCaptureDatabase(t, path, now, fixtures)
+		store, err := Open(Config{
+			Path:                  path,
+			Now:                   func() time.Time { return now },
+			BackupBeforeMigration: true,
+			MaxMigrationBackups:   1,
+			RawCapture: RawCaptureConfig{
+				Enabled: true, MaxBytes: 8192, TTL: 72 * time.Hour,
+			},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = store.Close() })
+
+		var currentCaptures int
+		if err := store.db.QueryRow(`SELECT COUNT(*) FROM raw_request_captures`).Scan(&currentCaptures); err != nil {
+			t.Fatal(err)
+		}
+		if currentCaptures != 1 {
+			t.Fatalf("current database captures=%d, want 1", currentCaptures)
+		}
+
+		backup := onlyMigrationBackup(t, path)
+		backupDB, err := sql.Open("sqlite3", "file:"+filepath.ToSlash(backup)+"?mode=ro")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer backupDB.Close()
+		var version, backupCaptures int
+		if err := backupDB.QueryRow(`SELECT version FROM schema_version WHERE singleton = 1`).Scan(&version); err != nil {
+			t.Fatal(err)
+		}
+		if err := backupDB.QueryRow(`SELECT COUNT(*) FROM raw_request_captures`).Scan(&backupCaptures); err != nil {
+			t.Fatal(err)
+		}
+		var backupEvents int
+		if err := backupDB.QueryRow(`SELECT COUNT(*) FROM audit_events`).Scan(&backupEvents); err != nil {
+			t.Fatal(err)
+		}
+		if version != 4 || backupCaptures != 0 || backupEvents != len(fixtures) {
+			t.Fatalf("enabled backup version=%d captures=%d events=%d", version, backupCaptures, backupEvents)
+		}
+		backupBytes, err := os.ReadFile(backup)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, preview := range []string{"expired sensitive preview", "fresh sensitive preview"} {
+			if bytes.Contains(backupBytes, []byte(preview)) {
+				t.Fatalf("automatic migration backup retained raw preview bytes %q", preview)
+			}
+		}
+	})
+}
+
+func TestV4MigrationRejectsMalformedRawCaptureBeforePublishingBackup(t *testing.T) {
+	t.Parallel()
+	now := fixedMigrationTime()
+	tests := []struct {
+		name      string
+		canary    string
+		malformed func(*v4RawCaptureFixture)
+	}{
+		{
+			name:   "request hash",
+			canary: "ROUND8_RAW_REQUEST_HASH_CANARY",
+			malformed: func(fixture *v4RawCaptureFixture) {
+				fixture.RequestHash = "ROUND8_RAW_REQUEST_HASH_CANARY"
+			},
+		},
+		{
+			name:   "subject hash",
+			canary: "ROUND8_RAW_SUBJECT_HASH_CANARY",
+			malformed: func(fixture *v4RawCaptureFixture) {
+				fixture.SubjectHash = "ROUND8_RAW_SUBJECT_HASH_CANARY"
+			},
+		},
+		{
+			name:   "raw sha256",
+			canary: "ROUND8_RAW_SHA_CANARY",
+			malformed: func(fixture *v4RawCaptureFixture) {
+				fixture.RawSHA256 = "ROUND8_RAW_SHA_CANARY"
+			},
+		},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "audit.db")
+			fixture := v4RawCaptureFixture{
+				EventID:     "malformed-capture-event",
+				CaptureID:   "malformed-capture",
+				Timestamp:   now,
+				RequestHash: HashRequest([]byte("malformed-capture-request")),
+				SubjectHash: testSubjectHash("malformed-capture-subject"),
+				RawPreview:  "preview must remain only in the rejected source database",
+				RawSHA256:   "sha256:" + strings.Repeat("c", 64),
+			}
+			test.malformed(&fixture)
+			createV4RawCaptureDatabase(t, path, now, []v4RawCaptureFixture{fixture})
+
+			store, openErr := Open(Config{
+				Path:                  path,
+				Now:                   func() time.Time { return now },
+				BackupBeforeMigration: true,
+				MaxMigrationBackups:   1,
+				RawCapture: RawCaptureConfig{
+					Enabled: true, MaxBytes: 8192, TTL: 72 * time.Hour,
+				},
+			})
+			if openErr == nil {
+				_ = store.Close()
+				t.Fatal("migration accepted a malformed v4 raw capture")
+			}
+			if store == nil || !store.Status().Degraded {
+				t.Fatalf("malformed raw capture did not produce a degraded store: store=%#v err=%v", store, openErr)
+			}
+			_ = store.Close()
+			if strings.Contains(openErr.Error(), test.canary) {
+				t.Fatal("migration error reflected malformed raw-capture content")
+			}
+			backups, err := filepath.Glob(path + ".pre-v*.bak")
+			if err != nil || len(backups) != 0 {
+				t.Fatalf("migration backups=%v err=%v, want none", backups, err)
+			}
+
+			check, err := sql.Open("sqlite3", path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer check.Close()
+			var version, captures, v5Columns int
+			if err := check.QueryRow(`SELECT version FROM schema_version WHERE singleton = 1`).Scan(&version); err != nil {
+				t.Fatal(err)
+			}
+			if err := check.QueryRow(`SELECT COUNT(*) FROM raw_request_captures`).Scan(&captures); err != nil {
+				t.Fatal(err)
+			}
+			if err := check.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('audit_events') WHERE name = 'decision_explanation'`).Scan(&v5Columns); err != nil {
+				t.Fatal(err)
+			}
+			if version != 4 || captures != 1 || v5Columns != 0 {
+				t.Fatalf("rejected source version=%d captures=%d v5_columns=%d", version, captures, v5Columns)
+			}
+		})
+	}
+}
+
+func TestV5ContractFailureRollsBackSchemaVersionAndCaptureDeduplication(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "audit.db")
+	db, err := sql.Open("sqlite3", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(schema + subjectStateSchema + round6AuditEventColumns + rawRequestCaptureSchema + migrationMetadataSchema); err != nil {
+		t.Fatal(err)
+	}
+	now := fixedMigrationTime()
+	nowNS := now.UnixNano()
+	if _, err := db.Exec(`INSERT INTO schema_version(singleton, version, updated_at_ns) VALUES(1, 4, ?)`, nowNS); err != nil {
+		t.Fatal(err)
+	}
+	for version := 1; version <= 4; version++ {
+		if _, err := db.Exec(`INSERT INTO migration_history(version, applied_at_ns, description) VALUES(?, ?, 'fixture')`, version, nowNS); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	rawSHA256 := "sha256:" + strings.Repeat("9", 64)
+	for index, suffix := range []string{"old", "new"} {
+		eventID := "rollback-event-" + suffix
+		captureID := "rollback-capture-" + suffix
+		timestamp := now.Add(time.Duration(index) * time.Minute)
+		if _, err := db.Exec(`INSERT INTO audit_events (
+id, timestamp_ns, action, mode, category, risk_score, rule_ids,
+request_hash, subject_hash, model, source_format, stream, text_bytes_scanned,
+classifier, latency_us, decision, coverage, incomplete_reason, scanner
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			eventID, timestamp.UnixNano(), "block", "balanced", "defense_evasion", 90, `["EVADE-002"]`,
+			HashRequest([]byte(eventID)), testSubjectHash("subject-"+eventID), HashModel("rollback-model"), "openai", 0, 128,
+			"classifier-policy-v6", 25, "block_malicious_text", "complete", "", "streaming-scanner-v1"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Exec(`INSERT INTO raw_request_captures (
+id, event_id, timestamp_ns, request_hash, subject_hash, action, decision,
+truncated, redacted, raw_preview, raw_sha256
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			captureID, eventID, timestamp.UnixNano(), "", testSubjectHash("subject-"+eventID),
+			"block", "block_malicious_text", 0, 0, "legacy preview", rawSHA256); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A v4 database may contain a future-named index because the v4 contract
+	// deliberately knows only its first three indexes. Migration 5 must not
+	// commit data deletion or version metadata when IF NOT EXISTS encounters a
+	// wrong definition under the future name.
+	if _, err := db.Exec(`CREATE INDEX idx_raw_request_captures_raw_sha256_unique ON raw_request_captures(request_hash)`); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	if store, err := Open(Config{Path: path, Now: fixedMigrationTime}); err == nil {
+		_ = store.Close()
+		t.Fatal("Open() accepted a v5 contract with a wrong preexisting future index")
+	}
+
+	inspected, err := sql.Open("sqlite3", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = inspected.Close() })
+	var version int
+	if err := inspected.QueryRow(`SELECT version FROM schema_version WHERE singleton = 1`).Scan(&version); err != nil {
+		t.Fatal(err)
+	}
+	if version != 4 {
+		t.Fatalf("schema version after failed migration = %d, want 4", version)
+	}
+	var captures int
+	if err := inspected.QueryRow(`SELECT COUNT(*) FROM raw_request_captures WHERE raw_sha256 = ?`, rawSHA256).Scan(&captures); err != nil {
+		t.Fatal(err)
+	}
+	if captures != 2 {
+		t.Fatalf("duplicate captures after failed migration = %d, want 2", captures)
+	}
+	var migrationV5Rows int
+	if err := inspected.QueryRow(`SELECT COUNT(*) FROM migration_history WHERE version = 5`).Scan(&migrationV5Rows); err != nil {
+		t.Fatal(err)
+	}
+	if migrationV5Rows != 0 {
+		t.Fatalf("migration history v5 rows after rollback = %d, want 0", migrationV5Rows)
+	}
+	var decisionExplanationColumns int
+	if err := inspected.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('audit_events') WHERE name = 'decision_explanation'`).Scan(&decisionExplanationColumns); err != nil {
+		t.Fatal(err)
+	}
+	if decisionExplanationColumns != 0 {
+		t.Fatal("failed migration retained the v5 decision_explanation column")
 	}
 }
 
@@ -770,6 +1344,76 @@ func insertSafeLegacyAuditRow(t testing.TB, db *sql.DB, id string) {
 		"openai", 0, 32, "privacy-rules", 5); err != nil {
 		t.Fatal(err)
 	}
+}
+
+type v4RawCaptureFixture struct {
+	EventID     string
+	CaptureID   string
+	Timestamp   time.Time
+	RequestHash string
+	SubjectHash string
+	RawPreview  string
+	RawSHA256   string
+	Redacted    bool
+}
+
+func createV4RawCaptureDatabase(t testing.TB, path string, now time.Time, fixtures []v4RawCaptureFixture) {
+	t.Helper()
+	db, err := sql.Open("sqlite3", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(schema + subjectStateSchema + round6AuditEventColumns + rawRequestCaptureSchema + migrationMetadataSchema); err != nil {
+		t.Fatal(err)
+	}
+	nowNS := now.UnixNano()
+	if _, err := db.Exec(`INSERT INTO schema_version(singleton, version, updated_at_ns) VALUES(1, 4, ?)`, nowNS); err != nil {
+		t.Fatal(err)
+	}
+	for version := 1; version <= 4; version++ {
+		if _, err := db.Exec(`INSERT INTO migration_history(version, applied_at_ns, description) VALUES(?, ?, 'fixture')`, version, nowNS); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, fixture := range fixtures {
+		if _, err := db.Exec(`INSERT INTO audit_events (
+id, timestamp_ns, action, mode, category, risk_score, rule_ids,
+request_hash, subject_hash, model, source_format, stream, text_bytes_scanned,
+classifier, latency_us, decision, coverage, incomplete_reason, scanner
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			fixture.EventID, fixture.Timestamp.UnixNano(), "block", "balanced", "defense_evasion", 90, `["EVADE-002"]`,
+			HashRequest([]byte("event-"+fixture.EventID)), testSubjectHash("event-subject-"+fixture.EventID),
+			HashModel("v4-raw-capture-fixture"), "openai", 0, 128, "classifier-policy-v6", 25,
+			"block_malicious_text", "complete", "", "streaming-scanner-v1"); err != nil {
+			t.Fatal(err)
+		}
+		redacted := 0
+		if fixture.Redacted {
+			redacted = 1
+		}
+		if _, err := db.Exec(`INSERT INTO raw_request_captures (
+id, event_id, timestamp_ns, request_hash, subject_hash, action, decision,
+truncated, redacted, raw_preview, raw_sha256
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			fixture.CaptureID, fixture.EventID, fixture.Timestamp.UnixNano(), fixture.RequestHash,
+			fixture.SubjectHash, "block", "block_malicious_text", 0, redacted,
+			fixture.RawPreview, fixture.RawSHA256); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func onlyMigrationBackup(t testing.TB, path string) string {
+	t.Helper()
+	backups, err := filepath.Glob(path + ".pre-v*.bak")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(backups) != 1 {
+		t.Fatalf("migration backups=%v, want exactly one", backups)
+	}
+	return backups[0]
 }
 
 func fixedMigrationTime() time.Time {

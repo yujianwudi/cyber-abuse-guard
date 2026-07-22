@@ -36,9 +36,73 @@ listing="$(tar -tf "$archive")"
 
 grep -Fxq README.md <<<"$listing" || \
   release_die "source archive exclusion fixture lost a required public source file"
+grep -Fxq Dockerfile.test <<<"$listing" || \
+  release_die "source archive exclusion fixture lost the tracked Dockerfile.test source"
 if grep -Eiq '(^|/)[^/]*(evaluation|holdout|consumed|private|blind|retired)[^/]*($|/)' <<<"$listing"; then
   release_die "source archive export-ignore contract exposed restricted material"
 fi
+
+transient_path_pattern='(^|/)(classifier_(candidate|single)_[^/]*|[^/]*\.(cpu|mem|pprof|test\.exe|exe))($|/)'
+test_binary_path_pattern='(^|/)[^/]*\.test($|/)'
+safe_test_source_pattern='(^|/)Dockerfile\.test($|/)'
+backup_binary_archive_path_pattern='(^|/)[^/]*\.(bak|backup|so|dll|zip|tar|tgz|gz)($|/)'
+expected_archive_guard="  local backup_binary_archive_path_pattern='$backup_binary_archive_path_pattern'"
+grep -Fxq "$expected_archive_guard" "$root/scripts/round6-rc-artifacts.sh" ||
+  release_die "source archive production guard lost the reviewed backup/binary/archive pattern"
+is_forbidden_source_archive_path() {
+  local path="$1"
+  grep -Eiq "$backup_binary_archive_path_pattern" <<<"$path" && return 0
+  grep -Eiq "$transient_path_pattern" <<<"$path" && return 0
+  if grep -Eiq "$test_binary_path_pattern" <<<"$path" &&
+    ! grep -Eiq "$safe_test_source_pattern" <<<"$path"; then
+    return 0
+  fi
+  return 1
+}
+for path in \
+  classifier.accept.cpu \
+  profiles/classifier.mem \
+  profiles/heap.pprof \
+  classifier.test \
+  classifier.test.exe \
+  tools/probe.exe \
+  classifier_candidate_exact \
+  tmp/classifier_candidate_fixed \
+  classifier_single_fixed \
+  tmp/classifier_single_tree/member.go \
+  audit.db.pre-v5-20260722T000000.000000000Z.bak \
+  snapshots/audit.backup \
+  plugins/cyber-abuse-guard.so \
+  plugins/cyber-abuse-guard.dll \
+  release/package.zip \
+  release/source.tar \
+  release/source.tar.gz \
+  release/source.tgz \
+  release/transcript.gz; do
+  is_forbidden_source_archive_path "cyber-abuse-guard-fixture/$path" || \
+    release_die "source archive forbidden-payload guard missed: $path"
+done
+for path in \
+  Dockerfile.test \
+  integration/fixture/Dockerfile.test \
+  internal/classifier/profile.cpu.go \
+  internal/classifier/memory.mem.go \
+  internal/classifier/trace.pprof.go \
+  internal/classifier/package.test.go \
+  internal/classifier/windows.exe.go \
+  internal/classifier/classifier_candidate.go \
+  internal/classifier/classifier_single.go \
+  docs/classifier-candidate-notes.md \
+  internal/plugin/cyber-abuse-guard.so.go \
+  internal/platform/provider.dll.go \
+  internal/audit/migration_backup_test.go \
+  docs/archive.zip.md \
+  testdata/fixture.tar.json \
+  scripts/package-tar-gz.sh; do
+  if is_forbidden_source_archive_path "cyber-abuse-guard-fixture/$path"; then
+    release_die "source archive forbidden-payload guard rejected safe source: $path"
+  fi
+done
 
 sparse_fixture="$work/sparse-fixture"
 git init --quiet "$sparse_fixture"

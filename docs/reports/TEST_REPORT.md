@@ -1,13 +1,78 @@
-# Test Report — v0.16 P1-P2 self-check, local RC baseline, and historical v0.15 evidence
+# Test Report — v0.16 Round 8 candidate and historical evidence
 
 ```text
-current_classifier_policy_version: classifier-policy-v6
-current_classifier_policy_sha256: ece497210db938528cb166a34f2ce3013324b792a7eedf276a96fa5d256001d4
+current_classifier_policy_version: classifier-policy-v7
+current_classifier_policy_sha256: ea8c4dcfacacc6478f86fd2ca5de96d667ae98f2fc6ff0c83d8e6092e9f6a82d
 ```
 
-Last updated: 2026-07-21 (Asia/Shanghai)
+Last updated: 2026-07-22 (Asia/Shanghai)
 
-## v0.16-rc.1 local package baseline
+## Current Round 8 source-tree snapshot verification
+
+The active target is the Linux amd64 `v0.16-rc.2` prerelease contract. This
+source-tree snapshot contains the Round 8 classifier/provenance, audit schema
+and aggregation, counted-Mock, Host-runner, and release-contract changes. The
+final local Go 1.26.4 Linux development gates, race run, allocation acceptance,
+same-machine benchmark comparison, dual-CPA source/compile checks, and
+Host-evidence assembler contract tests have completed. This is not yet
+exact-commit CI, tag, artifact, Host, or Release evidence. Exact-main GitHub CI,
+the annotated tag, both isolated CPA counted-Mock Host lanes, and the final
+17/19-asset publication sequence remain pending. No production, real Provider,
+private evaluation, evaluation-v10, or retired holdout evidence is claimed.
+
+Methodology deviation: eight additional over-broad read-only searches
+cumulatively displayed evaluation/holdout test or historical-report filenames,
+historical ruleset SHA-256 references, a small number of caller-path lines, and
+a few historical aggregate count/summary lines. The sixth accidentally matched
+`HOLDOUT_REPORT.md` and `HOLDOUT_V3_REPORT.md`; the seventh matched two
+operator-local command-path lines in `HOLDOUT_V2_REPORT.md`. The eighth search
+displayed several single request lines from retired holdout fixtures. None of
+that output was used for classifier, rule, or threshold calibration, and the
+classifier issue under review had already been identified before that search.
+This work therefore does not claim that no fixture or request body was seen. A separate over-broad
+`go test ./internal/classifier` may have compiled or run the restricted gate;
+that result is excluded from every current release-evidence claim. Consequently
+this work does not claim zero access, blindness, or independent evaluation;
+those statuses remain `NOT_PROVIDED`.
+
+| Current Round 8 identity/check | Result |
+|---|---|
+| Source version / candidate | `0.16` / `v0.16-rc.2`, Linux amd64 prerelease, `latest=false` |
+| Ruleset | `1.0.9` / `a3de344d3f6dc8eea86d946a823996494d4d297c41efcc6346a6ef757f263a7d` |
+| Classifier policy | `classifier-policy-v7` / `ea8c4dcfacacc6478f86fd2ca5de96d667ae98f2fc6ff0c83d8e6092e9f6a82d` |
+| Round 8 synthetic calibration | **DEVELOPMENT SELF-CHECK PASS** — [336 benign + 336 paired malicious](ROUND8_CALIBRATION.md); benign block `0/336`, malicious block `336/336`; exact score histogram and score-only 80/85/90 per-rule operating points recorded; **NOT BLIND OR HOLDOUT EVIDENCE** |
+| Audit database | schema v5; retry aggregation uses 300-second windows; raw capture remains default-off and TTL-deduplicated |
+| Host-evidence assembler contract | **44/44 DEVELOPMENT SELF-TESTS PASS**; this is not CPA Host execution evidence |
+| Linux unit / race | **DEVELOPMENT SELF-CHECK PASS** — `make unit-test`; `make race` reported no data race |
+| Race package durations | plugin 379.920 s; classifier 69.762 s |
+| Linux vet / modules / vulnerabilities | **DEVELOPMENT SELF-CHECK PASS** — `make round6-vet`, `make round6-module-verify`, `make round6-vulncheck`; 0 reachable vulnerabilities |
+| Benchmark / allocation acceptance | **DEVELOPMENT SELF-CHECK PASS** — complete `make round6-benchmark`; allocation debt and same-machine comparisons are disclosed in `PERFORMANCE.md` |
+| Workflow / release-document contracts | **DEVELOPMENT SELF-CHECK PASS** — the SHA-256-verified official Linux actionlint v1.7.12 release binary passed all eight active workflows using `.github/actionlint.yaml` with the reviewed `cag-round8-sandbox` label; the first `go run` attempt was excluded because `proxy.golang.org` timed out before actionlint started; release-document fixtures and the real-tree gate also passed; source-release exclusion passed against the current `HEAD` and is rerun after commit because it archives `HEAD` |
+| Safe-gate contracts | **DEVELOPMENT SELF-CHECK PASS** — `Ran 178 tests`, `OK`; real-tree audit passed with `entrypoints=8 make_targets=33 scripts=33` |
+| Fuzz | **DEVELOPMENT SELF-CHECK PASS** — deterministic fuzz smoke plus all 13 configured fuzz targets for 5 seconds each |
+| CPA tag identity | **REMOTE TAG IDENTITY PASS** — official latest metadata remained `v7.2.95`; the exact tag commit is `v7.2.95@f71ec0eb6776854457892452cf28c47f0d658251` |
+| CPA v7.2.95 source/compile/contract matrix | **DEVELOPMENT SELF-CHECK PASS** — pluginhost routing, Responses `additional_tools`, Interactions, fail-open, Raw Capture management, and the `v0.16-rc.2` Store contract |
+| CPA remote latest/tag verification | **REMOTE-ENABLED CONTRACT PASS** — `CPA_COMPAT_VERIFY_REMOTE=1` verified official `releases/latest == v7.2.95`, the exact Git tag commit, module Origin, and module/go.mod sums, then completed the source/compile/contract matrix. |
+| CPA counted-Mock Host execution | **NOT RUN / PENDING** for the pinned v7.2.95 lane; source/compile PASS is not Host evidence |
+| Exact-main GitHub CI / tag / Release | **NOT RUN / PENDING** for this source snapshot; no `v0.16-rc.2` publication claim |
+| Independent audit/evaluation | **NOT_PROVIDED / REQUIRED** |
+| Production approval | **NOT_GRANTED** |
+| Stable `v0.16` | **NOT_RELEASED** |
+
+The final isolated classifier acceptance recheck improved short-request
+p50/p95/p99 from the `d540eaa` baseline
+173.973/282.720/406.484 us to 105.272/146.139/263.117 us. The single-clause
+path recorded 132.119 us/op, 35,667 B/op, and 76 allocs/op; the candidate-rich
+maximum-parts path recorded 45.245564 ms/op. Final paired long-text observations
+ranged from 4.180488 ms for SemanticRich 1 MiB to 163.926518 ms for Text
+Near-8 MiB. Paired standalone test binaries recorded 46,132 KiB baseline and
+46,616 KiB Round 8 maximum RSS. Raw Capture
+prepare/composite/queue-full/management and the wrapper audit fast path also
+passed the checked-in latency/allocation ceilings; their exact values are
+recorded in `PERFORMANCE.md`. These are in-process/standalone source-tree
+results, not CPA Host performance.
+
+## Historical v0.16-rc.1 local package baseline
 
 Exact source version is `0.16`; the local Linux amd64 RC target is the exact
 annotated tag `v0.16-rc.1`. A local package exists, but the tag has not been
@@ -24,7 +89,7 @@ production deployment, independent audit, or formal attestation.
 | Linux safe tests at package time | **PASS** — `make test`, including audit, config, extract, plugin and classifier |
 | Linux vet / format / modules at package time | **PASS** — `make round6-vet`, `round6-format-check`, `round6-module-verify` |
 | Local release-document and safe-gate contracts | **PASS at local package time** — release-document consistency and 154 Python contract tests are recorded in `local-rc-manifest.json`; this does not override the remote CI failures below |
-| CPA v7.2.88 local source contract | **PASS** — pinned module/checksums, compile probes, registration, role-aware routing, integration compile and Store contracts |
+| CPA v7.2.95 local source contract | **PASS** — pinned module/checksums, compile probes, registration, role-aware routing, integration compile and Store contracts |
 | CPA official Git Origin repeat check | **NETWORK BLOCKED / NOT A PASS** — isolated direct refresh timed out after 60 seconds; an earlier direct Origin result identified the official repository, tag and commit, but the final repeated remote refresh was not completed |
 | Local RC package | **CREATED / LOCAL ONLY** — manifest binds tag object `4c04e465ba10815e6ee7261e86807556c2e86102`, commit `7b2422ed30c11d405d05bcb6b46a2527eed6471b`, tree `d586824ed7f273e9f7f49f82d5ea0eb24bdd2da9`; SO SHA-256 `9d0ee747491dedeb83f3b3e98137d879dbaba5818e7a6922f9cf1f61d407e685`; Store ZIP SHA-256 `86e9eba5265d5f2bb737ec41d5ed8ada51bf352b3833c2d985d3f754963540f7` |
 | Exact-main GitHub CI | **FAILED — run 29799561002, two attempts, zero Actions artifacts.** Attempt 1 failed in `fuzz-smoke` with `FuzzExtractText: context deadline exceeded`; attempt 2 passed fuzz-smoke and failed in `operational-script-security` when `round6-doc-consistency-fixture-test.sh` rejected a document mutation. Reproducibility was skipped both times |
@@ -37,11 +102,12 @@ enabled but a new empty store is unavailable, enforcement may remain degraded,
 while the raw-capture management endpoint returns HTTP 503 instead of an
 authoritative empty list.
 
-## Post-package P1-P2 development-branch self-check
+## Historical post-package P1-P2 development-branch self-check
 
-The current P1-P2 changes are not present in the local `v0.16-rc.1` package,
-its manifest, or its checksums. All results in this section are
-**DEVELOPMENT SELF-CHECK / NOT RELEASE EVIDENCE**.
+These P1-P2 changes are not present in the local `v0.16-rc.1` package, its
+manifest, or its checksums. They predate and are superseded by Round 8. All
+results in this section remain **HISTORICAL DEVELOPMENT SELF-CHECK / NOT CURRENT
+RELEASE EVIDENCE**.
 
 | Current working-tree check | Result |
 |---|---|
@@ -54,8 +120,8 @@ its manifest, or its checksums. All results in this section are
 | Queue-full early rejection acceptance | **SELF-CHECK PASS** — threshold <= 50 us and zero allocation; observed 46 ns/op, 0 B/op, 0 allocs/op |
 | Worst-case raw-capture management-response acceptance | **SELF-CHECK PASS** — threshold <= 500 ms, <= 16 MiB/op, <= 1,600 allocs/op; observed 54,596,462 ns/op, 8,529,000 B/op, 1,329 allocs/op |
 | p50 / p95 / p99 / peak RSS | **NOT MEASURED / UNAVAILABLE** — the targeted `testing.Benchmark` acceptance checks do not collect these metrics |
-| Full post-hardening Linux test, race, vet, script, 157-test safe-gate, 13-target fuzz seed, complete `round6-benchmark`, and CPA v7.2.88 Host source-overlay set | **DEVELOPMENT SELF-CHECK PASS** |
-| Workflow-governance follow-up | **DEVELOPMENT SELF-CHECK PASS** - 159 safe-gate mutation tests, the seven-entrypoint repository safe gate, actionlint v1.7.7 on the attested-prerelease and CodeQL workflows, release-document consistency, and `git diff --check` |
+| Full post-hardening Linux test, race, vet, script, 157-test safe-gate, 13-target fuzz seed, complete `round6-benchmark`, and CPA v7.2.95 Host source-overlay set | **DEVELOPMENT SELF-CHECK PASS** |
+| Superseding Round 8 workflow-governance follow-up | **CURRENT DEVELOPMENT SELF-CHECK PASS** — 174 safe-gate mutation tests, the eight-entrypoint repository safe gate, actionlint v1.7.12 on all eight active workflows with the reviewed custom-runner-label config, release-document consistency, and final `git diff --check` |
 | Exact-working-tree GitHub Actions / package / real CPA Host | **NOT AVAILABLE / NOT RUN** |
 | P0 client-controlled assistant-history bypass | **UNRESOLVED / RELEASE BLOCKER** |
 
@@ -71,7 +137,7 @@ was attached.
 
 Historical project version is `0.15`; its formal tag is `v0.15`, never
 `v0.15.0`. Active validation and the supported release target are fixed at
-CPA v7.2.88 at `93d74a890a44802f656d7f39a573916b2611896e`.
+CPA v7.2.95 at `f71ec0eb6776854457892452cf28c47f0d658251`.
 Later upstream versions are not followed automatically.
 Legacy version-specific profiles and Make aliases have been removed.
 
@@ -89,9 +155,9 @@ Legacy version-specific profiles and Make aliases have been removed.
 | Linux safe unit and race checks | **PASS / LOCAL DEVELOPMENT EVIDENCE**: full `make unit-test`; classifier and plugin `-race`; OpenAI Chat/Responses long quoted-review routing; 64 KiB through near-effective-RPC-limit position/coverage ladders |
 | Release-document and formal-package contracts | **PASS / LOCAL DEVELOPMENT EVIDENCE**: real-tree identity gate, mutation fixture, 152 safe-gate contract tests, formal environment-override rejection, and required/install/verify binding for the public jailbreak audit report |
 | `make round6-script-test` | **PASS / LOCAL LINUX DEVELOPMENT EVIDENCE** in a WSL-native exact source snapshot; candidate/attestation/source-exclusion/frozen-v10 contracts, safe gate, archive/HMAC/privacy, document mutation fixture, and real-tree document gate all passed |
-| Subject-admission and four-repository Linux self-check | **PASS / LOCAL DEVELOPMENT EVIDENCE**: safe allowlist, vet, targeted race, 36-case sanitized corpus, repository-neutral four-family carrier matrix, and pinned CPA v7.2.88 module/source/compile contracts; remote Git tag lookup was skipped and real Host remains pending |
+| Subject-admission and four-repository Linux self-check | **PASS / LOCAL DEVELOPMENT EVIDENCE**: safe allowlist, vet, targeted race, 36-case sanitized corpus, repository-neutral four-family carrier matrix, and pinned CPA v7.2.95 module/source/compile contracts; real Host remains pending |
 | Private untagged clean candidate artifact / manifest | **NOT CREATED / PENDING** |
-| CPA v7.2.88 Host + Mock | **NOT RUN / PENDING** |
+| CPA v7.2.95 Host + Mock | **NOT RUN / PENDING** |
 | Four-layer Auth/Provider/Usage/Mock zero-call proof | **NOT RUN / PENDING** |
 | Independent source/artifact/Host audit | **NOT RUN / PENDING** |
 | Candidate-bound external evaluation-v11 or later | **NOT RUN / PENDING**; must be first-and-only `CONSUMED / PASS` |
@@ -106,7 +172,7 @@ evidence, or release approval. The private candidate workflow has not been dispa
 must produce a private, untagged, clean exact-source Actions artifact whose
 `candidate-manifest.json`, `build-metadata.json`, SO, and Store ZIP bind that
 exact post-merge main commit/tree. Clean candidate bytes are unreleased. The
-v7.2.88 Host record and the independent audit must cite the same SO SHA-256;
+v7.2.95 Host record and the independent audit must cite the same SO SHA-256;
 schema v2 binds it with `cpa_version`, `cpa_commit`, and `cpa_host_sha256`.
 
 After Host/audit and candidate-level evaluation PASS, an optional annotated
@@ -129,7 +195,7 @@ results and bounded follow-up facts; an unprovable
 cross-window relationship becomes `classifier_window_incomplete`, while an
 insufficient extra classification budget remains `classification_chunk_limit`.
 The Linux checks above are source-level development evidence only and do not
-replace exact-head GitHub CI, the candidate artifact, CPA v7.2.88 Host + Mock,
+replace exact-head GitHub CI, the candidate artifact, CPA v7.2.95 Host + Mock,
 or independent source/artifact/Host review.
 
 The neutral admission policy is [RELEASE_POLICY.md](../RELEASE_POLICY.md).
@@ -584,11 +650,25 @@ handoff_status: BLOCKED FOR HANDOFF
 source_version: 0.16
 local_rc_artifact_version: 0.16-rc.1
 platform: linux-amd64
-cpa_contract: v7.2.88
+cpa_contract: v7.2.95
 ruleset_sha256: 1d908c8c631bc6f72e7ec6b098bea49c4923580766859393d0be48c8c00c6d7d
 verification_status: LOCAL PACKAGE SOURCE GATES PASS / REMOTE EXACT-MAIN CI FAILED
 local_package_status: CREATED / CHECKSUM-BOUND / LOCAL ONLY
 github_actions_run: 29799561002 / ATTEMPT_1_FAILED / ATTEMPT_2_FAILED
 github_actions_artifacts: 0
 github_release_evidence: NOT CREATED
+```
+
+## Current Round 8 identity footer
+
+The declarations below intentionally follow all frozen historical sections so
+the release-document gate cannot mistake an older evidence hash for the current
+source-tree identity.
+
+```text
+ruleset_version: 1.0.9
+ruleset_sha256: a3de344d3f6dc8eea86d946a823996494d4d297c41efcc6346a6ef757f263a7d
+round8_classifier_policy_version: classifier-policy-v7
+round8_classifier_policy_sha256: ea8c4dcfacacc6478f86fd2ca5de96d667ae98f2fc6ff0c83d8e6092e9f6a82d
+verification_status: LOCAL LINUX DEVELOPMENT GATES PASS / EXACT-MAIN CI, HOST, AND INDEPENDENT AUDIT NOT_PROVIDED
 ```

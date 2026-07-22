@@ -40,21 +40,27 @@ const (
 )
 
 type plannedText struct {
-	id               uint64
-	rawStart         int
-	rawEnd           int
-	owned            string
-	role             Role
-	provenance       SegmentProvenance
-	userAttribution  UserAttribution
-	encryptedContent bool
-	skip             bool
-	scalarCarrier    bool
-	messageOwner     uint64
-	roleEligible     bool
-	semanticOrdinal  int
-	fallbackText     bool
-	exactKey         string
+	id                uint64
+	rawStart          int
+	rawEnd            int
+	owned             string
+	role              Role
+	provenance        SegmentProvenance
+	userAttribution   UserAttribution
+	encryptedContent  bool
+	skip              bool
+	scalarCarrier     bool
+	messageOwner      uint64
+	conversationIndex int
+	turnIndex         int
+	isCurrentTurn     bool
+	scopeID           uint64
+	contentKind       ContentKind
+	fieldPathHash     string
+	roleEligible      bool
+	semanticOrdinal   int
+	fallbackText      bool
+	exactKey          string
 }
 
 type planContext struct {
@@ -64,6 +70,12 @@ type planContext struct {
 	historyTrusted      bool
 	directUserInput     bool
 	messageOwner        uint64
+	conversationIndex   int
+	scopeID             uint64
+	contentKind         ContentKind
+	fieldPath           string
+	independentScope    bool
+	independentItems    bool
 	roleEligible        bool
 	roleContent         bool
 	roleTextValue       bool
@@ -104,7 +116,7 @@ type shadowPlanner struct {
 // structural span plan, and replays only model-visible text through sink.
 func ScanProfiledRequest(body []byte, headers http.Header, profile RequestProfile, limits Limits, sink ChunkSink) (Result, error) {
 	initial := contextNone
-	if profile.Source == SourceProfileInteractions {
+	if profile.Source == SourceProfileInteractions || profile.Source == SourceProfileCodexAlphaSearch {
 		initial = contextText
 	}
 	return scanRequest(body, headers, profile, limits, initial, sink)
@@ -250,10 +262,13 @@ func scanRequestJSON(body []byte, limits Limits, initial contextKind, trustRoles
 		trustRoles: trustRoles,
 	}
 	root := planContext{
-		role:            RoleUser,
-		provenance:      ProvenanceContent,
-		userAttribution: UserAttributionUntrusted,
-		atRoot:          true,
+		role:              RoleUser,
+		provenance:        ProvenanceContent,
+		userAttribution:   UserAttributionUntrusted,
+		conversationIndex: -1,
+		contentKind:       ContentKindUnknown,
+		fieldPath:         rootFieldPath,
+		atRoot:            true,
 	}
 	if _, err := planner.parseValue(root, "", 0); err != nil {
 		if !errors.Is(err, errPlanBudget) {
@@ -297,7 +312,6 @@ func scanRequestJSON(body []byte, limits Limits, initial contextKind, trustRoles
 		return result, nil
 	}
 
-	selected, owned := planner.selected(shadowResult.Parts)
 	result.RoleAware = planner.roleAware && !planner.missingRole && !planner.unsafeRole
 	if planner.unsafeRole {
 		result.TextCoverage = TextCoverageUnavailable
@@ -307,15 +321,19 @@ func scanRequestJSON(body []byte, limits Limits, initial contextKind, trustRoles
 		return result, nil
 	}
 	if !result.RoleAware {
-		for index := range selected {
-			selected[index].role = RoleUnknown
-			selected[index].userAttribution = UserAttributionUntrusted
+		for index := range planner.spans {
+			planner.spans[index].role = RoleUnknown
+			planner.spans[index].userAttribution = UserAttributionUntrusted
 		}
+	}
+	selected, owned := planner.selected(shadowResult.Parts)
+	if !result.RoleAware {
 		for index := range owned {
 			owned[index].role = RoleUnknown
 			owned[index].userAttribution = UserAttributionUntrusted
 		}
 	}
+	finalizeConversationMetadata(selected)
 	result.LogicalTextParts = len(selected) + len(owned)
 	if result.LogicalTextParts > limits.MaxTextParts {
 		result.TextCoverage = TextCoverageExhausted
@@ -371,6 +389,11 @@ func (p *shadowPlanner) parseValue(ctx planContext, key string, depth int) (valu
 	}
 	if err := p.bump(true); err != nil {
 		return valueSummary{}, err
+	}
+	if ctx.independentScope {
+		p.nextOwner++
+		ctx.scopeID = p.nextOwner
+		ctx.independentScope = false
 	}
 	if ctx.unknownRoot && (p.body[p.position] == '{' || p.body[p.position] == '[') {
 		ctx.fallbackText = true
@@ -430,6 +453,7 @@ func (p *shadowPlanner) parseObject(ctx planContext, depth int) (valueSummary, e
 		p.nextOwner++
 		messageOwner = p.nextOwner
 		ctx.messageOwner = messageOwner
+		ctx.scopeID = messageOwner
 	}
 	roleValue := ""
 	roleSeen := false
@@ -493,7 +517,12 @@ func (p *shadowPlanner) parseObject(ctx planContext, depth int) (valueSummary, e
 		}
 		p.position++
 		p.shadow = append(p.shadow, ':')
-		child := derivePlanContext(ctx, canonical, keyValue, depth == 1, p.source)
+		rootMember := depth == 1
+		child := derivePlanContext(ctx, canonical, keyValue, rootMember, p.source)
+		if rootMember && child.scopeID == 0 {
+			p.nextOwner++
+			child.scopeID = p.nextOwner
+		}
 		summary, err := p.parseValue(child, canonical, depth)
 		if err != nil {
 			return valueSummary{}, err
@@ -583,6 +612,7 @@ func (p *shadowPlanner) parseObject(ctx planContext, depth int) (valueSummary, e
 				}
 				p.spans[index].role = RoleAssistant
 				p.spans[index].provenance = ProvenanceToolPayload
+				p.spans[index].contentKind = ContentKindToolCallArguments
 				p.spans[index].userAttribution = UserAttributionUntrusted
 				p.spans[index].roleEligible = false
 			}
@@ -593,11 +623,21 @@ func (p *shadowPlanner) parseObject(ctx planContext, depth int) (valueSummary, e
 				}
 				p.spans[index].role = RoleTool
 				p.spans[index].provenance = ProvenanceContent
+				p.spans[index].contentKind = ContentKindToolResult
 				p.spans[index].userAttribution = UserAttributionUntrusted
 				p.spans[index].roleEligible = false
 			}
 		case "", "text", "inputtext", "outputtext", "refusal":
 			// Known natural-language blocks retain the enclosing proven role.
+			// Direct content/parts array items receive a provisional per-item scope
+			// so executable calls cannot compose across siblings. Once an item is
+			// proven to be ordinary text, fold it back into the enclosing message
+			// scope so multipart natural-language directives retain their contract.
+			for index := spanStart; index < len(p.spans); index++ {
+				if p.spans[index].messageOwner == ctx.messageOwner {
+					p.spans[index].scopeID = ctx.messageOwner
+				}
+			}
 			for _, key := range blockTextKeys {
 				if !roleContentTextFieldAllowed(p.source, effectiveBlockType, key) {
 					p.unsafeRole = true
@@ -610,6 +650,7 @@ func (p *shadowPlanner) parseObject(ctx planContext, depth int) (valueSummary, e
 				}
 				p.spans[index].role = RoleUser
 				p.spans[index].provenance = ProvenanceContent
+				p.spans[index].contentKind = ContentKindUnknown
 				p.spans[index].userAttribution = UserAttributionUntrusted
 				p.spans[index].roleEligible = false
 			}
@@ -631,7 +672,7 @@ func (p *shadowPlanner) parseObject(ctx planContext, depth int) (valueSummary, e
 		}
 		if typeDerivedKnown && !typeDerivedRoleCompatible {
 			// Responses call/output/reasoning/additional-tools items have a
-			// closed type-derived role. CPA v7.2.88 Codex Responses Lite is the
+			// closed type-derived role. CPA v7.2.95 Codex Responses Lite is the
 			// sole reviewed exception: additional_tools carries the exact sibling
 			// role "developer". Every other explicit role remains ambiguous and
 			// must never promote runtime/tool text to trusted user content.
@@ -647,6 +688,7 @@ func (p *shadowPlanner) parseObject(ctx planContext, depth int) (valueSummary, e
 		}
 		if typeDerivedKnown && typeDerivedRoleCompatible {
 			messageType := canonicalKey(messageTypeValue)
+			contentKind := responseItemContentKind(messageTypeValue)
 			for index := spanStart; index < len(p.spans); index++ {
 				if p.spans[index].messageOwner != messageOwner {
 					continue
@@ -659,6 +701,7 @@ func (p *shadowPlanner) parseObject(ctx planContext, depth int) (valueSummary, e
 				}
 				p.spans[index].role = typeDerivedRole
 				p.spans[index].provenance = typeDerivedProvenance
+				p.spans[index].contentKind = contentKind
 				p.spans[index].userAttribution = UserAttributionUntrusted
 				p.spans[index].roleEligible = false
 			}
@@ -671,7 +714,7 @@ func (p *shadowPlanner) parseObject(ctx planContext, depth int) (valueSummary, e
 			role, ok := normalizedMessageRole(p.source, roleValue)
 			trustedUserRolePath := ctx.historyTrusted
 			if p.source == SourceProfileOpenAIResponse && messageTypeSeen {
-				// CPA v7.2.88 treats only an omitted/empty type or the exact
+				// CPA v7.2.95 treats only an omitted/empty type or the exact
 				// "message" discriminator as a role-bearing Responses message.
 				// Unknown and non-string item types are still scanned, but their
 				// caller-controlled role must not prove authenticated-user origin.
@@ -695,6 +738,9 @@ func (p *shadowPlanner) parseObject(ctx planContext, depth int) (valueSummary, e
 					if trustedUserRolePath && role == RoleUser && p.spans[index].provenance == ProvenanceContent {
 						p.spans[index].userAttribution = UserAttributionTrusted
 					}
+					if role == RoleTool && p.spans[index].provenance == ProvenanceContent {
+						p.spans[index].contentKind = ContentKindToolResult
+					}
 				}
 			}
 		}
@@ -713,6 +759,7 @@ func (p *shadowPlanner) parseArray(ctx planContext, depth int) (valueSummary, er
 	p.position++
 	p.shadow = append(p.shadow, '[')
 	first := true
+	itemIndex := 0
 	for {
 		p.skipWhitespace()
 		if p.position < len(p.body) && p.body[p.position] == ']' {
@@ -733,6 +780,9 @@ func (p *shadowPlanner) parseArray(ctx planContext, depth int) (valueSummary, er
 		first = false
 		child := ctx
 		child.atRoot = false
+		child.fieldPath = appendArrayFieldPath(ctx.fieldPath, itemIndex)
+		child.independentScope = false
+		child.independentItems = false
 		// messageObject proves only a direct element of the provider history
 		// array. Never carry that proof through a nested array.
 		child.historyArray = false
@@ -740,6 +790,15 @@ func (p *shadowPlanner) parseArray(ctx planContext, depth int) (valueSummary, er
 		child.roleTextValue = false
 		if ctx.historyArray && ctx.historyTrusted && p.trustRoles {
 			child.messageObject = true
+			child.conversationIndex = itemIndex
+			child.contentKind = ContentKindNaturalLanguageDirective
+			child.scopeID = 0
+		} else if ctx.atRoot {
+			p.nextOwner++
+			child.scopeID = p.nextOwner
+		} else if ctx.independentItems || ctx.roleContent && ctx.directMessageMember {
+			p.nextOwner++
+			child.scopeID = p.nextOwner
 		}
 		if ctx.roleContent {
 			child.directMessageMember = false
@@ -756,6 +815,7 @@ func (p *shadowPlanner) parseArray(ctx planContext, depth int) (valueSummary, er
 		if _, err := p.parseValue(child, "", depth); err != nil {
 			return valueSummary{}, err
 		}
+		itemIndex++
 	}
 	return valueSummary{}, nil
 }
@@ -769,6 +829,9 @@ func derivePlanContext(parent planContext, key, exactKey string, rootMember bool
 	child.directMessageMember = parent.messageObject
 	child.directUserInput = false
 	child.exactKey = exactKey
+	child.fieldPath = appendObjectFieldPath(parent.fieldPath, exactKey)
+	child.independentScope = false
+	child.independentItems = false
 	if parent.metadata {
 		return child
 	}
@@ -778,6 +841,7 @@ func derivePlanContext(parent planContext, key, exactKey string, rootMember bool
 		child.fallbackText = false
 		child.unknownRoot = false
 		child.metadata = true
+		child.contentKind = ContentKindUnknown
 		return child
 	}
 	if rootMember && trustedHistoryEnvelope(source, exactKey) {
@@ -787,9 +851,11 @@ func derivePlanContext(parent planContext, key, exactKey string, rootMember bool
 		child.roleEligible = false
 		child.roleContent = false
 		child.userAttribution = UserAttributionUntrusted
+		child.contentKind = ContentKindNaturalLanguageDirective
 		if source == SourceProfileOpenAIResponse && exactKey == "input" {
 			child.directUserInput = true
 			child.userAttribution = UserAttributionTrusted
+			child.conversationIndex = 0
 		}
 		return child
 	}
@@ -798,14 +864,25 @@ func derivePlanContext(parent planContext, key, exactKey string, rootMember bool
 		child.roleEligible = true
 		child.roleContent = false
 		child.userAttribution = UserAttributionUntrusted
+		child.contentKind = ContentKindNaturalLanguageDirective
 		return child
 	}
 	if rootMember && isProviderToolDefinitionContainerCanonical(key) {
 		child.role = RoleSystem
 		child.provenance = ProvenanceContent
+		child.contentKind = ContentKindToolSchema
 		child.roleEligible = true
 		child.roleContent = false
 		child.userAttribution = UserAttributionUntrusted
+		return child
+	}
+	if parent.contentKind == ContentKindToolSchema {
+		// A schema may itself contain fields named input, arguments, content, or
+		// examples. Those names do not turn declarations into runtime calls.
+		child.role = RoleSystem
+		child.provenance = ProvenanceContent
+		child.userAttribution = UserAttributionUntrusted
+		child.contentKind = ContentKindToolSchema
 		return child
 	}
 	if parent.messageOwner != 0 {
@@ -819,6 +896,7 @@ func derivePlanContext(parent planContext, key, exactKey string, rootMember bool
 				child.roleEligible = true
 				child.roleContent = false
 				child.provenance = ProvenanceToolPayload
+				child.contentKind = ContentKindToolCallArguments
 				child.userAttribution = UserAttributionUntrusted
 			case isMetadataKeyCanonical(key):
 				child.roleEligible = false
@@ -829,10 +907,25 @@ func derivePlanContext(parent planContext, key, exactKey string, rootMember bool
 				child.roleContent = false
 				child.role = RoleUser
 				child.userAttribution = UserAttributionUntrusted
+				child.contentKind = ContentKindUnknown
 			}
 			return child
 		}
 		switch {
+		case parent.messageObject && exactMessageToolCallArrayKey(source, exactKey):
+			child.roleEligible = true
+			child.roleContent = false
+			child.provenance = ProvenanceToolPayload
+			child.contentKind = ContentKindToolCallArguments
+			child.userAttribution = UserAttributionUntrusted
+			child.independentItems = true
+		case parent.messageObject && exactMessageToolCallValueKey(source, exactKey):
+			child.roleEligible = true
+			child.roleContent = false
+			child.provenance = ProvenanceToolPayload
+			child.contentKind = ContentKindToolCallArguments
+			child.userAttribution = UserAttributionUntrusted
+			child.independentScope = true
 		case parent.messageObject && exactMessageContentKey(source, exactKey):
 			child.roleEligible = true
 			child.roleContent = true
@@ -847,6 +940,7 @@ func derivePlanContext(parent planContext, key, exactKey string, rootMember bool
 			child.roleEligible = true
 			child.roleContent = false
 			child.provenance = ProvenanceToolPayload
+			child.contentKind = ContentKindToolCallArguments
 			child.userAttribution = UserAttributionUntrusted
 		case isMetadataKeyCanonical(key):
 			child.roleEligible = false
@@ -856,16 +950,30 @@ func derivePlanContext(parent planContext, key, exactKey string, rootMember bool
 			child.roleContent = false
 			child.role = RoleUser
 			child.userAttribution = UserAttributionUntrusted
+			child.contentKind = ContentKindUnknown
 		}
 		return child
 	}
 	if isToolWrapperKeyCanonical(key) || isToolArgumentCanonical(key) {
 		child.provenance = ProvenanceToolPayload
+		child.contentKind = ContentKindToolCallArguments
 	}
 	if rootMember && !isKnownRootPlanKey(key) {
 		child.unknownRoot = true
+		child.contentKind = ContentKindUnknown
 	}
 	return child
+}
+
+func exactMessageToolCallArrayKey(source SourceProfile, key string) bool {
+	return (source == SourceProfileOpenAI || source == SourceProfileOpenAIResponse) && key == "tool_calls"
+}
+
+func exactMessageToolCallValueKey(source SourceProfile, key string) bool {
+	if source != SourceProfileOpenAI && source != SourceProfileOpenAIResponse {
+		return false
+	}
+	return key == "function_call" || key == "tool_call"
 }
 
 func trustedHistoryEnvelope(source SourceProfile, key string) bool {
@@ -1050,7 +1158,7 @@ func normalizedMessageRole(source SourceProfile, value string) (Role, bool) {
 func rolelessResponseItemRole(value string) (Role, SegmentProvenance, bool) {
 	switch value {
 	case "additional_tools":
-		// CPA v7.2.88 accepts Codex Desktop tool definitions in an input item
+		// CPA v7.2.95 accepts Codex Desktop tool definitions in an input item
 		// instead of the top-level tools field. The entire item is model-visible
 		// authority supplied by the client/runtime, never current user content.
 		return RoleSystem, ProvenanceContent, true
@@ -1062,6 +1170,21 @@ func rolelessResponseItemRole(value string) (Role, SegmentProvenance, bool) {
 		return RoleAssistant, ProvenanceContent, true
 	default:
 		return RoleUnknown, ProvenanceContent, false
+	}
+}
+
+func responseItemContentKind(value string) ContentKind {
+	switch value {
+	case "additional_tools":
+		return ContentKindToolSchema
+	case "function_call", "custom_tool_call":
+		return ContentKindToolCallArguments
+	case "function_call_output", "custom_tool_call_output":
+		return ContentKindToolResult
+	case "reasoning":
+		return ContentKindUnknown
+	default:
+		return ContentKindNaturalLanguageDirective
 	}
 }
 
@@ -1129,38 +1252,48 @@ func (p *shadowPlanner) appendStringValue(ctx planContext, key string, start, en
 	if representative, ok := opaqueScalarCarrierRepresentative(key, value, bounded, raw, id); ok {
 		p.shadow = strconv.AppendQuote(p.shadow, representative)
 		p.spans = append(p.spans, plannedText{
-			id:               id,
-			rawStart:         start,
-			rawEnd:           end,
-			role:             defaultRole(ctx.role),
-			provenance:       ctx.provenance,
-			userAttribution:  ctx.userAttribution,
-			encryptedContent: encryptedContent,
-			scalarCarrier:    scalarCarrier,
-			messageOwner:     ctx.messageOwner,
-			roleEligible:     ctx.roleEligible,
-			semanticOrdinal:  len(p.spans),
-			fallbackText:     fallbackText,
-			exactKey:         ctx.exactKey,
+			id:                id,
+			rawStart:          start,
+			rawEnd:            end,
+			role:              defaultRole(ctx.role),
+			provenance:        ctx.provenance,
+			userAttribution:   ctx.userAttribution,
+			encryptedContent:  encryptedContent,
+			scalarCarrier:     scalarCarrier,
+			messageOwner:      ctx.messageOwner,
+			conversationIndex: ctx.conversationIndex,
+			turnIndex:         -1,
+			scopeID:           ctx.scopeID,
+			contentKind:       ctx.contentKind,
+			fieldPathHash:     structuralFieldPathHash(p.source, ctx.fieldPath),
+			roleEligible:      ctx.roleEligible,
+			semanticOrdinal:   len(p.spans),
+			fallbackText:      fallbackText,
+			exactKey:          ctx.exactKey,
 		})
 		return valueSummary{text: representative, isText: true, bounded: bounded}
 	}
 	marker := spanMarker(id)
 	p.shadow = strconv.AppendQuote(p.shadow, marker)
 	p.spans = append(p.spans, plannedText{
-		id:               id,
-		rawStart:         start,
-		rawEnd:           end,
-		role:             defaultRole(ctx.role),
-		provenance:       ctx.provenance,
-		userAttribution:  ctx.userAttribution,
-		encryptedContent: encryptedContent,
-		scalarCarrier:    scalarCarrier,
-		messageOwner:     ctx.messageOwner,
-		roleEligible:     ctx.roleEligible,
-		semanticOrdinal:  len(p.spans),
-		fallbackText:     fallbackText,
-		exactKey:         ctx.exactKey,
+		id:                id,
+		rawStart:          start,
+		rawEnd:            end,
+		role:              defaultRole(ctx.role),
+		provenance:        ctx.provenance,
+		userAttribution:   ctx.userAttribution,
+		encryptedContent:  encryptedContent,
+		scalarCarrier:     scalarCarrier,
+		messageOwner:      ctx.messageOwner,
+		conversationIndex: ctx.conversationIndex,
+		turnIndex:         -1,
+		scopeID:           ctx.scopeID,
+		contentKind:       ctx.contentKind,
+		fieldPathHash:     structuralFieldPathHash(p.source, ctx.fieldPath),
+		roleEligible:      ctx.roleEligible,
+		semanticOrdinal:   len(p.spans),
+		fallbackText:      fallbackText,
+		exactKey:          ctx.exactKey,
 	})
 	return valueSummary{text: marker, isText: true, bounded: true}
 }
@@ -1444,9 +1577,16 @@ func (p *shadowPlanner) selected(parts []string) ([]plannedText, []plannedText) 
 			continue
 		}
 		if strings.TrimSpace(part) != "" {
+			p.nextOwner++
+			ordinal := len(owned)
 			owned = append(owned, plannedText{
 				owned: part, role: RoleUser, provenance: ProvenanceToolPayload,
-				userAttribution: UserAttributionUntrusted,
+				userAttribution:   UserAttributionUntrusted,
+				conversationIndex: -1, turnIndex: -1, scopeID: p.nextOwner,
+				contentKind: ContentKindToolCallArguments,
+				fieldPathHash: structuralFieldPathHash(
+					p.source, appendArrayFieldPath("$synthetic", ordinal),
+				),
 			})
 		}
 	}
@@ -1476,6 +1616,62 @@ func (p *shadowPlanner) selected(parts []string) ([]plannedText, []plannedText) 
 		selected[selectedIndex] = contentSpans[index]
 	}
 	return selected, owned
+}
+
+func finalizeConversationMetadata(spans []plannedText) {
+	type scopeState struct {
+		scopeID           uint64
+		conversationIndex int
+		trustedUser       bool
+		turnIndex         int
+	}
+
+	byScope := make(map[uint64]*scopeState, len(spans))
+	ordered := make([]*scopeState, 0, len(spans))
+	for index := range spans {
+		span := &spans[index]
+		span.turnIndex = -1
+		span.isCurrentTurn = false
+		if span.scopeID == 0 || span.conversationIndex < 0 {
+			continue
+		}
+		state := byScope[span.scopeID]
+		if state == nil {
+			state = &scopeState{
+				scopeID: span.scopeID, conversationIndex: span.conversationIndex, turnIndex: -1,
+			}
+			byScope[span.scopeID] = state
+			ordered = append(ordered, state)
+		}
+		if span.role == RoleUser && span.userAttribution == UserAttributionTrusted &&
+			span.contentKind != ContentKindToolCallArguments && span.contentKind != ContentKindToolResult &&
+			span.contentKind != ContentKindToolSchema {
+			state.trustedUser = true
+		}
+	}
+	sort.SliceStable(ordered, func(left, right int) bool {
+		if ordered[left].conversationIndex == ordered[right].conversationIndex {
+			return ordered[left].scopeID < ordered[right].scopeID
+		}
+		return ordered[left].conversationIndex < ordered[right].conversationIndex
+	})
+	turnIndex := -1
+	currentScope := uint64(0)
+	for _, state := range ordered {
+		if state.trustedUser {
+			turnIndex++
+			currentScope = state.scopeID
+		}
+		state.turnIndex = turnIndex
+	}
+	for index := range spans {
+		state := byScope[spans[index].scopeID]
+		if state == nil {
+			continue
+		}
+		spans[index].turnIndex = state.turnIndex
+		spans[index].isCurrentTurn = currentScope != 0 && spans[index].scopeID == currentScope
+	}
 }
 
 func embeddedMarkerID(value string) (uint64, bool) {
@@ -1511,7 +1707,10 @@ func (s *streamEmitter) emitOwned(span plannedText) error {
 }
 
 func (s *streamEmitter) emitSpan(raw []byte, span plannedText) error {
-	measurement, err := measureJSONString(raw)
+	chunkSize := minInt(s.limits.MaxTextPartBytes, s.limits.MaxTextWindowBytes)
+	measurement, err := measureJSONString(
+		raw, chunkSize, shouldSegmentFencedCode(span), s.limits.MaxClassificationChunks,
+	)
 	if err != nil {
 		return s.operational(err)
 	}
@@ -1543,8 +1742,23 @@ func (s *streamEmitter) emitSpan(raw []byte, span plannedText) error {
 		s.abort(reason, coverage)
 		return nil
 	}
-	chunkSize := minInt(s.limits.MaxTextPartBytes, s.limits.MaxTextWindowBytes)
+	pieces := measurement.contentPieces
+	segmented := len(pieces) != 0
+	if !segmented {
+		pieces = []contentKindPiece{{
+			start: 0,
+			end:   measurement.length,
+			kind:  span.contentKind,
+		}}
+	}
 	chunks := (measurement.length + chunkSize - 1) / chunkSize
+	if segmented {
+		if measurement.chunkBoundaryOverflow {
+			s.abort(IncompleteClassificationChunkLimit, TextCoverageExhausted)
+			return nil
+		}
+		chunks = exactContentPieceChunkCount(measurement.chunkEnds, pieces)
+	}
 	if !s.canAddTextBytes(measurement.length) {
 		return nil
 	}
@@ -1556,31 +1770,57 @@ func (s *streamEmitter) emitSpan(raw []byte, span plannedText) error {
 		s.abort(IncompleteClassificationChunkLimit, TextCoverageExhausted)
 		return nil
 	}
-	first := true
 	emitted := 0
+	decodedOffset := 0
+	pieceIndex := 0
 	err = decodeJSONStringChunks(raw, chunkSize, func(chunk []byte, final bool) error {
 		if len(chunk) == 0 && !final {
 			return nil
 		}
-		if !s.canAddClassificationChunk() {
-			return errClassificationLimited
-		}
-		if err := s.sink.AddSegment(SegmentChunk{
-			Role:            defaultRole(span.role),
-			Provenance:      span.provenance,
-			UserAttribution: span.userAttribution,
-			FieldID:         span.id,
-			Start:           first,
-			End:             final,
-			Text:            chunk,
-		}); err != nil {
-			return err
-		}
-		first = false
-		emitted += len(chunk)
-		s.result.ClassificationChunks++
-		if len(chunk) > s.result.PeakTextBytesRetained {
-			s.result.PeakTextBytesRetained = len(chunk)
+		for len(chunk) != 0 {
+			if pieceIndex >= len(pieces) {
+				return errors.New("decoded content exceeded content-kind plan")
+			}
+			piece := pieces[pieceIndex]
+			if decodedOffset < piece.start || decodedOffset >= piece.end {
+				return errors.New("decoded content diverged from content-kind plan")
+			}
+			partLength := minInt(len(chunk), piece.end-decodedOffset)
+			part := chunk[:partLength:partLength]
+			if !s.canAddClassificationChunk() {
+				return errClassificationLimited
+			}
+			fieldID := span.id
+			if segmented {
+				fieldID = contentPieceFieldID(span.id, pieceIndex)
+			}
+			if err := s.sink.AddSegment(SegmentChunk{
+				Role:              defaultRole(span.role),
+				Provenance:        span.provenance,
+				UserAttribution:   span.userAttribution,
+				ConversationIndex: span.conversationIndex,
+				TurnIndex:         span.turnIndex,
+				IsCurrentTurn:     span.isCurrentTurn,
+				ScopeID:           span.scopeID,
+				ContentKind:       piece.kind,
+				FieldPathHash:     span.fieldPathHash,
+				FieldID:           fieldID,
+				Start:             decodedOffset == piece.start,
+				End:               decodedOffset+partLength == piece.end,
+				Text:              part,
+			}); err != nil {
+				return err
+			}
+			decodedOffset += partLength
+			emitted += partLength
+			s.result.ClassificationChunks++
+			if partLength > s.result.PeakTextBytesRetained {
+				s.result.PeakTextBytesRetained = partLength
+			}
+			chunk = chunk[partLength:]
+			if decodedOffset == piece.end {
+				pieceIndex++
+			}
 		}
 		return nil
 	})
@@ -1589,6 +1829,9 @@ func (s *streamEmitter) emitSpan(raw []byte, span plannedText) error {
 	}
 	if err != nil {
 		return s.operational(err)
+	}
+	if decodedOffset != measurement.length || pieceIndex != len(pieces) {
+		return s.operational(errors.New("decoded content did not complete content-kind plan"))
 	}
 	s.result.TextBytesScanned += emitted
 	for index, variant := range variants {
@@ -1635,13 +1878,19 @@ func (s *streamEmitter) emitDecoded(value []byte, span plannedText) error {
 			return nil
 		}
 		if err := s.sink.AddSegment(SegmentChunk{
-			Role:            defaultRole(span.role),
-			Provenance:      span.provenance,
-			UserAttribution: span.userAttribution,
-			FieldID:         span.id,
-			Start:           offset == 0,
-			End:             end == len(value),
-			Text:            chunk,
+			Role:              defaultRole(span.role),
+			Provenance:        span.provenance,
+			UserAttribution:   span.userAttribution,
+			ConversationIndex: span.conversationIndex,
+			TurnIndex:         span.turnIndex,
+			IsCurrentTurn:     span.isCurrentTurn,
+			ScopeID:           span.scopeID,
+			ContentKind:       span.contentKind,
+			FieldPathHash:     span.fieldPathHash,
+			FieldID:           span.id,
+			Start:             offset == 0,
+			End:               end == len(value),
+			Text:              chunk,
 		}); err != nil {
 			return s.operational(err)
 		}
@@ -1701,17 +1950,35 @@ func (s *streamEmitter) operational(err error) error {
 }
 
 type jsonStringMeasurement struct {
-	length   int
-	nonSpace bool
-	binary   bool
-	decoder  boundedStreamingDecoder
+	length                int
+	nonSpace              bool
+	binary                bool
+	decoder               boundedStreamingDecoder
+	contentPieces         []contentKindPiece
+	chunkEnds             []int
+	chunkBoundaryOverflow bool
 }
 
-func measureJSONString(raw []byte) (measurement jsonStringMeasurement, err error) {
+func measureJSONString(raw []byte, chunkSize int, segmentFencedCode bool, maxChunks int) (measurement jsonStringMeasurement, err error) {
 	measurement.decoder = newBoundedStreamingDecoder(len(raw))
-	err = decodeJSONStringChunks(raw, 16<<10, func(chunk []byte, _ bool) error {
+	measurement.chunkEnds = make([]int, 0, minInt(maxChunks, 16))
+	var planner *fencedCodePlanner
+	if segmentFencedCode {
+		planner = newFencedCodePlanner(maxChunks)
+	}
+	err = decodeJSONStringChunks(raw, chunkSize, func(chunk []byte, _ bool) error {
 		measurement.length += len(chunk)
+		if len(chunk) != 0 {
+			if len(measurement.chunkEnds) < maxChunks {
+				measurement.chunkEnds = append(measurement.chunkEnds, measurement.length)
+			} else {
+				measurement.chunkBoundaryOverflow = true
+			}
+		}
 		measurement.decoder.add(chunk)
+		if planner != nil {
+			planner.add(chunk)
+		}
 		for len(chunk) > 0 {
 			r, size := utf8.DecodeRune(chunk)
 			if r == utf8.RuneError && size == 1 {
@@ -1727,7 +1994,22 @@ func measureJSONString(raw []byte) (measurement jsonStringMeasurement, err error
 		}
 		return nil
 	})
+	if err == nil && planner != nil {
+		measurement.contentPieces = planner.finish()
+	}
 	return
+}
+
+func exactContentPieceChunkCount(chunkEnds []int, pieces []contentKindPiece) int {
+	count := len(chunkEnds)
+	for index := 0; index+1 < len(pieces); index++ {
+		boundary := pieces[index].end
+		position := sort.SearchInts(chunkEnds, boundary)
+		if position >= len(chunkEnds) || chunkEnds[position] != boundary {
+			count++
+		}
+	}
+	return count
 }
 
 type boundedStreamingDecoder struct {

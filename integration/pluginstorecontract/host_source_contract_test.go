@@ -13,15 +13,17 @@ import (
 
 const (
 	cpaModulePath        = "github.com/router-for-me/CLIProxyAPI/v7"
-	cpaPinnedVersion     = "v7.2.88"
-	cpaPinnedCommit      = "93d74a890a44802f656d7f39a573916b2611896e"
-	cpaPinnedModuleSum   = "h1:YfLBYPvkasjqFLzdht+UrEgRLsU3HcM0WDMurNEjIDo="
-	cpaPinnedGoModSum    = "h1:ytvZNWbCv7PrAyR80+RKsDJPODsdL6qxyFaXDBNZdqs="
+	cpaPinnedVersion     = "v7.2.95"
+	cpaPinnedCommit      = "f71ec0eb6776854457892452cf28c47f0d658251"
+	cpaPinnedModuleSum   = "h1:QHQuGuPwOOTdyk5G7s0gjirdQtCM7NtxHRGS1I2xNtA="
+	cpaPinnedGoModSum    = "h1:he/Nx8K5RKvpcnedn0dmR8vVgHmetQ3/wutuPibWuRM="
 	cpaPluginHostPackage = cpaModulePath + "/internal/pluginhost"
 )
 
 var criticalCPAHostTests = []string{
+	"TestDecodeEnvelopeResultPreservesPluginHTTPStatus",
 	"TestSanitizePluginRequestRemovesNonJSONMetadata",
+	"TestServeManagementHTMLEscapesJSONResponseStrings",
 	"TestHostRouteModelAllowsExplicitExecutorPluginTarget",
 	"TestHostRouteModelClonesPluginMetadata",
 	"TestHostRouteModelContinuesAfterUnhandled",
@@ -105,7 +107,7 @@ func TestCPAHostFailOpenFixtureContract(t *testing.T) {
 	if _, errFixtureStat := os.Stat(fixturePath); errFixtureStat != nil {
 		t.Fatalf("stat Host fixture: %v", errFixtureStat)
 	}
-	moduleCopy := filepath.Join(t.TempDir(), "cpa-v7.2.88")
+	moduleCopy := filepath.Join(t.TempDir(), "cpa-v7.2.95")
 	if errCopyModule := os.CopyFS(moduleCopy, os.DirFS(module.Dir)); errCopyModule != nil {
 		t.Fatalf("copy pinned CPA module for Host fixture: %v", errCopyModule)
 	}

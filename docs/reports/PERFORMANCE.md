@@ -1,25 +1,40 @@
 # Performance Report — historical evidence and v0.16 development acceptance
 
 ```text
-current_classifier_policy_version: classifier-policy-v6
-current_classifier_policy_sha256: ece497210db938528cb166a34f2ce3013324b792a7eedf276a96fa5d256001d4
+current_classifier_policy_version: classifier-policy-v7
+current_classifier_policy_sha256: ea8c4dcfacacc6478f86fd2ca5de96d667ae98f2fc6ff0c83d8e6092e9f6a82d
 ```
 
-Last updated: 2026-07-21 (Asia/Shanghai)
+Last updated: 2026-07-22 (Asia/Shanghai)
 
 ## Status
 
-**DEVELOPMENT SELF-CHECK / NOT RELEASE EVIDENCE.** The current section records
-the complete local Linux P1-P2 gate and benchmark run on branch
-`fix/p1-p2-hardening-v016`, based on
-`7b2422ed30c11d405d05bcb6b46a2527eed6471b`. It is not bound to a package,
-GitHub Actions artifact, GitHub Release, or real CPA Host attestation.
+**ROUND 8 DEVELOPMENT SOURCE-TREE SNAPSHOT / NOT RELEASE EVIDENCE.** The active source
+target is the Linux amd64 `v0.16-rc.2` prerelease contract on
+`feat/round8-balanced-readmission`. The final local Go 1.26.4 Linux development
+gate, race run, benchmark acceptance, same-machine baseline comparison, and one
+standalone RSS comparison have completed. They remain source-tree self-checks:
+the source was not yet tag-, artifact-, or Release-bound when measured.
+Exact-main GitHub CI and the CPA v7.2.95 counted-Mock Host lane remain pending, so no
+Host latency, throughput, concurrency, or production-performance claim is made.
 
-The later sections retain older classifier and reliability measurements as
-historical regression context. They are not current v0.16 evidence, a formal
-release benchmark, or a blind quality result. Methodologically valid evaluation
-v10 remains the frozen, first-and-only authoritative `FAIL`; that blind set is
-consumed and was not rerun.
+The historical sections following the current Round 8 block retain older P1-P2,
+classifier, and reliability measurements as regression context. They are not
+current Round 8 evidence, a formal release benchmark, or a blind quality result.
+Methodologically valid evaluation v10 remains the frozen, first-and-only
+authoritative `FAIL`. Earlier over-broad read-only searches displayed
+evaluation/holdout test or historical-report filenames, historical ruleset
+SHA-256 references, caller-path lines, and aggregate summaries. During the
+current closure, one additional broad `git grep` unexpectedly emitted several
+individual request and label lines from retired holdout fixture files. The
+possessive-browser-target false negative had already been identified by
+classifier review before that search; none of the emitted lines was used for
+performance, classifier, rule, score, or threshold calibration or copied into
+source/tests/docs. One separate over-broad classifier command may also have
+compiled or run the restricted gate during development, so that result is
+excluded. This session cannot claim fixture non-access, blind, independent, or
+zero-access evidence; a new untouched holdout under an independent reviewer is
+required.
 
 The WSL command `make cpa-router-fixture-blackbox`, the now-removed legacy
 target `cpa-v7272-host-blackbox`, and
@@ -31,14 +46,93 @@ left no fixture process. Their results are excluded from this report:
 LOCAL MIS-EXECUTION RECORDED / EXCLUDED; NOT AUTHORITATIVE
 ```
 
-## Current v0.16 P1-P2 performance self-check
+## Current Round 8 performance status
+
+Round 8 changes the classifier, extractor provenance, audit aggregation, raw
+capture deduplication, and decision-explanation paths, so older measurements are
+not transferred to the current candidate. The results below compare baseline
+`d540eaa43497c1ae0b4b84106b2bac9fe1617bb2` with the current Round 8 source-tree
+snapshot on the same WSL Ubuntu-26.04 Linux amd64 host, using Go 1.26.4
+(`go version go1.26.4 linux/amd64`). They are **DEVELOPMENT SELF-CHECKS / NOT
+RELEASE OR HOST EVIDENCE**. The measurements must be rerun if
+performance-sensitive source changes before the release commit.
+
+### Acceptance latency comparison
+
+| Path | Baseline `d540eaa` | Round 8 source-tree snapshot | Change |
+|---|---:|---:|---:|
+| Short classifier p50 (10,000 samples) | 173.973 us | 105.272 us | -39.5% |
+| Short classifier p95 | 282.720 us | 146.139 us | -48.3% |
+| Short classifier p99 | 406.484 us | 263.117 us | -35.3% |
+
+All recorded acceptance values remain below their checked-in thresholds. These
+percentiles are in-process classifier timings; they do not represent CPA Host or
+network tail latency.
+
+### Classifier allocation and adversarial-path acceptance
+
+The final isolated acceptance recheck recorded:
+
+| Acceptance path | Round 8 source-tree observation |
+|---|---:|
+| Single-clause classifier | 132.119 us/op; 35,667 B/op; 76 allocs/op |
+| Candidate-rich maximum-parts classifier | 45.245564 ms/op |
+| Near-budget adversarial classifier | 17.877290 ms/op; 323,825 B/op |
+
+The candidate-rich latency remains 65.4% below the 130.700829 ms/op baseline
+observation. The complete benchmark gate also passed its checked-in latency,
+allocation, and adversarial-boundary ceilings. These isolated values can vary
+with host scheduling and are not CPA Host latency.
+
+### Paired long-text acceptance
+
+| Fixture | Baseline `d540eaa` | Round 8 source-tree snapshot | Change |
+|---|---:|---:|---:|
+| Text 1 MiB | 20.843284 ms | 19.887227 ms | -4.6% |
+| Text Near-8 MiB | 159.114903 ms | 163.926518 ms | +3.0% |
+| KeyRich 1 MiB | 5.534472 ms | 5.072744 ms | -8.3% |
+| KeyRich Near-8 MiB | 47.263144 ms | 38.876913 ms | -17.7% |
+| SemanticRich 1 MiB | 4.775169 ms | 4.180488 ms | -12.5% |
+| SemanticRich Near-8 MiB | 36.190022 ms | 34.056162 ms | -5.9% |
+
+All six paired cases stayed below the Round 8 `+25%` regression ceiling and the
+absolute checked-in latency/allocation/slope limits.
+
+### Standalone RSS observation and complete benchmark gate
+
+Paired standalone Linux test binaries, run with the same scope, recorded a
+maximum resident set size of 46,132 KiB for baseline `d540eaa` and 46,616 KiB
+for the final Round 8 source-tree snapshot (+1.0%). This is one controlled
+process comparison, not a CPA Host, concurrent-load, or production RSS
+envelope.
+
+The final acceptance run additionally recorded these bounded paths:
+
+| Acceptance path | Latency | Bytes/op | Allocs/op |
+|---|---:|---:|---:|
+| Raw Capture prepare | 437,369,818 ns/op | 3,359,605 | 57 |
+| Raw Capture composite | 427,176,459 ns/op | 3,369,141 | 87 |
+| Raw Capture queue-full fast path | 46 ns/op | 0 | 0 |
+| Raw Capture management response | 53,230,244 ns/op | 8,528,651 | 1,327 |
+| Wrapper audit fast path | 13,337,858 ns/op | 1,513,024 | 2,846 |
+
+The final local `make round6-benchmark` rerun passed, including classifier,
+long-text extraction, Raw Capture, management-response, wrapper/audit, and the
+four-repository full-route performance acceptances. The complete `make race`
+rerun also passed with no reported data race; the plugin package took 379.920
+seconds and the classifier package 69.762 seconds. Exact allocation
+assertions remain in the ordinary Linux lane because race instrumentation adds
+nondeterministic allocation bookkeeping.
+
+## Historical v0.16-rc.1 P1-P2 performance self-check
 
 Environment and scope:
 
-- Date: 2026-07-21 (Asia/Shanghai).
+- Date: 2026-07-21 (Asia/Shanghai); retained as historical evidence.
 - Platform: WSL Ubuntu-26.04, Linux amd64.
 - Toolchain: Go 1.26.4 with `GOTOOLCHAIN=local`.
-- Source: P1-P2 development branch based on `7b2422e`; not artifact-bound.
+- Source: historical P1-P2 development branch based on `7b2422e`; not
+  artifact-bound and superseded by Round 8.
 - Evidence class: **DEVELOPMENT SELF-CHECK / NOT RELEASE EVIDENCE**.
 
 The acceptance checks below were produced by the complete
@@ -46,7 +140,7 @@ The acceptance checks below were produced by the complete
 frozen code also passed `make test`, `make round6-vet`,
 `make round6-format-check`, `make round6-module-verify`,
 `make round6-script-test`, deterministic 13-target `make fuzz-smoke`, audit and
-raw-capture race tests, and the pinned CPA v7.2.88 raw-capture Host source
+raw-capture race tests, and the pinned CPA v7.2.95 raw-capture Host source
 overlay.
 
 - `go test ./internal/extract -count=1 -v -run='^TestRound6LongTextScaleAcceptance$'`
@@ -78,9 +172,10 @@ These `testing.Benchmark` acceptance samples report aggregate `ns/op`,
 `B/op`, and `allocs/op`. They do **not** collect or prove p50, p95, p99, peak
 RSS, end-to-end CPA Host latency, request throughput, or concurrent-load
 behavior; those values are **UNAVAILABLE / NOT MEASURED** and must not be
-inferred from `ns/op`. A release candidate still needs an exact-commit run with
-the pinned CPA v7.2.88 Host and a separately instrumented tail-latency/RSS test
-if those metrics are made release gates.
+inferred from these historical `ns/op` values. Separate Round 8 in-process
+percentiles and one standalone RSS observation are recorded above, but the CPA
+v7.2.95 counted-Mock Host lane, Host tail
+latency, throughput, concurrency, and Host RSS remain **NOT RUN / NOT PROVIDED**.
 
 Exact-main GitHub CI run
 [`29799561002`](https://github.com/yujianwudi/cyber-abuse-guard/actions/runs/29799561002)

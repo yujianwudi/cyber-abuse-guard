@@ -20,11 +20,11 @@ on:
         required: true
         type: string
       candidate_run_id:
-        description: Successful clean-candidate workflow run used by the pinned CPA v7.2.88 Host record
+        description: Successful clean-candidate workflow run used by the pinned CPA v7.2.95 Host record
         required: true
         type: string
       expected_so_sha256:
-        description: Exact candidate SO SHA-256 cited by the CPA v7.2.88 Host record and independent audit
+        description: Exact candidate SO SHA-256 cited by the CPA v7.2.95 Host record and independent audit
         required: true
         type: string
       expected_store_zip_sha256:
@@ -292,7 +292,7 @@ jobs:
         run: |
           make round6-format-check round6-git-diff-check round6-module-verify round6-regression round6-vet
           go test ./internal/classifier -run '^TestClassifierPolicyIdentity$' -count=1
-      - name: Verify pinned CPA v7.2.88 source compatibility
+      - name: Verify pinned CPA v7.2.95 source compatibility
         env:
           CPA_COMPAT_VERIFY_REMOTE: '1'
         run: make cpa-latest-compat
@@ -521,8 +521,8 @@ jobs:
                 store_zip_sha256: $store_zip_sha256
               },
               evidence: {
-                cpa_version: "v7.2.88",
-                cpa_commit: "93d74a890a44802f656d7f39a573916b2611896e",
+                cpa_version: "v7.2.95",
+                cpa_commit: "f71ec0eb6776854457892452cf28c47f0d658251",
                 cpa_host_sha256: $host_evidence_sha256,
                 independent_audit_sha256: $independent_audit_sha256,
                 independent_evaluation_id: $independent_evaluation_id,
@@ -583,7 +583,7 @@ jobs:
             'BLOCKED / NOT A FORMAL RELEASE' \
             '' \
             'Development evidence only. This is not production admission or deployment authorization.' \
-            "CPA Host identity: v7.2.88 (93d74a890a44802f656d7f39a573916b2611896e)" \
+            "CPA Host identity: v7.2.95 (f71ec0eb6776854457892452cf28c47f0d658251)" \
             "CPA Host evidence SHA-256: $HOST_EVIDENCE_SHA256" \
             "Independent audit SHA-256: $INDEPENDENT_AUDIT_SHA256" \
             "Independent consumed evaluation: $INDEPENDENT_EVALUATION_ID" \

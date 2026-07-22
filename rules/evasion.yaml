@@ -1,4 +1,4 @@
-version: "1.0.8"
+version: "1.0.9"
 rules:
   - id: EVADE-001
     category: defense_evasion
@@ -31,23 +31,23 @@ rules:
     hard_floor: 80
     authorization_protected: false
     intent:
-      zh: ["混淆", "隐藏", "绕过", "规避检测"]
-      en: ["obfuscate", "obfuscated", "hide", "hidden", "bypass", "bypassed", "evade detection", "evaded detection"]
+      zh: ["混淆", "绕过检测", "绕过安全检测", "绕过沙箱检测", "规避检测", "逃避检测"]
+      en: ["obfuscate", "obfuscates", "obfuscating", "obfuscated", "hide", "hidden", "bypass", "bypass detection", "bypass security detection", "evade detection", "evades detection", "evading detection", "avoid detection"]
     object:
-      zh: ["恶意载荷", "可部署载荷", "沙箱", "av 扫描器", "edr", "签名扫描"]
-      en: ["malware", "deployable malware", "payload", "sandbox", "signature scanners", "edr", "implant"]
+      zh: ["恶意载荷", "恶意程序", "木马", "后门", "植入程序", "恶意加载器"]
+      en: ["malware", "malicious payload", "malware payload", "trojan", "backdoor", "implant", "malware loader", "malicious loader"]
     operational:
-      zh: ["可运行版本", "代码", "程序", "投放", "部署"]
-      en: ["working", "code", "program", "deploy", "deployable", "deployment"]
+      zh: ["可运行版本", "可部署版本", "部署步骤", "投放流程", "生产部署", "静默删除"]
+      en: ["ready-to-run", "operational", "deploy", "deploy the payload", "deploy it", "deployable", "deployment steps", "production deployment", "working implementation"]
     target:
-      zh: ["真实主机", "受害者", "生产"]
-      en: ["real hosts", "victim", "production"]
+      zh: ["真实主机", "受害主机", "受害者设备", "生产受害主机"]
+      en: ["real hosts", "victim host", "victim machine", "victim machines", "victim endpoint", "victim endpoints", "production victim host", "production host", "production hosts"]
     evasion:
-      zh: ["静默", "无法识别"]
-      en: ["undetected", "silent"]
+      zh: ["edr", "杀毒软件", "av 扫描器", "av扫描器", "签名扫描", "沙箱检测", "安全日志", "安全遥测", "无法识别", "不被检测", "检测"]
+      en: ["edr", "antivirus", "anti-virus", "av scanner", "av scanners", "signature scanner", "signature scanners", "sandbox detection", "monitoring", "hide from monitoring", "security telemetry", "undetected", "detection"]
     scale:
-      zh: ["批量", "自动"]
-      en: ["bulk", "automated", "at scale"]
+      zh: ["批量受害主机", "自动投放", "多台受害主机"]
+      en: ["across victim hosts", "automated deployment", "multiple victim hosts", "at scale"]
   - id: EVADE-003
     category: defense_evasion
     severity: high
